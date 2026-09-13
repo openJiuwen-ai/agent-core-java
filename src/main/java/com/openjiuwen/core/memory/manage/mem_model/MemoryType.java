@@ -5,13 +5,11 @@
 package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
- * Memory-type enumeration.
- *
- * <p>Mirrors Python's {@code MemoryType} in
- * {@code openjiuwen/core/memory/manage/mem_model/memory_unit.py}.</p>
+ * Types of memory data.
+ * 
+ * @since 0.1.7
  */
 public enum MemoryType {
-    FRAGMENT_MEMORY("user_profile"),
     USER_PROFILE("user_profile"),
     SEMANTIC_MEMORY("semantic_memory"),
     EPISODIC_MEMORY("episodic_memory"),
@@ -25,14 +23,24 @@ public enum MemoryType {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
+    /**
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static MemoryType fromValue(String value) {
-        if (USER_PROFILE.value.equals(value)) {
-            return USER_PROFILE;
-        }
         for (MemoryType type : values()) {
             if (type.value.equals(value)) {
                 return type;

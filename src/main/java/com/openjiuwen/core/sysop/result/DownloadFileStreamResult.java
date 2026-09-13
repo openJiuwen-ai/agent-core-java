@@ -4,18 +4,26 @@
 
 package com.openjiuwen.core.sysop.result;
 
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
 /**
- * Mirrors Python's {@code DownloadFileStreamResult} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ * Result type for streaming download file operation.
+ * 
+ * @since 0.1.7
  */
+@SuperBuilder
+@NoArgsConstructor
 public class DownloadFileStreamResult extends BaseResult<DownloadFileChunkData> {
-
-    public DownloadFileStreamResult() {
-    }
-
+    /**
+     * DownloadFileStreamResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
+     */
     public DownloadFileStreamResult(int code, String message, DownloadFileChunkData data) {
-        setCode(code);
-        setMessage(message);
-        setData(data);
+        super(code, message, data);
     }
 }

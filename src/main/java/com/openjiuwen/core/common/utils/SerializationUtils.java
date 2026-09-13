@@ -18,10 +18,11 @@ public final class SerializationUtils {
     /**
      * Require a value that can participate in Java native serialization.
      *
-     * @param value     candidate value; must not be {@code null}
+     * @param value candidate value; must not be {@code null}
      * @param fieldName field name used to describe an invalid value
      * @return the serializable value
      * @throws IllegalArgumentException when the value is null or not serializable
+     * @since 0.1.14
      */
     public static Serializable requireSerializable(Object value, String fieldName) {
         if (value instanceof Serializable serializable) {

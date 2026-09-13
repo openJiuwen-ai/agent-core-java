@@ -12,9 +12,8 @@ import java.util.Map;
 
 /**
  * Agent related event.
- *
- * <p>Mirrors Python's {@code AgentEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -28,11 +27,22 @@ public class AgentEvent extends BaseLogEvent {
     private Integer maxIterations;
     private Double executionTimeMs;
 
+    /**
+     * AgentEvent.
+     * 
+     * @since 0.1.7
+     */
     public AgentEvent() {
         super();
         setModuleType(ModuleType.AGENT);
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "agent_type", agentType);
@@ -44,5 +54,3 @@ public class AgentEvent extends BaseLogEvent {
         putIfNotNull(map, "execution_time_ms", executionTimeMs);
     }
 }
-
-

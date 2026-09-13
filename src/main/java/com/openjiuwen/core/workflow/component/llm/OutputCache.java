@@ -11,13 +11,18 @@ import java.util.Map;
 
 /**
  * Internal output cache used during questioner processing.
- * <p>
- * Mirrors Python's {@code OutputCache} in
- * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 public class OutputCache {
     private Object userResponse = "";
     private String question = "";
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> keyFields = new LinkedHashMap<>();
 }

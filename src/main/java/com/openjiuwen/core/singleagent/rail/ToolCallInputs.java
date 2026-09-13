@@ -4,69 +4,28 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
- * Input data for before/after tool call events.
- *
- * <p>Mirrors Python's {@code ToolCallInputs} in
- * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
+ * Input data for BEFORE/AFTER_TOOL_CALL events.
+ * 
+ * @since 0.1.7
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ToolCallInputs implements EventInputs {
-    @JsonProperty("tool_call")
-    private Object toolCall;
-
-    @JsonProperty("tool_name")
+    private ToolCall toolCall;
+    @Builder.Default
     private String toolName = "";
-
-    @JsonProperty("tool_args")
     private Object toolArgs;
-
-    @JsonProperty("tool_result")
     private Object toolResult;
-
-    @JsonProperty("tool_msg")
-    private Object toolMsg;
-
-    public Object getToolCall() {
-        return toolCall;
-    }
-
-    public void setToolCall(Object toolCall) {
-        this.toolCall = toolCall;
-    }
-
-    public String getToolName() {
-        return toolName;
-    }
-
-    public void setToolName(String toolName) {
-        this.toolName = toolName == null ? "" : toolName;
-    }
-
-    public Object getToolArgs() {
-        return toolArgs;
-    }
-
-    public void setToolArgs(Object toolArgs) {
-        this.toolArgs = toolArgs;
-    }
-
-    public Object getToolResult() {
-        return toolResult;
-    }
-
-    public void setToolResult(Object toolResult) {
-        this.toolResult = toolResult;
-    }
-
-    public Object getToolMsg() {
-        return toolMsg;
-    }
-
-    public void setToolMsg(Object toolMsg) {
-        this.toolMsg = toolMsg;
-    }
+    private ToolMessage toolMsg;
 }

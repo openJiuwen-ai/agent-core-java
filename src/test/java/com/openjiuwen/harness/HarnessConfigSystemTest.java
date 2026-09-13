@@ -1,20 +1,21 @@
+
 package com.openjiuwen.harness;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.harness.harness_config.HarnessConfigBuilder;
 import com.openjiuwen.harness.harness_config.HarnessConfigLoader;
-import com.openjiuwen.harness.schema.DeepAgentConfig;
+
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import java.util.Map;
 
 @Tag("system-test")
 class HarnessConfigSystemTest {
-
     @TempDir
     Path tempDir;
 
@@ -45,11 +46,13 @@ class HarnessConfigSystemTest {
                 language: en
                 """);
 
-        var resolvedConfig = HarnessConfigLoader.load(configPath);
-        DeepAgentConfig config = HarnessConfigBuilder.build(resolvedConfig, null, tempDir);
+        var agent = HarnessConfigBuilder.build(HarnessConfigLoader.load(configPath));
+        agent.ensureInitialized();
+        Map<String, Object> invoked = agent.invoke(Map.of("query", "status"));
 
-        assertThat(config.getLanguage()).isEqualTo("en");
-        assertThat(config.getWorkspace()).isNotNull();
+        assertThat(invoked).containsEntry("agent_name", "System Agent");
+        assertThat(String.valueOf(invoked.get("workspace"))).contains("repo");
+        assertThat(agent.getRegisteredTools()).hasSize(2);
         assertThat(Files.readString(tempDir.resolve("repo/HANDBOOK.md"))).isEqualTo("system workspace");
     }
 }

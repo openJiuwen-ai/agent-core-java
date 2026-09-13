@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.rails.interrupt;
@@ -7,21 +7,43 @@ package com.openjiuwen.harness.rails.interrupt;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 /**
- * Decision to reject tool execution.
- *
- * <p>Mirrors Python's {@code RejectResult} in
- * {@code openjiuwen/harness/rails/interrupt/interrupt_base.py}.</p>
- *
- * @param toolResult result to surface instead of executing the tool
- * @param toolMessage optional tool message override
+ * Skip tool execution and inject a synthetic tool result/message.
+ * 
+ * @since 0.1.7
  */
-public record RejectResult(Object toolResult, ToolMessage toolMessage) implements InterruptDecision {
+public class RejectResult extends InterruptDecision {
+    private final Object toolResult;
+    private final ToolMessage toolMessage;
 
-    public RejectResult() {
-        this(null, null);
+    /**
+     * Create a rejection decision.
+     * 
+     * @param toolResult synthetic tool result
+     * @param toolMessage synthetic tool message
+     * @since 0.1.7
+     */
+    public RejectResult(Object toolResult, ToolMessage toolMessage) {
+        this.toolResult = toolResult;
+        this.toolMessage = toolMessage;
     }
 
-    public RejectResult(Object toolResult) {
-        this(toolResult, null);
+    /**
+     * Return the synthetic tool result.
+     * 
+     * @return synthetic tool result
+     * @since 0.1.7
+     */
+    public Object getToolResult() {
+        return toolResult;
+    }
+
+    /**
+     * Return the synthetic tool message.
+     * 
+     * @return synthetic tool message
+     * @since 0.1.7
+     */
+    public ToolMessage getToolMessage() {
+        return toolMessage;
     }
 }

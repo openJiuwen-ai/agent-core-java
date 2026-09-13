@@ -10,63 +10,85 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /**
- * Self-evolving training progress counters and scores.
- *
- * <p>Mirrors Python's {@code Progress} in
- * {@code openjiuwen/agent_evolving/trainer/progress.py}.</p>
+ * Training progress and callbacks.
+ * <p>
+ * Progress records epochs and scores, Callbacks provides train/epoch lifecycle hooks.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.trainer.progress.Progress}.
+ * 
+ * @since 0.1.7
  */
 public class Progress {
-
-    private int startEpoch;
-    private int currentEpoch;
-    private int maxEpoch = TuneConstant.defaultIterationNum;
-    private int currentBatchIter;
+    private int startEpoch = 0;
+    private int currentEpoch = 0;
+    private int maxEpoch = TuneConstant.DEFAULT_ITERATION_NUM;
+    private int currentBatchIter = 0;
     private int maxBatchIter = 1;
-    private double bestScore;
-    private double bestBatchScore;
-    private double currentEpochScore;
+    private double bestScore = 0.0;
+    private double bestBatchScore = 0.0;
+    private double currentEpochScore = 0.0;
+    private Integer seed;
 
+    /**
+     * Create with default max epoch.
+     * 
+     * @since 0.1.7
+     */
+    public Progress() {
+    }
+
+    /**
+     * Create with specified max epoch.
+     * 
+     * @param maxEpoch Maximum number of epochs
+     * @since 0.1.7
+     */
+    public Progress(int maxEpoch) {
+        this.maxEpoch = Math.max(0, maxEpoch);
+    }
+
+    /**
+     * Iterate through epochs from startEpoch+1 to maxEpoch.
+     * 
+     * @return Iterable of epoch numbers
+     * @since 0.1.7
+     */
     public Iterable<Integer> runEpoch() {
         return () -> new Iterator<>() {
             private int nextEpoch = startEpoch + 1;
-            private boolean finalized;
-
+            private boolean exhausted;
             @Override
             public boolean hasNext() {
-                if (nextEpoch <= maxEpoch) {
-                    return true;
+                boolean hasNext = nextEpoch <= maxEpoch;
+                if (!hasNext && !exhausted && currentEpoch < maxEpoch) {
+                    currentEpoch = maxEpoch;
+                    exhausted = true;
                 }
-                finalizeEpochs();
-                return false;
+                return hasNext;
             }
 
             @Override
             public Integer next() {
                 if (!hasNext()) {
-                    throw new NoSuchElementException();
+                    throw new NoSuchElementException("No more epochs");
                 }
                 currentEpoch = nextEpoch;
-                nextEpoch += 1;
-                return currentEpoch;
-            }
-
-            private void finalizeEpochs() {
-                if (!finalized && currentEpoch < maxEpoch) {
-                    currentEpoch = maxEpoch;
-                }
-                finalized = true;
+                exhausted = currentEpoch >= maxEpoch;
+                return nextEpoch++;
             }
         };
     }
 
+    /**
+     * Iterate through batch iterations from 0 to maxBatchIter - 1.
+     * 
+     * @return Iterable of batch iteration numbers
+     * @since 0.1.7
+     */
     public Iterable<Integer> runBatch() {
+        bestBatchScore = 0.0;
         return () -> new Iterator<>() {
-            private int nextBatchIter;
-
-            {
-                bestBatchScore = 0.0d;
-            }
-
+            private int nextBatchIter = 0;
             @Override
             public boolean hasNext() {
                 return nextBatchIter < maxBatchIter;
@@ -75,90 +97,202 @@ public class Progress {
             @Override
             public Integer next() {
                 if (!hasNext()) {
-                    throw new NoSuchElementException();
+                    throw new NoSuchElementException("No more batch iterations");
                 }
                 currentBatchIter = nextBatchIter;
-                nextBatchIter += 1;
-                return currentBatchIter;
+                return nextBatchIter++;
             }
         };
     }
 
-    public int getStartEpoch() {
-        return startEpoch;
-    }
-
-    public void setStartEpoch(int startEpoch) {
-        this.startEpoch = requireNonNegative(startEpoch, "start_epoch");
-    }
-
+    /**
+     * Get current epoch number.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int getCurrentEpoch() {
         return currentEpoch;
     }
 
+    /**
+     * Set current epoch number.
+     * 
+     * @param currentEpoch currentEpoch
+     * @since 0.1.7
+     */
     public void setCurrentEpoch(int currentEpoch) {
-        this.currentEpoch = requireNonNegative(currentEpoch, "current_epoch");
+        this.currentEpoch = Math.max(0, currentEpoch);
     }
 
+    /**
+     * Get max epoch.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int getMaxEpoch() {
         return maxEpoch;
     }
 
+    /**
+     * Set max epoch.
+     * 
+     * @param maxEpoch maxEpoch
+     * @since 0.1.7
+     */
     public void setMaxEpoch(int maxEpoch) {
-        this.maxEpoch = requireNonNegative(maxEpoch, "max_epoch");
+        this.maxEpoch = Math.max(0, maxEpoch);
     }
 
-    public int getCurrentBatchIter() {
-        return currentBatchIter;
+    /**
+     * Get start epoch.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public int getStartEpoch() {
+        return startEpoch;
     }
 
-    public void setCurrentBatchIter(int currentBatchIter) {
-        this.currentBatchIter = requireNonNegative(currentBatchIter, "current_batch_iter");
+    /**
+     * Set start epoch.
+     * 
+     * @param startEpoch startEpoch
+     * @since 0.1.7
+     */
+    public void setStartEpoch(int startEpoch) {
+        this.startEpoch = Math.max(0, startEpoch);
     }
 
-    public int getMaxBatchIter() {
-        return maxBatchIter;
-    }
-
-    public void setMaxBatchIter(int maxBatchIter) {
-        this.maxBatchIter = requireNonNegative(maxBatchIter, "max_batch_iter");
-    }
-
+    /**
+     * Get best score.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public double getBestScore() {
         return bestScore;
     }
 
+    /**
+     * Set best score.
+     * 
+     * @param bestScore bestScore
+     * @since 0.1.7
+     */
     public void setBestScore(double bestScore) {
-        this.bestScore = requireScore(bestScore, "best_score");
+        this.bestScore = clamp(bestScore);
     }
 
-    public double getBestBatchScore() {
-        return bestBatchScore;
-    }
-
-    public void setBestBatchScore(double bestBatchScore) {
-        this.bestBatchScore = requireScore(bestBatchScore, "best_batch_score");
-    }
-
+    /**
+     * Get current epoch score.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public double getCurrentEpochScore() {
         return currentEpochScore;
     }
 
+    /**
+     * Set current epoch score.
+     * 
+     * @param currentEpochScore currentEpochScore
+     * @since 0.1.7
+     */
     public void setCurrentEpochScore(double currentEpochScore) {
-        this.currentEpochScore = requireScore(currentEpochScore, "current_epoch_score");
+        this.currentEpochScore = clamp(currentEpochScore);
     }
 
-    private static int requireNonNegative(int value, String fieldName) {
-        if (value < 0) {
-            throw new IllegalArgumentException(fieldName + " must be >= 0");
-        }
-        return value;
+    /**
+     * Get current batch iteration.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public int getCurrentBatchIter() {
+        return currentBatchIter;
     }
 
-    private static double requireScore(double value, String fieldName) {
-        if (value < 0.0d || value > 1.0d) {
-            throw new IllegalArgumentException(fieldName + " must be between 0.0 and 1.0");
-        }
-        return value;
+    /**
+     * Set current batch iteration.
+     * 
+     * @param currentBatchIter currentBatchIter
+     * @since 0.1.7
+     */
+    public void setCurrentBatchIter(int currentBatchIter) {
+        this.currentBatchIter = Math.max(0, currentBatchIter);
+    }
+
+    /**
+     * Get max batch iteration.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public int getMaxBatchIter() {
+        return maxBatchIter;
+    }
+
+    /**
+     * Set max batch iteration.
+     * 
+     * @param maxBatchIter maxBatchIter
+     * @since 0.1.7
+     */
+    public void setMaxBatchIter(int maxBatchIter) {
+        this.maxBatchIter = Math.max(0, maxBatchIter);
+    }
+
+    /**
+     * Get best batch score.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public double getBestBatchScore() {
+        return bestBatchScore;
+    }
+
+    /**
+     * Set best batch score.
+     * 
+     * @param bestBatchScore bestBatchScore
+     * @since 0.1.7
+     */
+    public void setBestBatchScore(double bestBatchScore) {
+        this.bestBatchScore = clamp(bestBatchScore);
+    }
+
+    /**
+     * Get seed (for compatibility).
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Integer getSeed() {
+        return seed;
+    }
+
+    /**
+     * Set seed.
+     * 
+     * @param seed seed
+     * @since 0.1.7
+     */
+    public void setSeed(Integer seed) {
+        this.seed = seed;
+    }
+
+    /**
+     * clamp.
+     * 
+     * @param score score
+     * @return the result
+     * @since 0.1.7
+     */
+    private double clamp(double score) {
+        return Math.max(0.0d, Math.min(1.0d, score));
     }
 }

@@ -21,7 +21,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
@@ -31,9 +30,10 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * LLM-backed triple extractor aligned with the Python implementation.
+ * 
+ * @since 0.1.7
  */
 public class LLMTripleExtractor extends Extractor {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final BaseModelClient llmClient;
@@ -42,18 +42,29 @@ public class LLMTripleExtractor extends Extractor {
     private final int maxConcurrent;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LLMTripleExtractor.
+     * 
+     * @param llmClient llmClient
+     * @param modelName modelName
+     * @since 0.1.7
      */
     public LLMTripleExtractor(BaseModelClient llmClient, String modelName) {
         this(llmClient, modelName, 0.0f, 50);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LLMTripleExtractor.
+     * 
+     * @param llmClient llmClient
+     * @param modelName modelName
+     * @param temperature temperature
+     * @param maxConcurrent maxConcurrent
+     * @since 0.1.7
      */
     public LLMTripleExtractor(BaseModelClient llmClient, String modelName, float temperature, int maxConcurrent) {
         if (llmClient == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_LLM_CLIENT_NOT_FOUND, "llm_client is required");
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_LLM_CLIENT_NOT_FOUND,
+                    "llm_client is required");
         }
         this.llmClient = llmClient;
         this.modelName = modelName;
@@ -61,17 +72,15 @@ public class LLMTripleExtractor extends Extractor {
         this.maxConcurrent = maxConcurrent <= 0 ? 1 : maxConcurrent;
     }
 
+    /**
+     * extract.
+     * 
+     * @param chunks chunks
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public java.util.concurrent.CompletableFuture<List<Triple>> extract(List<TextChunk> chunks) {
-        return java.util.concurrent.CompletableFuture.completedFuture(extract(chunks, null));
-    }
-
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Triple> extract(List<TextChunk> chunks, Map<String, Object> options) {
         if (chunks == null || chunks.isEmpty()) {
             return List.of();
@@ -108,8 +117,7 @@ public class LLMTripleExtractor extends Extractor {
                 task.get();
             }
         } catch (Exception ex) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
                     "triple extraction execution failed: " + ex.getMessage());
         } finally {
             executor.shutdown();
@@ -137,31 +145,28 @@ public class LLMTripleExtractor extends Extractor {
             if (firstError instanceof BaseError baseError) {
                 throw baseError;
             }
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
                     firstError.getMessage() != null ? firstError.getMessage() : firstError.toString());
         }
         return triples;
     }
 
+    /**
+     * extractChunk.
+     * 
+     * @param chunk chunk
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private List<Triple> extractChunk(TextChunk chunk) throws Exception {
         String title = String.valueOf(chunk.getMetadata().getOrDefault("title", ""));
         String prompt = buildPrompt(chunk.getText(), title);
-        AssistantMessage response = llmClient.invoke(
-                List.of(Map.of("role", "user", "content", prompt)),
-                null,
-                temperature,
-                null,
-                modelName,
-                null,
-                null,
-                null,
-                null,
-                Collections.emptyMap());
+        AssistantMessage response = llmClient.invoke(List.of(Map.of("role", "user", "content", prompt)), null,
+                temperature, null, modelName, null, null, null, null, Collections.emptyMap());
         ParseResult parsed = parseTriples(response == null ? "" : response.getContentAsString(), chunk);
         if (!parsed.isSuccess()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
                     chunk.getId() + ": LLM response could not be parsed as valid triple JSON");
         }
         return parsed.triples();
@@ -204,7 +209,9 @@ public class LLMTripleExtractor extends Extractor {
                 Magic Johnson
 
                 Passage:
-                After winning a national championship with Michigan State in 1979, Johnson was selected first overall in the 1979 NBA draft by the Lakers, leading the team to five NBA championships during their "Showtime" era.
+                After winning a national championship with Michigan State in 1979, Johnson was selected first overall \
+                in the 1979 NBA draft by the Lakers, leading the team to five NBA championships during their \
+                "Showtime" era.
 
                 # Demonstration 2
 
@@ -212,7 +219,8 @@ public class LLMTripleExtractor extends Extractor {
                 Elden Ring
 
                 Passage:
-                Elden Ring is a 2022 action role-playing game developed by FromSoftware. It was directed by Hidetaka Miyazaki with worldbuilding provided by American fantasy writer George R. R. Martin.
+                Elden Ring is a 2022 action role-playing game developed by FromSoftware. It was directed by Hidetaka \
+                Miyazaki with worldbuilding provided by American fantasy writer George R. R. Martin.
 
                 # Input
 
@@ -246,27 +254,34 @@ public class LLMTripleExtractor extends Extractor {
             Map<String, Object> metadata = new LinkedHashMap<>(chunk.getMetadata());
             metadata.put("doc_id", chunk.getDocId());
             metadata.put("chunk_id", chunk.getId());
-            triples.add(new Triple(
-                    node.get(0).asText().trim(),
-                    node.get(1).asText().trim(),
-                    node.get(2).asText().trim(),
-                    metadata));
+            triples.add(new Triple(node.get(0).asText().trim(), node.get(1).asText().trim(),
+                    node.get(2).asText().trim(), null, metadata));
         }
         return new ParseResult(triples, !triples.isEmpty());
     }
 
+    /**
+     * isInvalidTripleNode.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isInvalidTripleNode(JsonNode node) {
         if (!node.isArray() || node.size() < 3) {
             return true;
         }
-        return node.get(0).isContainerNode()
-                || node.get(1).isContainerNode()
-                || node.get(2).isContainerNode()
-                || node.get(0).isNull()
-                || node.get(1).isNull()
-                || node.get(2).isNull();
+        return node.get(0).isContainerNode() || node.get(1).isContainerNode() || node.get(2).isContainerNode()
+                || node.get(0).isNull() || node.get(1).isNull() || node.get(2).isNull();
     }
 
+    /**
+     * extractJson.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractJson(String content) {
         if (content == null) {
             return "[]";
@@ -291,14 +306,18 @@ public class LLMTripleExtractor extends Extractor {
         return trimmed;
     }
 
+    /**
+     * repairJson.
+     * 
+     * @param json json
+     * @return the result
+     * @since 0.1.7
+     */
     private static String repairJson(String json) {
         return json == null ? "" : json.replaceAll(",\\s*([}\\]])", "$1");
     }
 
     record ParseResult(List<Triple> triples, boolean isSuccess) {
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public boolean isSuccess() {
             return isSuccess;
         }

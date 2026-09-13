@@ -4,89 +4,249 @@
 
 package com.openjiuwen.core.sysop.cwd;
 
-import com.openjiuwen.core.sysop.Cwd;
-import com.openjiuwen.core.sysop.CwdState;
-
 import java.nio.file.Path;
 
 /**
- * Thin facade over {@link Cwd}; shares the same thread-local state.
- *
- * <p>Mirrors Python's {@code openjiuwen/core/sys_operation/cwd.py} helpers
- * under the historical {@code CwdContext} name.</p>
- *
+ * Per-thread CWD context aligned with Python's core.sys_operation.cwd module.
+ * 
  * @since 0.1.7
  */
 public final class CwdContext {
+    private static final InheritableThreadLocal<CwdState> STATE = new InheritableThreadLocal<>();
 
+    private static final InheritableThreadLocal<String> TENANT_ROOT = new InheritableThreadLocal<>();
+
+    /**
+     * CwdContext.
+     * 
+     * @since 0.1.7
+     */
     private CwdContext() {
     }
 
+    /**
+     * getCwd.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static String getCwd() {
-        return Cwd.getCwd();
+        CwdState state = ensureState();
+        if (state.getCwd() != null) {
+            return state.getCwd();
+        }
+        if (state.getOriginalCwd() != null) {
+            return state.getOriginalCwd();
+        }
+        return resolve(".");
     }
 
+    /**
+     * setCwd.
+     * 
+     * @param cwd cwd
+     * @since 0.1.7
+     */
     public static void setCwd(String cwd) {
-        Cwd.setCwd(cwd);
+        ensureState().setCwd(resolve(cwd));
     }
 
+    /**
+     * getOriginalCwd.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static String getOriginalCwd() {
-        return Cwd.getOriginalCwd();
+        CwdState state = ensureState();
+        return state.getOriginalCwd() != null ? state.getOriginalCwd() : resolve(".");
     }
 
+    /**
+     * setOriginalCwd.
+     * 
+     * @param cwd cwd
+     * @since 0.1.7
+     */
     public static void setOriginalCwd(String cwd) {
-        Cwd.setOriginalCwd(cwd);
+        ensureState().setOriginalCwd(resolve(cwd));
     }
 
+    /**
+     * getProjectRoot.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static String getProjectRoot() {
-        return Cwd.getProjectRoot();
+        CwdState state = ensureState();
+        return state.getProjectRoot() != null ? state.getProjectRoot() : getOriginalCwd();
     }
 
-    public static void setProjectRoot(String root) {
-        Cwd.setProjectRoot(root);
+    /**
+     * setProjectRoot.
+     * 
+     * @param projectRoot projectRoot
+     * @since 0.1.7
+     */
+    public static void setProjectRoot(String projectRoot) {
+        ensureState().setProjectRoot(resolve(projectRoot));
     }
 
+    /**
+     * getWorkspace.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static String getWorkspace() {
-        return Cwd.getWorkspace();
+        return ensureState().getWorkspace();
     }
 
-    public static void setWorkspace(String path) {
-        Cwd.setWorkspace(path);
+    /**
+     * setWorkspace.
+     * 
+     * @param workspace workspace
+     * @since 0.1.7
+     */
+    public static void setWorkspace(String workspace) {
+        ensureState().setWorkspace(resolve(workspace));
     }
 
+    /**
+     * getTeamWorkspace.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static String getTeamWorkspace() {
-        return Cwd.getTeamWorkspace();
+        return ensureState().getTeamWorkspace();
     }
 
-    public static void setTeamWorkspace(String path) {
-        Cwd.setTeamWorkspace(path);
+    /**
+     * setTeamWorkspace.
+     * 
+     * @param teamWorkspace teamWorkspace
+     * @since 0.1.7
+     */
+    public static void setTeamWorkspace(String teamWorkspace) {
+        ensureState().setTeamWorkspace(resolve(teamWorkspace));
     }
 
+    /**
+     * initCwd.
+     * 
+     * @param cwd cwd
+     * @since 0.1.7
+     */
     public static void initCwd(String cwd) {
-        Cwd.initCwd(cwd, null, null, null);
+        initCwd(cwd, null, null, null);
     }
 
+    /**
+     * initCwd.
+     * 
+     * @param cwd cwd
+     * @param projectRoot projectRoot
+     * @param workspace workspace
+     * @param teamWorkspace teamWorkspace
+     * @since 0.1.7
+     */
     public static void initCwd(String cwd, String projectRoot, String workspace, String teamWorkspace) {
-        Cwd.initCwd(cwd, projectRoot, workspace, teamWorkspace);
+        String isResolved = resolve(cwd);
+        STATE.set(CwdState.builder().cwd(isResolved).originalCwd(isResolved)
+                .projectRoot(projectRoot != null ? resolve(projectRoot) : isResolved)
+                .workspace(workspace != null ? resolve(workspace) : null)
+                .teamWorkspace(teamWorkspace != null ? resolve(teamWorkspace) : null).build());
     }
 
+    /**
+     * snapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static CwdState snapshot() {
-        return Cwd.getState();
+        CwdState state = ensureState();
+        return CwdState.builder().cwd(state.getCwd()).originalCwd(state.getOriginalCwd())
+                .projectRoot(state.getProjectRoot()).workspace(state.getWorkspace())
+                .teamWorkspace(state.getTeamWorkspace()).build();
     }
 
+    /**
+     * getTenantRoot.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
     public static String getTenantRoot() {
-        return Cwd.getTenantRoot();
+        return TENANT_ROOT.get();
     }
 
+    /**
+     * setTenantRoot.
+     *
+     * @param tenantRoot tenantRoot
+     * @since 0.1.7
+     */
     public static void setTenantRoot(String tenantRoot) {
-        Cwd.setTenantRoot(tenantRoot);
+        TENANT_ROOT.set(tenantRoot);
     }
 
+    /**
+     * isWithinTenantRoot.
+     *
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     public static boolean isWithinTenantRoot(Path path) {
-        return Cwd.isWithinTenantRoot(path);
+        String root = getTenantRoot();
+        if (root == null) {
+            return true;
+        }
+        // Use toAbsolutePath().normalize() for both sides to ensure consistent
+        // comparison on platforms like Windows where toRealPath() may produce
+        // a different path representation (e.g. short names, case differences)
+        // for existing directories vs non-existing files.
+        Path normalized = path.toAbsolutePath().normalize();
+        Path rootPath = Path.of(root).toAbsolutePath().normalize();
+        return normalized.startsWith(rootPath);
     }
 
+    /**
+     * reset.
+     *
+     * @since 0.1.7
+     */
     public static void reset() {
-        Cwd.clear();
+        STATE.remove();
+        TENANT_ROOT.remove();
+    }
+
+    /**
+     * ensureState.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    private static CwdState ensureState() {
+        CwdState state = STATE.get();
+        if (state == null) {
+            state = new CwdState();
+            STATE.set(state);
+        }
+        return state;
+    }
+
+    /**
+     * resolve.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String resolve(String path) {
+        return Path.of(path).toAbsolutePath().normalize().toString();
     }
 }

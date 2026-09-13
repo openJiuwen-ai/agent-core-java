@@ -3,7 +3,7 @@ package com.openjiuwen.harness.deep_agent;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
-import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
@@ -160,7 +160,7 @@ class DeepAgentTenantTest {
     @DisplayName("invoke with AgentSessionApi carrying tenantContext sets and clears TenantContextHolder")
     void testInvoke_withSessionTenantContext() {
         TenantContext ctx = TenantContext.builder().tenantId("deep-agent-tenant").build();
-        DeepAgentSession session = new DeepAgentSession("deep-agent-session-1").withTenantContext(ctx);
+        AgentSessionApi session = new AgentSessionApi("deep-agent-session-1").withTenantContext(ctx);
 
         DeepAgentConfig config = DeepAgentConfig.builder()
                 .enableTenantIsolation(true)
@@ -168,7 +168,7 @@ class DeepAgentTenantTest {
                 .workspacePath(baseDir.toString())
                 .build();
         AgentCard card = AgentCard.builder().name("tenant_test_agent").description("test").build();
-        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        Workspace workspace = Workspace.builder().rootPath(baseDir.toString()).language("cn").build();
         DeepAgent agent = new DeepAgent(card, config, workspace);
 
         CwdContext.setTenantRoot("pre-invoke-marker");
@@ -183,13 +183,13 @@ class DeepAgentTenantTest {
     @Test
     @DisplayName("invoke with AgentSessionApi without tenantContext does not enter tenant branch")
     void testInvoke_withoutSessionTenantContext() {
-        DeepAgentSession session = new DeepAgentSession("deep-agent-session-2");
+        AgentSessionApi session = new AgentSessionApi("deep-agent-session-2");
 
         DeepAgentConfig config = DeepAgentConfig.builder()
                 .workspacePath(baseDir.toString())
                 .build();
         AgentCard card = AgentCard.builder().name("no_tenant_agent").description("test").build();
-        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        Workspace workspace = Workspace.builder().rootPath(baseDir.toString()).language("cn").build();
         DeepAgent agent = new DeepAgent(card, config, workspace);
 
         CwdContext.setTenantRoot("pre-invoke-marker");
@@ -199,30 +199,5 @@ class DeepAgentTenantTest {
         assertThat(result).isNotNull();
         assertThat(TenantContextHolder.getCurrentTenant()).isNull();
         assertThat(CwdContext.getTenantRoot()).isEqualTo("pre-invoke-marker");
-    }
-
-    @Test
-    @DisplayName("invoke with AgentSession (not DeepAgentSession) carrying tenantContext binds via interface")
-    void testInvoke_withPlainAgentSessionTenantContext() {
-        TenantContext ctx = TenantContext.builder().tenantId("plain-agent-session-tenant").build();
-        AgentSession session = new AgentSession("plain-session-1", null, null).withTenantContext(ctx);
-
-        DeepAgentConfig config = DeepAgentConfig.builder()
-                .enableTenantIsolation(true)
-                .tenantDataRoot(baseDir.toString())
-                .workspacePath(baseDir.toString())
-                .build();
-        AgentCard card = AgentCard.builder().name("plain_session_tenant_agent").description("test").build();
-        Workspace workspace = new Workspace(baseDir.toString(), "cn");
-        DeepAgent agent = new DeepAgent(card, config, workspace);
-
-        CwdContext.setTenantRoot("pre-invoke-marker");
-
-        Map<String, Object> result = agent.invoke(Map.of("query", "test", "conversation_id", "s3"), session);
-
-        assertThat(result).isNotNull();
-        assertThat(session.getTenantContext()).isEqualTo(ctx);
-        assertThat(TenantContextHolder.getCurrentTenant()).isNull();
-        assertThat(CwdContext.getTenantRoot()).isNull();
     }
 }

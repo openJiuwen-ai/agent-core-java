@@ -7,16 +7,19 @@ package com.openjiuwen.core.retrieval.embedding;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.security.SslUtils;
-import com.openjiuwen.core.foundation.store.EmbeddingConfig;
+import com.openjiuwen.core.common.security.OkHttpProxySupport;
 import com.openjiuwen.core.retrieval.common.BaseCallback;
+import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
+import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 
-import javax.net.ssl.SSLParameters;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -32,484 +35,611 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Mirrors Python's {@code APIEmbedding} in
- * {@code openjiuwen/core/retrieval/embedding/api_embedding.py}.
+ * Universal HTTP embedding client aligned with the Python APIEmbedding implementation.
+ * 
+ * @since 0.1.7
  */
-public class APIEmbedding extends Embedding {
+public class APIEmbedding implements Embedding {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
-    private static final String EMBEDDING_SSL_VERIFY = "EMBEDDING_SSL_VERIFY";
-    private static final String EMBEDDING_SSL_CERT = "EMBEDDING_SSL_CERT";
+    /**
+     * MediaType.get.
+     * 
+     * @param charset=utf-8" charset=utf-8"
+     * @since 0.1.7
+     */
+    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
+    /**
+     * config.
+     * 
+     * @since 0.1.7
+     */
     protected final EmbeddingConfig config;
+
+    /**
+     * modelName.
+     * 
+     * @since 0.1.7
+     */
     protected final String modelName;
+
+    /**
+     * apiKey.
+     * 
+     * @since 0.1.7
+     */
     protected final String apiKey;
-    protected String apiUrl;
+
+    /**
+     * apiUrl.
+     * 
+     * @since 0.1.7
+     */
+    protected final String apiUrl;
+
+    /**
+     * timeout.
+     * 
+     * @since 0.1.7
+     */
     protected final int timeout;
+
+    /**
+     * maxRetries.
+     * 
+     * @since 0.1.7
+     */
     protected final int maxRetries;
+
+    /**
+     * maxBatchSize.
+     * 
+     * @since 0.1.7
+     */
     protected final int maxBatchSize;
+
+    /**
+     * maxConcurrent.
+     * 
+     * @since 0.1.7
+     */
     protected final int maxConcurrent;
+
+    /**
+     * headers.
+     * 
+     * @since 0.1.7
+     */
     protected final Map<String, String> headers;
-    protected final ExecutorService executor;
+
+    /**
+     * httpClient.
+     * 
+     * @since 0.1.7
+     */
     protected final HttpClient httpClient;
+
+    /**
+     * okHttpClient.
+     * 
+     * @since 0.1.7
+     */
+    protected final OkHttpClient okHttpClient;
+
+    /**
+     * executor.
+     * 
+     * @since 0.1.7
+     */
+    protected final ExecutorService executor;
 
     private volatile Integer dimension;
 
+    /**
+     * APIEmbedding.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     public APIEmbedding(EmbeddingConfig config) {
         this(config, 60, 3, null, 8, 50, null);
     }
 
-    public APIEmbedding(EmbeddingConfig config,
-                        int timeout,
-                        int maxRetries,
-                        Map<String, String> extraHeaders,
-                        int maxBatchSize,
-                        int maxConcurrent) {
+    /**
+     * APIEmbedding.
+     * 
+     * @param config config
+     * @param timeout timeout
+     * @param maxRetries maxRetries
+     * @param extraHeaders extraHeaders
+     * @param maxBatchSize maxBatchSize
+     * @param maxConcurrent maxConcurrent
+     * @since 0.1.7
+     */
+    public APIEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders,
+            int maxBatchSize, int maxConcurrent) {
         this(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, null);
     }
 
-    public APIEmbedding(EmbeddingConfig config,
-                        int timeout,
-                        int maxRetries,
-                        Map<String, String> extraHeaders,
-                        int maxBatchSize,
-                        int maxConcurrent,
-                        HttpClient httpClient) {
+    /**
+     * APIEmbedding.
+     * 
+     * @param config config
+     * @param timeout timeout
+     * @param maxRetries maxRetries
+     * @param extraHeaders extraHeaders
+     * @param maxBatchSize maxBatchSize
+     * @param maxConcurrent maxConcurrent
+     * @param httpClient httpClient
+     * @since 0.1.7
+     */
+    public APIEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders,
+            int maxBatchSize, int maxConcurrent, HttpClient httpClient) {
         this.config = Objects.requireNonNull(config, "config");
         this.modelName = config.getModelName();
         this.apiKey = config.getApiKey();
-        this.apiUrl = config.getBaseUrl() == null ? "" : config.getBaseUrl();
-        this.timeout = timeout;
-        this.maxRetries = maxRetries;
-        this.maxBatchSize = maxBatchSize;
-        this.maxConcurrent = maxConcurrent;
+        this.apiUrl = config.getBaseUrl();
+        this.timeout = Math.max(1, timeout);
+        this.maxRetries = Math.max(1, maxRetries);
+        this.maxBatchSize = Math.max(1, maxBatchSize);
+        this.maxConcurrent = Math.max(1, maxConcurrent);
         this.headers = new LinkedHashMap<>();
         this.headers.put("Content-Type", "application/json");
-        if (this.apiKey != null && !this.apiKey.isBlank()) {
-            this.headers.put("Authorization", "Bearer " + this.apiKey);
+        if (apiKey != null && !apiKey.isBlank()) {
+            this.headers.put("Authorization", "Bearer " + apiKey.strip());
         }
-        if (extraHeaders != null && !extraHeaders.isEmpty()) {
+        if (extraHeaders != null) {
             this.headers.putAll(extraHeaders);
         }
-        this.limiter = new Semaphore(maxConcurrent);
-        // 线程名前缀保持 openjiuwen_embed-，对齐历史实现与 Python 侧命名习惯。
-        // JDK 21+ 上 OpenJiuwenExecutors 返回虚拟线程执行器（非 ThreadPoolExecutor），
-        // 此处仅依赖 ExecutorService 语义，并发上限由 limiter 信号量保证。
-        this.executor = OpenJiuwenExecutors.newFixedThreadPool(
-                "openjiuwen_embed", this.maxConcurrent, true);
-        this.httpClient = httpClient == null ? createHttpClient() : httpClient;
+        if (httpClient == null) {
+            this.httpClient = null;
+            OkHttpClient.Builder okHttpBuilder =
+                new OkHttpClient.Builder().connectTimeout(Duration.ofSeconds(this.timeout))
+                        .readTimeout(Duration.ofSeconds(this.timeout)).writeTimeout(Duration.ofSeconds(this.timeout));
+            OkHttpProxySupport.configureFromEnvironment(okHttpBuilder, this.apiUrl);
+            this.okHttpClient = okHttpBuilder.build();
+        } else {
+            this.httpClient = httpClient;
+            this.okHttpClient = null;
+        }
+        this.executor = OpenJiuwenExecutors.newFixedThreadPool("openjiuwen-embed", this.maxConcurrent, true);
     }
 
+    /**
+     * embedQuery.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
-        validateEmbedQueryText(text);
-        return CompletableFuture.supplyAsync(() -> embedQuerySync(text, kwargs), executor);
+    public List<Float> embedQuery(String text) {
+        return embedQuery(text, Map.of());
     }
 
-    public List<Double> embedQuerySync(String text) {
-        return embedQuerySync(text, Map.of());
-    }
-
-    public List<Double> embedQuerySync(String text, Map<String, Object> kwargs) {
-        validateEmbedQueryText(text);
-        List<List<Double>> embeddings = getEmbeddingsSync(text, kwargs);
+    /**
+     * embedQuery.
+     * 
+     * @param text text
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public List<Float> embedQuery(String text, Map<String, Object> options) {
+        if (text == null || text.isBlank()) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    "Empty text provided for embedding");
+        }
+        List<List<Float>> embeddings = getEmbeddings(text, options);
         return embeddings.get(0);
     }
 
+    /**
+     * embedDocuments.
+     * 
+     * @param texts texts
+     * @param batchSize batchSize
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<List<List<Double>>> embedDocuments(List<String> texts,
-                                                                Integer batchSize,
-                                                                Map<String, Object> kwargs) {
-        List<String> nonEmpty = validateEmbedDocs(texts, kwargs);
-        int effectiveBatchSize = resolveBatchSize(batchSize);
+    public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
+        return embedDocuments(texts, batchSize, Map.of());
+    }
+
+    /**
+     * embedDocuments.
+     * 
+     * @param texts texts
+     * @param batchSize batchSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize, Map<String, Object> options) {
+        List<String> nonEmpty = validateTexts(texts);
+        int effectiveBatchSize = Math.max(1, Math.min(batchSize == null ? maxBatchSize : batchSize, maxBatchSize));
         List<Integer> indices = new ArrayList<>();
         for (int i = 0; i < nonEmpty.size(); i += effectiveBatchSize) {
             indices.add(i);
         }
-        BaseCallback callback = resolveCallback(kwargs, indices);
+        BaseCallback callback = resolveCallback(options, indices);
         List<CompletableFuture<BatchResult>> futures = new ArrayList<>(indices.size());
-        for (Integer startIdx : indices) {
-            futures.add(processBatchAsync(nonEmpty, startIdx, effectiveBatchSize, kwargs, callback, false));
+        for (Integer start : indices) {
+            int end = Math.min(nonEmpty.size(), start + effectiveBatchSize);
+            List<String> batch = List.copyOf(nonEmpty.subList(start, end));
+            futures.add(CompletableFuture.supplyAsync(() -> {
+                List<List<Float>> embeddings = getEmbeddings(batch, options);
+                callback.onBatch(start, end, batch);
+                return new BatchResult(start, embeddings);
+            }, executor));
         }
-        return collectBatchResults(nonEmpty.size(), futures);
+
+        List<List<Float>> result = new ArrayList<>(nonEmpty.size());
+        for (int i = 0; i < nonEmpty.size(); i++) {
+            result.add(null);
+        }
+        for (CompletableFuture<BatchResult> future : futures) {
+            BatchResult batch;
+            try {
+                batch = future.join();
+            } catch (CompletionException ex) {
+                Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                if (cause instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                throw new IllegalStateException(cause);
+            }
+            for (int i = 0; i < batch.embeddings.size(); i++) {
+                result.set(batch.start + i, batch.embeddings.get(i));
+            }
+        }
+        return result;
     }
 
-    public List<List<Double>> embedDocumentsSync(List<String> texts) {
-        return embedDocumentsSync(texts, null, Map.of());
-    }
-
-    public List<List<Double>> embedDocumentsSync(List<String> texts,
-                                                 Integer batchSize,
-                                                 Map<String, Object> kwargs) {
-        List<String> nonEmpty = validateEmbedDocs(texts, kwargs);
-        int effectiveBatchSize = resolveBatchSize(batchSize);
-        List<Integer> indices = new ArrayList<>();
-        for (int i = 0; i < nonEmpty.size(); i += effectiveBatchSize) {
-            indices.add(i);
-        }
-        BaseCallback callback = resolveCallback(kwargs, indices);
-        List<CompletableFuture<BatchResult>> futures = new ArrayList<>(indices.size());
-        for (Integer startIdx : indices) {
-            futures.add(processBatchAsync(nonEmpty, startIdx, effectiveBatchSize, kwargs, callback, true));
-        }
-        return collectBatchResults(nonEmpty.size(), futures).join();
-    }
-
+    /**
+     * getDimension.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public int getDimension() {
         Integer cached = dimension;
         if (cached != null) {
             return cached;
         }
-        int inferred = embedQuerySync("test").size();
+        // Re-check under the lock (fast path only): another caller may have just resolved it.
+        synchronized (this) {
+            if (dimension != null) {
+                return dimension;
+            }
+        }
+        // Resolve via a remote probe OUTSIDE the lock. A slow or overloaded embedding
+        // provider must never hold the lock while concurrent callers block on network I/O.
+        // Concurrent first calls may probe redundantly, but they never serialize.
+        int resolved = embedQuery("test").size();
         synchronized (this) {
             if (dimension == null) {
-                dimension = inferred;
-                LOGGER.debug("Determined embedding dimension: {}", dimension);
+                dimension = resolved;
             }
             return dimension;
         }
     }
 
-    public ExecutorService getExecutor() {
-        return executor;
+    /**
+     * getMaxBatchSize.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public int getMaxBatchSize() {
+        return maxBatchSize;
     }
 
-    public int getMaxConcurrent() {
-        return maxConcurrent;
-    }
-
-    protected CompletableFuture<BatchResult> processBatchAsync(List<String> texts,
-                                                               int startIdx,
-                                                               int batchSize,
-                                                               Map<String, Object> kwargs,
-                                                               BaseCallback callback,
-                                                               boolean syncCallbackUsesEmbeddings) {
-        return CompletableFuture.supplyAsync(() -> {
-            acquirePermit();
-            try {
-                int endIdx = Math.min(texts.size(), startIdx + batchSize);
-                List<String> batchTexts = List.copyOf(texts.subList(startIdx, endIdx));
-                List<List<Double>> embeddings = getEmbeddingsSync(batchTexts, kwargs);
-                if (syncCallbackUsesEmbeddings) {
-                    callback.call(startIdx, endIdx, stringifyEmbeddings(embeddings));
-                } else {
-                    callback.call(startIdx, endIdx, batchTexts);
-                }
-                return new BatchResult(startIdx, embeddings);
-            } finally {
-                limiter.release();
-            }
-        }, executor);
-    }
-
-    protected List<List<Double>> getEmbeddingsSync(Object textOrTexts, Map<String, Object> kwargs) {
+    /**
+     * getEmbeddings.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    protected List<List<Float>> getEmbeddings(Object input, Map<String, Object> options) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", modelName);
-        payload.put("input", textOrTexts);
-        payload.putAll(cleanPayloadOptions(kwargs));
-
-        for (int attempt = 0; attempt < maxRetries; attempt++) {
+        payload.put("input", input);
+        payload.putAll(cleanPayloadOptions(options));
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                ApiResponse response = doRequest(payload);
-                List<List<Double>> embeddings = parseEmbeddings(response.body());
+                String body = MAPPER.writeValueAsString(payload);
+                HttpResult response = sendEmbeddingRequest(body);
+                if (response.statusCode < 200 || response.statusCode >= 300) {
+                    if (attempt < maxRetries) {
+                        continue;
+                    }
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                            "Failed to get embedding after " + maxRetries + " attempts");
+                }
+                List<List<Float>> embeddings = parseEmbeddings(MAPPER.readTree(response.body));
                 if (dimension == null && !embeddings.isEmpty() && !embeddings.get(0).isEmpty()) {
                     dimension = embeddings.get(0).size();
-                    LOGGER.debug("Determined embedding dimension: {}", dimension);
                 }
                 return embeddings;
-            } catch (IOException | InterruptedException exception) {
-                if (exception instanceof InterruptedException) {
+            } catch (IOException | InterruptedException ex) {
+                if (ex instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                if (attempt == maxRetries - 1) {
-                    throw buildRequestFailedError(exception);
+                if (attempt >= maxRetries) {
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                            "Failed to get embedding after " + maxRetries + " attempts");
                 }
-                LOGGER.warning(
-                        "Embedding request failed (attempt {}/{}): {}",
-                        attempt + 1,
-                        maxRetries,
-                        exception.getMessage()
-                );
             }
         }
-        throw ErrorHelper.buildError(
-                StatusCode.RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED,
-                "error_msg",
-                "Unreachable code in _get_embeddings_sync"
-        );
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED,
+                "Unreachable code in APIEmbedding.getEmbeddings");
     }
 
-    protected ApiResponse doRequest(Map<String, Object> payload) throws IOException, InterruptedException {
-        String body = OBJECT_MAPPER.writeValueAsString(payload);
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(apiUrl))
-                .timeout(Duration.ofSeconds(timeout))
-                .POST(HttpRequest.BodyPublishers.ofString(body));
-        for (Map.Entry<String, String> header : headers.entrySet()) {
-            requestBuilder.header(header.getKey(), header.getValue());
+    /**
+     * sendEmbeddingRequest.
+     * 
+     * @param body body
+     * @return the result
+     * @throws IOException IOException
+     * @throws InterruptedException InterruptedException
+     * @since 0.1.7
+     */
+    private HttpResult sendEmbeddingRequest(String body) throws IOException, InterruptedException {
+        if (okHttpClient != null) {
+            Request.Builder requestBuilder = new Request.Builder().url(apiUrl).post(RequestBody.create(body, JSON));
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                requestBuilder.header(entry.getKey(), entry.getValue());
+            }
+            try (Response response = okHttpClient.newCall(requestBuilder.build()).execute()) {
+                ResponseBody responseBody = response.body();
+                return new HttpResult(response.code(), responseBody == null ? "" : responseBody.string());
+            }
+        }
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(URI.create(apiUrl))
+                .timeout(Duration.ofSeconds(timeout)).POST(HttpRequest.BodyPublishers.ofString(body));
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            requestBuilder.header(entry.getKey(), entry.getValue());
         }
         HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
-        }
-        return new ApiResponse(response.statusCode(), response.body());
+        return new HttpResult(response.statusCode(), response.body());
     }
 
-    protected List<List<Double>> parseEmbeddings(String body) throws IOException {
-        JsonNode result = OBJECT_MAPPER.readTree(body);
-        if (result.has("embedding")) {
-            JsonNode embeddingNode = result.get("embedding");
+    /**
+     * HttpResult.
+     * 
+     * @param statusCode statusCode
+     * @param body body
+     * @since 0.1.7
+     */
+    private record HttpResult(int statusCode, String body) {
+    }
+
+    /**
+     * parseEmbeddings.
+     * 
+     * @param root root
+     * @return the result
+     * @since 0.1.7
+     */
+    protected List<List<Float>> parseEmbeddings(JsonNode root) {
+        if (root == null || root.isMissingNode() || root.isNull()) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "No embeddings in response: null");
+        }
+        if (root.has("embedding")) {
+            JsonNode embeddingNode = root.get("embedding");
             if (embeddingNode.isArray() && embeddingNode.size() > 0 && embeddingNode.get(0).isArray()) {
-                return parseEmbeddingMatrix(embeddingNode);
+                return parseEmbeddingArray(embeddingNode);
             }
-            return List.of(parseEmbeddingVector(embeddingNode));
+            return List.of(parseSingleEmbedding(embeddingNode));
         }
-        if (result.has("embeddings")) {
-            return parseEmbeddingMatrix(result.get("embeddings"));
+        if (root.has("embeddings")) {
+            return parseEmbeddingArray(root.get("embeddings"));
         }
-        if (result.has("data") && result.get("data").isArray()) {
-            List<List<Double>> embeddings = new ArrayList<>();
-            for (JsonNode item : result.get("data")) {
-                if (item.has("embedding")) {
-                    embeddings.add(parseEmbeddingVector(item.get("embedding")));
+        if (root.has("data") && root.get("data").isArray()) {
+            List<List<Float>> embeddings = new ArrayList<>();
+            for (JsonNode item : root.get("data")) {
+                JsonNode embeddingNode = item.get("embedding");
+                if (embeddingNode != null && !embeddingNode.isNull()) {
+                    embeddings.add(parseSingleEmbedding(embeddingNode));
                 }
             }
             if (!embeddings.isEmpty()) {
                 return embeddings;
             }
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
-                    "error_msg",
-                    "No embeddings field found in data items: " + result
-            );
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "No embedding field found in data items: " + root);
         }
-        throw ErrorHelper.buildError(
-                StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
-                "error_msg",
-                "No embeddings in response: " + result
-        );
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                "No embeddings in response: " + root);
     }
 
-    public static List<String> validateEmbedDocs(List<String> texts, Map<String, Object> kwargs) {
-        if (texts == null || texts.isEmpty()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
-                    "error_msg",
-                    "Empty texts list provided"
-            );
+    /**
+     * parseSingleEmbedding.
+     * 
+     * @param embeddingNode embeddingNode
+     * @return the result
+     * @since 0.1.7
+     */
+    protected List<Float> parseSingleEmbedding(JsonNode embeddingNode) {
+        if (embeddingNode == null || embeddingNode.isNull()) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID, "embedding item is null");
         }
-        Object callbackCls = kwargs == null ? null : kwargs.get("callback_cls");
-        if (callbackCls != null && (!(callbackCls instanceof Class<?> clazz)
-                || !BaseCallback.class.isAssignableFrom(clazz))) {
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_EMBEDDING_CALLBACK_INVALID,
-                    "error_msg",
-                    "callback_cls in APIEmbedding.embed_documents must be a subclass of BaseCallback"
-            );
+        if (!embeddingNode.isArray()) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "embedding item is not a numeric array");
         }
+        List<Float> embedding = new ArrayList<>(embeddingNode.size());
+        for (JsonNode item : embeddingNode) {
+            if (!item.isNumber()) {
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                        "embedding item is not numeric");
+            }
+            embedding.add(item.floatValue());
+        }
+        return embedding;
+    }
 
+    /**
+     * parseEmbeddingArray.
+     * 
+     * @param embeddingsNode embeddingsNode
+     * @return the result
+     * @since 0.1.7
+     */
+    private static List<List<Float>> parseEmbeddingArray(JsonNode embeddingsNode) {
+        List<List<Float>> embeddings = new ArrayList<>();
+        for (JsonNode item : embeddingsNode) {
+            if (!item.isNull()) {
+                embeddings.add(parseArrayItem(item));
+            }
+        }
+        return embeddings;
+    }
+
+    /**
+     * parseArrayItem.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
+    private static List<Float> parseArrayItem(JsonNode item) {
+        if (!item.isArray()) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "embedding list item is not an array");
+        }
+        List<Float> embedding = new ArrayList<>(item.size());
+        for (JsonNode value : item) {
+            if (!value.isNumber()) {
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                        "embedding list item is not numeric");
+            }
+            embedding.add(value.floatValue());
+        }
+        return embedding;
+    }
+
+    /**
+     * validateTexts.
+     * 
+     * @param texts texts
+     * @return the result
+     * @since 0.1.7
+     */
+    protected static List<String> validateTexts(List<?> texts) {
+        if (texts == null || texts.isEmpty()) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, "Empty texts list provided");
+        }
         List<String> nonEmpty = new ArrayList<>(texts.size());
         int emptyCount = 0;
-        for (String text : texts) {
-            if (text != null && !text.isBlank()) {
-                nonEmpty.add(text);
-            } else {
+        for (Object item : texts) {
+            if (!(item instanceof String text) || text.isBlank()) {
                 emptyCount++;
+            } else {
+                nonEmpty.add(text);
             }
         }
         if (emptyCount > 0) {
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
-                    "error_msg",
-                    emptyCount + " chunks are empty while embedding"
-            );
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    emptyCount + " chunks are empty while embedding");
         }
         if (nonEmpty.isEmpty()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
-                    "error_msg",
-                    "All texts are empty after filtering"
-            );
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    "All texts are empty after filtering");
         }
         return nonEmpty;
     }
 
-    private static void validateEmbedQueryText(String text) {
-        if (text == null || text.isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
-                    "error_msg",
-                    "Empty text provided for embedding"
-            );
-        }
-    }
-
-    protected static BaseCallback resolveCallback(Map<String, Object> kwargs, Collection<?> sequence) {
-        if (kwargs == null || kwargs.isEmpty()) {
-            return new BaseCallback(sequence);
-        }
-        Object callback = kwargs.get("callback");
+    /**
+     * resolveCallback.
+     * 
+     * @param options options
+     * @param sequence sequence
+     * @return the result
+     * @since 0.1.7
+     */
+    protected static BaseCallback resolveCallback(Map<String, Object> options, Collection<?> sequence) {
+        Object callback = options == null ? null : options.get("callback");
         if (callback instanceof BaseCallback baseCallback) {
             return baseCallback;
         }
-        Object callbackCls = kwargs.get("callback_cls");
-        if (callbackCls == null) {
-            return new BaseCallback(sequence);
-        }
-        Class<?> callbackClass = (Class<?>) callbackCls;
-        try {
+        Object callbackClass = options == null ? null : options.get("callback_cls");
+        if (callbackClass instanceof Class<?> clazz && BaseCallback.class.isAssignableFrom(clazz)) {
             try {
-                return (BaseCallback) callbackClass.getConstructor(Iterable.class).newInstance(sequence);
+                return (BaseCallback) clazz.getConstructor(Collection.class).newInstance(sequence);
             } catch (ReflectiveOperationException ignored) {
-                if (sequence instanceof List<?> list) {
-                    try {
-                        return (BaseCallback) callbackClass.getConstructor(List.class, boolean.class, String.class)
-                                .newInstance(list, false, null);
-                    } catch (ReflectiveOperationException innerIgnored) {
-                        return (BaseCallback) callbackClass.getConstructor().newInstance();
-                    }
+                try {
+                    return (BaseCallback) clazz.getConstructor().newInstance();
+                } catch (ReflectiveOperationException e) {
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_CALLBACK_INVALID,
+                            "callback_cls must be instantiable");
                 }
-                return (BaseCallback) callbackClass.getConstructor().newInstance();
             }
-        } catch (ReflectiveOperationException exception) {
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_EMBEDDING_CALLBACK_INVALID,
-                    "error_msg",
-                    "callback_cls must be instantiable"
-            );
         }
+        if (callbackClass != null) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_CALLBACK_INVALID,
+                    "callback_cls in APIEmbedding.embedDocuments must be a subclass of BaseCallback");
+        }
+        return new BaseCallback(sequence);
     }
 
-    protected static Map<String, Object> cleanPayloadOptions(Map<String, Object> kwargs) {
-        Map<String, Object> options = new LinkedHashMap<>();
-        if (kwargs == null || kwargs.isEmpty()) {
-            return options;
+    /**
+     * cleanPayloadOptions.
+     * 
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    protected static Map<String, Object> cleanPayloadOptions(Map<String, Object> options) {
+        Map<String, Object> payloadOptions = new LinkedHashMap<>();
+        if (options == null || options.isEmpty()) {
+            return payloadOptions;
         }
-        for (Map.Entry<String, Object> entry : kwargs.entrySet()) {
-            if ("callback".equals(entry.getKey()) || "callback_cls".equals(entry.getKey())) {
+        for (Map.Entry<String, Object> entry : options.entrySet()) {
+            String key = entry.getKey();
+            if ("callback".equals(key) || "callback_cls".equals(key)) {
                 continue;
             }
-            options.put(entry.getKey(), entry.getValue());
+            payloadOptions.put(key, entry.getValue());
         }
-        return options;
+        return payloadOptions;
     }
 
+    /**
+     * close.
+     * 
+     * @since 0.1.7
+     */
     @Override
     public void close() {
         executor.shutdownNow();
         try {
             executor.awaitTermination(100, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException exception) {
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
 
-    private HttpClient createHttpClient() {
-        HttpClient.Builder builder = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(timeout));
-        if (apiUrl.startsWith("https://")) {
-            boolean disableVerify = boolEnv(EMBEDDING_SSL_VERIFY, List.of("false"));
-            String sslCert = System.getenv(EMBEDDING_SSL_CERT);
-            if (disableVerify) {
-                builder.sslContext(SslUtils.createInsecureSslContext());
-                SSLParameters sslParameters = new SSLParameters();
-                sslParameters.setEndpointIdentificationAlgorithm("");
-                builder.sslParameters(sslParameters);
-            } else if (sslCert != null && !sslCert.isBlank()) {
-                builder.sslContext(SslUtils.createStrictSslContext(sslCert));
-            }
-        }
-        return builder.build();
-    }
-
-    private static boolean boolEnv(String envName, List<String> triggerValues) {
-        String value = System.getenv(envName);
-        if (value == null) {
-            return false;
-        }
-        for (String triggerValue : triggerValues) {
-            if (value.trim().equalsIgnoreCase(triggerValue)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void acquirePermit() {
-        try {
-            limiter.acquire();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new CompletionException(exception);
-        }
-    }
-
-    private int resolveBatchSize(Integer batchSize) {
-        int requested = batchSize == null ? maxBatchSize : batchSize;
-        return Math.min(Math.max(requested, 1), maxBatchSize);
-    }
-
-    private CompletableFuture<List<List<Double>>> collectBatchResults(int totalSize,
-                                                                      List<CompletableFuture<BatchResult>> futures) {
-        CompletableFuture<?>[] futureArray = futures.toArray(CompletableFuture[]::new);
-        return CompletableFuture.allOf(futureArray).thenApply(ignored -> {
-            List<List<Double>> allEmbeddings = new ArrayList<>(totalSize);
-            for (int i = 0; i < totalSize; i++) {
-                allEmbeddings.add(null);
-            }
-            for (CompletableFuture<BatchResult> future : futures) {
-                BatchResult result = future.join();
-                for (int i = 0; i < result.embeddings().size(); i++) {
-                    allEmbeddings.set(result.startIdx() + i, result.embeddings().get(i));
-                }
-            }
-            return allEmbeddings;
-        });
-    }
-
-    private BaseError buildRequestFailedError(Exception exception) {
-        return ErrorHelper.buildError(
-                StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
-                null,
-                null,
-                exception,
-                Map.of("error_msg", "Failed to get embedding after " + maxRetries + " attempts")
-        );
-    }
-
-    private static List<List<Double>> parseEmbeddingMatrix(JsonNode embeddingNode) {
-        List<List<Double>> embeddings = new ArrayList<>(embeddingNode.size());
-        for (JsonNode item : embeddingNode) {
-            embeddings.add(parseEmbeddingVector(item));
-        }
-        return embeddings;
-    }
-
-    private static List<Double> parseEmbeddingVector(JsonNode embeddingNode) {
-        List<Double> embedding = new ArrayList<>(embeddingNode.size());
-        for (JsonNode value : embeddingNode) {
-            embedding.add(value.doubleValue());
-        }
-        return embedding;
-    }
-
-    private static List<String> stringifyEmbeddings(List<List<Double>> embeddings) {
-        List<String> values = new ArrayList<>(embeddings.size());
-        for (List<Double> embedding : embeddings) {
-            values.add(String.valueOf(embedding));
-        }
-        return values;
-    }
-
-    protected record ApiResponse(int statusCode, String body) {
-    }
-
-    protected record BatchResult(int startIdx, List<List<Double>> embeddings) {
+    /**
+     * BatchResult.
+     * 
+     * @param start start
+     * @param embeddings embeddings
+     * @since 0.1.7
+     */
+    private record BatchResult(int start, List<List<Float>> embeddings) {
     }
 }

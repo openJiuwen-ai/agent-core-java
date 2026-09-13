@@ -6,33 +6,77 @@ package com.openjiuwen.core.runner.resourcemanager;
 
 /**
  * Central registry holding all sub-managers for different resource types.
- *
- * <p>Mirrors Python's {@code ResourceRegistry} in
- * {@code openjiuwen/core/runner/resources_manager/resource_registry.py}.</p>
+ * <p>
+ * Mirrors Python's {@code ResourceRegistry} in {@code resources_manager/resource_registry.py}.
+ * 
+ * @since 0.1.7
  */
 public class ResourceRegistry {
-
-    private ToolManager toolMgr = new ToolManager();
-    private WorkflowMgr workflowMgr = new WorkflowMgr();
-    private PromptMgr promptMgr = new PromptMgr();
-    private ModelMgr modelMgr = new ModelMgr();
-    private AgentMgr<Object> agentMgr = new AgentMgr<>();
-    private AgentGroupMgr<Object> agentGroupMgr = new AgentGroupMgr<>();
-    private SysOperationMgr sysOperationMgr = new SysOperationMgr();
+    private final ToolMgr toolMgr = new ToolMgr();
 
     /**
-     * Clears all registered resources across all sub-managers.
+     * WorkflowMgr.
+     * 
+     * @since 0.1.7
+     */
+    private final WorkflowMgr workflowMgr = new WorkflowMgr();
+
+    /**
+     * PromptMgr.
+     * 
+     * @since 0.1.7
+     */
+    private final PromptMgr promptMgr = new PromptMgr();
+
+    /**
+     * ModelMgr.
+     * 
+     * @since 0.1.7
+     */
+    private final ModelMgr modelMgr = new ModelMgr();
+
+    /**
+     * AgentMgr<>.
+     * 
+     * @since 0.1.7
+     */
+    private final AgentMgr<Object> agentMgr = new AgentMgr<>();
+
+    /**
+     * AgentGroupMgr<>.
+     * 
+     * @since 0.1.7
+     */
+    private final AgentGroupMgr<Object> agentGroupMgr = new AgentGroupMgr<>();
+
+    /**
+     * SysOperationMgr.
+     * 
+     * @since 0.1.7
+     */
+    private final SysOperationMgr sysOperationMgr = new SysOperationMgr();
+
+    /**
+     * Clear all registered resources across all sub-managers.
+     * 
+     * @since 0.1.7
      */
     public void clearAll() {
-        toolMgr = new ToolManager();
-        workflowMgr = new WorkflowMgr();
-        promptMgr = new PromptMgr();
-        modelMgr = new ModelMgr();
-        agentMgr = new AgentMgr<>();
-        agentGroupMgr = new AgentGroupMgr<>();
-        sysOperationMgr = new SysOperationMgr();
+        toolMgr.release();
+        workflowMgr.clearProviders();
+        promptMgr.clear();
+        modelMgr.clearProviders();
+        agentMgr.clearProviders();
+        agentGroupMgr.clearProviders();
+        sysOperationMgr.clear();
     }
 
+    /**
+     * removeById.
+     * 
+     * @param resourceId resourceId
+     * @since 0.1.7
+     */
     public void removeById(String resourceId) {
         if (toolMgr.removeTool(resourceId) != null) {
             return;
@@ -55,63 +99,73 @@ public class ResourceRegistry {
         sysOperationMgr.removeSysOperation(resourceId);
     }
 
-    public ToolManager tool() {
+    /**
+     * tool.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public ToolMgr tool() {
         return toolMgr;
     }
 
+    /**
+     * prompt.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public PromptMgr prompt() {
         return promptMgr;
     }
 
+    /**
+     * model.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public ModelMgr model() {
         return modelMgr;
     }
 
+    /**
+     * workflow.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public WorkflowMgr workflow() {
         return workflowMgr;
     }
 
+    /**
+     * agent.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public AgentMgr<Object> agent() {
         return agentMgr;
     }
 
+    /**
+     * agentGroup.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public AgentGroupMgr<Object> agentGroup() {
         return agentGroupMgr;
     }
 
+    /**
+     * sysOperation.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public SysOperationMgr sysOperation() {
-        return sysOperationMgr;
-    }
-
-    public AgentGroupMgr<Object> agentTeam() {
-        return agentGroupMgr;
-    }
-
-    public ToolManager toolManager() {
-        return toolMgr;
-    }
-
-    public WorkflowManager workflowManager() {
-        return workflowMgr;
-    }
-
-    public PromptManager promptManager() {
-        return promptMgr;
-    }
-
-    public ModelManager modelManager() {
-        return modelMgr;
-    }
-
-    public AgentManager agentManager() {
-        return agentMgr;
-    }
-
-    public AgentTeamManager agentTeamManager() {
-        return agentGroupMgr;
-    }
-
-    public SysOperationManager sysOperationManager() {
         return sysOperationMgr;
     }
 }

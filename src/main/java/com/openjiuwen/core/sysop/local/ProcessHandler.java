@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.sysop.local;
 
-import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.logging.Loggers;
 
@@ -16,7 +15,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
-import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -95,21 +93,25 @@ public class ProcessHandler {
         StringBuilder stdoutBuf = new StringBuilder();
         StringBuilder stderrBuf = new StringBuilder();
 
-        Thread stdoutThread = OpenJiuwenExecutors.newThread(() -> {
+        Thread stdoutThread = new Thread(() -> {
             try {
                 stdoutBuf.append(readStream(process.getInputStream()));
             } catch (Exception e) {
                 Loggers.SYS_OPERATION.error("Failed to read stdout", e);
             }
-        }, "invoke-stdout-reader", true);
+        }, "invoke-stdout-reader");
+        stdoutThread.setUncaughtExceptionHandler(
+                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
         stdoutThread.start();
-        Thread stderrThread = OpenJiuwenExecutors.newThread(() -> {
+        Thread stderrThread = new Thread(() -> {
             try {
                 stderrBuf.append(readStream(process.getErrorStream()));
             } catch (Exception e) {
                 Loggers.SYS_OPERATION.error("Failed to read stderr", e);
             }
-        }, "invoke-stderr-reader", true);
+        }, "invoke-stderr-reader");
+        stderrThread.setUncaughtExceptionHandler(
+                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
         stderrThread.start();
 
         try {
@@ -117,13 +119,13 @@ public class ProcessHandler {
 
             if (!finished) {
                 Loggers.SYS_OPERATION.error("Get process result time out", LogEventType.SYS_OP_ERROR.getValue());
-                process.destroyForcibly();
+                killProcessTree(process);
                 try {
-                    boolean killedOk = process.waitFor(30, TimeUnit.SECONDS);
+                    boolean isKilledOk = process.waitFor(10, TimeUnit.SECONDS);
                     // Wait for reader threads to drain remaining data
                     stdoutThread.join(5000);
                     stderrThread.join(5000);
-                    if (!killedOk) {
+                    if (!isKilledOk) {
                         return InvokeData.builder().stdout(stdoutBuf.toString())
                                 .stderr("Process did not terminate after kill").exitCode(-1)
                                 .exception(new InterruptedException(
@@ -168,11 +170,15 @@ public class ProcessHandler {
         }
 
         // Start reader threads for stdout and stderr
-        Thread stdoutReader = OpenJiuwenExecutors.newThread(
-                () -> readerTask(process.getInputStream(), StreamEventType.STDOUT), "stdout-reader", true);
+        Thread stdoutReader =
+            new Thread(() -> readerTask(process.getInputStream(), StreamEventType.STDOUT), "stdout-reader");
+        stdoutReader.setUncaughtExceptionHandler(
+                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
         stdoutReader.start();
-        Thread stderrReader = OpenJiuwenExecutors.newThread(
-                () -> readerTask(process.getErrorStream(), StreamEventType.STDERR), "stderr-reader", true);
+        Thread stderrReader =
+            new Thread(() -> readerTask(process.getErrorStream(), StreamEventType.STDERR), "stderr-reader");
+        stderrReader.setUncaughtExceptionHandler(
+                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
         stderrReader.start();
 
         return new StreamEventIterator(stdoutReader, stderrReader);
@@ -301,7 +307,7 @@ public class ProcessHandler {
                     long elapsedMs = System.currentTimeMillis() - startTimeMs;
                     if (elapsedMs >= (long) overallTimeoutSeconds * 1000) {
                         Loggers.SYS_OPERATION.error("Stream execution time out, timeout={}s", overallTimeoutSeconds);
-                        process.destroyForcibly();
+                        killProcessTree(process);
                         return StreamEvent.builder().type(StreamEventType.ERROR)
                                 .data("execution timeout after " + overallTimeoutSeconds + " seconds").build();
                     }
@@ -323,7 +329,7 @@ public class ProcessHandler {
                 if (!readersAlive && queue.isEmpty()) {
                     // Emit EXIT event
                     try {
-                        process.waitFor(30, TimeUnit.SECONDS);
+                        process.waitFor(10, TimeUnit.SECONDS);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
@@ -335,215 +341,29 @@ public class ProcessHandler {
     }
 
     /**
-     * Stream event types for process output.
+     * Force-kill the process and its descendants. On Windows, {@link Process#destroyForcibly()}
+     * often leaves child processes (e.g. {@code ping} under {@code cmd.exe}) alive.
+     *
+     * @param process process
+     * @since 0.1.7
      */
-    public enum StreamEventType {
-        STDOUT("stdout"),
-        STDERR("stderr"),
-        EXIT("exit"),
-        ERROR("error");
-
-        private final String value;
-
-        StreamEventType(String value) {
-            this.value = value;
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public String getValue() {
-            return value;
-        }
-    }
-
-    /**
-     * Event emitted during process streaming.
-     */
-    public static final class StreamEvent {
-        private final StreamEventType type;
-        private final Object data;
-
-        private StreamEvent(StreamEventType type, Object data) {
-            this.type = Objects.requireNonNull(type, "type");
-            this.data = data;
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public static Builder builder() {
-            return new Builder();
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public StreamEventType getType() {
-            return type;
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public Object getData() {
-            return data;
-        }
-
-        /**
-         * Get data as String.
-         */
-        public String getDataAsString() {
-            return data != null ? String.valueOf(data) : "";
-        }
-
-        /**
-         * Get data as Integer.
-         */
-        public Integer getDataAsInt() {
-            if (data instanceof Integer i) {
-                return i;
-            }
-            if (data instanceof Number n) {
-                return n.intValue();
-            }
+    private static void killProcessTree(Process process) {
+        long pid = process.pid();
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("win")) {
             try {
-                return data != null ? Integer.parseInt(String.valueOf(data)) : null;
-            } catch (NumberFormatException e) {
-                return null;
+                Process killer = new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(pid))
+                        .redirectErrorStream(true).start();
+                // Drain merged output so taskkill cannot block on a full pipe buffer.
+                try (InputStream in = killer.getInputStream()) {
+                    in.readAllBytes();
+                }
+                killer.waitFor(2, TimeUnit.SECONDS);
+            } catch (IOException | InterruptedException ignored) {
+                // fall through to destroyForcibly; interruption is handled by the invoke timeout path
             }
         }
-
-        /**
-         * Builder for StreamEvent.
-         */
-        public static final class Builder {
-            private StreamEventType type;
-            private Object data;
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public Builder type(StreamEventType type) {
-                this.type = type;
-                return this;
-            }
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public Builder data(Object data) {
-                this.data = data;
-                return this;
-            }
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public StreamEvent build() {
-                return new StreamEvent(type, data);
-            }
-        }
-    }
-
-    /**
-     * Result of a one-shot process invocation.
-     */
-    public static final class InvokeData {
-        private final String stdout;
-        private final String stderr;
-        private final int exitCode;
-        private final Exception exception;
-
-        private InvokeData(String stdout, String stderr, int exitCode, Exception exception) {
-            this.stdout = stdout != null ? stdout : "";
-            this.stderr = stderr != null ? stderr : "";
-            this.exitCode = exitCode;
-            this.exception = exception;
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public static Builder builder() {
-            return new Builder();
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public String getStdout() {
-            return stdout;
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public String getStderr() {
-            return stderr;
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public int getExitCode() {
-            return exitCode;
-        }
-
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public Exception getException() {
-            return exception;
-        }
-
-        /**
-         * Builder for InvokeData.
-         */
-        public static final class Builder {
-            private String stdout;
-            private String stderr;
-            private int exitCode;
-            private Exception exception;
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public Builder stdout(String stdout) {
-                this.stdout = stdout;
-                return this;
-            }
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public Builder stderr(String stderr) {
-                this.stderr = stderr;
-                return this;
-            }
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public Builder exitCode(int exitCode) {
-                this.exitCode = exitCode;
-                return this;
-            }
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public Builder exception(Exception exception) {
-                this.exception = exception;
-                return this;
-            }
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public InvokeData build() {
-                return new InvokeData(stdout, stderr, exitCode, exception);
-            }
-        }
+        process.destroyForcibly();
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
     }
 }

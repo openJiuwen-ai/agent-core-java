@@ -4,8 +4,16 @@
 
 package com.openjiuwen.extensions.store.kv;
 
-import com.openjiuwen.core.foundation.store.BaseKVStore;
-import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
+import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.spi.store.KVStorePipeline;
+
+import redis.clients.jedis.ConnectionPool;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
+import redis.clients.jedis.util.JedisClusterCRC16;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,71 +33,62 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Redis-based key-value store implementation.
- *
- * <p>This implementation provides a high-performance, distributed key-value store
+ * <p>
+ * This implementation provides a high-performance, distributed key-value store
  * backed by Redis. Supports both standalone Redis and Redis Cluster modes.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.extensions.store.kv.redis_store.RedisStore}.
  *
- * <p>Mirrors Python's {@code RedisStore} in
- * {@code openjiuwen/extensions/store/kv/redis_store.py}.</p>
+ * @since 0.1.7
  */
-public class RedisStore extends BaseKVStore implements AutoCloseable {
-
+public class RedisStore extends BaseKVStore {
+    private static final int CLUSTER_SCAN_COUNT = 1000;
     private static final Logger logger = LoggerFactory.getLogger(RedisStore.class);
 
     private final Object redisClient;
     private final boolean isCluster;
-    // This is a lifecycle ownership flag, not a closeability check. Caller-supplied clients may also be
-    // AutoCloseable, but RedisStore should close only clients it created or explicitly owns.
-    private final boolean ownsClient;
 
     /**
      * Initialize RedisStore with a Redis client (standalone or cluster).
      *
      * @param redisClient The Redis client instance (Jedis, Lettuce, or Redisson)
+     * @since 0.1.7
      */
     public RedisStore(Object redisClient) {
-        this(redisClient, false);
+        this.redisClient = Objects.requireNonNull(redisClient, "redisClient must not be null");
+        this.isCluster = detectClusterMode(redisClient);
     }
 
     /**
-     * Initialize RedisStore with a Redis client and ownership semantics.
+     * set.
      *
-     * @param redisClient The Redis client instance (Jedis, Lettuce, or Redisson)
-     * @param ownsClient  Whether this store should close the client when the store is closed
+     * @param key key
+     * @param value value
+     * @since 0.1.7
      */
-    public RedisStore(Object redisClient, boolean ownsClient) {
-        this.redisClient = Objects.requireNonNull(redisClient, "redisClient must not be null");
-        this.isCluster = detectClusterMode(redisClient);
-        this.ownsClient = ownsClient;
-    }
-
     @Override
-    public CompletableFuture<Void> set(String key, Object value) {
-        try {
-            setInternal(key, value, null);
-            return CompletableFuture.completedFuture(null);
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
+    public void set(String key, Object value) {
+        setInternal(key, value, null);
     }
 
+    /**
+     * exclusiveSet.
+     *
+     * @param key key
+     * @param value value
+     * @param expiry expiry
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<Boolean> exclusiveSet(String key, Object value, Integer expiry) {
-        try {
-            return CompletableFuture.completedFuture(exclusiveSetInternal(key, value, expiry));
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
-    }
-
-    private boolean exclusiveSetInternal(String key, Object value, Integer expiry) {
+    public boolean exclusiveSet(String key, Object value, Integer expiry) {
         requireKey(key);
         try {
-            InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"exclusiveSet", "setIfAbsent"}, key, value, expiry);
+            InvocationOutcome outcome =
+                tryInvoke(redisClient, new String[]{"exclusiveSet", "setIfAbsent"}, key, value, expiry);
             boolean expiryApplied = outcome.handled();
             if (!outcome.handled()) {
                 outcome = tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.TRUE, expiry);
@@ -120,63 +119,64 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * get.
+     *
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<Object> get(String key) {
-        try {
-            return CompletableFuture.completedFuture(getInternal(key));
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
-    }
-
-    private Object getInternal(String key) {
+    public Object get(String key) {
         requireKey(key);
         try {
-            // Prefer Jedis get(byte[]) for binary checkpoints; get(String) may UTF-8-corrupt payloads.
-            Object value = normalizeValue(getValuePreferringBinaryKey(key));
-            if (value == null) {
-                logger.debug("Key not found: {}", key);
-            } else {
-                logger.debug("Successfully retrieved key: {}", key);
-            }
-            return value;
+            Object value = getValuePreferringBinaryKey(key);
+            logger.debug("Successfully retrieved key: {}", key);
+            return normalizeValue(value);
         } catch (Exception e) {
             logger.error("Failed to get key: {}, error: {}", key, e.getMessage());
             throw new RuntimeException("Failed to get key: " + key, e);
         }
     }
 
+    /**
+     * isExists.
+     *
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<Boolean> exists(String key) {
-        try {
-            return CompletableFuture.completedFuture(existsInternal(key));
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
-    }
-
-    private boolean existsInternal(String key) {
+    public boolean isExists(String key) {
         requireKey(key);
         try {
-            InvocationOutcome outcome = invokeRequired(redisClient, new String[]{"exists"}, key);
+            InvocationOutcome outcome = invokeRequired(redisClient, new String[]{"isExists", "exists"}, key);
             return asBoolean(outcome.value());
         } catch (Exception e) {
             logger.error("Failed to check key existence: {}, error: {}", key, e.getMessage());
-            throw new RuntimeException("Failed to check key existence: " + key, e);
+            throw new IllegalStateException("Failed to check key existence: " + key, e);
         }
     }
 
+    /**
+     * exists.
+     *
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean exists(String key) {
+        return isExists(key);
+    }
+
+    /**
+     * delete.
+     *
+     * @param key key
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<Void> delete(String key) {
-        try {
-            deleteInternal(key);
-            return CompletableFuture.completedFuture(null);
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
-    }
-
-    private void deleteInternal(String key) {
+    public void delete(String key) {
         requireKey(key);
         try {
             deleteChunk(List.of(key));
@@ -187,21 +187,20 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * getByPrefix.
+     *
+     * @param prefix prefix
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<Map<String, Object>> getByPrefix(String prefix) {
-        try {
-            return CompletableFuture.completedFuture(getByPrefixInternal(prefix));
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
-    }
-
-    private Map<String, Object> getByPrefixInternal(String prefix) {
+    public Map<String, Object> getByPrefix(String prefix) {
         try {
             logger.debug("Getting keys by prefix: {}", prefix);
             Map<String, Object> result = new LinkedHashMap<>();
             for (String key : scanKeys(prefix)) {
-                Object value = getInternal(key);
+                Object value = get(key);
                 if (value != null) {
                     result.put(key, value);
                 }
@@ -214,22 +213,20 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * deleteByPrefix.
+     *
+     * @param prefix prefix
+     * @param batchSize batchSize
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<Void> deleteByPrefix(String prefix, Integer batchSize) {
-        try {
-            deleteByPrefixInternal(prefix, batchSize);
-            return CompletableFuture.completedFuture(null);
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
-    }
-
-    private void deleteByPrefixInternal(String prefix, Integer batchSize) {
+    public void deleteByPrefix(String prefix, Integer batchSize) {
         try {
             logger.debug("Deleting keys by prefix: {}", prefix);
             List<String> keys = scanKeys(prefix);
             if (!keys.isEmpty()) {
-                batchDeleteInternal(keys, batchSize);
+                batchDelete(keys, batchSize);
             }
             logger.debug("Deleted keys by prefix: {}", prefix);
         } catch (Exception e) {
@@ -238,24 +235,22 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * mget.
+     *
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<List<Object>> mget(List<String> keys) {
-        try {
-            return CompletableFuture.completedFuture(mgetInternal(keys));
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
-    }
-
-    private List<Object> mgetInternal(List<String> keys) {
+    public List<Object> mget(List<String> keys) {
         if (keys == null || keys.isEmpty()) {
             return new ArrayList<>();
         }
         try {
             logger.debug("Bulk getting {} keys", keys.size());
             List<Object> result = tryMget(keys);
-            long foundCount = result.stream().filter(Objects::nonNull).count();
-            logger.debug("Bulk retrieved {}/{} keys", foundCount, keys.size());
+            logger.debug("Bulk retrieved {}/{} keys", result.size(), keys.size());
             return result;
         } catch (Exception e) {
             logger.error("Failed to bulk get keys, error: {}", e.getMessage());
@@ -263,16 +258,16 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * batchDelete.
+     *
+     * @param keys keys
+     * @param batchSize batchSize
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<Integer> batchDelete(List<String> keys, Integer batchSize) {
-        try {
-            return CompletableFuture.completedFuture(batchDeleteInternal(keys, batchSize));
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(throwable);
-        }
-    }
-
-    private int batchDeleteInternal(List<String> keys, Integer batchSize) {
+    public int batchDelete(List<String> keys, Integer batchSize) {
         if (keys == null || keys.isEmpty()) {
             return 0;
         }
@@ -293,34 +288,40 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * pipeline.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public BasedKVStorePipeline pipeline() {
-        return new BasedKVStorePipeline(operations -> {
-            try {
-                List<Object> results = new ArrayList<>(operations.size());
-                for (BasedKVStorePipeline.PipelineOperation operation : operations) {
-                    switch (operation.kind()) {
+    public KVStorePipeline pipeline() {
+        return new KVStorePipeline(operations -> {
+            List<Object> results = new ArrayList<>(operations.size());
+            for (Object[] operation : operations) {
+                String action = String.valueOf(operation[0]);
+                String key = operation.length > 1 ? String.valueOf(operation[1]) : "";
+                switch (action) {
                     case "set" -> {
-                        setInternal(operation.key(), operation.value(), operation.ttl());
+                        Integer expiry = extractExpiry(operation);
+                        setInternal(key, operation.length > 2 ? operation[2] : null, expiry);
                         results.add(null);
                     }
-                    case "get" -> results.add(getInternal(operation.key()));
-                    case "exists" -> results.add(existsInternal(operation.key()));
-                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
-                    }
+                    case "get" -> results.add(get(key));
+                    case "isExists" -> results.add(isExists(key));
+                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + action);
                 }
-                return CompletableFuture.completedFuture(results);
-            } catch (Throwable throwable) {
-                return CompletableFuture.failedFuture(throwable);
             }
+            return results;
         });
     }
 
     /**
      * Refresh TTL (Time To Live) for given keys.
      *
-     * @param keys       a list of keys to refresh TTL for
+     * @param keys a list of keys to refresh TTL for
      * @param ttlSeconds the TTL value in seconds
+     * @since 0.1.7
      */
     public void refreshTtl(List<String> keys, int ttlSeconds) {
         if (keys == null || keys.isEmpty() || ttlSeconds <= 0) {
@@ -343,39 +344,71 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
      * Check if the Redis client is in cluster mode.
      *
      * @return true if cluster mode, otherwise false
+     * @since 0.1.7
      */
     public boolean isCluster() {
         return isCluster;
     }
 
+    /**
+     * Release the underlying Redis client resources by invoking its
+     * {@code close()} method via reflection.
+     * <p>
+     * The {@code redisClient} field is typed as {@link Object} to support
+     * multiple Redis client libraries (Jedis, Lettuce, Redisson), so the
+     * {@code close()} call must go through reflection. If the client does
+     * not expose a {@code close()} method, this is a no-op logged at WARN.
+     * Safe to call multiple times.
+     *
+     * @since 0.1.13
+     */
     @Override
     public void close() {
-        if (!ownsClient || !(redisClient instanceof AutoCloseable closeable)) {
-            return;
-        }
         try {
-            closeable.close();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to close Redis client", e);
+            InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"close", "shutdown", "disconnect"});
+            if (!outcome.handled()) {
+                logger.warn("Redis client {} does not expose a close/shutdown/disconnect method; skip close",
+                        redisClient.getClass().getName());
+            } else {
+                logger.debug("Closed Redis client: {}", redisClient.getClass().getName());
+            }
+        } catch (ReflectiveOperationException | IllegalStateException e) {
+            logger.warn("Failed to close Redis client: {}", e.getMessage());
         }
     }
 
+    /**
+     * detectClusterMode.
+     *
+     * @param client client
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean detectClusterMode(Object client) {
         return client.getClass().getSimpleName().contains("Cluster");
     }
 
+    /**
+     * setInternal.
+     *
+     * @param key key
+     * @param value value
+     * @param expiry expiry
+     * @since 0.1.7
+     */
     private void setInternal(String key, Object value, Integer expiry) {
         requireKey(key);
         try {
-            if (value instanceof byte[] bytes) {
-                setBinaryValue(key, bytes, expiry);
+            if (value instanceof byte[]) {
+                setBinaryValue(key, (byte[]) value, expiry);
                 logger.debug("Successfully set binary key: {}", key);
                 return;
             }
 
             boolean expiryApplied = false;
             if (expiry != null && expiry > 0) {
-                InvocationOutcome combinedSet = tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.FALSE, expiry);
+                InvocationOutcome combinedSet =
+                    tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.FALSE, expiry);
                 if (!combinedSet.handled()) {
                     combinedSet = tryInvoke(redisClient, new String[]{"set"}, key, value, expiry);
                 }
@@ -398,15 +431,24 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * setBinaryValue.
+     *
+     * @param key key
+     * @param value value
+     * @param expiry expiry
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private void setBinaryValue(String key, byte[] value, Integer expiry) throws Exception {
         byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
         boolean expiryApplied = false;
         if (expiry != null && expiry > 0) {
             InvocationOutcome combinedSet =
-                    tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value, expiry);
+                tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value, expiry);
             if (!combinedSet.handled()) {
-                combinedSet = tryInvoke(
-                        redisClient, new String[]{"set"}, byte[].class, keyBytes, value, Boolean.FALSE, expiry);
+                combinedSet =
+                    tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value, Boolean.FALSE, expiry);
             }
             if (combinedSet.handled()) {
                 expiryApplied = true;
@@ -427,6 +469,12 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * requireKey.
+     *
+     * @param key key
+     * @since 0.1.7
+     */
     private void requireKey(String key) {
         Objects.requireNonNull(key, "key must not be null");
     }
@@ -434,6 +482,11 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
     /**
      * Prefer binary GET when String GET mis-decodes binary payloads (Jedis {@code get(String)} vs
      * {@code get(byte[])}). For plain text values both APIs agree and String is returned.
+     *
+     * @param key key
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     private Object getValuePreferringBinaryKey(String key) throws Exception {
         Object stringValue = null;
@@ -463,8 +516,15 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return binaryValue;
     }
 
+    /**
+     * preferBinaryOverString.
+     *
+     * @param bytes bytes
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean preferBinaryOverString(byte[] bytes, String text) {
-        // Java serialization magic: 0xACED
         if (bytes.length >= 2 && bytes[0] == (byte) 0xAC && bytes[1] == (byte) 0xED) {
             return true;
         }
@@ -474,6 +534,32 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return !text.equals(new String(bytes, StandardCharsets.UTF_8));
     }
 
+    /**
+     * extractExpiry.
+     *
+     * @param operation operation
+     * @return the result
+     * @since 0.1.7
+     */
+    private Integer extractExpiry(Object[] operation) {
+        if (operation.length <= 3 || operation[3] == null) {
+            return null;
+        }
+        Object expiry = operation[3];
+        if (expiry instanceof Number number) {
+            return number.intValue();
+        }
+        return Integer.parseInt(String.valueOf(expiry));
+    }
+
+    /**
+     * tryMget.
+     *
+     * @param keys keys
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private List<Object> tryMget(List<String> keys) throws Exception {
         try {
             InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"mget"}, keys);
@@ -492,17 +578,29 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
 
         List<Object> fallback = new ArrayList<>(keys.size());
         for (String key : keys) {
-            fallback.add(getInternal(key));
+            fallback.add(get(key));
         }
         return fallback;
     }
 
+    /**
+     * deleteChunk.
+     *
+     * @param keys keys
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private int deleteChunk(List<String> keys) throws Exception {
         if (keys.isEmpty()) {
             return 0;
         }
+        if (redisClient instanceof JedisCluster cluster) {
+            return deleteClusterKeys(cluster, keys);
+        }
 
-        InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
+        InvocationOutcome outcome =
+            tryInvoke(redisClient, new String[]{"delete", "del"}, keys.toArray());
         if (!outcome.handled()) {
             outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, keys);
         }
@@ -512,16 +610,50 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
 
         int deleted = 0;
         for (String key : keys) {
-            boolean existed = existsInternal(key);
+            boolean isExisted = isExists(key);
             invokeRequired(redisClient, new String[]{"delete", "del"}, key);
-            if (existed) {
+            if (isExisted) {
                 deleted++;
             }
         }
         return deleted;
     }
 
+    /**
+     * Delete cluster keys in hash-slot groups to avoid cross-slot commands.
+     *
+     * @param cluster Redis cluster client
+     * @param keys keys to delete
+     * @return number of deleted keys
+     * @since 0.1.14
+     */
+    private int deleteClusterKeys(JedisCluster cluster, List<String> keys) {
+        Map<Integer, List<String>> keysBySlot = new LinkedHashMap<>();
+        for (String key : keys) {
+            int slot = JedisClusterCRC16.getSlot(key);
+            keysBySlot.computeIfAbsent(slot, ignored -> new ArrayList<>()).add(key);
+        }
+
+        long deleted = 0L;
+        for (List<String> sameSlotKeys : keysBySlot.values()) {
+            deleted += cluster.del(sameSlotKeys.toArray(String[]::new));
+        }
+        return Math.toIntExact(deleted);
+    }
+
+    /**
+     * scanKeys.
+     *
+     * @param prefix prefix
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private List<String> scanKeys(String prefix) throws Exception {
+        if (redisClient instanceof JedisCluster cluster) {
+            return scanClusterKeys(cluster, prefix);
+        }
+
         String pattern = prefix + "*";
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"scanIter", "keys", "scan"}, pattern);
         if (!outcome.handled()) {
@@ -539,6 +671,58 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return extractKeys(outcome.value(), prefix);
     }
 
+    /**
+     * Scan matching keys from every node known to the cluster client.
+     *
+     * @param cluster Redis cluster client
+     * @param prefix literal key prefix
+     * @return matching keys without duplicates
+     * @since 0.1.14
+     */
+    private List<String> scanClusterKeys(JedisCluster cluster, String prefix) {
+        ScanParams params = new ScanParams().match(prefix + "*").count(CLUSTER_SCAN_COUNT);
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        List<ConnectionPool> nodePools = new ArrayList<>(cluster.getClusterNodes().values());
+
+        for (ConnectionPool nodePool : nodePools) {
+            try (Jedis node = new Jedis(nodePool.getResource())) {
+                scanClusterNode(node, params, prefix, keys);
+            }
+        }
+        return new ArrayList<>(keys);
+    }
+
+    /**
+     * Scan all cursor pages from one cluster node.
+     *
+     * @param node node-scoped Jedis client
+     * @param params scan parameters
+     * @param prefix literal key prefix
+     * @param keys destination collection
+     * @since 0.1.14
+     */
+    private void scanClusterNode(Jedis node, ScanParams params, String prefix, Collection<String> keys) {
+        String cursor = ScanParams.SCAN_POINTER_START;
+        do {
+            ScanResult<String> page = node.scan(cursor, params);
+            for (String key : page.getResult()) {
+                if (key.startsWith(prefix)) {
+                    keys.add(key);
+                }
+            }
+            cursor = page.getCursor();
+        } while (!ScanParams.SCAN_POINTER_START.equals(cursor));
+    }
+
+    /**
+     * refreshTtlViaClientPipeline.
+     *
+     * @param keys keys
+     * @param ttlSeconds ttlSeconds
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private boolean refreshTtlViaClientPipeline(List<String> keys, int ttlSeconds) throws Exception {
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"pipeline", "pipelined"});
         if (!outcome.handled() || outcome.value() == null) {
@@ -546,17 +730,40 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
 
         Object pipeline = outcome.value();
-        for (String key : keys) {
-            InvocationOutcome expireOutcome = tryInvoke(pipeline, new String[]{"expire"}, key, ttlSeconds);
-            if (!expireOutcome.handled()) {
-                return false;
+        try {
+            for (String key : keys) {
+                InvocationOutcome expireOutcome = tryInvoke(pipeline, new String[]{"expire"}, key, ttlSeconds);
+                if (!expireOutcome.handled()) {
+                    return false;
+                }
             }
-        }
 
-        InvocationOutcome executeOutcome = tryInvoke(pipeline, new String[]{"execute", "exec", "sync"});
-        return executeOutcome.handled();
+            InvocationOutcome executeOutcome = tryInvoke(pipeline, new String[]{"execute", "exec", "sync"});
+            return executeOutcome.handled();
+        } finally {
+            closePipeline(pipeline);
+        }
     }
 
+    private void closePipeline(Object pipeline) {
+        try {
+            InvocationOutcome outcome = tryInvoke(pipeline, new String[]{"close"});
+            if (!outcome.handled()) {
+                logger.debug("Redis pipeline {} does not expose a close method", pipeline.getClass().getName());
+            }
+        } catch (ReflectiveOperationException | IllegalStateException e) {
+            logger.warn("Failed to close Redis pipeline: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * expireKey.
+     *
+     * @param key key
+     * @param ttlSeconds ttlSeconds
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private void expireKey(String key, int ttlSeconds) throws Exception {
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"expire"}, key, ttlSeconds);
         if (!outcome.handled()) {
@@ -564,6 +771,14 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * normalizeBulkValues.
+     *
+     * @param rawValues rawValues
+     * @param requestedKeys requestedKeys
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> normalizeBulkValues(Object rawValues, List<String> requestedKeys) {
         if (rawValues instanceof Map<?, ?> map) {
             List<Object> ordered = new ArrayList<>(requestedKeys.size());
@@ -585,6 +800,14 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return normalized;
     }
 
+    /**
+     * extractKeys.
+     *
+     * @param rawKeys rawKeys
+     * @param prefix prefix
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> extractKeys(Object rawKeys, String prefix) {
         LinkedHashSet<String> keys = new LinkedHashSet<>();
         for (Object candidate : toObjectList(rawKeys)) {
@@ -596,6 +819,13 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return new ArrayList<>(keys);
     }
 
+    /**
+     * toObjectList.
+     *
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> toObjectList(Object value) {
         if (value == null) {
             return Collections.emptyList();
@@ -636,6 +866,13 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return List.of(value);
     }
 
+    /**
+     * normalizeKey.
+     *
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizeKey(Object value) {
         if (value == null) {
             return null;
@@ -649,6 +886,13 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return String.valueOf(value);
     }
 
+    /**
+     * normalizeValue.
+     *
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Object normalizeValue(Object value) {
         if (value == null) {
             return null;
@@ -680,6 +924,13 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return value;
     }
 
+    /**
+     * asBoolean.
+     *
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean asBoolean(Object value) {
         if (value == null) {
             return false;
@@ -698,6 +949,14 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return true;
     }
 
+    /**
+     * asDeleteCount.
+     *
+     * @param value value
+     * @param fallbackCount fallbackCount
+     * @return the result
+     * @since 0.1.7
+     */
     private int asDeleteCount(Object value, int fallbackCount) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -708,7 +967,18 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return asBoolean(value) ? fallbackCount : 0;
     }
 
-    private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args) throws Exception {
+    /**
+     * invokeRequired.
+     *
+     * @param target target
+     * @param methodNames methodNames
+     * @param args args
+     * @return the result
+     * @throws ReflectiveOperationException ReflectiveOperationException
+     * @since 0.1.7
+     */
+    private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args)
+            throws ReflectiveOperationException {
         InvocationOutcome outcome = tryInvoke(target, methodNames, args);
         if (!outcome.handled()) {
             throw new IllegalStateException("Redis client does not support " + Arrays.toString(methodNames));
@@ -716,12 +986,34 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return outcome;
     }
 
-    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args) throws Exception {
+    /**
+     * tryInvoke.
+     *
+     * @param target target
+     * @param methodNames methodNames
+     * @param args args
+     * @return the result
+     * @throws ReflectiveOperationException ReflectiveOperationException
+     * @since 0.1.7
+     */
+    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args)
+            throws ReflectiveOperationException {
         return tryInvoke(target, methodNames, null, args);
     }
 
-    private InvocationOutcome tryInvoke(
-            Object target, String[] methodNames, Class<?> requiredFirstParamType, Object... args) throws Exception {
+    /**
+     * tryInvoke.
+     *
+     * @param target target
+     * @param methodNames methodNames
+     * @param requiredFirstParamType requiredFirstParamType
+     * @param args args
+     * @return the result
+     * @throws ReflectiveOperationException ReflectiveOperationException
+     * @since 0.1.7
+     */
+    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Class<?> requiredFirstParamType,
+            Object... args) throws ReflectiveOperationException {
         MethodMatch bestMatch = null;
         for (int nameIndex = 0; nameIndex < methodNames.length; nameIndex++) {
             String methodName = methodNames[nameIndex];
@@ -758,16 +1050,23 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
             return new InvocationOutcome(true, bestMatch.method().invoke(target, bestMatch.arguments()));
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
-            if (cause instanceof Exception exception) {
-                throw exception;
-            }
             if (cause instanceof Error error) {
                 throw error;
             }
-            throw e;
+            throw new IllegalStateException(cause != null ? cause.getMessage() : e.getMessage(),
+                cause != null ? cause : (Throwable) e);
         }
     }
 
+    /**
+     * prepareMethodMatch.
+     *
+     * @param method method
+     * @param args args
+     * @param namePreference namePreference
+     * @return the result
+     * @since 0.1.7
+     */
     private Optional<MethodMatch> prepareMethodMatch(Method method, Object[] args, int namePreference) {
         Class<?>[] parameterTypes = method.getParameterTypes();
         boolean isVarArgs = method.isVarArgs();
@@ -834,6 +1133,14 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return Optional.of(new MethodMatch(method, invocationArgs, score));
     }
 
+    /**
+     * convertArgument.
+     *
+     * @param argument argument
+     * @param targetType targetType
+     * @return the result
+     * @since 0.1.7
+     */
     private Optional<ArgumentMatch> convertArgument(Object argument, Class<?> targetType) {
         if (argument == null) {
             return targetType.isPrimitive() ? Optional.empty() : Optional.of(new ArgumentMatch(null, 1));
@@ -895,10 +1202,25 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return Optional.empty();
     }
 
+    /**
+     * isAssignable.
+     *
+     * @param targetType targetType
+     * @param candidateType candidateType
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isAssignable(Class<?> targetType, Class<?> candidateType) {
         return boxType(targetType).isAssignableFrom(boxType(candidateType));
     }
 
+    /**
+     * boxType.
+     *
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private Class<?> boxType(Class<?> type) {
         if (!type.isPrimitive()) {
             return type;
@@ -916,15 +1238,37 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         };
     }
 
+    /**
+     * InvocationOutcome.
+     *
+     * @param handled handled
+     * @param value value
+     * @since 0.1.7
+     */
     private record InvocationOutcome(boolean handled, Object value) {
         private static InvocationOutcome notHandled() {
             return new InvocationOutcome(false, null);
         }
     }
 
+    /**
+     * MethodMatch.
+     *
+     * @param method method
+     * @param arguments arguments
+     * @param score score
+     * @since 0.1.7
+     */
     private record MethodMatch(Method method, Object[] arguments, int score) {
     }
 
+    /**
+     * ArgumentMatch.
+     *
+     * @param value value
+     * @param score score
+     * @since 0.1.7
+     */
     private record ArgumentMatch(Object value, int score) {
     }
 }

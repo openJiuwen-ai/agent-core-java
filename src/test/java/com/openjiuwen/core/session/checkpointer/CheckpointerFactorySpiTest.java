@@ -1,25 +1,35 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.checkpointer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
+
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for CheckpointerFactory SPI registration and RunnerConfig integration.
  */
 class CheckpointerFactorySpiTest {
-
     @BeforeEach
     void resetFactory() {
         CheckpointerFactory.setDefaultCheckpointer(null);
@@ -43,29 +53,68 @@ class CheckpointerFactorySpiTest {
     @Test
     @DisplayName("ServiceLoader discovers built-in redis provider")
     void serviceLoaderDiscoversRedisProvider() {
-        Checkpointer cp = CheckpointerFactory.create("redis", Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379")));
+        Checkpointer cp =
+            CheckpointerFactory.create("redis", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
         assertInstanceOf(RedisCheckpointer.class, cp);
     }
 
     @Test
+    @Tag("integration")
     @DisplayName("ServiceLoader discovers built-in persistence provider")
-    void serviceLoaderDiscoversPersistenceProvider() {
-        // Empty conf still creates a persistence checkpointer (default sqlite path).
-        Checkpointer cp = CheckpointerFactory.create("persistence", Map.of());
-        assertInstanceOf(PersistenceCheckpointer.class, cp);
+    void serviceLoaderDiscoversPersistenceProvider(@TempDir Path tempDir) {
+        Map<String, Object> sqliteConfig = Map.of("db_path", tempDir.resolve("provider.db").toString());
+        try (Checkpointer sqliteCheckpointer = CheckpointerFactory.create("persistence", sqliteConfig)) {
+            assertInstanceOf(PersistenceCheckpointer.class, sqliteCheckpointer);
+        }
 
-        com.openjiuwen.core.foundation.store.kv.InMemoryKVStore kvStore =
-                new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
-        Checkpointer cpWithStore = CheckpointerFactory.create("persistence", Map.of("kv_store", kvStore));
-        assertInstanceOf(PersistenceCheckpointer.class, cpWithStore);
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        try (Checkpointer injectedCheckpointer =
+                CheckpointerFactory.create("persistence", Map.of("kv_store", kvStore))) {
+            assertInstanceOf(PersistenceCheckpointer.class, injectedCheckpointer);
+        }
     }
 
     @Test
-    @DisplayName("redis provider aliases redis_checkpointer_cluster")
+    @DisplayName("persistence shelve retains the legacy in-memory fallback")
+    void persistenceShelveRetainsLegacyInMemoryFallback() {
+        try (Checkpointer checkpointer = CheckpointerFactory.create(
+                "persistence", Map.of("db_type", "shelve"))) {
+            assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
+        }
+    }
+
+    @Test
+    @DisplayName("unsupported persistence db_type retains the legacy in-memory fallback")
+    void unsupportedPersistenceTypeFallsBackToInMemory() {
+        try (Checkpointer checkpointer = CheckpointerFactory.create(
+                "persistence", Map.of("db_type", "sqlite3"))) {
+            assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
+        }
+    }
+
+    @Test
+    @DisplayName("non-string persistence db_type retains the legacy in-memory fallback")
+    void nonStringPersistenceTypeFallsBackToInMemory() {
+        try (Checkpointer checkpointer = CheckpointerFactory.create(
+                "persistence", Map.of("db_type", 123))) {
+            assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
+        }
+    }
+
+    @Test
+    @DisplayName("invalid persistence kv_store retains the legacy in-memory fallback")
+    void invalidPersistenceStoreFallsBackToInMemory() {
+        try (Checkpointer checkpointer = CheckpointerFactory.create(
+                "persistence", Map.of("kv_store", "not-a-kv-store"))) {
+            assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
+        }
+    }
+
+    @Test
+    @DisplayName("redis_checkpointer_cluster is registered as alias for redis")
     void redisClusterAliasIsRegistered() {
-        Checkpointer cp = CheckpointerFactory.create("redis_checkpointer_cluster", Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379")));
+        Checkpointer cp = CheckpointerFactory.create("redis_checkpointer_cluster",
+                Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
         assertInstanceOf(RedisCheckpointer.class, cp);
     }
 
@@ -76,7 +125,14 @@ class CheckpointerFactorySpiTest {
     void registerCustomProvider() {
         CheckpointerFactory.register("mock_custom", new CheckpointerProvider() {
             @Override
-            public Checkpointer create(Map<String, Object> conf) { return new InMemoryCheckpointer(); }
+            public String typeName() {
+                return "mock_custom";
+            }
+
+            @Override
+            public Checkpointer create(Map<String, Object> conf) {
+                return new InMemoryCheckpointer();
+            }
         });
         Checkpointer cp = CheckpointerFactory.create("mock_custom", Map.of());
         assertNotNull(cp);
@@ -89,13 +145,27 @@ class CheckpointerFactorySpiTest {
         // First register a custom provider
         CheckpointerFactory.register("test_override", new CheckpointerProvider() {
             @Override
-            public Checkpointer create(Map<String, Object> conf) { return new InMemoryCheckpointer(); }
+            public String typeName() {
+                return "test_override";
+            }
+
+            @Override
+            public Checkpointer create(Map<String, Object> conf) {
+                return new InMemoryCheckpointer();
+            }
         });
         // Then override it with a different implementation
         InMemoryCheckpointer custom = new InMemoryCheckpointer();
         CheckpointerFactory.register("test_override", new CheckpointerProvider() {
             @Override
-            public Checkpointer create(Map<String, Object> conf) { return custom; }
+            public String typeName() {
+                return "test_override";
+            }
+
+            @Override
+            public Checkpointer create(Map<String, Object> conf) {
+                return custom;
+            }
         });
 
         Checkpointer cp = CheckpointerFactory.create("test_override", Map.of());
@@ -105,8 +175,8 @@ class CheckpointerFactorySpiTest {
     @Test
     @DisplayName("Unknown type throws IllegalArgumentException")
     void unknownTypeThrowsException() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> CheckpointerFactory.create("nonexistent", Map.of()));
+        IllegalArgumentException ex =
+            assertThrows(IllegalArgumentException.class, () -> CheckpointerFactory.create("nonexistent", Map.of()));
         assertTrue(ex.getMessage().contains("nonexistent"));
     }
 
@@ -123,8 +193,8 @@ class CheckpointerFactorySpiTest {
     @DisplayName("setDefaultCheckpointer() replaces the global default")
     void setDefaultCheckpointerReplacesGlobal() {
         CheckpointerFactory.setDefaultCheckpointer(null);
-        Checkpointer redis = CheckpointerFactory.create("redis", Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379")));
+        Checkpointer redis =
+            CheckpointerFactory.create("redis", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
         CheckpointerFactory.setDefaultCheckpointer(redis);
 
         assertSame(redis, CheckpointerFactory.getCheckpointer());
@@ -133,12 +203,11 @@ class CheckpointerFactorySpiTest {
     @Test
     @DisplayName("Hot-swap: replace global default at runtime")
     void hotSwapGlobalDefault() {
-        CheckpointerFactory.setDefaultCheckpointer(
-                CheckpointerFactory.create("in_memory", Map.of()));
+        CheckpointerFactory.setDefaultCheckpointer(CheckpointerFactory.create("in_memory", Map.of()));
         assertInstanceOf(InMemoryCheckpointer.class, CheckpointerFactory.getCheckpointer());
 
-        Checkpointer redis = CheckpointerFactory.create("redis", Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379")));
+        Checkpointer redis =
+            CheckpointerFactory.create("redis", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
         CheckpointerFactory.setDefaultCheckpointer(redis);
         assertInstanceOf(RedisCheckpointer.class, CheckpointerFactory.getCheckpointer());
     }
@@ -168,19 +237,17 @@ class CheckpointerFactorySpiTest {
     @Test
     @DisplayName("RunnerConfig with redis type creates RedisCheckpointer as global default")
     void runnerConfigLoadsRedisCheckpointer() {
-        Map<String, Object> checkpointerConfig = Map.of(
-                "type", "redis",
-                "conf", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
-        RunnerConfig config = RunnerConfig.builder()
-                .distributedMode(false)
-                .checkpointerConfig(checkpointerConfig)
-                .build();
+        Map<String, Object> checkpointerConfig =
+            Map.of("type", "redis", "conf", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
+        RunnerConfig config =
+            RunnerConfig.builder().distributedMode(false).checkpointerConfig(checkpointerConfig).build();
         RunnerConfig.setRunnerConfig(config);
 
         // Simulate RunnerImpl.start() logic
-        CheckpointerConfig cpConfig = config.getCheckpointerConfig();
-        String type = cpConfig.getType();
-        Map<String, Object> conf = cpConfig.getConf();
+        Map<String, Object> cpConfig = config.getCheckpointerConfig();
+        String type = (String) cpConfig.getOrDefault("type", "in_memory");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> conf = (Map<String, Object>) cpConfig.getOrDefault("conf", Map.of());
         Checkpointer cp = CheckpointerFactory.create(type, conf);
         CheckpointerFactory.setDefaultCheckpointer(cp);
 
@@ -224,19 +291,16 @@ class CheckpointerFactorySpiTest {
         assertInstanceOf(InMemoryCheckpointer.class, cp);
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @DisplayName("create(CheckpointerConfig) with null throws IllegalArgumentException")
     void createWithNullConfigThrows() {
-        assertThrows(IllegalArgumentException.class,
-                () -> CheckpointerFactory.create((CheckpointerConfig) null));
+        assertThrows(IllegalArgumentException.class, () -> CheckpointerFactory.create((CheckpointerConfig) null));
     }
 
     @Test
     @DisplayName("create() with empty string type throws IllegalArgumentException")
     void createWithEmptyTypeThrows() {
-        assertThrows(IllegalArgumentException.class,
-                () -> CheckpointerFactory.create("", Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> CheckpointerFactory.create("", Map.of()));
     }
 
     @Test
@@ -252,8 +316,8 @@ class CheckpointerFactorySpiTest {
     @Test
     @DisplayName("setDefaultCheckpointer(null) resets to in-memory default")
     void setDefaultNullResetsToInMemory() {
-        Checkpointer redis = CheckpointerFactory.create("redis", Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379")));
+        Checkpointer redis =
+            CheckpointerFactory.create("redis", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
         CheckpointerFactory.setDefaultCheckpointer(redis);
         assertInstanceOf(RedisCheckpointer.class, CheckpointerFactory.getCheckpointer());
 
@@ -264,8 +328,8 @@ class CheckpointerFactorySpiTest {
     @Test
     @DisplayName("getCheckpointer(type) falls back to global default when type not in TYPE_CHECKPOINTERS")
     void getCheckpointerTypeFallsBackToGlobalDefault() {
-        Checkpointer redis = CheckpointerFactory.create("redis", Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379")));
+        Checkpointer redis =
+            CheckpointerFactory.create("redis", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
         CheckpointerFactory.setDefaultCheckpointer(redis);
 
         // "redis" type not in TYPE_CHECKPOINTERS, falls back to global default
@@ -289,20 +353,17 @@ class CheckpointerFactorySpiTest {
     @DisplayName("RunnerConfig with persistence type and kv_store creates PersistenceCheckpointer")
     void runnerConfigLoadsPersistenceCheckpointer() {
         com.openjiuwen.core.foundation.store.kv.InMemoryKVStore kvStore =
-                new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
-        Map<String, Object> checkpointerConfig = Map.of(
-                "type", "persistence",
-                "conf", Map.of("kv_store", kvStore));
-        RunnerConfig config = RunnerConfig.builder()
-                .distributedMode(false)
-                .checkpointerConfig(checkpointerConfig)
-                .build();
+            new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
+        Map<String, Object> checkpointerConfig = Map.of("type", "persistence", "conf", Map.of("kv_store", kvStore));
+        RunnerConfig config =
+            RunnerConfig.builder().distributedMode(false).checkpointerConfig(checkpointerConfig).build();
         RunnerConfig.setRunnerConfig(config);
 
         // Simulate RunnerImpl.start() logic
-        CheckpointerConfig cpConfig = config.getCheckpointerConfig();
-        String type = cpConfig.getType();
-        Map<String, Object> conf = cpConfig.getConf();
+        Map<String, Object> cpConfig = config.getCheckpointerConfig();
+        String type = (String) cpConfig.getOrDefault("type", "in_memory");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> conf = (Map<String, Object>) cpConfig.getOrDefault("conf", Map.of());
         Checkpointer cp = CheckpointerFactory.create(type, conf);
 
         assertInstanceOf(PersistenceCheckpointer.class, cp);
@@ -312,15 +373,14 @@ class CheckpointerFactorySpiTest {
     @DisplayName("RunnerConfig with in_memory type creates InMemoryCheckpointer")
     void runnerConfigLoadsInMemoryCheckpointer() {
         Map<String, Object> checkpointerConfig = Map.of("type", "in_memory", "conf", Map.of());
-        RunnerConfig config = RunnerConfig.builder()
-                .distributedMode(false)
-                .checkpointerConfig(checkpointerConfig)
-                .build();
+        RunnerConfig config =
+            RunnerConfig.builder().distributedMode(false).checkpointerConfig(checkpointerConfig).build();
         RunnerConfig.setRunnerConfig(config);
 
-        CheckpointerConfig cpConfig = config.getCheckpointerConfig();
-        String type = cpConfig.getType();
-        Map<String, Object> conf = cpConfig.getConf();
+        Map<String, Object> cpConfig = config.getCheckpointerConfig();
+        String type = (String) cpConfig.getOrDefault("type", "in_memory");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> conf = (Map<String, Object>) cpConfig.getOrDefault("conf", Map.of());
         Checkpointer cp = CheckpointerFactory.create(type, conf);
 
         assertInstanceOf(InMemoryCheckpointer.class, cp);
@@ -330,6 +390,11 @@ class CheckpointerFactorySpiTest {
     @DisplayName("Register and use provider that reads conf to configure behavior")
     void registerProviderThatReadsConf() {
         CheckpointerFactory.register("conf_aware", new CheckpointerProvider() {
+            @Override
+            public String typeName() {
+                return "conf_aware";
+            }
+
             @Override
             public Checkpointer create(Map<String, Object> conf) {
                 // Provider can read conf to customize behavior

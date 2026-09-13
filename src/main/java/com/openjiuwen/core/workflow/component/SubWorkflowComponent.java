@@ -6,34 +6,25 @@ package com.openjiuwen.core.workflow.component;
 
 import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.HasDrawable;
-import com.openjiuwen.core.workflow.Workflow;
 
 /**
- * Sub-workflow component view exposing the wrapped workflow and its internal drawable.
- *
- * <p>Mirrors Python's {@code SubWorkflowComponent} in
- * {@code openjiuwen/core/workflow/components/flow/workflow_comp.py}.</p>
+ * Interface for sub-workflow components that wrap an inner workflow graph.
+ * <p>
+ * Stub interface for the graph visualization module. Will be fully implemented
+ * when the workflow module is converted from Python.
+ * </p>
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.workflow_comp.SubWorkflowComponent}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public interface SubWorkflowComponent extends ComponentComposable {
-
     /**
-     * Gets Python's {@code sub_workflow} property.
-     *
-     * @return wrapped workflow
-     */
-    Workflow getSubWorkflow();
-
-    /**
-     * Gets Python's {@code sub_workflow._internal} drawable owner.
-     *
-     * @return drawable-owning internal workflow
+     * getSubWorkflowInternal.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     HasDrawable getSubWorkflowInternal();
-
-    /**
-     * Returns whether stream output caching is enabled.
-     *
-     * @return true when stream output is cached
-     */
-    boolean isCacheStream();
 }

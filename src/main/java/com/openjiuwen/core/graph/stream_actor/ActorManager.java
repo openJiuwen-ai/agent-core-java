@@ -8,242 +8,213 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
-import com.openjiuwen.core.session.stream.AsyncStreamQueue;
-import com.openjiuwen.core.workflow.NodeSpec;
-import com.openjiuwen.core.workflow.WorkflowSpec;
+import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 
 /**
- * Mirrors Python's {@code ActorManager} in
- * {@code openjiuwen/core/graph/stream_actor/manager.py}.
+ * Manages stream actors for inter-node stream communication in a graph.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.manager.ActorManager}.
+ * 
+ * @since 0.1.7
  */
 public class ActorManager {
-
-    private static final LoggerProtocol LOGGER = Loggers.GRAPH;
-    private static final int SUB_WORKFLOW_STREAM_MAX_SIZE = 10 * 1024;
-    private static final double DEFAULT_STREAM_GENERATOR_TIMEOUT_SECONDS = 1.0d;
+    private static final LoggerProtocol logger = Loggers.GRAPH;
+    private static final String COMPLETED_STREAM_SOURCES = "__completed_stream_sources__";
 
     private final Map<String, List<String>> streamEdges;
+    private final BaseSession session;
+    private final String completedStreamSourcesKey;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, StreamActor> streams = new LinkedHashMap<>();
+
+    /**
+     * StreamTransform.
+     * 
+     * @since 0.1.7
+     */
     private final StreamTransform streamsTransform = new StreamTransform();
-    private final Map<String, Set<ComponentAbility>> activeProducerIds = new ConcurrentHashMap<>();
-    private final Map<String, List<String>> consumerDict;
-    private final Map<String, Set<ComponentAbility>> producerAbilities = new LinkedHashMap<>();
-    private final Map<String, List<Set<String>>> streamSourceGroups = new LinkedHashMap<>();
-    private final ActorManagerSession workflowSession;
-    private final boolean subGraph;
-    private final AsyncStreamQueue subWorkflowStream;
+    private final boolean isSubGraph;
+    private final BlockingQueue<Object> subWorkflowStreamQueue;
+    private Set<String> restoredCompletedSources;
 
-    public ActorManager(
-            WorkflowSpec workflowSpec,
-            StreamGraph graph,
-            boolean subGraph,
-            ActorManagerSession session) {
-        this.streamEdges = copyStringListMap(workflowSpec.getStreamEdges());
-        this.consumerDict = buildReverseGraph(this.streamEdges);
-        this.workflowSession = session;
+    /**
+     * Create an ActorManager.
+     *
+     * @param streamEdges map of producer→[consumer] stream edges
+     * @param streamSourceGroups map of consumer→list of source groups (CNF OR-groups)
+     * @param graph the stream graph with registered consumers
+     * @param isSubGraph whether this is a sub-graph
+     * @param session the session for configuration
+     * @param compAbilitiesProvider function to get abilities for a component ID
+     * @since 0.1.7
+     */
+    public ActorManager(Map<String, List<String>> streamEdges,
+            Map<String, List<java.util.Set<String>>> streamSourceGroups, StreamGraph graph, boolean isSubGraph,
+            BaseSession session, java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
+        this.streamEdges = streamEdges != null ? streamEdges : new HashMap<>();
+        this.session = session;
+        this.completedStreamSourcesKey = completedStreamSourcesKey(session);
+        this.isSubGraph = isSubGraph;
+        this.subWorkflowStreamQueue = isSubGraph ? new LinkedBlockingQueue<>(10 * 1024) : null;
 
-        for (Map.Entry<String, List<String>> entry : consumerDict.entrySet()) {
+        // Build reverse graph: consumer → [producers]
+        Map<String, List<String>> reverseGraph = buildReverseGraph(this.streamEdges);
+        long streamGenTimeout = resolveStreamGenTimeout(session);
+
+        for (Map.Entry<String, List<String>> entry : reverseGraph.entrySet()) {
             String consumerId = entry.getKey();
-            List<String> producerIds = entry.getValue();
-            List<ComponentAbility> consumerStreamAbility = streamAbilitiesForConsumer(workflowSpec, consumerId);
-            LinkedHashSet<String> sources = new LinkedHashSet<>();
-
-            for (String producerId : producerIds) {
-                Set<ComponentAbility> abilities = producerAbilities.computeIfAbsent(
-                        producerId, ignored -> new LinkedHashSet<>());
-                for (ComponentAbility ability : abilitiesForNode(workflowSpec, producerId)) {
-                    if (ability == ComponentAbility.STREAM || ability == ComponentAbility.TRANSFORM) {
-                        abilities.add(ability);
-                        sources.add(sourceKey(producerId, ability));
-                    }
-                }
+            List<ComponentAbility> consumerStreamAbility = collectConsumerStreamAbilities(consumerId,
+                    compAbilitiesProvider);
+            List<java.util.Set<String>> groups = resolveSourceGroups(consumerId, entry.getValue(),
+                    streamSourceGroups, compAbilitiesProvider);
+            StreamConsumer consumer = graph.getNode(consumerId);
+            if (consumer != null) {
+                streams.put(consumerId, new StreamActor(consumerId, consumer, consumerStreamAbility,
+                        groups, streamGenTimeout));
             }
-
-            List<List<String>> sourceGroups = sourceGroupsForConsumer(workflowSpec, consumerId, sources);
-            streamSourceGroups.put(consumerId, toSetGroups(sourceGroups));
-            streams.put(consumerId, new StreamActor(
-                    consumerId,
-                    graph.getNode(consumerId),
-                    consumerStreamAbility,
-                    sourceGroups,
-                    streamGeneratorTimeoutSeconds(session)));
         }
-
-        this.subGraph = subGraph;
-        this.subWorkflowStream = subGraph ? new AsyncStreamQueue(SUB_WORKFLOW_STREAM_MAX_SIZE) : null;
     }
 
     /**
-     * Returns the sub-workflow stream queue.
+     * Legacy constructor without stream source groups. Equivalent to passing a
+     * null source-groups map; the manager builds flat single-source groups.
      *
-     * @return sub-workflow stream queue
+     * @param streamEdges map of producer→[consumer] stream edges
+     * @param graph the stream graph with registered consumers
+     * @param isSubGraph whether this is a sub-graph
+     * @param session the session for configuration
+     * @param compAbilitiesProvider function to get abilities for a component ID
+     * @since 0.1.7
      */
-    public AsyncStreamQueue subWorkflowStream() {
-        if (!subGraph) {
-            throw ErrorHelper.buildError(
-                    StatusCode.GRAPH_STREAM_ACTOR_EXECUTION_ERROR,
-                    "reason",
+    public ActorManager(Map<String, List<String>> streamEdges, StreamGraph graph, boolean isSubGraph,
+            BaseSession session,
+            java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
+        this(streamEdges, null, graph, isSubGraph, session, compAbilitiesProvider);
+    }
+
+    /**
+     * Get the sub-workflow stream queue.
+     * 
+     * @return the sub-workflow blocking queue
+     * @since 0.1.7
+     */
+    public BlockingQueue<Object> subWorkflowStream() {
+        if (!isSubGraph) {
+            throw ErrorHelper.buildError(StatusCode.GRAPH_STREAM_ACTOR_EXECUTION_ERROR, "reason",
                     "only sub graph has sub_workflow_stream");
         }
-        return subWorkflowStream;
+        return subWorkflowStreamQueue;
     }
 
     /**
-     * Records that a producer emitted a stream frame with the given ability.
-     *
-     * @param producerId producer node id
-     * @param ability component ability
+     * getStreamTransform.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public void activeProduceAbility(String producerId, ComponentAbility ability) {
-        Set<ComponentAbility> abilities = activeProducerIds.computeIfAbsent(
-                producerId,
-                ignored -> ConcurrentHashMap.newKeySet());
-        abilities.add(ability);
-    }
-
-    /**
-     * Marks a producer as done in workflow state.
-     *
-     * @param producerId producer node id
-     */
-    public void markProducerDone(String producerId) {
-        WorkflowCommitState state = workflowSession.state();
-        List<String> finishedStreamNodes = mutableStringList(state.getWorkflowState("finished_stream_nodes"));
-        if (!finishedStreamNodes.contains(producerId)) {
-            finishedStreamNodes.add(producerId);
-        }
-        state.updateAndCommitWorkflowState(Map.of("finished_stream_nodes", finishedStreamNodes));
-    }
-
-    /**
-     * Returns true when a stream source is known to be inactive for this run.
-     *
-     * @param consumerId consumer node id
-     * @param producerId producer node id
-     * @return whether this source should be sanitized
-     */
-    public boolean shouldSanitizeStreamSource(String consumerId, String producerId) {
-        List<Set<String>> sourceGroups = streamSourceGroups.getOrDefault(consumerId, List.of());
-        List<Set<String>> matchedGroups = new ArrayList<>();
-        for (Set<String> group : sourceGroups) {
-            for (String sourceKey : group) {
-                if (sourceKeyMatchesProducer(sourceKey, producerId)) {
-                    matchedGroups.add(group);
-                    break;
-                }
-            }
-        }
-        if (matchedGroups.isEmpty()) {
-            return true;
-        }
-
-        for (Set<String> group : matchedGroups) {
-            if (group.size() == 1) {
-                return false;
-            }
-            if (groupHasActiveAlternative(group, producerId)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Returns stream transform helpers.
-     *
-     * @return stream transform helpers
-     */
-    public StreamTransform streamTransform() {
+    public StreamTransform getStreamTransform() {
         return streamsTransform;
     }
 
     /**
-     * Sends a stream frame from producer to every configured stream consumer.
-     *
-     * @param producerId producer node id
-     * @param messageContent message content
-     * @param ability producer ability
+     * Produce a stream message from a producer node to its consumers.
+     * 
+     * @param producerId the producing node
+     * @param messageContent the message content
+     * @param ability the ability type (STREAM/TRANSFORM)
      * @param firstFrame whether this is the first frame
+     * @since 0.1.7
      */
     public void produce(String producerId, Object messageContent, ComponentAbility ability, boolean firstFrame) {
-        activeProduceAbility(producerId, ability);
+        String activeSourceKey = sourceKey(producerId, ability);
+        Set<String> completedSources = completedSourcesSnapshot(activeSourceKey, firstFrame);
+
         List<String> consumerIds = streamEdges.get(producerId);
         if (consumerIds != null && !consumerIds.isEmpty()) {
             for (String consumerId : consumerIds) {
-                StreamActor actor = getActor(consumerId);
-                Map<String, Object> message = new LinkedHashMap<>();
-                message.put(producerId, messageContent);
-                actor.send(message, ability, firstFrame, producerId);
-            }
-            return;
-        }
-
-        LOGGER.warning("Discard chunk send from [{}] to none consumer", producerId);
-    }
-
-    /**
-     * Sends an end message for a producer/ability pair.
-     *
-     * @param producerId producer node id
-     * @param ability producer ability
-     */
-    public void endMessage(String producerId, ComponentAbility ability) {
-        produce(producerId, "END_" + producerId, ability, false);
-    }
-
-    /**
-     * Creates consumer stream inputs and closes already-finished inactive producers.
-     *
-     * @param consumerId consumer node id
-     * @param ability consumer ability
-     * @param schema stream schema
-     * @param streamCallback optional callback invoked by the underlying stream processor
-     * @return generated stream input map
-     */
-    public Map<String, Object> consume(
-            String consumerId,
-            ComponentAbility ability,
-            Map<String, Object> schema,
-            Consumer<Map<String, Object>> streamCallback) {
-        StreamActor actor = getActor(consumerId);
-        Map<String, Object> consumeIter = actor.generator(ability, schema, streamCallback);
-        List<String> producerIds = consumerDict.getOrDefault(consumerId, List.of());
-        List<String> finishedStreamNodes = mutableStringList(
-                workflowSession.state().getWorkflowState("finished_stream_nodes"));
-
-        for (String producerId : producerIds) {
-            if (!finishedStreamNodes.contains(producerId)) {
-                continue;
-            }
-            Set<ComponentAbility> allAbilities = producerAbilities.getOrDefault(producerId, Set.of());
-            Set<ComponentAbility> activeAbilities = activeProducerIds.getOrDefault(producerId, Set.of());
-            if (activeAbilities.isEmpty()) {
-                for (ComponentAbility producerAbility : allAbilities) {
-                    endMessage(producerId, producerAbility);
-                    activeProduceAbility(producerId, producerAbility);
+                StreamActor actor = streams.get(consumerId);
+                if (actor != null) {
+                    actor.seedCompletedSources(completedSources);
+                    Map<String, Object> message = Map.of(producerId, messageContent);
+                    actor.send(message, ability, firstFrame, producerId);
                 }
             }
+        } else {
+            logger.warning("Discard chunk send from [{}] to none consumer", producerId);
         }
-        return consumeIter;
     }
 
     /**
-     * Shuts down every managed stream actor.
+     * Send an end message from a producer node.
+     * 
+     * @param producerId the producing node
+     * @param ability the ability type
+     * @since 0.1.7
+     */
+    public void endMessage(String producerId, ComponentAbility ability) {
+        String endContent = "END_" + producerId;
+        produce(producerId, endContent, ability, false);
+        updateCompletedSource(sourceKey(producerId, ability), true);
+    }
+
+    /**
+     * consume.
+     * 
+     * @param consumerId consumerId
+     * @param ability ability
+     * @param schema schema
+     * @param streamCallback streamCallback
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> consume(String consumerId, ComponentAbility ability, Object schema,
+            Consumer<Object> streamCallback) {
+        StreamActor actor = streams.get(consumerId);
+        if (actor != null) {
+            Map<String, Object> schemaMap = (schema instanceof Map) ? (Map<String, Object>) schema : null;
+            return actor.generator(ability, schemaMap, streamCallback);
+        }
+        return Map.of();
+    }
+
+    /**
+     * Wait until all active stream actors finish processing their queued messages.
+     * 
+     * @since 0.1.7
+     */
+    public void awaitCompletion() {
+        for (StreamActor actor : streams.values()) {
+            actor.awaitCompletion();
+        }
+    }
+
+    /**
+     * Shutdown all stream actors.
+     * 
+     * @since 0.1.7
      */
     public void shutdown() {
         for (StreamActor actor : streams.values()) {
@@ -251,151 +222,231 @@ public class ActorManager {
         }
     }
 
-    private StreamActor getActor(String consumerId) {
-        return streams.get(consumerId);
-    }
+    // ---- Helpers ----
 
-    private boolean groupHasActiveAlternative(Set<String> group, String producerId) {
-        for (String sourceKey : group) {
-            SourceRef sourceRef = splitSourceKey(sourceKey);
-            if (sourceRef.producerId().equals(producerId)) {
-                continue;
-            }
-            if (activeProducerIds.getOrDefault(sourceRef.producerId(), Set.of()).contains(sourceRef.ability())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean sourceKeyMatchesProducer(String sourceKey, String producerId) {
-        return splitSourceKey(sourceKey).producerId().equals(producerId);
-    }
-
-    private static SourceRef splitSourceKey(String sourceKey) {
-        int splitIndex = sourceKey.lastIndexOf('-');
-        if (splitIndex < 0) {
-            throw new IllegalArgumentException("Unknown component ability: " + sourceKey);
-        }
-        String producerId = sourceKey.substring(0, splitIndex);
-        String abilityName = sourceKey.substring(splitIndex + 1);
-        for (ComponentAbility ability : ComponentAbility.values()) {
-            if (ability.getAbilityName().equals(abilityName)) {
-                return new SourceRef(producerId, ability);
-            }
-        }
-        throw new IllegalArgumentException("Unknown component ability: " + abilityName);
-    }
-
-    private static List<ComponentAbility> streamAbilitiesForConsumer(WorkflowSpec workflowSpec, String consumerId) {
-        List<ComponentAbility> abilities = new ArrayList<>();
-        for (ComponentAbility ability : abilitiesForNode(workflowSpec, consumerId)) {
-            if (ability == ComponentAbility.COLLECT || ability == ComponentAbility.TRANSFORM) {
-                abilities.add(ability);
-            }
-        }
-        return Collections.unmodifiableList(abilities);
-    }
-
-    private static List<ComponentAbility> abilitiesForNode(WorkflowSpec workflowSpec, String nodeId) {
-        NodeSpec nodeSpec = workflowSpec.getCompConfigs().get(nodeId);
-        if (nodeSpec == null || nodeSpec.getAbilities() == null) {
-            return List.of();
-        }
-        return nodeSpec.getAbilities();
-    }
-
-    private static List<List<String>> sourceGroupsForConsumer(
-            WorkflowSpec workflowSpec,
-            String consumerId,
-            LinkedHashSet<String> sources) {
-        List<List<String>> configuredGroups = workflowSpec.getStreamSourceGroups().get(consumerId);
-        if (configuredGroups != null && !configuredGroups.isEmpty()) {
-            return normalizeSourceGroups(configuredGroups);
-        }
-
-        List<String> sortedSources = new ArrayList<>(sources);
-        sortedSources.sort(Comparator.naturalOrder());
-        List<List<String>> singletonGroups = new ArrayList<>();
-        for (String source : sortedSources) {
-            singletonGroups.add(List.of(source));
-        }
-        return Collections.unmodifiableList(singletonGroups);
-    }
-
-    private static List<List<String>> normalizeSourceGroups(List<List<String>> sourceGroups) {
-        List<List<String>> normalized = new ArrayList<>();
-        for (List<String> group : sourceGroups) {
-            if (group == null || group.isEmpty()) {
-                continue;
-            }
-            normalized.add(Collections.unmodifiableList(new ArrayList<>(group)));
-        }
-        return Collections.unmodifiableList(normalized);
-    }
-
-    private static List<Set<String>> toSetGroups(List<List<String>> sourceGroups) {
-        List<Set<String>> normalized = new ArrayList<>();
-        for (List<String> group : sourceGroups) {
-            if (group == null || group.isEmpty()) {
-                continue;
-            }
-            normalized.add(Collections.unmodifiableSet(new LinkedHashSet<>(group)));
-        }
-        return Collections.unmodifiableList(normalized);
-    }
-
-    private static double streamGeneratorTimeoutSeconds(ActorManagerSession session) {
-        Object timeout = session.config().getEnv(SessionConstants.STREAM_INPUT_GEN_TIMEOUT_KEY);
-        if (timeout instanceof Number number) {
-            return number.doubleValue();
-        }
-        if (timeout instanceof String value) {
-            try {
-                return Double.parseDouble(value);
-            } catch (NumberFormatException ignored) {
-                return DEFAULT_STREAM_GENERATOR_TIMEOUT_SECONDS;
-            }
-        }
-        return DEFAULT_STREAM_GENERATOR_TIMEOUT_SECONDS;
-    }
-
+    /**
+     * buildReverseGraph.
+     *
+     * @param graph graph
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, List<String>> buildReverseGraph(Map<String, List<String>> graph) {
-        Map<String, List<String>> reverseGraph = new LinkedHashMap<>();
+        Map<String, List<String>> reverse = new HashMap<>();
         for (Map.Entry<String, List<String>> entry : graph.entrySet()) {
             String source = entry.getKey();
             for (String target : entry.getValue()) {
-                reverseGraph.computeIfAbsent(target, ignored -> new ArrayList<>()).add(source);
+                reverse.computeIfAbsent(target, k -> new ArrayList<>()).add(source);
             }
         }
-        return reverseGraph;
+        return reverse;
+    }
+
+    /**
+     * Resolve the stream generator timeout from the session config, defaulting
+     * to 1 when unset or non-numeric.
+     *
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
+    private static long resolveStreamGenTimeout(BaseSession session) {
+        if (session == null || session.config() == null) {
+            return 1L;
+        }
+        Object timeout = session.config().getEnv(SessionConstants.STREAM_INPUT_GEN_TIMEOUT_KEY);
+        if (timeout instanceof Number) {
+            return ((Number) timeout).longValue();
+        }
+        return 1L;
+    }
+
+    private synchronized Set<String> restoredCompletedSources() {
+        if (restoredCompletedSources != null) {
+            return restoredCompletedSources;
+        }
+        restoredCompletedSources = new HashSet<>();
+        if (session == null || !(session.state() instanceof WorkflowStateCollection stateCollection)) {
+            return restoredCompletedSources;
+        }
+        Object stored = stateCollection.getWorkflow(completedStreamSourcesKey);
+        if (stored instanceof Map<?, ?> storedMap) {
+            for (Map.Entry<?, ?> entry : storedMap.entrySet()) {
+                if (Boolean.TRUE.equals(entry.getValue())) {
+                    restoredCompletedSources.add(String.valueOf(entry.getKey()));
+                }
+            }
+        }
+        return restoredCompletedSources;
+    }
+
+    private synchronized Set<String> completedSourcesSnapshot(String activeSourceKey, boolean isFirstFrame) {
+        if (isFirstFrame) {
+            updateCompletedSource(activeSourceKey, false);
+        }
+        Set<String> completedSources = new HashSet<>(restoredCompletedSources());
+        completedSources.remove(activeSourceKey);
+        return completedSources;
+    }
+
+    private synchronized void updateCompletedSource(String sourceKey, boolean isCompleted) {
+        Set<String> restoredSources = restoredCompletedSources();
+        if (isCompleted) {
+            restoredSources.add(sourceKey);
+        } else {
+            restoredSources.remove(sourceKey);
+        }
+        if (session == null || !(session.state() instanceof WorkflowStateCollection stateCollection)) {
+            return;
+        }
+        Map<String, Object> completedSources = new HashMap<>();
+        Object stored = stateCollection.getWorkflow(completedStreamSourcesKey);
+        if (stored instanceof Map<?, ?> storedMap) {
+            for (Map.Entry<?, ?> entry : storedMap.entrySet()) {
+                completedSources.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        if (isCompleted) {
+            completedSources.put(sourceKey, true);
+        } else {
+            completedSources.remove(sourceKey);
+        }
+
+        Map<String, Object> update = new HashMap<>();
+        update.put(completedStreamSourcesKey, completedSources.isEmpty() ? null : completedSources);
+        stateCollection.updateWorkflow(update);
+        if (stateCollection instanceof WorkflowCommitState commitState) {
+            commitState.commitWorkflow();
+        }
     }
 
     private static String sourceKey(String producerId, ComponentAbility ability) {
-        return producerId + "-" + ability.getAbilityName();
+        return producerId + "-" + ability.name();
     }
 
-    private static Map<String, List<String>> copyStringListMap(Map<String, List<String>> rawMap) {
-        Map<String, List<String>> copied = new LinkedHashMap<>();
-        if (rawMap == null) {
-            return copied;
+    private static String completedStreamSourcesKey(BaseSession session) {
+        if (session == null) {
+            return COMPLETED_STREAM_SOURCES;
         }
-        for (Map.Entry<String, List<String>> entry : rawMap.entrySet()) {
-            copied.put(entry.getKey(), List.copyOf(entry.getValue()));
+        if (session instanceof NodeSession nodeSession) {
+            return COMPLETED_STREAM_SOURCES + ":" + nodeSession.workflowId() + ":" + nodeSession.nodeId();
         }
-        return copied;
+        if (session instanceof WorkflowSession workflowSession) {
+            return COMPLETED_STREAM_SOURCES + ":" + workflowSession.workflowId();
+        }
+        return COMPLETED_STREAM_SOURCES + ":" + session.sessionId();
     }
 
-    private static List<String> mutableStringList(Object value) {
-        List<String> values = new ArrayList<>();
-        if (value instanceof Collection<?> collection) {
-            for (Object item : collection) {
-                values.add(String.valueOf(item));
+    /**
+     * Collect the COLLECT/TRANSFORM abilities a consumer declares as its
+     * stream-consuming abilities.
+     *
+     * @param consumerId consumerId
+     * @param compAbilitiesProvider compAbilitiesProvider
+     * @return the result
+     * @since 0.1.7
+     */
+    private static List<ComponentAbility> collectConsumerStreamAbilities(String consumerId,
+            java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
+        List<ComponentAbility> abilities = compAbilitiesProvider.apply(consumerId);
+        List<ComponentAbility> consumerStreamAbility = new ArrayList<>();
+        if (abilities == null) {
+            return consumerStreamAbility;
+        }
+        for (ComponentAbility a : abilities) {
+            if (a == ComponentAbility.COLLECT || a == ComponentAbility.TRANSFORM) {
+                consumerStreamAbility.add(a);
             }
         }
-        return values;
+        return consumerStreamAbility;
     }
 
-    private record SourceRef(String producerId, ComponentAbility ability) {
+    /**
+     * Resolve the source groups for a consumer. Prefer the pre-computed
+     * stream_source_groups (mirrors Python WorkflowSpec.stream_source_groups);
+     * fall back to one flat group per producer ability for legacy callers.
+     *
+     * @param consumerId consumerId
+     * @param producerIds producerIds
+     * @param streamSourceGroups streamSourceGroups
+     * @param compAbilitiesProvider compAbilitiesProvider
+     * @return the result
+     * @since 0.1.7
+     */
+    private static List<java.util.Set<String>> resolveSourceGroups(String consumerId, List<String> producerIds,
+            Map<String, List<java.util.Set<String>>> streamSourceGroups,
+            java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
+        List<java.util.Set<String>> groups = null;
+        if (streamSourceGroups != null) {
+            groups = streamSourceGroups.get(consumerId);
+        }
+        if (groups == null || groups.isEmpty()) {
+            return buildFlatSourceGroups(producerIds, compAbilitiesProvider);
+        }
+        return new ArrayList<>(groups);
+    }
+
+    /**
+     * Build one flat single-source group per producer ability as a fallback when
+     * no pre-computed source groups are supplied. Mirrors the legacy behavior
+     * of {@link ActorManager#ActorManager(Map, StreamGraph, boolean, BaseSession,
+     * java.util.function.Function)}.
+     *
+     * @param producerIds producerIds
+     * @param compAbilitiesProvider compAbilitiesProvider
+     * @return the result
+     * @since 0.1.7
+     */
+    private static List<java.util.Set<String>> buildFlatSourceGroups(List<String> producerIds,
+            java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
+        Set<String> flatSources = collectFlatSources(producerIds, compAbilitiesProvider);
+        List<java.util.Set<String>> groups = new ArrayList<>();
+        for (String source : new java.util.TreeSet<>(flatSources)) {
+            Set<String> single = new HashSet<>();
+            single.add(source);
+            groups.add(single);
+        }
+        return groups;
+    }
+
+    /**
+     * Collect STREAM/TRANSFORM source keys (producer-id + ability name) from
+     * every producer in the list. Returns the union set across all producers.
+     *
+     * @param producerIds producerIds
+     * @param compAbilitiesProvider compAbilitiesProvider
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Set<String> collectFlatSources(List<String> producerIds,
+            java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
+        Set<String> flatSources = new HashSet<>();
+        for (String producerId : producerIds) {
+            appendProducerStreamSources(producerId, compAbilitiesProvider, flatSources);
+        }
+        return flatSources;
+    }
+
+    /**
+     * Append the STREAM/TRANSFORM source keys of a single producer to the
+     * given sink set.
+     *
+     * @param producerId producerId
+     * @param compAbilitiesProvider compAbilitiesProvider
+     * @param sink sink
+     * @since 0.1.7
+     */
+    private static void appendProducerStreamSources(String producerId,
+            java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider,
+            Set<String> sink) {
+        List<ComponentAbility> producerAbilities = compAbilitiesProvider.apply(producerId);
+        if (producerAbilities == null) {
+            return;
+        }
+        for (ComponentAbility a : producerAbilities) {
+            if (a == ComponentAbility.STREAM || a == ComponentAbility.TRANSFORM) {
+                sink.add(producerId + "-" + a.name());
+            }
+        }
     }
 }

@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
+import com.openjiuwen.core.session.interaction.WorkflowInteraction;
 import com.openjiuwen.core.session.tracer.NodeStatus;
 import com.openjiuwen.core.session.tracer.TraceExtWorkflowHandler;
 
@@ -271,10 +272,6 @@ public class OtelWorkflowHandler extends TraceExtWorkflowHandler {
             LocalDateTime startTime = LocalDateTime.now();
             otelSpan.setAttribute(SemConv.GEN_AI_SYSTEM, SemConv.GEN_AI_SYSTEM_VALUE);
             otelSpan.setAttribute(SemConv.OJ_TRACE_ID, traceId);
-            // Workflow events carry no TraceWorkflowSpan; fall back to tracer-injected session id.
-            if (sessionId != null && !sessionId.isBlank()) {
-                otelSpan.setAttribute(SemConv.OJ_SESSION_ID, sessionId);
-            }
             otelSpan.setAttribute(SemConv.OJ_INVOKE_ID, invokeId);
             otelSpan.setAttribute(SemConv.OJ_PARENT_NODE_ID, parent);
             otelSpan.setAttribute(SemConv.OJ_START_TIME, String.valueOf(startTime));
@@ -441,7 +438,8 @@ public class OtelWorkflowHandler extends TraceExtWorkflowHandler {
         if (state == null) {
             return;
         }
-        if (isGraphInterrupt(exception)) {
+        if (exception instanceof GraphInterrupt
+                || exception instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper) {
             state.getSpan().setAttribute(SemConv.OJ_STATUS, NodeStatus.INTERRUPTED.getValue());
             state.getSpan().setAttribute(SemConv.OJ_WORKFLOW_ERROR_MESSAGE,
                     String.valueOf(exception.toString()));
@@ -529,23 +527,6 @@ public class OtelWorkflowHandler extends TraceExtWorkflowHandler {
      */
     private static String getMessage(Throwable error) {
         return error.getMessage() != null ? error.getMessage() : error.toString();
-    }
-
-    /**
-     * Whether the throwable is (or wraps) a {@link GraphInterrupt}.
-     *
-     * <p>Develop does not expose {@code WorkflowInteraction.GraphInterruptRuntimeWrapper};
-     * walk the cause chain instead.</p>
-     */
-    private static boolean isGraphInterrupt(Throwable exception) {
-        Throwable current = exception;
-        while (current != null) {
-            if (current instanceof GraphInterrupt) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
     }
 
     /**

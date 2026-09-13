@@ -42,7 +42,6 @@ public final class MilvusVectorStoreProvider implements VectorStoreProvider {
      */
     @Override
     public BaseVectorStore create(Map<String, Object> conf) {
-        MilvusVectorStore asyncStore = new MilvusVectorStore(conf);
-        return BaseVectorStore.fromAsync(asyncStore);
+        return new MilvusVectorStore(conf);
     }
 }

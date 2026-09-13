@@ -4,29 +4,45 @@
 
 package com.openjiuwen.core.memory.migration.operation;
 
-import lombok.Getter;
+import lombok.Data;
 
 /**
- * Base class for all operations. Pure DTO, no execution logic.
- *
- * <p>Mirrors Python's {@code BaseOperation} in
- * {@code openjiuwen/core/memory/migration/operation/base_operation.py}.</p>
+ * BaseOperation.
+ * 
+ * @since 0.1.7
  */
-@Getter
+@Data
 public abstract class BaseOperation {
-
     private final OperationMetadata metadata;
 
+    /**
+     * BaseOperation.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
+     */
     protected BaseOperation(OperationMetadata metadata) {
         this.metadata = metadata;
     }
 
+    /**
+     * getSchemaVersion.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int getSchemaVersion() {
         return metadata.getSchemaVersion();
     }
 
+    /**
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getDescription() {
-        String description = metadata.getDescription();
-        return description != null ? description : getClass().getSimpleName();
+        String desc = metadata.getDescription();
+        return desc != null ? desc : getClass().getSimpleName();
     }
 }

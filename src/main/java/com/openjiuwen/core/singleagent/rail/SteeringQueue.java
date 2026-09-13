@@ -22,9 +22,19 @@ public interface SteeringQueue {
 
     /**
      * Drain pending steering instructions in FIFO order.
-     * 
+     *
      * @return drained steering instructions
      * @since 0.1.7
      */
     List<String> drainSteering();
+
+    /**
+     * Whether at least one steering instruction is pending without consuming it.
+     *
+     * @return true when pending steering exists
+     * @since 0.1.15
+     */
+    default boolean hasPending() {
+        return false;
+    }
 }

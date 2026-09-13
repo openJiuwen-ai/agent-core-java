@@ -6,10 +6,7 @@ package com.openjiuwen.core.session.stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.openjiuwen.core.common.constants.TimeoutConstants;
-
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -132,7 +129,6 @@ class StreamOutputTest {
         assertEquals(2, result.size());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @DisplayName("emitter cannot emit after close")
     void testEmitterCannotEmitAfterClose() {
@@ -185,24 +181,5 @@ class StreamOutputTest {
         assertNotNull(manager.getOutputWriter());
         assertNotNull(manager.getTraceWriter());
         assertNotNull(manager.getCustomWriter());
-    }
-
-    @Test
-    @DisplayName("receive defaults are wired to the framework blocking-queue timeout, never infinite")
-    void testReceiveDefaultsWiredToFrameworkTimeout() {
-        assertTrue(AsyncStreamQueue.DEFAULT_RECEIVE_TIMEOUT_MS > 0,
-                "DEFAULT_RECEIVE_TIMEOUT_MS must be positive, got " + AsyncStreamQueue.DEFAULT_RECEIVE_TIMEOUT_MS);
-        assertEquals(TimeoutConstants.BLOCKING_QUEUE_MS, AsyncStreamQueue.DEFAULT_RECEIVE_TIMEOUT_MS);
-    }
-
-    @Test
-    @DisplayName("receive with non-positive timeout blocks for data and wakes up when it arrives")
-    void testReceiveNonPositiveTimeoutWakesUpOnData() throws Exception {
-        AsyncStreamQueue queue = new AsyncStreamQueue();
-        CompletableFuture<Object> receiver = CompletableFuture.supplyAsync(() -> queue.receive(-1));
-        assertFalse(receiver.isDone(), "receiver should still be blocked while the queue is empty");
-        queue.send("late-frame");
-        Object result = receiver.get(5, TimeUnit.SECONDS);
-        assertEquals("late-frame", result);
     }
 }

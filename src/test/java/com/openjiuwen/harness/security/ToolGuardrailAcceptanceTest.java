@@ -4,82 +4,97 @@
 
 package com.openjiuwen.harness.security;
 
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
+import com.openjiuwen.harness.rails.security.PermissionInterruptRail;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 /**
- * Issue #71 acceptance coverage for the tool guardrail dual pipeline, asserted at the
- * {@link PermissionEngine} layer (the develop rail stack differs from 830's).
+ * Issue #71 acceptance E2E for the tool guardrail dual pipeline.
  *
  * <p>Assembles a single {@code permissions} config exercising both pipelines at once:
  * {@code tools.bash=ask}, a {@code cat}/{@code curl} command rule pair (Pipeline A), and a
- * guarded-file {@code read=allow}/{@code write=deny} file-guard rule (Pipeline B). The
- * engine must satisfy the four acceptance cases:
+ * {@code /etc/hosts} {@code read=allow}/{@code write=deny} file-guard rule (Pipeline B). The
+ * resulting {@link PermissionEngine} + {@link PermissionInterruptRail} must satisfy the four
+ * acceptance cases:
  * <ol>
- *   <li>{@code cat <guarded>} (bash) &rarr; ALLOW;</li>
- *   <li>{@code curl http://x} (bash) &rarr; DENY;</li>
- *   <li>guarded-file read (read_file) &rarr; ALLOW (file_guard read=allow);</li>
- *   <li>guarded-file write (write_file) &rarr; DENY (file_guard write=deny).</li>
+ *   <li>{@code cat /etc/hosts} (bash) &rarr; rail approve;</li>
+ *   <li>{@code curl http://x} (bash) &rarr; rail reject with {@code [PERMISSION_DENIED]};</li>
+ *   <li>{@code /etc/hosts} read (read_file) &rarr; rail approve (file_guard read=allow);</li>
+ *   <li>{@code /etc/hosts} write (write_file) &rarr; rail reject (file_guard write=deny).</li>
  * </ol>
+ *
+ * @since 0.1.15
  */
 class ToolGuardrailAcceptanceTest {
 
-    @TempDir
-    Path workspace;
-
-    private String guarded;
-
-    private PermissionEngine buildEngine() {
-        Path guardedPath = workspace.resolve("etc/hosts");
-        guarded = guardedPath.toAbsolutePath().normalize().toString().replace("\\", "/");
-        return new PermissionEngine(acceptancePermissions(), null, null,
-                workspace.toAbsolutePath().normalize());
-    }
+    private static final Path WORKSPACE = Path.of("/work");
 
     @Nested
     class CommandPermissions {
         @Test
-        void catAllow_bash_isAllowed() {
-            PermissionEngine engine = buildEngine();
-            PermissionResult result = engine.checkPermission("bash", Map.of("command", "cat " + guarded));
-            assertThat(result.getPermission()).isEqualTo(PermissionLevel.ALLOW);
+        void catAllow_bash_isApprovedByRail() {
+            PermissionInterruptRail rail = buildRail();
+
+            AgentCallbackContext ctx = ctxFor("bash", Map.of("command", "cat /etc/hosts"));
+
+            assertThatCode(() -> rail.beforeToolCall(ctx)).doesNotThrowAnyException();
+            assertThat(ctx.getExtra()).doesNotContainKey("_skip_tool");
         }
 
         @Test
-        void curlDeny_bash_isDenied() {
-            PermissionEngine engine = buildEngine();
-            PermissionResult result = engine.checkPermission("bash", Map.of("command", "curl http://x"));
-            assertThat(result.getPermission()).isEqualTo(PermissionLevel.DENY);
+        void curlDeny_bash_isRejectedWithPermissionDenied() {
+            PermissionInterruptRail rail = buildRail();
+
+            AgentCallbackContext ctx = ctxFor("bash", Map.of("command", "curl http://x"));
+
+            rail.beforeToolCall(ctx);
+            assertThat(ctx.getExtra()).containsEntry("_skip_tool", Boolean.TRUE);
+            assertThat(toolResultOf(ctx)).asString().contains("[PERMISSION_DENIED]");
         }
     }
 
     @Nested
     class FilePermissions {
         @Test
-        void guardedRead_fileGuardAllow_isAllowed() {
-            PermissionEngine engine = buildEngine();
-            PermissionResult result = engine.checkPermission("read_file", Map.of("file_path", guarded));
-            assertThat(result.getPermission()).isEqualTo(PermissionLevel.ALLOW);
+        void etcHostsRead_fileGuardAllow_isApprovedByRail() {
+            PermissionInterruptRail rail = buildRail();
+
+            AgentCallbackContext ctx = ctxFor("read_file", Map.of("file_path", "/etc/hosts"));
+
+            assertThatCode(() -> rail.beforeToolCall(ctx)).doesNotThrowAnyException();
+            assertThat(ctx.getExtra()).doesNotContainKey("_skip_tool");
         }
 
         @Test
-        void guardedWrite_fileGuardDeny_isDenied() {
-            PermissionEngine engine = buildEngine();
-            PermissionResult result = engine.checkPermission("write_file", Map.of("file_path", guarded));
-            assertThat(result.getPermission()).isEqualTo(PermissionLevel.DENY);
-            assertThat(result.getMatchedRule()).contains("file_guard");
+        void etcHostsWrite_fileGuardDeny_isRejectedByRail() {
+            PermissionInterruptRail rail = buildRail();
+
+            AgentCallbackContext ctx = ctxFor("write_file", Map.of("file_path", "/etc/hosts"));
+
+            rail.beforeToolCall(ctx);
+            assertThat(ctx.getExtra()).containsEntry("_skip_tool", Boolean.TRUE);
+            assertThat(toolResultOf(ctx)).asString().contains("[PERMISSION_DENIED]");
         }
     }
 
-    private Map<String, Object> acceptancePermissions() {
+    private static PermissionInterruptRail buildRail() {
+        return PermissionFactory.buildPermissionInterruptRail(
+                acceptancePermissions(), ToolPermissionHost.builder().build(), WORKSPACE);
+    }
+
+    private static Map<String, Object> acceptancePermissions() {
         Map<String, Object> cfg = new LinkedHashMap<>();
         cfg.put("enabled", true);
         cfg.put("schema", "tiered_policy");
@@ -96,15 +111,25 @@ class ToolGuardrailAcceptanceTest {
         fileGuard.put("enabled", true);
         fileGuard.put("defaults", Map.of("read", "allow", "write", "allow", "exec", "ask"));
         fileGuard.put("paths", List.of(Map.of(
-                "path", guardedPath(),
+                "path", "/etc/hosts",
                 "read", "allow", "write", "deny", "exec", "deny",
                 "match", "prefix")));
         cfg.put("file_guard", fileGuard);
         return cfg;
     }
 
-    private String guardedPath() {
-        return workspace.resolve("etc/hosts").toAbsolutePath().normalize()
-                .toString().replace("\\", "/");
+    private static AgentCallbackContext ctxFor(String toolName, Map<String, Object> toolArgs) {
+        ToolCallInputs inputs = ToolCallInputs.builder()
+                .toolCall(ToolCall.builder().id("tc").name(toolName).arguments("{}").build())
+                .toolName(toolName).toolArgs(toolArgs).build();
+        return AgentCallbackContext.builder().inputs(inputs).extra(new LinkedHashMap<>()).build();
+    }
+
+    private static Object toolResultOf(AgentCallbackContext ctx) {
+        Object inputs = ctx.getInputs();
+        if (inputs instanceof ToolCallInputs toolCallInputs) {
+            return toolCallInputs.getToolResult();
+        }
+        return null;
     }
 }

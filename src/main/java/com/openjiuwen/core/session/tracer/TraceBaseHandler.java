@@ -4,104 +4,127 @@
 
 package com.openjiuwen.core.session.tracer;
 
+import com.openjiuwen.core.session.callback.BaseHandler;
 import com.openjiuwen.core.session.stream.StreamWriter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.stream.TraceSchema;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * Mirrors Python's {@code TraceBaseHandler} in
- * {@code openjiuwen/core/session/tracer/handler.py}.
+ * Base trace handler providing common span updates and stream writing.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.tracer.handler.TraceBaseHandler}.
+ * 
+ * @since 0.1.7
  */
-public abstract class TraceBaseHandler {
-
+public abstract class TraceBaseHandler extends BaseHandler {
+    /**
+     * streamWriter.
+     * 
+     * @since 0.1.7
+     */
     protected final StreamWriter<TraceSchema> streamWriter;
+
+    /**
+     * spanManager.
+     * 
+     * @since 0.1.7
+     */
     protected final SpanManager spanManager;
 
-    protected TraceBaseHandler(StreamWriterManager streamWriterManager, SpanManager spanManager) {
-        this.streamWriter = streamWriterManager == null ? null : streamWriterManager.getTraceWriter();
+    /**
+     * TraceBaseHandler.
+     * 
+     * @param owner owner
+     * @param streamWriterManager streamWriterManager
+     * @param spanManager spanManager
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    protected TraceBaseHandler(Object owner, StreamWriterManager streamWriterManager, SpanManager spanManager) {
+        super(owner);
+        this.streamWriter = streamWriterManager != null ? streamWriterManager.getTraceWriter() : null;
         this.spanManager = spanManager;
     }
 
-    public void emitStreamWriter(Object data) {
-        emitStreamWriterInternal(data);
+    /**
+     * Format span data for stream emission.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
+     */
+    protected Map<String, Object> formatData(Span span) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("type", eventName());
+        data.put("payload", span);
+        return data;
     }
 
-    protected abstract Map<String, Object> formatData(Span span);
-
-    protected void emitStreamWriterInternal(Object data) {
+    /**
+     * Emit span data to the trace stream writer.
+     * 
+     * @param span span
+     * @since 0.1.7
+     */
+    protected void emitStreamWriter(Span span) {
         if (streamWriter == null) {
             return;
         }
-        streamWriter.write(data);
+        streamWriter.write(formatData(span));
     }
 
+    /**
+     * Send span data to stream.
+     * 
+     * @param span span
+     * @since 0.1.7
+     */
     protected void sendData(Span span) {
-        sendData(span, Set.of());
+        emitStreamWriter(span != null ? span.snapshot() : null);
     }
 
-    protected void sendData(Span span, Set<String> exclude) {
-        if (span == null) {
-            return;
+    /**
+     * Calculate elapsed time string.
+     * 
+     * @param startTime startTime
+     * @param endTime endTime
+     * @return the result
+     * @since 0.1.7
+     */
+    protected String getElapsedTime(LocalDateTime startTime, LocalDateTime endTime) {
+        if (startTime == null || endTime == null) {
+            return "";
         }
-        Span snapshot = span.snapshot();
-        if (exclude != null && !exclude.isEmpty()) {
-            applyExclude(snapshot, exclude);
+        Duration duration = Duration.between(startTime, endTime);
+        long ms = duration.toMillis();
+        if (ms < 1000) {
+            return ms + "ms";
         }
-        emitStreamWriterInternal(formatData(snapshot));
+        return String.format("%.2fs", ms / 1000.0);
     }
 
-    protected static String getElapsedTime(LocalDateTime startTime, LocalDateTime endTime) {
-        Duration elapsed = Duration.between(startTime, endTime);
-        long milliseconds = elapsed.toMillis();
-        if (milliseconds < 1000) {
-            return milliseconds + "ms";
-        }
-        return String.format(java.util.Locale.ROOT, "%.2fs", milliseconds / 1000.0);
-    }
-
-    protected static String getNodeStatus(Span span) {
-        if (span.getError() != null && !span.getError().isEmpty()) {
-            return NodeStatus.ERROR.getValue();
-        }
-        if (span instanceof TraceWorkflowSpan workflowSpan
-                && workflowSpan.getInnerError() != null
-                && !workflowSpan.getInnerError().isEmpty()) {
+    /**
+     * Determine node status from span state.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
+     */
+    protected String getNodeStatus(Span span) {
+        if (span.getError() != null) {
             return NodeStatus.ERROR.getValue();
         }
         if (span.getOnInvokeData() != null && !span.getOnInvokeData().isEmpty()) {
-            return span.getEndTime() == null ? NodeStatus.RUNNING.getValue() : NodeStatus.FINISH.getValue();
+            return span.getEndTime() != null ? NodeStatus.FINISH.getValue() : NodeStatus.RUNNING.getValue();
         }
         if (span.getEndTime() != null) {
             return NodeStatus.FINISH.getValue();
         }
         return NodeStatus.START.getValue();
-    }
-
-    private static void applyExclude(Span span, Set<String> exclude) {
-        if (exclude.contains("outputs")) {
-            span.setOutputs(null);
-        }
-        if (span instanceof TraceWorkflowSpan workflowSpan) {
-            if (exclude.contains("stream_outputs") || exclude.contains("streamOutputs")) {
-                workflowSpan.setStreamOutputs(null);
-            }
-        }
-    }
-
-    protected static Map<String, Object> copyMap(Map<?, ?> source) {
-        if (source == null) {
-            return new LinkedHashMap<>();
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : source.entrySet()) {
-            result.put(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        return result;
     }
 }

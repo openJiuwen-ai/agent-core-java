@@ -7,13 +7,44 @@ package com.openjiuwen.core.common.exception;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code ConfigurationError} in
- * {@code openjiuwen/core/common/exception/errors.py}.
+ * Configuration error — a specialized {@link FrameworkError}.
+ * 
+ * @since 0.1.7
  */
 public class ConfigurationError extends FrameworkError {
-    public ConfigurationError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
+    /**
+     * ConfigurationError.
+     * 
+     * @param status status
+     * @param msg msg
+     * @param details details
+     * @param cause cause
+     * @param params params
+     * @since 0.1.7
+     */
+    public ConfigurationError(StatusCode status, String msg, Object details, Throwable cause,
+            Map<String, Object> params) {
         super(status, msg, details, cause, params);
     }
-    public ConfigurationError(StatusCode status, Map<String, Object> params) { super(status, params); }
-    public ConfigurationError(StatusCode status) { super(status); }
+
+    /**
+     * Creates a ConfigurationError with status and parameters.
+     * 
+     * @param status the status code
+     * @param params template parameters for message rendering
+     * @since 0.1.7
+     */
+    public ConfigurationError(StatusCode status, Map<String, Object> params) {
+        super(status, params);
+    }
+
+    /**
+     * Creates a ConfigurationError with status only.
+     * 
+     * @param status the status code
+     * @since 0.1.7
+     */
+    public ConfigurationError(StatusCode status) {
+        super(status);
+    }
 }

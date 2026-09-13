@@ -4,363 +4,129 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import com.openjiuwen.core.common.constants.Constant;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.graph.pregel.PregelConstants;
-import com.openjiuwen.core.graph.store.GraphStoreState;
-import com.openjiuwen.core.multitenant.TenantContextHolder;
-import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.config.Config;
-import com.openjiuwen.core.session.config.SessionConfigAccess;
-import com.openjiuwen.core.session.constants.SessionConstants;
-import com.openjiuwen.core.session.interaction.InteractiveInput;
-import com.openjiuwen.core.session.state.AgentStateCollection;
-import com.openjiuwen.core.session.state.InMemoryCommitState;
-import com.openjiuwen.core.session.state.SessionStateAccess;
-import com.openjiuwen.core.session.state.State;
-import com.openjiuwen.core.session.state.WorkflowCommitState;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.LinkedHashMap;
+import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.graph.store.GraphStoreState;
+import com.openjiuwen.core.graph.store.InMemoryStore;
+import com.openjiuwen.core.graph.store.KeyLockedStore;
+import com.openjiuwen.core.session.config.Config;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.internal.AgentSession;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
+import com.openjiuwen.core.session.state.InMemoryState;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.state.WorkflowStateCollection;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests in-memory checkpointer state recovery and cleanup.
- *
- * <p>Mirrors Python's {@code InMemoryCheckpointer} in
- * {@code openjiuwen/core/session/checkpointer/inmemory.py}.</p>
+ * Tests for {@link InMemoryCheckpointer}.
+ * <p>
+ * Ported from Python workflow/agent storage and integration checkpointer tests.
  */
 class InMemoryCheckpointerTest {
-
-    @BeforeEach
-    void clearTenantContext() {
-        TenantContextHolder.clearCurrentTenant();
-    }
-
-    @AfterEach
-    void restoreTenantContext() {
-        TenantContextHolder.clearCurrentTenant();
-    }
-
     @Test
-    void agentStateRestoresAndInjectsInteractiveInput() {
+    @DisplayName("preAgentExecute restores saved state and queues interactive input")
+    void testPreAgentExecuteRestoresStateAndQueuesInteractiveInput() {
         InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        AgentStateCollection firstState = new AgentStateCollection();
-        TestSession first = TestSession.agent("session-a", "agent-a", firstState);
 
-        checkpointer.preAgentExecute(first, "first-input");
-        assertEquals(List.of("first-input"), firstState.get(Constant.INTERACTIVE_INPUT));
-        firstState.update(Map.of("turn", 1));
-        checkpointer.postAgentExecute(first);
-
-        AgentStateCollection restoredState = new AgentStateCollection();
-        TestSession restored = TestSession.agent("session-a", "agent-a", restoredState);
-        checkpointer.preAgentExecute(restored, "second-input");
-
-        assertEquals(1, restoredState.get("turn"));
-        assertEquals(List.of("second-input"), restoredState.get(Constant.INTERACTIVE_INPUT));
-        assertTrue(checkpointer.sessionExists("session-a"));
-    }
-
-    @Test
-    void teamGlobalStateRestoresAndInjectsInteractiveInput() {
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        AgentStateCollection firstState = new AgentStateCollection();
-        TestSession first = TestSession.team("session-team", "team-a", firstState);
-
-        checkpointer.preAgentTeamExecute(first, "team-input");
-        firstState.updateGlobal(Map.of("team-global", "saved"));
-        checkpointer.postAgentTeamExecute(first);
-
-        AgentStateCollection restoredState = new AgentStateCollection();
-        TestSession restored = TestSession.team("session-team", "team-a", restoredState);
-        checkpointer.preAgentTeamExecute(restored, "resume-input");
-
-        assertEquals("saved", restoredState.getGlobal("team-global"));
-        assertEquals(List.of("resume-input"), restoredState.getGlobal(Constant.INTERACTIVE_INPUT));
-    }
-
-    @Test
-    void workflowInterruptionSavesAndInteractiveRawInputRestores() {
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        WorkflowCommitState firstState = workflowState();
-        TestSession first = TestSession.workflow("session-workflow", "workflow-a", firstState);
-        firstState.updateAndCommitWorkflowState(Map.of("persisted", "value"));
-
-        checkpointer.preWorkflowExecute(first, (Object) null);
-        checkpointer.postWorkflowExecute(first, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-
-        WorkflowCommitState restoredState = workflowState();
-        TestSession restored = TestSession.workflow("session-workflow", "workflow-a", restoredState);
-        checkpointer.preWorkflowExecute(restored, new InteractiveInput(Map.of("raw", "input")));
-
-        assertEquals("value", restoredState.getWorkflowState("persisted"));
-        assertEquals(Map.of("raw", "input"), restoredState.getWorkflowState(Constant.INTERACTIVE_INPUT));
-    }
-
-    @Test
-    void workflowCompletionClearsWorkflowAndGraphState() {
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        WorkflowCommitState state = workflowState();
-        TestSession session = TestSession.workflow("session-clear", "workflow-clear", state);
-        state.updateAndCommitWorkflowState(Map.of("persisted", "value"));
-
-        checkpointer.preWorkflowExecute(session, (Object) null);
-        checkpointer.postWorkflowExecute(session, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-        checkpointer.graphStore().save(
-                "session-clear",
-                "workflow-clear:node",
-                GraphStoreState.create("workflow-clear:node", 1, Map.of("x", 1), List.of(), Map.of(), Map.of())
-        ).toCompletableFuture().join();
-
-        checkpointer.postWorkflowExecute(session, Map.of("done", true), null);
-
-        Optional<GraphStoreState> graphState = checkpointer.graphStore()
-                .get("session-clear", "workflow-clear:node")
-                .toCompletableFuture()
-                .join();
-        assertFalse(graphState.isPresent());
-        assertFalse(checkpointer.sessionExists("session-clear"));
-        TestSession restored = TestSession.workflow("session-clear", "workflow-clear", workflowState());
-        checkpointer.preWorkflowExecute(restored, (Object) null);
-    }
-
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-    @Test
-    void existingWorkflowStateRejectsNonInteractiveInputUnlessForced() {
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        WorkflowCommitState firstState = workflowState();
-        TestSession first = TestSession.workflow("session-force", "workflow-force", firstState);
-        firstState.updateAndCommitWorkflowState(Map.of("persisted", "value"));
-
-        checkpointer.preWorkflowExecute(first, (Object) null);
-        checkpointer.postWorkflowExecute(first, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-
-        assertThrows(
-                BaseError.class,
-                () -> checkpointer.preWorkflowExecute(TestSession.workflow("session-force", "workflow-force",
-                        workflowState()), (Object) null)
-        );
-
-        Config forcedConfig = new Config();
-        forcedConfig.setEnvs(Map.of(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, true));
-        checkpointer.preWorkflowExecute(TestSession.workflow("session-force", "workflow-force",
-                workflowState(), forcedConfig), (Object) null);
-    }
-
-    @Test
-    void releaseRemovesAgentTeamWorkflowAndGraphStores() {
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        AgentStateCollection agentState = new AgentStateCollection();
-        TestSession agent = TestSession.agent("session-release", "agent-a", agentState);
-        checkpointer.preAgentExecute(agent, "input");
-        checkpointer.postAgentExecute(agent);
-
-        AgentStateCollection teamState = new AgentStateCollection();
-        TestSession team = TestSession.team("session-release", "team-a", teamState);
-        checkpointer.preAgentTeamExecute(team, "input");
-        checkpointer.postAgentTeamExecute(team);
-
-        WorkflowCommitState workflowState = workflowState();
-        TestSession workflow = TestSession.workflow("session-release", "workflow-a", workflowState);
-        workflowState.updateAndCommitWorkflowState(Map.of("persisted", "value"));
-        checkpointer.preWorkflowExecute(workflow, (Object) null);
-        checkpointer.postWorkflowExecute(workflow, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-        checkpointer.graphStore().save(
-                "session-release",
-                "workflow-a:node",
-                GraphStoreState.create("workflow-a:node", 1, Map.of("x", 1), List.of(), Map.of(), Map.of())
-        ).toCompletableFuture().join();
-
-        checkpointer.release("session-release");
-
-        assertFalse(checkpointer.sessionExists("session-release"));
-        assertFalse(checkpointer.graphStore().get("session-release", "workflow-a:node")
-                .toCompletableFuture()
-                .join()
-                .isPresent());
-    }
-
-    @Test
-    void ttlEvictsSessionThatWasNotWrittenAgain() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(60_000L, 0, now::get);
-
-        checkpointer.preAgentExecute(TestSession.agent("session-1", "agent-1", new AgentStateCollection()), null);
-        assertTrue(checkpointer.sessionExists("session-1"));
-
-        now.set(1_000_000L + 60_001L);
-        checkpointer.preAgentExecute(TestSession.agent("session-2", "agent-2", new AgentStateCollection()), null);
-        checkpointer.cleanUpRegistry();
-
-        assertFalse(checkpointer.sessionExists("session-1"));
-        assertTrue(checkpointer.sessionExists("session-2"));
-    }
-
-    @Test
-    void capacityLimitEvictsLeastRecentlyWrittenSession() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 2, now::get);
-
-        for (String sessionId : List.of("session-1", "session-2")) {
-            checkpointer.preAgentExecute(TestSession.agent(sessionId, sessionId, new AgentStateCollection()), null);
-        }
-        now.set(1_000_000L + 1L);
-        checkpointer.preAgentExecute(TestSession.agent("session-3", "agent-3", new AgentStateCollection()), null);
-        checkpointer.cleanUpRegistry();
-
-        assertFalse(checkpointer.sessionExists("session-1"));
-        assertTrue(checkpointer.sessionExists("session-2"));
-        assertTrue(checkpointer.sessionExists("session-3"));
-    }
-
-    @Test
-    void writeRefreshesTtlForActiveSession() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(100_000L, 0, now::get);
-
-        TestSession session = TestSession.agent("session-1", "agent-1", new AgentStateCollection());
+        AgentSession session = new AgentSession("session-1", new Config(), checkpointer);
         checkpointer.preAgentExecute(session, null);
-        for (int i = 0; i < 3; i++) {
-            now.set(1_000_000L + (i + 1) * 60_000L);
-            checkpointer.postAgentExecute(session);
-        }
-        now.set(1_000_000L + 180_001L);
-        checkpointer.preAgentExecute(TestSession.agent("session-2", "agent-2", new AgentStateCollection()), null);
-        checkpointer.cleanUpRegistry();
+        session.state().updateGlobal(Map.of("persisted", "value"));
+        checkpointer.interruptAgentExecute(session);
 
+        AgentSession restored = new AgentSession("session-1", new Config(), checkpointer);
+        checkpointer.preAgentExecute(restored, "hello");
+
+        assertEquals("value", restored.state().getGlobal("persisted"));
+        assertEquals(List.of("hello"), restored.state().get(Constant.INTERACTIVE_INPUT));
+    }
+
+    @Test
+    @DisplayName("preWorkflowExecute restores raw interactive input into workflow state")
+    void testPreWorkflowExecuteRestoresRawInteractiveInput() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+
+        checkpointer.preWorkflowExecute(session, new InteractiveInput("resume-value"));
+
+        WorkflowStateCollection state = (WorkflowStateCollection) session.state();
+        assertEquals("resume-value", state.getWorkflow(Constant.INTERACTIVE_INPUT));
+    }
+
+    @Test
+    @DisplayName("preWorkflowExecute restores node interactive inputs to node state")
+    void testPreWorkflowExecuteRestoresNodeInteractiveInput() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+
+        InteractiveInput inputs = new InteractiveInput();
+        inputs.update("ask_user", Map.of("answer", "ok"));
+
+        checkpointer.preWorkflowExecute(session, inputs);
+
+        NodeSession nodeSession = new NodeSession(session, "ask_user");
+        assertEquals(List.of(Map.of("answer", "ok")), nodeSession.state().get(Constant.INTERACTIVE_INPUT));
+    }
+
+    @Test
+    @DisplayName("workflow checkpoint is saved on exception and cleared on completion")
+    void testWorkflowCheckpointSaveAndClear() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+
+        checkpointer.preWorkflowExecute(session, null);
+        session.state().updateGlobal(Map.of("persisted", "value"));
+        ((WorkflowCommitState) session.state()).commit();
+        checkpointer.graphStore().save("session-1", "workflow-1",
+                GraphStoreState.create("workflow-1", 1, Map.of("k", "v"), List.of(), Map.of(), Map.of()));
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> checkpointer.postWorkflowExecute(session, null, new IllegalStateException("boom")));
+        assertEquals("boom", error.getMessage());
         assertTrue(checkpointer.sessionExists("session-1"));
-    }
+        assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").isPresent());
 
-    @Test
-    void evictionClearsGraphStoreEntries() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(60_000L, 0, now::get);
+        WorkflowSession restored = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        checkpointer.preWorkflowExecute(restored, new InteractiveInput("resume"));
+        assertEquals("value", restored.state().getGlobal("persisted"));
 
-        TestSession session = TestSession.workflow("session-1", "workflow-1", workflowState());
-        checkpointer.preWorkflowExecute(session, (Object) null);
-        checkpointer.graphStore().save(
-                "session-1",
-                "workflow-1",
-                GraphStoreState.create("workflow-1", 1, Map.of(), List.of(), Map.of(), Map.of())
-        ).toCompletableFuture().join();
-        assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").toCompletableFuture().join().isPresent());
-
-        now.set(1_000_000L + 60_001L);
-        checkpointer.preWorkflowExecute(TestSession.workflow("session-2", "workflow-2", workflowState()), (Object) null);
-        checkpointer.cleanUpRegistry();
-
-        assertFalse(checkpointer.graphStore().get("session-1", "workflow-1").toCompletableFuture().join().isPresent());
-    }
-
-    @Test
-    void releaseFreesCapacitySlot() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 2, now::get);
-
-        for (String sessionId : List.of("session-1", "session-2")) {
-            checkpointer.preAgentExecute(TestSession.agent(sessionId, sessionId, new AgentStateCollection()), null);
-        }
-        checkpointer.release("session-1");
+        checkpointer.postWorkflowExecute(restored, Map.of("ok", true), null);
+        assertFalse(checkpointer.graphStore().get("session-1", "workflow-1").isPresent());
         assertFalse(checkpointer.sessionExists("session-1"));
-
-        now.set(1_000_000L + 1L);
-        checkpointer.preAgentExecute(TestSession.agent("session-3", "agent-3", new AgentStateCollection()), null);
-        checkpointer.cleanUpRegistry();
-
-        assertTrue(checkpointer.sessionExists("session-2"));
-        assertTrue(checkpointer.sessionExists("session-3"));
     }
 
-    private static WorkflowCommitState workflowState() {
-        return new WorkflowCommitState(
-                new InMemoryCommitState(),
-                new InMemoryCommitState(),
-                new InMemoryCommitState(),
-                new InMemoryCommitState(),
-                new LinkedHashMap<>(),
-                "",
-                State.DEFAULT_NODE_ID
-        );
+    @Test
+    @DisplayName("release clears graph store for interrupted workflows")
+    void testReleaseClearsGraphStore() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+
+        checkpointer.preWorkflowExecute(session, null);
+        ((WorkflowCommitState) session.state()).commit();
+        assertThrows(RuntimeException.class,
+                () -> checkpointer.postWorkflowExecute(session, null, new IllegalStateException("boom")));
+
+        checkpointer.graphStore().save("session-1", "workflow-1",
+                GraphStoreState.create("workflow-1", 1, Map.of(), List.of(), Map.of(), Map.of()));
+
+        checkpointer.release("session-1");
+
+        assertFalse(checkpointer.graphStore().get("session-1", "workflow-1").isPresent());
     }
 
-    /**
-     * Test session with configurable ids and state.
-     *
-     * <p>Mirrors Python's duck-typed {@code BaseSession} use in
-     * {@code openjiuwen/core/session/checkpointer/inmemory.py}.</p>
-     */
-    private static final class TestSession extends BaseSession {
-        private final String sessionId;
-        private final String workflowId;
-        private final String agentId;
-        private final String teamId;
-        private final SessionStateAccess state;
-        private final Config config;
-
-        private TestSession(String sessionId, String workflowId, String agentId, String teamId,
-                            SessionStateAccess state, Config config) {
-            this.sessionId = sessionId;
-            this.workflowId = workflowId;
-            this.agentId = agentId;
-            this.teamId = teamId;
-            this.state = state;
-            this.config = config == null ? new Config() : config;
-        }
-
-        static TestSession agent(String sessionId, String agentId, AgentStateCollection state) {
-            return new TestSession(sessionId, sessionId, agentId, sessionId, state, null);
-        }
-
-        static TestSession team(String sessionId, String teamId, AgentStateCollection state) {
-            return new TestSession(sessionId, sessionId, sessionId, teamId, state, null);
-        }
-
-        static TestSession workflow(String sessionId, String workflowId, WorkflowCommitState state) {
-            return workflow(sessionId, workflowId, state, null);
-        }
-
-        static TestSession workflow(String sessionId, String workflowId, WorkflowCommitState state, Config config) {
-            return new TestSession(sessionId, workflowId, sessionId, sessionId, state, config);
-        }
-
-        @Override
-        public SessionConfigAccess config() {
-            return config;
-        }
-
-        @Override
-        public SessionStateAccess state() {
-            return state;
-        }
-
-        @Override
-        public String sessionId() {
-            return sessionId;
-        }
-
-        public String workflowId() {
-            return workflowId;
-        }
-
-        public String agentId() {
-            return agentId;
-        }
-
-        public String teamId() {
-            return teamId;
-        }
+    @Test
+    @DisplayName("graphStore exposes a key-locked in-memory store")
+    void testGraphStoreIsInMemoryStore() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        // Concurrent write isolation wraps InMemoryStore with KeyLockedStore.
+        assertInstanceOf(KeyLockedStore.class, checkpointer.graphStore());
+        assertInstanceOf(InMemoryStore.class, ((KeyLockedStore) checkpointer.graphStore()).delegate());
     }
 }

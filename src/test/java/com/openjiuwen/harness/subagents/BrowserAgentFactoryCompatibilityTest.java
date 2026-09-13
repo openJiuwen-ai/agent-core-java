@@ -1,45 +1,32 @@
+
 package com.openjiuwen.harness.subagents;
-
-import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.harness.deep_agent.DeepAgent;
-import com.openjiuwen.harness.rails.memory.MemoryRail;
-import com.openjiuwen.harness.rails.DeepAgentRail;
-import com.openjiuwen.harness.schema.DeepAgentConfig;
-import com.openjiuwen.harness.tools.browser_move.playwright_runtime.RuntimeSettings;
-import com.openjiuwen.harness.tools.browser_move.playwright_runtime.BrowserRuntimeRail;
-import com.openjiuwen.harness.tools.browser_move.playwright_runtime.BrowserRunGuardrails;
-import com.openjiuwen.harness.tools.browser.BrowserRuntimeSettings;
-import com.openjiuwen.harness.workspace.Workspace;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
-
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class BrowserAgentFactoryCompatibilityTest {
+import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.harness.rails.MemoryRail;
+import com.openjiuwen.harness.tools.browser.BrowserRunGuardrails;
+import com.openjiuwen.harness.tools.browser.BrowserRuntimeRail;
+import com.openjiuwen.harness.tools.browser.BrowserRuntimeSettings;
+import com.openjiuwen.harness.workspace.Workspace;
 
-    private static RuntimeSettings settings() {
-        return new RuntimeSettings(
-                "openai",
-                "test-key",
-                "https://example.invalid/v1",
-                "test-model",
-                McpServerConfig.builder()
-                        .serverId("test")
-                        .serverName("test")
-                        .serverPath("stdio://playwright")
-                        .clientType("stdio")
-                        .build(),
-                new BrowserRunGuardrails()
-        );
+import org.junit.jupiter.api.Test;
+
+class BrowserAgentFactoryCompatibilityTest {
+    private static BrowserRuntimeSettings settings() {
+        return BrowserRuntimeSettings.builder().provider("openai").apiKey("test-key")
+                .apiBase("https://example.invalid/v1").modelName("test-model")
+                .mcpCfg(McpServerConfig.builder().serverId("test").serverName("test").serverPath("stdio://playwright")
+                        .clientType("stdio").build())
+                .guardrails(
+                        BrowserRunGuardrails.builder().maxSteps(3).maxFailures(1).timeoutS(30).retryOnce(false).build())
+                .build();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void buildBrowserAgentConfigShouldExposeFactoryMetadata() {
-        DeepAgentConfig.SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(settings());
+        SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(settings(), "en");
 
         assertThat(spec.getAgentCard().getName()).isEqualTo("browser_agent");
         assertThat(spec.getSystemPrompt()).isEqualTo(BrowserAgentFactory.DEFAULT_BROWSER_AGENT_SYSTEM_PROMPT.get("en"));
@@ -51,84 +38,44 @@ class BrowserAgentFactoryCompatibilityTest {
     void buildBrowserAgentConfigShouldPreserveCustomRails() {
         MemoryRail memoryRail = new MemoryRail();
 
-        DeepAgentConfig.SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(
-                settings(),
-                null,
-                "en",
-                java.util.List.of(),
-                java.util.List.of(),
-                java.util.List.of(memoryRail),
-                null,
-                "en",
-                false,
-                25
-        );
+        SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(settings(), "en",
+                java.util.Map.of("custom_rails", java.util.List.of(memoryRail)));
 
         assertThat(spec.getRails()).containsExactly(memoryRail);
-        assertThat(spec.getFactoryKwargs()).containsKey("settings");
+        assertThat(spec.getFactoryKwargs()).containsKey("custom_rails");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void createBrowserAgentShouldReturnDeepAgent() {
-        DeepAgent agent = BrowserAgentFactory.createBrowserAgent(
-                settings(),
-                java.util.List.of(),
-                java.util.List.of(),
-                java.util.List.of(),
-                null,
-                "cn",
-                null
-        );
+        var agent = BrowserAgentFactory.createBrowserAgent(settings(), "cn",
+                Workspace.builder().rootPath(".").language("cn").build(), new java.util.ArrayList<>(),
+                java.util.List.of());
 
         assertThat(agent.getCard().getName()).isEqualTo("browser_agent");
-        assertThat(agent.getTools())
-                .hasSize(5);
-        assertThat(agent.getTools().values())
-                .hasSize(5)
+        assertThat(agent.getConfig().getTools()).hasSize(5)
                 .allSatisfy(tool -> assertThat(tool).isInstanceOf(Tool.class));
-        assertThat(agent.getTools().keySet())
-                .containsExactly(
-                        "browser_cancel",
-                        "browser_clear_cancel",
-                        "browser_custom_action",
-                        "browser_list_actions",
-                        "browser_runtime_health"
-                );
-        assertThat(agent.getRails())
+        assertThat(agent.getConfig().getTools().stream().map(Tool.class::cast).map(tool -> tool.getCard().getName()))
+                .containsExactly("browser_cancel", "browser_clear_cancel", "browser_custom_action",
+                        "browser_list_actions", "browser_runtime_health");
+        assertThat(agent.getConfig().getRails())
                 .anySatisfy(rail -> assertThat(rail).isInstanceOf(BrowserRuntimeRail.class));
     }
 
     @Test
     void createBrowserAgentShouldMergeCustomRailsWithRuntimeRail() {
         MemoryRail memoryRail = new MemoryRail();
-        RuntimeSettings browserSettings = settings();
-        DeepAgentConfig.SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(
-                browserSettings,
-                null,
-                "en",
-                java.util.List.of(),
-                java.util.List.of(),
-                java.util.List.of(memoryRail),
-                null,
-                "en",
-                false,
-                25
-        );
+        BrowserRuntimeSettings browserSettings = settings();
+        SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(browserSettings, "en",
+                java.util.Map.of("custom_rails", java.util.List.of(memoryRail)));
 
-        DeepAgent agent = BrowserAgentFactory.createBrowserAgent(
-                browserSettings,
+        var agent = BrowserAgentFactory.createBrowserAgent(browserSettings, "en",
+                Workspace.builder().rootPath(".").language("en").build(), new java.util.ArrayList<>(),
                 java.util.List.of(),
-                java.util.List.of(),
-                java.util.List.of(memoryRail),
-                null,
-                "en",
-                null
-        );
+                java.util.Map.of("custom_rails", java.util.List.of(memoryRail), "rails_merge_mode", "append"));
 
         assertThat(spec.getRails()).contains(memoryRail);
-        assertThat(agent.deepConfig().getRails())
+        assertThat(agent.getConfig().getRails())
                 .anySatisfy(rail -> assertThat(rail).isInstanceOf(BrowserRuntimeRail.class));
-        assertThat(agent.deepConfig().getRails()).anySatisfy(rail -> assertThat(rail).isInstanceOf(MemoryRail.class));
+        assertThat(agent.getConfig().getRails()).contains(memoryRail);
     }
 }

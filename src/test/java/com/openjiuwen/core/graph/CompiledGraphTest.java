@@ -1,36 +1,38 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.Pregel;
 import com.openjiuwen.core.graph.pregel.PregelConfig;
-import com.openjiuwen.core.graph.pregel.PregelNode;
-import com.openjiuwen.core.graph.pregel.Channel;
 import com.openjiuwen.core.graph.store.InMemoryStore;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
+
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.concurrent.CancellationException;
 
 /**
  * Tests for {@link CompiledGraph}.
  */
 class CompiledGraphTest {
-
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @DisplayName("invoke commits user inputs and calls workflow checkpoint hooks")
     void testInvokeCommitsUserInputsAndRunsCheckpointHooks() {
@@ -40,9 +42,7 @@ class CompiledGraphTest {
 
         CompiledGraph graph = new CompiledGraph(pregel, checkpointer);
 
-        Map<String, Object> result = graph.invoke(
-                Map.of(Constant.INPUTS_KEY, Map.of("question", "hello")),
-                session);
+        Map<String, Object> result = graph.invoke(Map.of(Constant.INPUTS_KEY, Map.of("question", "hello")), session);
 
         assertEquals(Map.of("result", 1), result);
         assertEquals(List.of("pre", "post"), checkpointer.calls);
@@ -62,13 +62,29 @@ class CompiledGraphTest {
         CompiledGraph graph = new CompiledGraph(pregel, checkpointer);
         InteractiveInput inputs = new InteractiveInput("resume");
 
-        RuntimeException error = assertThrows(RuntimeException.class,
-                () -> graph.invoke(Map.of(Constant.INPUTS_KEY, inputs), session));
+        RuntimeException error =
+            assertThrows(RuntimeException.class, () -> graph.invoke(Map.of(Constant.INPUTS_KEY, inputs), session));
 
         assertInstanceOf(IllegalStateException.class, error.getCause());
         assertSame(inputs, checkpointer.preWorkflowInputs);
         assertInstanceOf(IllegalStateException.class, checkpointer.postException);
         assertNull(session.state().getGlobal("resume"));
+    }
+
+    @Test
+    @DisplayName("cancelled execution preserves the previous workflow checkpoint")
+    void testCancelledExecutionPreservesWorkflowCheckpoint() {
+        RecordingPregel pregel = new RecordingPregel(null, new CancellationException("cancelled"));
+        RecordingCheckpointer checkpointer = new RecordingCheckpointer(false);
+        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        CompiledGraph graph = new CompiledGraph(pregel, checkpointer);
+
+        assertThrows(CancellationException.class,
+                () -> graph.invoke(Map.of(Constant.INPUTS_KEY, Map.of("question", "hello")), session));
+
+        assertEquals(List.of("pre"), checkpointer.calls);
+        assertNull(checkpointer.postResult);
+        assertNull(checkpointer.postException);
     }
 
     private static final class RecordingPregel extends Pregel {
@@ -77,7 +93,7 @@ class CompiledGraphTest {
         private PregelConfig lastConfig;
 
         private RecordingPregel(Map<String, Object> result, Exception error) {
-            super(Map.of(), List.of());
+            super(Map.of(), List.of(), new InMemoryStore(), null);
             this.result = result;
             this.error = error;
         }
@@ -92,9 +108,10 @@ class CompiledGraphTest {
         }
     }
 
-    private static final class RecordingCheckpointer implements CompiledGraph.GraphCheckpointer {
+    private static final class RecordingCheckpointer extends Checkpointer {
         private final boolean rethrowException;
         private final List<String> calls = new ArrayList<>();
+        private final Store store = new InMemoryStore();
         private InteractiveInput preWorkflowInputs;
         private Object postResult;
         private Exception postException;
@@ -104,13 +121,13 @@ class CompiledGraphTest {
         }
 
         @Override
-        public void preWorkflowExecute(BaseSession session, Object inputs) {
+        public void preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
             calls.add("pre");
-            preWorkflowInputs = (inputs instanceof InteractiveInput ii) ? ii : null;
+            preWorkflowInputs = inputs;
         }
 
         @Override
-        public void postWorkflowExecute(BaseSession session, Map<String, Object> result, Exception exception) {
+        public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
             calls.add("post");
             postResult = result;
             postException = exception;
@@ -120,8 +137,29 @@ class CompiledGraphTest {
         }
 
         @Override
+        public void preAgentExecute(BaseSession session, Object inputs) {
+        }
+
+        @Override
+        public void interruptAgentExecute(BaseSession session) {
+        }
+
+        @Override
+        public void postAgentExecute(BaseSession session) {
+        }
+
+        @Override
+        public boolean sessionExists(String sessionId) {
+            return false;
+        }
+
+        @Override
+        public void release(String sessionId) {
+        }
+
+        @Override
         public Store graphStore() {
-            return new InMemoryStore();
+            return store;
         }
     }
 }

@@ -11,19 +11,18 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.openjiuwen.spi.store.BaseKVStore;
-import com.openjiuwen.spi.store.KVStoreFactory;
+import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 
 class KvTodoStorageTest {
 
-    private BaseKVStore kvStore;
+    private InMemoryKVStore kvStore;
     private KvTodoStorage storage;
 
     @BeforeEach
     void setUp() {
-        kvStore = KVStoreFactory.create("in_memory", java.util.Map.of());
+        kvStore = new InMemoryKVStore();
         storage = new KvTodoStorage(kvStore);
         TenantContextHolder.clearCurrentTenant();
     }

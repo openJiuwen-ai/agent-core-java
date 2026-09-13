@@ -6,96 +6,125 @@ package com.openjiuwen.core.common.clients;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Mirrors Python's {@code BaseRefResourceMgr} in
- * {@code openjiuwen/core/common/clients/ref_counted.py}.
- *
- * @param <R> resource type bound to {@link RefCountedResource}
+ * Base reference-counted resource manager.
+ * 
+ * @since 0.1.7
  */
-public abstract class BaseRefResourceMgr<R extends RefCountedResource> {
+public abstract class BaseRefResourceMgr<T extends RefCountedResource, C> {
+    private final Map<String, T> resources = new ConcurrentHashMap<>();
 
-    private final Map<String, R> resources = new LinkedHashMap<>();
-    private final Object lock = new Object();
+    /**
+     * Public record Acquisition used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record Acquisition<T>(T resource, boolean isNew) {
+    }
 
-    protected abstract String getResourceKey(Object config);
+    /**
+     * getResourceKey.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
+    protected abstract String getResourceKey(C config);
 
-    protected abstract CompletableFuture<R> createResource(Object config);
+    /**
+     * createResource.
+     * 
+     * @param config config
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    protected abstract T createResource(C config) throws Exception;
 
-    public CompletableFuture<ResourceLease<R>> acquire(Object config) {
+    /**
+     * acquire.
+     * 
+     * @param config config
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    public synchronized Acquisition<T> acquire(C config) throws Exception {
         String key = getResourceKey(config);
-        synchronized (lock) {
-            if (resources.containsKey(key)) {
-                R resource = resources.get(key);
-                if (!resource.isClosed()) {
-                    resource.incrementRef();
-                    return CompletableFuture.completedFuture(new ResourceLease<>(resource, false));
-                }
-                resources.remove(key);
+        T existing = resources.get(key);
+        if (existing != null) {
+            if (!existing.isClosed()) {
+                existing.incrementRef();
+                return new Acquisition<>(existing, false);
             }
-            try {
-                R resource = createResource(config).join();
-                resources.put(key, resource);
-                return CompletableFuture.completedFuture(new ResourceLease<>(resource, true));
-            } catch (CompletionException exception) {
-                return CompletableFuture.failedFuture(exception.getCause() != null ? exception.getCause() : exception);
-            }
+            resources.remove(key);
         }
+        T resource = createResource(config);
+        resources.put(key, resource);
+        return new Acquisition<>(resource, true);
     }
 
-    public CompletableFuture<Void> release(Object config) {
+    /**
+     * release.
+     * 
+     * @param config config
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    public synchronized void release(C config) throws Exception {
         String key = getResourceKey(config);
-        synchronized (lock) {
-            R resource = resources.get(key);
-            if (resource == null || resource.isClosed()) {
-                return CompletableFuture.completedFuture(null);
-            }
-            boolean shouldClose = resource.decrementRef();
-            if (shouldClose) {
-                if (resources.containsKey(key)) {
-                    resources.remove(key);
-                }
-                return resource.close();
-            }
-            return CompletableFuture.completedFuture(null);
+        T resource = resources.get(key);
+        if (resource == null || resource.isClosed()) {
+            return;
+        }
+        boolean shouldClose = resource.decrementRef();
+        if (shouldClose) {
+            resources.remove(key);
+            resource.close();
         }
     }
 
-    public CompletableFuture<Void> close(String key) {
-        synchronized (lock) {
-            if (!resources.containsKey(key)) {
-                return CompletableFuture.completedFuture(null);
-            }
-            R resource = resources.remove(key);
-            return resource.close();
+    /**
+     * close.
+     * 
+     * @param key key
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    public synchronized void close(String key) throws Exception {
+        T resource = resources.remove(key);
+        if (resource != null) {
+            resource.close();
         }
     }
 
-    public CompletableFuture<Void> closeAll() {
-        Map<String, R> snapshot;
-        synchronized (lock) {
-            snapshot = new LinkedHashMap<>(resources);
-            resources.clear();
+    /**
+     * closeAll.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    public synchronized void closeAll() throws Exception {
+        for (T resource : resources.values()) {
+            resource.close();
         }
-        CompletableFuture<Void>[] futures = snapshot.values().stream()
-                .map(RefCountedResource::close)
-                .toArray(CompletableFuture[]::new);
-        return CompletableFuture.allOf(futures);
+        resources.clear();
     }
 
-    public CompletableFuture<Map<String, Object>> getStats() {
-        synchronized (lock) {
-            Map<String, Object> resourceStats = new LinkedHashMap<>();
-            resources.forEach((key, resource) -> resourceStats.put(key, resource.getStats()));
-            Map<String, Object> stats = new LinkedHashMap<>();
-            stats.put("total_resources", resources.size());
-            stats.put("resources", resourceStats);
-            return CompletableFuture.completedFuture(stats);
-        }
-    }
-
-    public record ResourceLease<R extends RefCountedResource>(R resource, boolean isNew) {
+    /**
+     * getStats.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public synchronized Map<String, Object> getStats() {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        Map<String, Object> resourceStats = new LinkedHashMap<>();
+        resources.forEach((key, resource) -> resourceStats.put(key, resource.getStats()));
+        stats.put("total_resources", resources.size());
+        stats.put("resources", resourceStats);
+        return stats;
     }
 }

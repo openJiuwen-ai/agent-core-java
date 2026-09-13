@@ -1,7 +1,6 @@
 package com.openjiuwen.core.multitenant;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,11 +9,6 @@ class TenantContextHolderTest {
 
     @BeforeEach
     void clearContext() {
-        TenantContextHolder.clearCurrentTenant();
-    }
-
-    @AfterEach
-    void restoreContext() {
         TenantContextHolder.clearCurrentTenant();
     }
 

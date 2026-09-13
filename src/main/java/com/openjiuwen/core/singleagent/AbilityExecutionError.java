@@ -6,46 +6,51 @@ package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.common.exception.AgentError;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 import java.util.Map;
 
 /**
- * Exception wrapper for ability/tool execution failures.
- *
- * <p>Mirrors Python's {@code AbilityExecutionError} in
- * {@code openjiuwen/core/single_agent/ability_manager.py}.</p>
+ * Unified exception for ability execution failures.
+ * 
+ * @since 0.1.7
  */
 public class AbilityExecutionError extends AgentError {
     private final ToolMessage toolMessage;
 
-    public AbilityExecutionError(StatusCode status, String message, Object details,
-                                 Throwable cause, ToolMessage toolMessage) {
-        super(status, message, details, cause, Map.of());
+    /**
+     * AbilityExecutionError.
+     * 
+     * @param status status
+     * @param msg msg
+     * @param toolMessage toolMessage
+     * @since 0.1.7
+     */
+    public AbilityExecutionError(StatusCode status, String msg, ToolMessage toolMessage) {
+        super(status, msg, null, null, Map.of("error_msg", msg));
         this.toolMessage = toolMessage;
     }
 
-    public static AbilityExecutionError of(ToolCall toolCall, String message) {
-        return of(toolCall, message, null);
+    /**
+     * AbilityExecutionError.
+     * 
+     * @param status status
+     * @param msg msg
+     * @param cause cause
+     * @param toolMessage toolMessage
+     * @since 0.1.7
+     */
+    public AbilityExecutionError(StatusCode status, String msg, Throwable cause, ToolMessage toolMessage) {
+        super(status, msg, null, cause, Map.of("error_msg", msg));
+        this.toolMessage = toolMessage;
     }
 
-    public static AbilityExecutionError of(ToolCall toolCall, String message, Throwable cause) {
-        String text = message == null ? "" : message;
-        ToolMessage toolMessage = new ToolMessage(
-                text,
-                toolCall == null ? null : toolCall.getId(),
-                toolCall == null ? null : toolCall.getName()
-        );
-        return new AbilityExecutionError(
-                StatusCode.AGENT_TOOL_EXECUTION_ERROR,
-                text,
-                Map.of("error_msg", text),
-                cause,
-                toolMessage
-        );
-    }
-
+    /**
+     * getToolMessage.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public ToolMessage getToolMessage() {
         return toolMessage;
     }

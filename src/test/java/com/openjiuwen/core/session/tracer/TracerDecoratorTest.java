@@ -4,245 +4,245 @@
 
 package com.openjiuwen.core.session.tracer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.config.Config;
+import com.openjiuwen.core.session.internal.AgentSession;
+import com.openjiuwen.core.session.stream.TraceSchema;
+
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-/**
- * Mirrors Python's tracer decorator helpers in
- * {@code openjiuwen/core/session/tracer/decorator.py}.
- *
- * <p>Mirrors Python's {@code TestDecator} in
- * {@code tests/unit_tests/core/session/tracer/test_decorator.py}.</p>
- */
 class TracerDecoratorTest {
+    private static final String TEST_MODEL_PROVIDER = "tracer-decorator-test-provider";
 
-    @Test
-    void decorateToolWithTraceSupportsWrappedInnerSession() {
-        FakeTracer tracer = new FakeTracer();
-        ToolApi decorated = TracerDecorator.decorateToolWithTrace(new ToolImpl(), new WrappedSession(tracer));
-
-        assertTrue(Proxy.isProxyClass(decorated.getClass()));
-        assertEquals("ok:ping", decorated.invoke("ping"));
-        assertEquals(2, tracer.events.size());
-        assertEquals("on_plugin_start", tracer.events.get(0).eventName());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> instanceInfo = (Map<String, Object>) tracer.events.get(0).payload().get("instance_info");
-        assertEquals("test_tool", instanceInfo.get("class_name"));
-        assertEquals("on_plugin_end", tracer.events.get(1).eventName());
-    }
-
-    @Test
-    void decorateWorkflowWithTraceCapturesMetadataAndStreamOutputs() {
-        FakeTracer tracer = new FakeTracer();
-        WorkflowApi decorated = TracerDecorator.decorateWorkflowWithTrace(new WorkflowImpl(), new DirectSession(tracer));
-
-        Iterator<String> iterator = decorated.stream("weather");
-        List<String> outputs = new ArrayList<>();
-        while (iterator.hasNext()) {
-            outputs.add(iterator.next());
-        }
-
-        assertEquals(List.of("weather", "done"), outputs);
-        assertEquals(2, tracer.events.size());
-        assertEquals("on_workflow_start", tracer.events.get(0).eventName());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> workflowInfo = (Map<String, Object>) tracer.events.get(0).payload().get("instance_info");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) workflowInfo.get("metadata");
-        assertEquals("test_weather_agent", metadata.get("id"));
-        assertEquals("weather", workflowInfo.get("class_name"));
-        assertEquals("on_workflow_end", tracer.events.get(1).eventName());
-    }
-
-    @Test
-    void decorateModelWithTraceInjectsTracerRecordCallback() {
-        FakeTracer tracer = new FakeTracer();
-        ModelApi decorated = TracerDecorator.decorateModelWithTrace(new ModelImpl(), new WrappedSession(tracer));
-
-        String result = decorated.invoke("hello", new LinkedHashMap<>(Map.of("model", "qwen")));
-
-        assertEquals("hello", result);
-        assertEquals(3, tracer.events.size());
-        assertEquals("on_llm_start", tracer.events.get(0).eventName());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> modelInfo = (Map<String, Object>) tracer.events.get(0).payload().get("instance_info");
-        assertEquals("demo-model", modelInfo.get("class_name"));
-        assertEquals("on_llm_request", tracer.events.get(1).eventName());
-        assertEquals(Map.of("messages", "hello", "model", "qwen"), tracer.events.get(1).payload().get("llm_params"));
-        assertEquals("on_llm_end", tracer.events.get(2).eventName());
-    }
-
-    private record EventRecord(String handlerName, String eventName, Map<String, Object> payload) {
-    }
-
-    private static final class FakeTracer {
-        private final List<EventRecord> events = new ArrayList<>();
-        private final FakeSpanManager tracerAgentSpanManager = new FakeSpanManager();
-
-        public FakeSpanManager getTracerAgentSpanManager() {
-            return tracerAgentSpanManager;
-        }
-
-        public void trigger(String handlerName, String eventName, Map<String, Object> payload) {
-            events.add(new EventRecord(handlerName, eventName, payload));
-        }
-    }
-
-    private static final class FakeSpanManager {
-        private final AtomicInteger counter = new AtomicInteger();
-
-        public TraceAgentSpan createAgentSpan(Object parentSpan) {
-            String parentInvokeId = parentSpan instanceof Span span ? span.getInvokeId() : null;
-            return new TraceAgentSpan("trace-1", "invoke-" + counter.incrementAndGet(), parentInvokeId);
-        }
-    }
-
-    private static final class WrappedSession {
-        private final InnerSession _inner;
-
-        private WrappedSession(FakeTracer tracer) {
-            this._inner = new InnerSession(tracer);
-        }
-    }
-
-    private static final class DirectSession extends InnerSession {
-        private DirectSession(FakeTracer tracer) {
-            super(tracer);
-        }
-    }
-
-    private static class InnerSession {
-        private final FakeTracer tracer;
-        private final TraceAgentSpan span = new TraceAgentSpan("trace-1", "parent", null);
-
-        private InnerSession(FakeTracer tracer) {
-            this.tracer = tracer;
-        }
-
-        public FakeTracer tracer() {
-            return tracer;
-        }
-
-        public TraceAgentSpan span() {
-            return span;
-        }
-    }
-
-    private interface ToolApi {
+    interface TestTool {
         String invoke(String input);
-
-        ToolCard getCard();
     }
 
-    private static final class ToolImpl implements ToolApi {
+    static class TestToolImpl implements TestTool {
         @Override
         public String invoke(String input) {
             return "ok:" + input;
         }
+    }
+
+    @Test
+    @DisplayName("decorateToolWithTrace supports AgentSessionApi wrappers")
+    void decorateToolWithTraceSupportsWrappedSession() {
+        TestTool decorated = TracerDecorator.decorateToolWithTrace(new TestToolImpl(), new AgentSessionApi());
+
+        assertTrue(Proxy.isProxyClass(decorated.getClass()));
+        assertEquals("ok:ping", decorated.invoke("ping"));
+    }
+
+    @Test
+    @DisplayName("decorateToolWithTrace supports direct AgentSession instances")
+    void decorateToolWithTraceSupportsDirectInnerSession() {
+        AgentSession session = new AgentSession("session-1", new Config());
+        TestTool decorated = TracerDecorator.decorateToolWithTrace(new TestToolImpl(), session);
+
+        assertTrue(Proxy.isProxyClass(decorated.getClass()));
+        assertEquals("ok:ping", decorated.invoke("ping"));
+    }
+
+    @Test
+    @DisplayName("decorateModelWithTrace records concrete Model request and response")
+    @SuppressWarnings("unchecked")
+    void decorateModelWithTraceConcreteModelRecordsRequestAndResponse() throws Exception {
+        AtomicReference<TraceTestModelClient> clientRef = new AtomicReference<>();
+        Model.registerFactory(new Model.ModelClientFactory() {
+            @Override
+            public String providerName() {
+                return TEST_MODEL_PROVIDER;
+            }
+
+            @Override
+            public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
+                TraceTestModelClient client = new TraceTestModelClient(modelConfig, clientConfig);
+                clientRef.set(client);
+                return client;
+            }
+        });
+        ModelClientConfig clientConfig = ModelClientConfig.builder().clientId("tracer-decorator-test")
+                .clientProvider(TEST_MODEL_PROVIDER).apiKey("test-key").apiBase("mock://tracer-decorator-test")
+                .build();
+        ModelRequestConfig requestConfig =
+            ModelRequestConfig.builder().modelName("qwen-plus").temperature(0.7).topP(0.9).build();
+        Model model = new Model(clientConfig, requestConfig);
+        AgentSessionApi session = new AgentSessionApi();
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("custom", "value");
+
+        Model decorated = TracerDecorator.decorateModelWithTrace(model, session);
+        AssistantMessage response =
+            decorated.invoke("hello", null, null, null, null, null, null, null, null, kwargs);
+
+        assertEquals("{\"result\": 2}", response.getContent());
+        assertSame(kwargs, clientRef.get().getReceivedKwargs());
+        TraceAgentSpan finishedSpan = null;
+        for (int index = 0; index < 4; index++) {
+            Object frame =
+                session.getInner().streamWriterManager().getStreamEmitter().getStreamQueue().receive(1_000);
+            TraceSchema trace = assertInstanceOf(TraceSchema.class, frame);
+            finishedSpan = assertInstanceOf(TraceAgentSpan.class, trace.getPayload());
+        }
+
+        assertNotNull(finishedSpan);
+        assertEquals("finish", finishedSpan.getStatus());
+        assertEquals("llm", finishedSpan.getInvokeType());
+        assertEquals("Model", finishedSpan.getName());
+        assertEquals(Map.of("class_name", "Model", "type", "llm"), finishedSpan.getMetaData());
+        assertEquals(2, finishedSpan.getOnInvokeData().size());
+        Map<String, Object> params =
+            (Map<String, Object>) finishedSpan.getOnInvokeData().get(0).get("llm_params");
+        assertEquals("qwen-plus", params.get("model"));
+        assertEquals(false, params.get("stream"));
+        Map<String, Object> tracedResponse =
+            (Map<String, Object>) finishedSpan.getOnInvokeData().get(1).get("llm_response");
+        assertEquals("{\"result\": 2}", tracedResponse.get("content"));
+
+        model.invoke("untraced", null, null, null, null, null, null, null, null, kwargs);
+        assertNull(session.getInner().streamWriterManager().getStreamEmitter().getStreamQueue().receive(10));
+    }
+
+    @Test
+    @DisplayName("decorateModelWithTrace preserves concrete Model stream iterator identity")
+    void decorateModelWithTracePreservesStreamIteratorIdentity() throws Exception {
+        String provider = TEST_MODEL_PROVIDER + "-stream";
+        AtomicReference<TraceTestModelClient> clientRef = new AtomicReference<>();
+        Model.registerFactory(new Model.ModelClientFactory() {
+            @Override
+            public String providerName() {
+                return provider;
+            }
+
+            @Override
+            public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
+                TraceTestModelClient client = new TraceTestModelClient(modelConfig, clientConfig);
+                clientRef.set(client);
+                return client;
+            }
+        });
+        Model model = new Model(ModelClientConfig.builder().clientId("tracer-stream-test")
+                .clientProvider(provider).apiKey("test-key").apiBase("mock://tracer-stream-test").build(),
+                ModelRequestConfig.builder().modelName("qwen-plus").build());
+        CloseableChunkIterator source = new CloseableChunkIterator();
+        clientRef.get().setStreamIterator(source);
+
+        Model decorated = TracerDecorator.decorateModelWithTrace(model, new AgentSessionApi());
+        Iterator<AssistantMessageChunk> actual =
+            decorated.stream("hello", null, null, null, null, null, null, null, null, null);
+
+        assertSame(source, actual);
+        source.close();
+        assertTrue(source.isClosed());
+    }
+
+    private static class TraceTestModelClient extends BaseModelClient {
+        private Map<String, Object> receivedKwargs;
+        private Iterator<AssistantMessageChunk> streamIterator = List.<AssistantMessageChunk>of().iterator();
+
+        TraceTestModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+            super(modelConfig, modelClientConfig);
+        }
 
         @Override
-        public ToolCard getCard() {
-            return new ToolCard("test_tool", "demo");
-        }
-    }
-
-    private record ToolCard(String name, String description) {
-        public String getName() {
-            return name;
-        }
-    }
-
-    private interface WorkflowApi {
-        Iterator<String> stream(String input);
-
-        WorkflowCard getCard();
-    }
-
-    private static final class WorkflowImpl implements WorkflowApi {
-        @Override
-        public Iterator<String> stream(String input) {
-            return List.of(input, "done").iterator();
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
+            receivedKwargs = kwargs;
+            Map<String, Object> params = buildRequestParams(messages, tools,
+                    temperature != null ? temperature.doubleValue() : null,
+                    topP != null ? topP.doubleValue() : null, model, stop, maxTokens, false, kwargs);
+            recordRequestTrace(params);
+            return new AssistantMessage("{\"result\": 2}");
         }
 
         @Override
-        public WorkflowCard getCard() {
-            return new WorkflowCard("weather", "test_weather_agent", "1.0", "demo workflow");
-        }
-    }
-
-    private record WorkflowCard(String name, String id, String version, String description) {
-        public String getName() {
-            return name;
-        }
-
-        public String getId() {
-            return id;
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
+            Map<String, Object> params = buildRequestParams(messages, tools,
+                    temperature != null ? temperature.doubleValue() : null,
+                    topP != null ? topP.doubleValue() : null, model, stop, maxTokens, true, kwargs);
+            recordRequestTrace(params);
+            return streamIterator;
         }
 
-        public String getVersion() {
-            return version;
+        Map<String, Object> getReceivedKwargs() {
+            return receivedKwargs;
         }
 
-        public String getDescription() {
-            return description;
-        }
-    }
-
-    private interface ModelApi {
-        String invoke(String messages, Map<String, Object> kwargs);
-
-        Iterator<String> stream(String messages, Map<String, Object> kwargs);
-
-        ModelConfigHolder getConfig();
-    }
-
-    private static final class ModelImpl implements ModelApi {
-        private final ModelConfigHolder config = new ModelConfigHolder();
-
-        @Override
-        public String invoke(String messages, Map<String, Object> kwargs) {
-            Object callback = kwargs.get("tracer_record_data");
-            assertInstanceOf(Consumer.class, callback);
-            @SuppressWarnings("unchecked")
-            Consumer<Map<String, Object>> tracerRecordData = (Consumer<Map<String, Object>>) callback;
-            tracerRecordData.accept(Map.of("llm_params", Map.of("messages", messages, "model", kwargs.get("model"))));
-            return messages;
+        void setStreamIterator(Iterator<AssistantMessageChunk> streamIterator) {
+            this.streamIterator = streamIterator;
         }
 
         @Override
-        public Iterator<String> stream(String messages, Map<String, Object> kwargs) {
-            return List.of(messages).iterator();
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException();
         }
 
         @Override
-        public ModelConfigHolder getConfig() {
-            return config;
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+                String languageType, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException();
         }
     }
 
-    private static final class ModelConfigHolder {
-        private final ModelMetadata modelConfig = new ModelMetadata();
+    private static final class CloseableChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+        private boolean closed;
 
-        public ModelMetadata getModelConfig() {
-            return modelConfig;
+        @Override
+        public boolean hasNext() {
+            return false;
         }
-    }
 
-    private static final class ModelMetadata {
-        public String getModelName() {
-            return "demo-model";
+        @Override
+        public AssistantMessageChunk next() {
+            return List.<AssistantMessageChunk>of().iterator().next();
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+        }
+
+        boolean isClosed() {
+            return closed;
         }
     }
 }

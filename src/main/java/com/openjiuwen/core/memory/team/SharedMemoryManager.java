@@ -7,7 +7,6 @@ package com.openjiuwen.core.memory.team;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
-import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 
 import java.io.IOException;
@@ -142,7 +141,7 @@ public class SharedMemoryManager {
                 }
                 return teamDir.toAbsolutePath().normalize();
             }
-            String workspace = resolveWorkspacePath();
+            String workspace = CwdContext.getWorkspace();
             if (workspace != null) {
                 Path teamDir = Path.of(workspace).resolve("team_memory");
                 try {
@@ -154,17 +153,6 @@ public class SharedMemoryManager {
             }
         }
         return teamMemoryDir;
-    }
-
-    /**
-     * Prefer {@link Cwd} (sys_operation), then deprecated {@link CwdContext} for 730 parity.
-     */
-    private static String resolveWorkspacePath() {
-        String workspace = Cwd.getWorkspace();
-        if (workspace != null && !workspace.isBlank()) {
-            return workspace;
-        }
-        return CwdContext.getWorkspace();
     }
 
     /**

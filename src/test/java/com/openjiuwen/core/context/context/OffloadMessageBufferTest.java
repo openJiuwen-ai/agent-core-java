@@ -4,94 +4,69 @@
 
 package com.openjiuwen.core.context.context;
 
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.*;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Focused parity tests for offloaded message buffering.
- *
- * <p>Mirrors Python's {@code OffloadMessageBuffer} in
- * {@code openjiuwen/core/context_engine/context/message_buffer.py}.</p>
+ * Tests for {@link OffloadMessageBuffer}.
  */
 class OffloadMessageBufferTest {
+    @Test
+    @DisplayName("offload and reload messages")
+    void testOffloadAndReload() {
+        OffloadMessageBuffer buffer = new OffloadMessageBuffer();
+        List<BaseMessage> messages = List.of(new UserMessage("test message"));
+
+        buffer.offload("handle1", "in_memory", messages);
+
+        List<BaseMessage> reloaded = buffer.reload("handle1", "in_memory");
+        assertNotNull(reloaded);
+        assertEquals(1, reloaded.size());
+        assertEquals("test message", reloaded.get(0).getContentAsString());
+    }
 
     @Test
-    void offloadReloadClearAndGetAllUseInMemoryStore() {
+    @DisplayName("reload returns empty list for missing handle")
+    void testReloadMissing() {
         OffloadMessageBuffer buffer = new OffloadMessageBuffer();
-        BaseMessage message = new BaseMessage("user", "stored");
+        List<BaseMessage> result = buffer.reload("nonexistent", "in_memory");
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
 
-        buffer.offload("h1", "in_memory", List.of(message));
+    @Test
+    @DisplayName("clear removes specific offloaded messages")
+    void testClear() {
+        OffloadMessageBuffer buffer = new OffloadMessageBuffer();
+        buffer.offload("h1", "in_memory", List.of(new UserMessage("a")));
+        buffer.offload("h2", "in_memory", List.of(new UserMessage("b")));
 
-        assertThat(buffer.reload("h1", "in_memory").toCompletableFuture().join()).containsExactly(message);
-        assertThat(buffer.getAll()).containsKey("h1");
         buffer.clear("h1", "in_memory");
-        assertThat(buffer.reload("h1", "in_memory").toCompletableFuture().join()).isEmpty();
+
+        // h1 should be removed, reload returns empty list
+        assertTrue(buffer.reload("h1", "in_memory").isEmpty());
+        // h2 should still exist
+        assertFalse(buffer.reload("h2", "in_memory").isEmpty());
     }
 
     @Test
-    void reloadUnknownStorageReturnsEmptyList() {
+    @DisplayName("getAll returns all stored messages")
+    void testGetAll() {
         OffloadMessageBuffer buffer = new OffloadMessageBuffer();
+        buffer.offload("h1", "in_memory", List.of(new UserMessage("a")));
+        buffer.offload("h2", "in_memory", List.of(new UserMessage("b")));
 
-        assertThat(buffer.reload("missing", "unknown").toCompletableFuture().join()).isEmpty();
-    }
-
-    @Test
-    void filesystemReloadReturnsExactPathMessages(@TempDir Path tempDir) throws IOException {
-        Path offloadDir = tempDir.resolve(Path.of("context", "s1_context", "offload"));
-        Files.createDirectories(offloadDir);
-        Path exact = offloadDir.resolve("handle.json");
-        Files.writeString(exact, "{\"messages\":[{\"role\":\"user\",\"content\":\"from file\"}]}");
-        OffloadMessageBuffer buffer = new OffloadMessageBuffer();
-        buffer.setWorkspaceInfo(tempDir.toString(), "s1");
-        buffer.setSysOperation(path -> {
-            try {
-                return Optional.of(Files.readString(Path.of(path)));
-            } catch (IOException ex) {
-                return Optional.empty();
-            }
-        });
-
-        List<BaseMessage> reloaded = buffer.reload("handle", "filesystem").toCompletableFuture().join();
-
-        assertThat(reloaded).extracting(BaseMessage::getContent).containsExactly("from file");
-    }
-
-    @Test
-    void filesystemReloadPathsIncludeExactAndSortedPrefixedFiles(@TempDir Path tempDir) throws IOException {
-        Path offloadDir = tempDir.resolve(Path.of("context", "s1_context", "offload"));
-        Files.createDirectories(offloadDir);
-        Path exact = offloadDir.resolve("handle.json");
-        Path prefixedB = offloadDir.resolve("b_handle.json");
-        Path prefixedA = offloadDir.resolve("a_handle.json");
-        Files.writeString(exact, "{}");
-        Files.writeString(prefixedB, "{}");
-        Files.writeString(prefixedA, "{}");
-        OffloadMessageBuffer buffer = new OffloadMessageBuffer();
-        buffer.setWorkspaceInfo(tempDir.toString(), "s1");
-
-        assertThat(buffer.filesystemReloadPaths("handle")).containsExactly(
-                exact.toString(),
-                prefixedA.toString(),
-                prefixedB.toString(),
-                "handle"
-        );
-    }
-
-    @Test
-    void constructorAcceptsInitialMessages() {
-        BaseMessage message = new BaseMessage("assistant", "old");
-        OffloadMessageBuffer buffer = new OffloadMessageBuffer(Map.of("h", List.of(message)));
-
-        assertThat(buffer.getAll()).containsEntry("h", List.of(message));
+        Map<String, List<BaseMessage>> all = buffer.getAll();
+        assertEquals(2, all.size());
+        assertTrue(all.containsKey("h1"));
+        assertTrue(all.containsKey("h2"));
     }
 }

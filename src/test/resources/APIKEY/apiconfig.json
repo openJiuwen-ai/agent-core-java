@@ -6,6 +6,6 @@
   "LLM_SSL_VERIFY":"False",
   "API_BASE_EMBEDDING":"https://your-api-base.example/v1/embeddings",
   "MODEL_NAME_EMBEDDING":"your-embedding-model-name",
-  "REDIS_URL":"redis://127.0.0.1:6379",
-  "REDIS_CLUSTER_MODE":"false"
+  "REDIS_HOST":"127.0.0.1",
+  "REDIS_PORT":"6379"
 }

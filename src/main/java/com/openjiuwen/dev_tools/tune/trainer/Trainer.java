@@ -5,15 +5,10 @@
 package com.openjiuwen.dev_tools.tune.trainer;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
-import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
-import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
-import com.openjiuwen.dev_tools.tune.Case;
-import com.openjiuwen.dev_tools.tune.EvaluatedCase;
-import com.openjiuwen.dev_tools.tune.TuneConstant;
-import com.openjiuwen.dev_tools.tune.TuneUtils;
+import com.openjiuwen.core.singleagent.legacy.BaseAgent;
+import com.openjiuwen.dev_tools.tune.*;
 import com.openjiuwen.dev_tools.tune.dataset.CaseLoader;
 import com.openjiuwen.dev_tools.tune.evaluator.BaseEvaluator;
 import com.openjiuwen.dev_tools.tune.evaluator.DefaultEvaluator;
@@ -21,394 +16,387 @@ import com.openjiuwen.dev_tools.tune.optimizer.BaseOptimizer;
 import com.openjiuwen.dev_tools.tune.optimizer.JointOptimizer;
 import com.openjiuwen.dev_tools.tune.optimizer.TextualParameter;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 
 /**
- * Prompt optimization trainer.
- *
- * <p>Mirrors Python's {@code Trainer} and module constant in
- * {@code openjiuwen/dev_tools/tune/trainer/trainer.py}.</p>
+ * Trainer for prompt optimization.
+ * <p>
+ * Mirrors Python's {@code Trainer} in {@code openjiuwen.dev_tools.tune.trainer.trainer}.
+ * 
+ * @since 0.1.7
  */
 public class Trainer {
-
-    public static final int DEFAULT_CANDIDATES_SAMPLE_NUM = 6;
+    private static final int DEFAULT_CANDIDATES_SAMPLE_NUM = 6;
 
     private final BaseOptimizer optimizer;
     private final BaseEvaluator evaluator;
     private final int numParallel;
     private final double earlyStopScore;
-    private Callbacks callbacks = new Callbacks();
+    private Callbacks callbacks;
 
-    public Trainer(BaseOptimizer optimizer, BaseEvaluator evaluator) {
-        this(optimizer, evaluator, Map.of());
-    }
-
-    public Trainer(BaseOptimizer optimizer, BaseEvaluator evaluator, Map<String, Object> kwargs) {
-        this.optimizer = Objects.requireNonNull(optimizer, "optimizer");
-        this.evaluator = Objects.requireNonNull(evaluator, "evaluator");
-        Map<String, Object> options = kwargs == null ? Map.of() : kwargs;
-        this.numParallel = intOption(options, "num_parallel", TuneConstant.DEFAULT_PARALLEL_NUM);
-        TuneUtils.validateDigitalParameter(
-                numParallel,
-                "num_parallel",
-                TuneConstant.MIN_PARALLEL_NUM,
-                TuneConstant.MAX_PARALLEL_NUM
-        );
-        this.earlyStopScore = doubleOption(options, "early_stop_score", TuneConstant.DEFAULT_EARLY_STOP_SCORE);
-        TuneUtils.validateDigitalParameter(earlyStopScore, "early_stop_score", 0.0d, 1.0d);
-    }
-
+    /**
+     * Creates a Trainer.
+     * 
+     * @param evaluator the evaluator
+     * @param optimizer the optimizer
+     * @param numParallel numParallel
+     * @param earlyStopScore earlyStopScore
+     * @since 0.1.7
+     */
     public Trainer(DefaultEvaluator evaluator, JointOptimizer optimizer, int numParallel, double earlyStopScore) {
-        this(optimizer, evaluator, Map.of("num_parallel", numParallel, "early_stop_score", earlyStopScore));
+        validateLegacyRange(numParallel, "num_parallel", TuneConstant.MIN_PARALLEL_NUM, TuneConstant.MAX_PARALLEL_NUM);
+        validateLegacyRange(earlyStopScore, "early_stop_score", 0.0, 1.0);
+        this.optimizer = optimizer;
+        this.evaluator = evaluator;
+        this.numParallel = numParallel;
+        this.earlyStopScore = earlyStopScore;
+        this.callbacks = new Callbacks();
     }
 
-    public LegacyBaseAgent train(LegacyBaseAgent agent, CaseLoader trainCases) {
-        return train(agent, trainCases, null, Map.of());
+    /**
+     * Trainer.
+     * 
+     * @param optimizer optimizer
+     * @param evaluator evaluator
+     * @param kwargs kwargs
+     * @since 0.1.7
+     */
+    public Trainer(BaseOptimizer optimizer, BaseEvaluator evaluator, Map<String, Object> kwargs) {
+        this.optimizer = optimizer;
+        this.evaluator = evaluator;
+
+        Map<String, Object> options = kwargs != null ? kwargs : new HashMap<>();
+        this.numParallel = (int) options.getOrDefault("num_parallel", TuneConstant.DEFAULT_PARALLEL_NUM);
+        TuneUtils.validateDigitalParameter(this.numParallel, "num_parallel", TuneConstant.MIN_PARALLEL_NUM,
+                TuneConstant.MAX_PARALLEL_NUM);
+
+        this.earlyStopScore = (double) options.getOrDefault("early_stop_score", TuneConstant.DEFAULT_EARLY_STOP_SCORE);
+        TuneUtils.validateDigitalParameter(this.earlyStopScore, "early_stop_score", 0.0, 1.0);
+
+        this.callbacks = new Callbacks();
     }
 
-    public LegacyBaseAgent train(LegacyBaseAgent agent, CaseLoader trainCases, CaseLoader valCases) {
-        return train(agent, trainCases, valCases, Map.of());
+    /**
+     * Creates a Trainer with default options.
+     * 
+     * @param optimizer optimizer
+     * @param evaluator evaluator
+     * @since 0.1.7
+     */
+    public Trainer(BaseOptimizer optimizer, BaseEvaluator evaluator) {
+        this(optimizer, evaluator, null);
     }
 
-    public LegacyBaseAgent train(LegacyBaseAgent agent,
-                                 CaseLoader trainCases,
-                                 CaseLoader valCases,
-                                 Map<String, Object> kwargs) {
+    /**
+     * getEvaluator.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public DefaultEvaluator getEvaluator() {
+        return (DefaultEvaluator) evaluator;
+    }
+
+    /**
+     * getOptimizer.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public JointOptimizer getOptimizer() {
+        return (JointOptimizer) optimizer;
+    }
+
+    /**
+     * getNumParallel.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public int getNumParallel() {
+        return numParallel;
+    }
+
+    /**
+     * getEarlyStopScore.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public double getEarlyStopScore() {
+        return earlyStopScore;
+    }
+
+    /**
+     * Trains the agent.
+     * 
+     * @param agent the agent to train
+     * @param trainCases the training cases
+     * @param valCases the validation cases (optional)
+     * @param kwargs additional options (num_iterations)
+     * @return the trained agent
+     * @since 0.1.7
+     */
+    public BaseAgent train(BaseAgent agent, CaseLoader trainCases, CaseLoader valCases, Map<String, Object> kwargs) {
         if (!checkTrainable(agent)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOLCHAIN_TRAINER_EXECUTION_ERROR,
-                    "error_msg",
-                    "trainer only support current Agent right now"
-            );
+            throw new IllegalStateException("Trainer only supports current Agent right now");
         }
+
         Progress progress = preTrain(agent, kwargs);
-        CaseLoader validationCases = valCases == null ? trainCases : valCases;
-        EvalResult baseline = evaluate(agent, validationCases);
-        progress.setCurrentEpochScore(baseline.score());
-        progress.setBestScore(progress.getCurrentEpochScore());
-        List<EvaluatedCase> curEpochEvaluatedCases = baseline.evaluatedCases();
-        callbacks.onTrainBegin(agent, progress, curEpochEvaluatedCases);
+        CaseLoader validationCases = valCases != null ? valCases : trainCases;
+
+        // Initial evaluation
+        var initialResult = evaluate(agent, validationCases);
+        progress.setCurrentEpochScore(initialResult.score());
+        progress.setBestScore(initialResult.score());
+
+        callbacks.onTrainBegin(agent, progress, initialResult.evaluatedCases());
+
         if (progress.getBestScore() >= earlyStopScore) {
-            Loggers.AGENT.info("val set score {} already exceed target score {}, skip optimization",
+            Loggers.AGENT.info("Val set score {} already exceed target score {}, skip optimization",
                     progress.getBestScore(), earlyStopScore);
-            callbacks.onTrainEnd(agent, progress, curEpochEvaluatedCases);
+            callbacks.onTrainEnd(agent, progress, initialResult.evaluatedCases());
             return agent;
         }
-        Loggers.AGENT.info("val set baseline score: {}", progress.getCurrentEpochScore());
-        ParameterSearcher parameterSearcher = new ParameterSearcher(this, validationCases);
-        double score = 0.0d;
-        for (Integer ignoredEpoch : progress.runEpoch()) {
+
+        Loggers.AGENT.info("Val set baseline score: {}", progress.getCurrentEpochScore());
+
+        ParameterSearcher searcher = new ParameterSearcher(this, validationCases);
+
+        for (Integer epoch : progress.runEpoch().toList()) {
             callbacks.onTrainEpochBegin(agent, progress);
-            EvalResult trainResult;
-            try (BaseOptimizer ignored = optimizer.enter()) {
-                trainResult = evaluate(agent, trainCases);
-                Loggers.AGENT.info("train epoch {}, train set score: {}",
-                        progress.getCurrentEpoch(), trainResult.score());
+
+            try (BaseOptimizer opt = optimizer) {
+                var trainResult = evaluate(agent, trainCases);
+                Loggers.AGENT.info("Train epoch {}, train set score: {}", epoch, trainResult.score());
             }
-            List<EvaluatedCase> curEvaluatedCases = trainResult.evaluatedCases();
-            Map<String, ?> curParameters = snapshotLlmCalls(agent);
-            Map<String, ?> bestBatchParameters = curParameters;
-            for (Integer ignoredBatch : progress.runBatch()) {
-                try (BaseOptimizer ignored = optimizer.enter()) {
-                    optimizer.backward(curEvaluatedCases);
-                    optimizer.update();
-                }
-                ParameterSearcher.SearchResult searchResult = parameterSearcher.searchBest(
-                        agent,
-                        progress.getBestScore(),
-                        curParameters,
-                        List.of(snapshotLlmCalls(agent))
-                );
-                score = searchResult.score();
-                curEpochEvaluatedCases = searchResult.evaluatedCases();
-                progress.setCurrentEpochScore(searchResult.lastScore());
-                if (score > progress.getBestBatchScore()) {
-                    progress.setBestBatchScore(score);
-                    bestBatchParameters = searchResult.parameters();
+
+            Map<String, LLMCall> currentParams = getLlmCalls(agent);
+            Map<String, LLMCall> bestBatchParams = currentParams;
+
+            for (Integer batch : progress.runBatch().toList()) {
+                optimizer.backward(initialResult.evaluatedCases());
+                optimizer.update();
+
+                var searchResult =
+                    searcher.searchBest(agent, progress.getBestScore(), currentParams, List.of(getLlmCalls(agent)));
+
+                if (searchResult.score() > progress.getBestBatchScore()) {
+                    progress.setBestBatchScore(searchResult.score());
+                    bestBatchParams = searchResult.parameters();
                 }
             }
-            Loggers.AGENT.info("train epoch {}, val set score: {}", progress.getCurrentEpoch(), score);
+
+            Loggers.AGENT.info("Train epoch {}, val set score: {}", epoch, progress.getBestBatchScore());
+
             if (progress.getBestBatchScore() > progress.getBestScore()) {
                 progress.setBestScore(progress.getBestBatchScore());
-                updateAgent(agent, bestBatchParameters);
-                callbacks.onTrainEpochEnd(agent, progress, curEpochEvaluatedCases);
+                updateAgent(agent, bestBatchParams);
             } else {
-                callbacks.onTrainEpochEnd(agent, progress, curEpochEvaluatedCases);
-                updateAgent(agent, curParameters);
+                updateAgent(agent, currentParams);
             }
+
+            callbacks.onTrainEpochEnd(agent, progress, initialResult.evaluatedCases());
+
             if (progress.getBestScore() >= earlyStopScore) {
                 break;
             }
         }
-        callbacks.onTrainEnd(agent, progress, curEpochEvaluatedCases);
+
+        callbacks.onTrainEnd(agent, progress, initialResult.evaluatedCases());
         return agent;
     }
 
-    public EvalResult evaluate(LegacyBaseAgent agent, CaseLoader cases) {
+    /**
+     * Evaluates the agent.
+     * 
+     * @param agent the agent to evaluate
+     * @param cases the cases
+     * @return the evaluation result
+     * @since 0.1.7
+     */
+    public EvalResult evaluate(BaseAgent agent, CaseLoader cases) {
         List<Case> caseList = cases.getCases();
         if (caseList.isEmpty()) {
-            return new EvalResult(0.0d, List.of());
+            return new EvalResult(0.0, List.of());
         }
+
         List<Map<String, Object>> predicts = predict(agent, cases);
-        List<EvaluatedCase> evaluatedCases = evaluator.batchEvaluate(caseList, predicts, numParallel);
+        List<EvaluatedCase> evaluatedCases = evaluator.batchEvaluate(caseList, predicts);
+
         double score = evaluatedCases.isEmpty()
-                ? 0.0d
-                : evaluatedCases.stream().mapToDouble(EvaluatedCase::getScore).sum() / evaluatedCases.size();
+                ? 0.0
+                : evaluatedCases.stream().mapToDouble(EvaluatedCase::getScore).average().orElse(0.0);
+
         return new EvalResult(score, evaluatedCases);
     }
 
-    public List<Map<String, Object>> predict(LegacyBaseAgent agent, CaseLoader cases) {
-        if (cases.size() == 0) {
-            return List.of();
-        }
-        int numWorkers = Math.min(numParallel, cases.size());
-        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("dev-tools-tune-trainer", numWorkers, false);
+    /**
+     * Predicts outputs for cases.
+     * 
+     * @param agent agent
+     * @param cases cases
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<Map<String, Object>> predict(BaseAgent agent, CaseLoader cases) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        int workers = Math.min(numParallel, cases.size());
+
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("dev-tools-tune-trainer", workers, false);
+
         try {
-            List<Future<Map<String, Object>>> futures = new ArrayList<>(cases.size());
-            for (Case caseValue : cases.getCases()) {
-                futures.add(executor.submit(() -> forward(agent, caseValue)));
+            List<CompletableFuture<Map<String, Object>>> futures = new ArrayList<>();
+
+            for (Case case_ : cases.getCases()) {
+                CompletableFuture<Map<String, Object>> future = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        Map<String, Object> inputs = new HashMap<>(case_.getInputs());
+                        inputs.put("conversation_id", case_.getCaseId());
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> output = (Map<String, Object>) agent.invoke(inputs, null);
+                        return output;
+                    } catch (Exception e) {
+                        return Map.of("error", "Get wrong result due to " + e.getMessage());
+                    }
+                }, executor);
+                futures.add(future);
             }
-            List<Map<String, Object>> predicts = new ArrayList<>(futures.size());
-            for (Future<Map<String, Object>> future : futures) {
-                predicts.add(futureResult(future));
+
+            for (CompletableFuture<Map<String, Object>> future : futures) {
+                results.add(future.join());
             }
-            return predicts;
         } finally {
             executor.shutdown();
         }
+
+        return results;
     }
 
+    /**
+     * Sets callbacks.
+     * 
+     * @param callbacks callbacks
+     * @since 0.1.7
+     */
     public void setCallbacks(Callbacks callbacks) {
         if (callbacks == null) {
-            Loggers.AGENT.warn("callbacks should be a Callbacks object, got null");
+            Loggers.AGENT.warn("callbacks should be a Callbacks object");
             return;
         }
         this.callbacks = callbacks;
     }
 
-    public void set_callbacks(Callbacks callbacks) {
-        setCallbacks(callbacks);
+    /**
+     * validateLegacyRange.
+     * 
+     * @param value value
+     * @param name name
+     * @param min min
+     * @param max max
+     * @since 0.1.7
+     */
+    private static void validateLegacyRange(double value, String name, double min, double max) {
+        if (value < min || value > max) {
+            throw new IllegalArgumentException(name + " should be between " + min + " and " + max);
+        }
     }
 
-    public void updateAgent(LegacyBaseAgent agent, Map<String, ?> parameters) {
-        updateAgentParameters(agent, parameters);
-    }
+    /**
+     * preTrain.
+     * 
+     * @param agent agent
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
+    private Progress preTrain(BaseAgent agent, Map<String, Object> kwargs) {
+        int maxEpoch = kwargs != null
+                ? (int) kwargs.getOrDefault("num_iterations", TuneConstant.DEFAULT_ITERATION_NUM)
+                : TuneConstant.DEFAULT_ITERATION_NUM;
 
-    public void update_agent(LegacyBaseAgent agent, Map<String, ?> parameters) {
-        updateAgent(agent, parameters);
-    }
+        TuneUtils.validateDigitalParameter(maxEpoch, "num_iterations", TuneConstant.MIN_ITERATION_NUM,
+                TuneConstant.MAX_ITERATION_NUM);
 
-    public int getNumParallel() {
-        return numParallel;
-    }
-
-    public double getEarlyStopScore() {
-        return earlyStopScore;
-    }
-
-    public DefaultEvaluator getEvaluator() {
-        return (DefaultEvaluator) evaluator;
-    }
-
-    public BaseOptimizer getOptimizer() {
-        return optimizer;
-    }
-
-    private Progress preTrain(LegacyBaseAgent agent, Map<String, Object> kwargs) {
-        Map<String, Object> options = kwargs == null ? Map.of() : kwargs;
-        int maxEpoch = intOption(options, "num_iterations", TuneConstant.DEFAULT_ITERATION_NUM);
-        TuneUtils.validateDigitalParameter(
-                maxEpoch,
-                "num_iterations",
-                TuneConstant.MIN_ITERATION_NUM,
-                TuneConstant.MAX_ITERATION_NUM
-        );
-        Progress progress = new Progress();
-        progress.setMaxEpoch(maxEpoch);
+        Progress progress = Progress.builder().maxEpoch(maxEpoch).build();
         optimizer.bindParameter(getLlmCalls(agent));
+
         return progress;
     }
 
-    private static Map<String, Object> forward(LegacyBaseAgent agent, Case caseValue) {
-        Map<String, Object> inputs = new LinkedHashMap<>(caseValue.getInputs());
-        inputs.put("conversation_id", caseValue.getCaseId());
-        try {
-            Object result = agent.invoke(inputs, null).toCompletableFuture().get();
-            return normalizePredictResult(result);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            return Map.of("error", "Get wrong result due to " + errorMessage(exception));
-        } catch (ExecutionException | RuntimeException exception) {
-            return Map.of("error", "Get wrong result due to " + errorMessage(exception));
-        }
-    }
-
-    private static Map<String, Object> normalizePredictResult(Object result) {
-        if (result instanceof Map<?, ?> map) {
-            Map<String, Object> normalized = new LinkedHashMap<>();
-            map.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-            return normalized;
-        }
-        return Map.of("output", result);
-    }
-
-    private static Map<String, Object> futureResult(Future<Map<String, Object>> future) {
-        try {
-            return future.get();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            return Map.of("error", "Get wrong result due to " + errorMessage(exception));
-        } catch (ExecutionException exception) {
-            return Map.of("error", "Get wrong result due to " + errorMessage(exception));
-        }
-    }
-
-    private static String errorMessage(Throwable throwable) {
-        Throwable cursor = throwable;
-        while ((cursor instanceof CompletionException || cursor instanceof ExecutionException)
-                && cursor.getCause() != null) {
-            cursor = cursor.getCause();
-        }
-        String message = cursor.getMessage();
-        return message == null ? cursor.getClass().getSimpleName() : message;
-    }
-
-    private static boolean checkTrainable(LegacyBaseAgent agent) {
-        Method method = getNoArgMethod(agent.getClass(), "get_llm_calls");
-        if (method == null) {
-            return false;
-        }
-        Class<?> superclass = agent.getClass().getSuperclass();
-        return superclass == null || !method.getDeclaringClass().equals(superclass);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, LLMCall> getLlmCalls(LegacyBaseAgent agent) {
-        Method method = getNoArgMethod(agent.getClass(), "get_llm_calls");
-        if (method == null) {
-            method = getNoArgMethod(agent.getClass(), "getLlmCalls");
-        }
-        if (method == null) {
-            throw new IllegalStateException("Agent does not expose get_llm_calls()");
-        }
-        try {
-            Object value = method.invoke(agent);
-            if (!(value instanceof Map<?, ?> rawMap)) {
-                throw new IllegalStateException("get_llm_calls() must return a map");
-            }
-            Map<String, LLMCall> result = new LinkedHashMap<>();
-            rawMap.forEach((key, item) -> result.put(String.valueOf(key), (LLMCall) item));
-            return result;
-        } catch (IllegalAccessException exception) {
-            throw new IllegalStateException("get_llm_calls() is not accessible", exception);
-        } catch (InvocationTargetException exception) {
-            Throwable cause = exception.getCause();
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException("get_llm_calls() failed", cause);
-        } catch (ClassCastException exception) {
-            throw new IllegalStateException("get_llm_calls() must return LLMCall values", exception);
-        }
-    }
-
-    private static Method getNoArgMethod(Class<?> type, String methodName) {
-        try {
-            return type.getMethod(methodName);
-        } catch (NoSuchMethodException exception) {
-            return null;
-        }
-    }
-
-    static Map<String, ?> snapshotLlmCalls(LegacyBaseAgent agent) {
-        return snapshotParameterMap(getLlmCalls(agent));
-    }
-
-    static Map<String, ?> snapshotParameterMap(Map<String, ?> parameters) {
-        Map<String, PromptSnapshot> snapshots = new LinkedHashMap<>();
-        if (parameters == null) {
-            return snapshots;
-        }
-        for (Map.Entry<String, ?> entry : parameters.entrySet()) {
-            PromptSnapshot snapshot = PromptSnapshot.from(entry.getValue());
-            if (snapshot != null) {
-                snapshots.put(entry.getKey(), snapshot);
-            }
-        }
-        return snapshots;
-    }
-
-    private static void updateAgentParameters(LegacyBaseAgent agent, Map<String, ?> parameters) {
+    /**
+     * updateAgent.
+     * 
+     * @param agent agent
+     * @param parameters parameters
+     * @since 0.1.7
+     */
+    public void updateAgent(BaseAgent agent, Map<String, ?> parameters) {
         if (parameters == null) {
             return;
         }
-        Map<String, LLMCall> agentParameters = getLlmCalls(agent);
-        for (Map.Entry<String, LLMCall> entry : agentParameters.entrySet()) {
-            Object param = parameters.get(entry.getKey());
-            if (param == null) {
-                continue;
-            }
-            PromptSnapshot snapshot = PromptSnapshot.from(param);
-            if (snapshot == null) {
-                continue;
-            }
-            entry.getValue().updateSystemPrompt(snapshot.systemPrompt());
-            entry.getValue().updateUserPrompt(snapshot.userPrompt());
-        }
-    }
 
-    private static int intOption(Map<String, Object> options, String name, int defaultValue) {
-        Object value = options.getOrDefault(name, defaultValue);
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        return Integer.parseInt(String.valueOf(value));
-    }
+        Map<String, LLMCall> agentParams = getLlmCalls(agent);
+        for (Map.Entry<String, LLMCall> entry : agentParams.entrySet()) {
+            String name = entry.getKey();
+            Object param = parameters.get(name);
 
-    private static double doubleOption(Map<String, Object> options, String name, double defaultValue) {
-        Object value = options.getOrDefault(name, defaultValue);
-        if (value instanceof Number number) {
-            return number.doubleValue();
+            if (param instanceof TextualParameter tp) {
+                entry.getValue()
+                        .updateSystemPrompt(TuneUtils.getContentStringFromTemplate(tp.getLlmCall().getSystemPrompt()));
+                entry.getValue()
+                        .updateUserPrompt(TuneUtils.getContentStringFromTemplate(tp.getLlmCall().getUserPrompt()));
+            } else if (param instanceof LLMCall llmCall) {
+                entry.getValue().updateSystemPrompt(TuneUtils.getContentStringFromTemplate(llmCall.getSystemPrompt()));
+                entry.getValue().updateUserPrompt(TuneUtils.getContentStringFromTemplate(llmCall.getUserPrompt()));
+            } else {
+                // no-op
+            }
         }
-        return Double.parseDouble(String.valueOf(value));
     }
 
     /**
-     * Mirrors Python's {@code Trainer.evaluate} tuple return in
-     * {@code openjiuwen/dev_tools/tune/trainer/trainer.py}.
+     * checkTrainable.
+     * 
+     * @param agent agent
+     * @return the result
+     * @since 0.1.7
+     */
+    private boolean checkTrainable(BaseAgent agent) {
+        try {
+            agent.getClass().getMethod("getLlmCalls");
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    /**
+     * getLlmCalls.
+     * 
+     * @param agent agent
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, LLMCall> getLlmCalls(BaseAgent agent) {
+        try {
+            return (Map<String, LLMCall>) agent.getClass().getMethod("getLlmCalls").invoke(agent);
+        } catch (Exception e) {
+            throw new IllegalStateException("Agent does not expose getLlmCalls()", e);
+        }
+    }
+
+    /**
+     * Evaluation result record.
+     * 
+     * @since 0.1.7
      */
     public record EvalResult(double score, List<EvaluatedCase> evaluatedCases) {
-    }
-
-    /**
-     * Mirrors Python's {@code copy.deepcopy(...)} parameter snapshots in
-     * {@code openjiuwen/dev_tools/tune/trainer/trainer.py}.
-     */
-    static record PromptSnapshot(String systemPrompt, String userPrompt) {
-        static PromptSnapshot from(Object value) {
-            if (value instanceof PromptSnapshot snapshot) {
-                return snapshot;
-            }
-            if (value instanceof TextualParameter textualParameter) {
-                return from(textualParameter.getLlmCall());
-            }
-            if (value instanceof LLMCall llmCall) {
-                return new PromptSnapshot(
-                        TuneUtils.getContentStringFromTemplate(llmCall.getSystemPrompt()),
-                        TuneUtils.getContentStringFromTemplate(llmCall.getUserPrompt())
-                );
-            }
-            return null;
-        }
     }
 }

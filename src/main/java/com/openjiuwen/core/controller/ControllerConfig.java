@@ -4,127 +4,122 @@
 
 package com.openjiuwen.core.controller;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
-
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Controller configuration.
  * <p>
- * Mirrors Python's {@code ControllerConfig} in
- * {@code openjiuwen/core/controller/config.py}.
+ * Defines configuration parameters for the controller, grouped into categories:
+ * task scheduling, task management, event queue, and intent recognition.
+ * <p>
+ * Mirrors Python's {@code ControllerConfig(BaseModel)}.
+ * 
+ * @since 0.1.7
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ControllerConfig {
+    // ==================== Task scheduling configuration ====================
+    /** Maximum number of concurrent tasks (0 means no limit). Default: 5 */
+    private int maxConcurrentTasks = 5;
 
-    @JsonProperty("max_concurrent_tasks")
-    private int maxConcurrentTasks = OpenJiuwenExecutors.defaultTaskConcurrency();
-
-    @JsonProperty("schedule_interval")
+    /** Task scheduling interval in seconds. Default: 1.0 */
     private double scheduleInterval = 1.0;
 
-    @JsonProperty("task_timeout")
+    /** Task timeout in seconds. null means no timeout. */
     private Double taskTimeout;
 
-    @JsonProperty("default_task_priority")
+    // ==================== Task management configuration ====================
+
+    /** Default task priority. Larger numbers mean higher priority. Default: 1 */
     private int defaultTaskPriority = 1;
 
-    @JsonProperty("enable_task_persistence")
+    /** Whether to enable task persistence. Default: false */
     private boolean enableTaskPersistence = false;
 
-    @JsonProperty("event_queue_size")
-    private Integer eventQueueSize = 10000;
+    // ==================== Event queue configuration ====================
 
-    @JsonProperty("event_timeout")
-    private Double eventTimeout = 300.0;
+    /** Event queue size. Default: 10000 */
+    private int eventQueueSize = 10000;
 
-    @JsonProperty("enable_intent_recognition")
+    /** Event processing timeout in seconds. Default: 300 */
+    private double eventTimeout = 300;
+
+    // ==================== Intent recognition configuration ====================
+
+    /** Whether to enable intent recognition. Default: false */
     private boolean enableIntentRecognition = false;
 
-    @JsonProperty("intent_llm_id")
+    /** Intent LLM model ID */
     private String intentLlmId = "";
 
-    @JsonProperty("intent_confidence_threshold")
+    /** Confidence threshold for intent recognition. Default: 0.7 */
     private double intentConfidenceThreshold = 0.7;
 
-    @JsonProperty("intent_type_list")
-    private List<String> intentTypeList = new ArrayList<>(List.of(
-            "create_task",
-            "pause_task",
-            "resume_task",
-            "cancel_task",
-            "unknown_task"
-    ));
+    /**
+     * List of supported intent types
+     * 
+     * @since 0.1.7
+     */
+    private List<String> intentTypeList =
+        List.of("create_task", "pause_task", "resume_task", "cancel_task", "unknown_task");
 
-    @JsonProperty("default_response")
-    private DefaultResponse defaultResponse = new DefaultResponse();
-
-    @JsonProperty("suppress_completion_signal")
-    private boolean suppressCompletionSignal = false;
-
-    @JsonProperty("stream_first_frame_timeout")
-    private Double streamFirstFrameTimeout = 30.0;
-
+    /**
+     * ControllerConfig.
+     * 
+     * @since 0.1.7
+     */
     public ControllerConfig() {
     }
 
+    // Builder pattern
+
+    /**
+     * Creates a default ControllerConfig instance.
+     * 
+     * @return a new ControllerConfig with default values
+     * @since 0.1.7
+     */
     public static ControllerConfig defaultConfig() {
         return new ControllerConfig();
     }
 
+    // Getters and setters
+
     /**
-     * Mirrors Python's {@code DefaultResponse} in
-     * {@code openjiuwen/core/controller/config.py}.
+     * Gets the maximum number of concurrent tasks.
+     * 
+     * @return the max concurrent tasks value
+     * @since 0.1.7
      */
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    public static class DefaultResponse {
-
-        private String type = "text";
-        private String text;
-
-        public DefaultResponse() {
-        }
-
-        public DefaultResponse(String type, String text) {
-            this.type = type;
-            this.text = text;
-        }
-
-        public String getType() {
-            return type;
-        }
-
-        public void setType(String type) {
-            if (!"text".equals(type) && !"workflow".equals(type)) {
-                throw new IllegalArgumentException("defaultResponse.type must be 'text' or 'workflow'");
-            }
-            this.type = type;
-        }
-
-        public String getText() {
-            return text;
-        }
-
-        public void setText(String text) {
-            this.text = text;
-        }
-    }
-
     public int getMaxConcurrentTasks() {
         return maxConcurrentTasks;
     }
 
+    /**
+     * Sets the maximum number of concurrent tasks.
+     * 
+     * @param maxConcurrentTasks the max concurrent tasks value
+     * @since 0.1.7
+     */
     public void setMaxConcurrentTasks(int maxConcurrentTasks) {
         this.maxConcurrentTasks = maxConcurrentTasks;
     }
 
+    /**
+     * Gets the task scheduling interval.
+     * 
+     * @return the schedule interval in seconds
+     * @since 0.1.7
+     */
     public double getScheduleInterval() {
         return scheduleInterval;
     }
 
+    /**
+     * Sets the task scheduling interval.
+     * 
+     * @param scheduleInterval the schedule interval in seconds (must be >= 0.1)
+     * @since 0.1.7
+     */
     public void setScheduleInterval(double scheduleInterval) {
         if (scheduleInterval < 0.1) {
             throw new IllegalArgumentException("scheduleInterval must be >= 0.1");
@@ -132,83 +127,171 @@ public class ControllerConfig {
         this.scheduleInterval = scheduleInterval;
     }
 
+    /**
+     * getTaskTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Double getTaskTimeout() {
         return taskTimeout;
     }
 
+    /**
+     * setTaskTimeout.
+     * 
+     * @param taskTimeout taskTimeout
+     * @since 0.1.7
+     */
     public void setTaskTimeout(Double taskTimeout) {
-        if (taskTimeout != null && taskTimeout <= 0) {
-            throw new IllegalArgumentException("taskTimeout must be positive or null");
+        if (taskTimeout != null && taskTimeout < 600) {
+            throw new IllegalArgumentException("taskTimeout must be >= 600 or null");
         }
         this.taskTimeout = taskTimeout;
     }
 
+    /**
+     * getDefaultTaskPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int getDefaultTaskPriority() {
         return defaultTaskPriority;
     }
 
+    /**
+     * setDefaultTaskPriority.
+     * 
+     * @param defaultTaskPriority defaultTaskPriority
+     * @since 0.1.7
+     */
     public void setDefaultTaskPriority(int defaultTaskPriority) {
         this.defaultTaskPriority = defaultTaskPriority;
     }
 
+    /**
+     * isEnableTaskPersistence.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public boolean isEnableTaskPersistence() {
         return enableTaskPersistence;
     }
 
+    /**
+     * setEnableTaskPersistence.
+     * 
+     * @param enableTaskPersistence enableTaskPersistence
+     * @since 0.1.7
+     */
     public void setEnableTaskPersistence(boolean enableTaskPersistence) {
         this.enableTaskPersistence = enableTaskPersistence;
     }
 
-    public Integer getEventQueueSize() {
+    /**
+     * getEventQueueSize.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public int getEventQueueSize() {
         return eventQueueSize;
     }
 
-    public void setEventQueueSize(Integer eventQueueSize) {
-        if (eventQueueSize != null && eventQueueSize < 1) {
-            throw new IllegalArgumentException("eventQueueSize must be >= 1 or null");
+    /**
+     * setEventQueueSize.
+     * 
+     * @param eventQueueSize eventQueueSize
+     * @since 0.1.7
+     */
+    public void setEventQueueSize(int eventQueueSize) {
+        if (eventQueueSize < 1) {
+            throw new IllegalArgumentException("eventQueueSize must be >= 1");
         }
         this.eventQueueSize = eventQueueSize;
     }
 
-    public void setEventQueueSize(int eventQueueSize) {
-        setEventQueueSize(Integer.valueOf(eventQueueSize));
-    }
-
-    public Double getEventTimeout() {
+    /**
+     * getEventTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public double getEventTimeout() {
         return eventTimeout;
     }
 
-    public void setEventTimeout(Double eventTimeout) {
-        if (eventTimeout != null && eventTimeout < 100) {
-            throw new IllegalArgumentException("eventTimeout must be >= 100 or null");
+    /**
+     * setEventTimeout.
+     * 
+     * @param eventTimeout eventTimeout
+     * @since 0.1.7
+     */
+    public void setEventTimeout(double eventTimeout) {
+        if (eventTimeout < 100) {
+            throw new IllegalArgumentException("eventTimeout must be >= 100");
         }
         this.eventTimeout = eventTimeout;
     }
 
-    public void setEventTimeout(double eventTimeout) {
-        setEventTimeout(Double.valueOf(eventTimeout));
-    }
-
+    /**
+     * isEnableIntentRecognition.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public boolean isEnableIntentRecognition() {
         return enableIntentRecognition;
     }
 
+    /**
+     * setEnableIntentRecognition.
+     * 
+     * @param enableIntentRecognition enableIntentRecognition
+     * @since 0.1.7
+     */
     public void setEnableIntentRecognition(boolean enableIntentRecognition) {
         this.enableIntentRecognition = enableIntentRecognition;
     }
 
+    /**
+     * getIntentLlmId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getIntentLlmId() {
         return intentLlmId;
     }
 
+    /**
+     * setIntentLlmId.
+     * 
+     * @param intentLlmId intentLlmId
+     * @since 0.1.7
+     */
     public void setIntentLlmId(String intentLlmId) {
-        this.intentLlmId = intentLlmId == null ? "" : intentLlmId;
+        this.intentLlmId = intentLlmId;
     }
 
+    /**
+     * getIntentConfidenceThreshold.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public double getIntentConfidenceThreshold() {
         return intentConfidenceThreshold;
     }
 
+    /**
+     * setIntentConfidenceThreshold.
+     * 
+     * @param intentConfidenceThreshold intentConfidenceThreshold
+     * @since 0.1.7
+     */
     public void setIntentConfidenceThreshold(double intentConfidenceThreshold) {
         if (intentConfidenceThreshold < 0.0 || intentConfidenceThreshold > 1.0) {
             throw new IllegalArgumentException("intentConfidenceThreshold must be between 0.0 and 1.0");
@@ -216,35 +299,23 @@ public class ControllerConfig {
         this.intentConfidenceThreshold = intentConfidenceThreshold;
     }
 
+    /**
+     * getIntentTypeList.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public List<String> getIntentTypeList() {
         return intentTypeList;
     }
 
+    /**
+     * setIntentTypeList.
+     * 
+     * @param intentTypeList intentTypeList
+     * @since 0.1.7
+     */
     public void setIntentTypeList(List<String> intentTypeList) {
-        this.intentTypeList = intentTypeList == null ? new ArrayList<>() : new ArrayList<>(intentTypeList);
-    }
-
-    public DefaultResponse getDefaultResponse() {
-        return defaultResponse;
-    }
-
-    public void setDefaultResponse(DefaultResponse defaultResponse) {
-        this.defaultResponse = defaultResponse == null ? new DefaultResponse() : defaultResponse;
-    }
-
-    public boolean isSuppressCompletionSignal() {
-        return suppressCompletionSignal;
-    }
-
-    public void setSuppressCompletionSignal(boolean suppressCompletionSignal) {
-        this.suppressCompletionSignal = suppressCompletionSignal;
-    }
-
-    public Double getStreamFirstFrameTimeout() {
-        return streamFirstFrameTimeout;
-    }
-
-    public void setStreamFirstFrameTimeout(Double streamFirstFrameTimeout) {
-        this.streamFirstFrameTimeout = streamFirstFrameTimeout;
+        this.intentTypeList = intentTypeList;
     }
 }

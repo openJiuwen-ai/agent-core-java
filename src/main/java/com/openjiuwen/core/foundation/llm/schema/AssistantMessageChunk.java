@@ -4,12 +4,9 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.openjiuwen.core.common.logging.Loggers;
-
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.experimental.SuperBuilder;
-import lombok.NoArgsConstructor;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,212 +14,438 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code AssistantMessageChunk} in
- * {@code openjiuwen/core/foundation/llm/schema/message_chunk.py}.
- *
- * <p>Tool-call fragment merging uses stable keys ({@code index > id > name > anon})
- * plus pure-arguments fallback, matching 730 / tolerant provider streaming.</p>
+ * Streaming assistant message chunk with tool call fragment merging.
+ * <p>
+ * Mirrors Python's {@code AssistantMessageChunk} model. Tool call fragments
+ * from the same call are concatenated rather than appended as new elements.
+ * 
+ * @since 0.1.7
  */
-@Data
-@SuperBuilder
-@NoArgsConstructor
-@EqualsAndHashCode(callSuper = true)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AssistantMessageChunk extends AssistantMessage {
+    private static final LoggerProtocol LOG = Loggers.LLM;
 
-    public AssistantMessageChunk merge(AssistantMessageChunk other) {
-        return merge((Object) other);
+    /**
+     * AssistantMessageChunk.
+     * 
+     * @since 0.1.7
+     */
+    public AssistantMessageChunk() {
     }
 
-    public AssistantMessageChunk merge(Object other) {
-        if (!(other instanceof AssistantMessageChunk otherChunk)) {
-            throw new IllegalArgumentException("Cannot merge AssistantMessageChunk with " + other);
+    /**
+     * Merge another chunk into this one, combining content and tool call fragments.
+     * <p>
+     * Tool call fragments are merged by a stable key with priority:
+     * {@code index > id > name > anonymous}. This is more tolerant than the previous
+     * "compare with the last element" approach and works for OpenAI / DeepSeek / GLM
+     * streaming formats, which differ in how they populate id, index, and name on
+     * incremental argument chunks.
+     * 
+     * @param other the chunk to merge
+     * @return a new merged chunk
+     * @since 0.1.7
+     */
+    public AssistantMessageChunk merge(AssistantMessageChunk other) {
+        if (other == null) {
+            return this;
         }
 
-        Object combinedContent = MessageChunkMerge.mergeParserContent(getContent(), otherChunk.getContent());
-        List<ToolCall> mergedToolCalls = mergeToolCalls(getToolCalls(), otherChunk.getToolCalls());
-        String mergedFinishReason = !"null".equals(otherChunk.getFinishReason())
-                ? otherChunk.getFinishReason()
-                : getFinishReason();
+        // Merge content
+        Object combinedContent = BaseMessageChunk.mergeContent(this.getContent(), other.getContent());
 
-        return AssistantMessageChunk.builder()
-                .role(getRole())
-                .content(combinedContent)
-                .toolCalls(mergedToolCalls.isEmpty() ? null : mergedToolCalls)
-                .usageMetadata(otherChunk.getUsageMetadata() != null
-                        ? otherChunk.getUsageMetadata() : getUsageMetadata())
-                .finishReason(mergedFinishReason)
-                .parserContent(MessageChunkMerge.mergeParserContent(getParserContent(), otherChunk.getParserContent()))
-                .reasoningContent(orEmpty(getReasoningContent()) + orEmpty(otherChunk.getReasoningContent()))
-                .promptTokenIds(preferLeft(getPromptTokenIds(), otherChunk.getPromptTokenIds()))
-                .completionTokenIds(MessageChunkMerge.concatTokenIds(
-                        getCompletionTokenIds(), otherChunk.getCompletionTokenIds()))
-                .logprobs(MessageChunkMerge.mergeLogprobs(getLogprobs(), otherChunk.getLogprobs()))
-                .build();
-    }
-
-    private static List<ToolCall> mergeToolCalls(List<ToolCall> left, List<ToolCall> right) {
+        // Merge tool_calls by bucketing fragments on a stable key per call
         LinkedHashMap<Object, ToolCall> bucket = new LinkedHashMap<>();
-        if (left != null) {
-            for (ToolCall toolCall : left) {
-                if (isVacuousFragment(toolCall)) {
+        if (this.getToolCalls() != null) {
+            for (ToolCall tc : this.getToolCalls()) {
+                if (isVacuousFragment(tc)) {
                     continue;
                 }
-                bucket.put(keyOf(toolCall), copyToolCall(toolCall));
+                bucket.put(keyOf(tc), cloneOf(tc));
             }
         }
-        if (right != null) {
-            for (ToolCall incoming : right) {
+
+        if (other.getToolCalls() != null) {
+            for (ToolCall incoming : other.getToolCalls()) {
+                // Empty placeholder objects (no id/name/index/args) must not create a
+                // ghost call, otherwise a later pure-arguments fragment may attach to it.
                 if (isVacuousFragment(incoming)) {
+                    logMerge("skip-empty", keyOf(incoming), null, incoming);
                     continue;
                 }
                 Object key = keyOf(incoming);
                 ToolCall exist = bucket.get(key);
                 if (exist != null) {
                     appendFragment(exist, incoming);
+                    logMerge("hit", key, exist, incoming);
                     continue;
                 }
-                // Same call id may key differently when providers send index only on the first fragment.
-                ToolCall sameId = findById(bucket, incoming);
-                if (sameId != null) {
-                    appendFragment(sameId, incoming);
-                    continue;
-                }
-                // Pure-args fragment continues the most recent call (Python falsy id/name).
+                // Fallback: a pure-arguments fragment (no id / no name / only args) is
+                // an argument continuation of the most recent call regardless of key.
                 if (isPureArgumentsFragment(incoming) && !bucket.isEmpty()) {
-                    appendFragment(lastValue(bucket), incoming);
+                    ToolCall last = lastValue(bucket);
+                    appendFragment(last, incoming);
+                    logMerge("fallback-args", keyOf(last), last, incoming);
                     continue;
                 }
-                // Python: merge with last when either side lacks id (streaming deltas).
-                // Only when the incoming fragment carries no explicit index: a distinct
-                // index marks a separate parallel call and must never merge into the
-                // previous one, even when both sides lack an id.
-                if (!bucket.isEmpty() && isFunctionTool(incoming) && missingId(incoming)
-                        && incoming.getIndex() == null) {
-                    ToolCall last = lastValue(bucket);
-                    if (isFunctionTool(last)) {
-                        appendFragment(last, incoming);
-                        continue;
-                    }
-                }
-                // Late-arriving name on a single anonymous bucket entry.
+                // Fallback: incoming has a name but no id/index and bucket has exactly one
+                // entry whose name is still empty — treat as the same call (name arrives late).
                 if (hasOwnName(incoming) && bucket.size() == 1) {
                     ToolCall only = lastValue(bucket);
-                    if (!hasOwnName(only)) {
+                    if (!hasOwnName(only) && only.getArguments() != null) {
                         appendFragment(only, incoming);
+                        logMerge("fallback-name", keyOf(only), only, incoming);
                         continue;
                     }
                 }
-                bucket.put(key, copyToolCall(incoming));
+                bucket.put(key, cloneOf(incoming));
+                logMerge("new", key, null, incoming);
             }
         }
-        return new ArrayList<>(bucket.values());
+
+        List<ToolCall> mergedToolCalls = new ArrayList<>(bucket.values());
+
+        String mergedFinishReason =
+            !"null".equals(other.getFinishReason()) ? other.getFinishReason() : this.getFinishReason();
+
+        return AssistantMessageChunk.builder().role(this.getRole()).content(combinedContent)
+                .toolCalls(mergedToolCalls.isEmpty() ? null : mergedToolCalls)
+                .usageMetadata(other.getUsageMetadata() != null ? other.getUsageMetadata() : this.getUsageMetadata())
+                .finishReason(mergedFinishReason)
+                .parserContent(other.getParserContent() != null ? other.getParserContent() : this.getParserContent())
+                .reasoningContent(
+                        other.getReasoningContent() != null ? other.getReasoningContent() : this.getReasoningContent())
+                .build();
     }
 
-    private static Object keyOf(ToolCall toolCall) {
-        if (toolCall == null) {
+    /**
+     * keyOf.
+     * 
+     * @param tc tc
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Object keyOf(ToolCall tc) {
+        if (tc == null) {
             return "anon";
         }
-        if (toolCall.getIndex() != null) {
-            return "idx:" + toolCall.getIndex();
+        if (tc.getIndex() != null) {
+            return "idx:" + tc.getIndex();
         }
-        if (toolCall.getId() != null && !toolCall.getId().isEmpty()) {
-            return "id:" + toolCall.getId();
+        if (tc.getId() != null && !tc.getId().isEmpty()) {
+            return "id:" + tc.getId();
         }
-        if (toolCall.getName() != null && !toolCall.getName().isEmpty()) {
-            return "name:" + toolCall.getName();
+        if (tc.getName() != null && !tc.getName().isEmpty()) {
+            return "name:" + tc.getName();
         }
         return "anon";
     }
 
-    private static void appendFragment(ToolCall base, ToolCall incoming) {
-        if (base.getId() == null || base.getId().isEmpty()) {
-            base.setId(incoming.getId());
-        }
-        if (base.getType() == null || base.getType().isEmpty()) {
-            base.setType(incoming.getType() != null ? incoming.getType() : "function");
-        }
-        if (base.getName() == null || base.getName().isEmpty()) {
-            base.setName(incoming.getName());
-        } else if (incoming.getName() != null && !incoming.getName().isEmpty()
-                && !base.getName().equals(incoming.getName())) {
-            Loggers.LLM.debug("[merge] name conflict keeping existing={}, incoming={}",
-                    base.getName(), incoming.getName());
-        }
-        if (base.getIndex() == null && incoming.getIndex() != null) {
-            base.setIndex(incoming.getIndex());
-        }
-        base.setArguments(orEmpty(base.getArguments()) + orEmpty(incoming.getArguments()));
-    }
-
-    private static boolean isVacuousFragment(ToolCall toolCall) {
-        if (toolCall == null) {
-            return true;
-        }
-        boolean noId = toolCall.getId() == null || toolCall.getId().isEmpty();
-        boolean noName = toolCall.getName() == null || toolCall.getName().isEmpty();
-        boolean noIndex = toolCall.getIndex() == null;
-        boolean noArgs = toolCall.getArguments() == null || toolCall.getArguments().isEmpty();
-        return noId && noName && noIndex && noArgs;
-    }
-
-    private static boolean isPureArgumentsFragment(ToolCall toolCall) {
-        if (toolCall == null) {
-            return false;
-        }
-        boolean noId = toolCall.getId() == null || toolCall.getId().isEmpty();
-        boolean noName = toolCall.getName() == null || toolCall.getName().isEmpty();
-        boolean noIndex = toolCall.getIndex() == null;
-        boolean hasArgs = toolCall.getArguments() != null && !toolCall.getArguments().isEmpty();
-        return noId && noName && noIndex && hasArgs;
-    }
-
-    private static boolean hasOwnName(ToolCall toolCall) {
-        return toolCall != null && toolCall.getName() != null && !toolCall.getName().isEmpty();
-    }
-
-    private static boolean missingId(ToolCall toolCall) {
-        return toolCall == null || toolCall.getId() == null || toolCall.getId().isEmpty();
-    }
-
-    private static boolean isFunctionTool(ToolCall toolCall) {
-        return toolCall != null && "function".equals(toolCall.getType());
-    }
-
-    private static ToolCall findById(LinkedHashMap<Object, ToolCall> bucket, ToolCall incoming) {
-        if (incoming == null || missingId(incoming)) {
+    /**
+     * cloneOf.
+     * 
+     * @param src src
+     * @return the result
+     * @since 0.1.7
+     */
+    private static ToolCall cloneOf(ToolCall src) {
+        if (src == null) {
             return null;
         }
-        for (ToolCall existing : bucket.values()) {
-            if (incoming.getId().equals(existing.getId())) {
-                return existing;
-            }
-        }
-        return null;
+        return ToolCall.builder().id(src.getId()).type(src.getType()).name(src.getName()).arguments(src.getArguments())
+                .index(src.getIndex()).build();
     }
 
+    /**
+     * lastValue.
+     * 
+     * @param bucket bucket
+     * @return the result
+     * @since 0.1.7
+     */
     private static ToolCall lastValue(Map<Object, ToolCall> bucket) {
         ToolCall last = null;
-        for (ToolCall value : bucket.values()) {
-            last = value;
+        for (ToolCall v : bucket.values()) {
+            last = v;
         }
         return last;
     }
 
-    private static ToolCall copyToolCall(ToolCall toolCall) {
-        return ToolCall.builder()
-                .id(toolCall.getId())
-                .type(toolCall.getType())
-                .name(toolCall.getName())
-                .arguments(toolCall.getArguments())
-                .index(toolCall.getIndex())
-                .build();
+    /**
+     * appendFragment.
+     * 
+     * @param base base
+     * @param inc inc
+     * @since 0.1.7
+     */
+    private static void appendFragment(ToolCall base, ToolCall inc) {
+        if (base.getId() == null || base.getId().isEmpty()) {
+            base.setId(inc.getId());
+        }
+        if (base.getType() == null || base.getType().isEmpty()) {
+            base.setType(inc.getType() != null ? inc.getType() : "function");
+        }
+        if (base.getName() == null || base.getName().isEmpty()) {
+            base.setName(inc.getName());
+        } else if (inc.getName() != null && !inc.getName().isEmpty() && !base.getName().equals(inc.getName())) {
+            // Some providers repeat the name on every fragment. Only append when it
+            // actually differs to avoid name duplication like "skill_toolskill_tool".
+            // If names disagree across fragments for the same key, keep the first one.
+            LOG.debug("[merge] name conflict on key={}, keeping existing={}, incoming={}", keyOf(base), base.getName(),
+                    inc.getName());
+        } else {
+            // names match or incoming name is empty
+        }
+        if (base.getIndex() == null && inc.getIndex() != null) {
+            base.setIndex(inc.getIndex());
+        }
+        base.setArguments(orEmpty(base.getArguments()) + orEmpty(inc.getArguments()));
     }
 
-    private static String orEmpty(String value) {
-        return value == null ? "" : value;
+    /**
+     * isPureArgumentsFragment.
+     * 
+     * @param tc tc
+     * @return the result
+     * @since 0.1.7
+     */
+    private static boolean isPureArgumentsFragment(ToolCall tc) {
+        if (tc == null) {
+            return false;
+        }
+        boolean noId = tc.getId() == null || tc.getId().isEmpty();
+        boolean noName = tc.getName() == null || tc.getName().isEmpty();
+        boolean noIndex = tc.getIndex() == null;
+        boolean hasArgs = tc.getArguments() != null && !tc.getArguments().isEmpty();
+        return noId && noName && noIndex && hasArgs;
     }
 
-    private static List<Integer> preferLeft(List<Integer> left, List<Integer> right) {
-        return (left != null && !left.isEmpty()) ? left : right;
+    /**
+     * True when the fragment carries no identity and no payload.
+     * Providers sometimes emit empty {@code tool_calls} objects between real deltas.
+     *
+     * @param tc tool-call fragment
+     * @return whether the fragment should be ignored
+     * @since 0.1.15
+     */
+    private static boolean isVacuousFragment(ToolCall tc) {
+        if (tc == null) {
+            return true;
+        }
+        boolean noId = tc.getId() == null || tc.getId().isEmpty();
+        boolean noName = tc.getName() == null || tc.getName().isEmpty();
+        boolean noIndex = tc.getIndex() == null;
+        boolean noArgs = tc.getArguments() == null || tc.getArguments().isEmpty();
+        return noId && noName && noIndex && noArgs;
+    }
+
+    /**
+     * hasOwnName.
+     * 
+     * @param tc tc
+     * @return the result
+     * @since 0.1.7
+     */
+    private static boolean hasOwnName(ToolCall tc) {
+        return tc != null && tc.getName() != null && !tc.getName().isEmpty();
+    }
+
+    /**
+     * logMerge.
+     * 
+     * @param action action
+     * @param key key
+     * @param base base
+     * @param incoming incoming
+     * @since 0.1.7
+     */
+    private static void logMerge(String action, Object key, ToolCall base, ToolCall incoming) {
+        LoggerProtocol logger = Loggers.LLM;
+        if (logger == null) {
+            return;
+        }
+        logger.debug("[merge] {} key={} base={} incoming={}", action, key,
+                base == null ? "<none>" : formatToolCall(base), formatToolCall(incoming));
+    }
+
+    /**
+     * formatToolCall.
+     * 
+     * @param tc tc
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String formatToolCall(ToolCall tc) {
+        if (tc == null) {
+            return "<null>";
+        }
+        return "{id=" + tc.getId() + ", type=" + tc.getType() + ", name=" + tc.getName() + ", index=" + tc.getIndex()
+                + ", argsLen=" + (tc.getArguments() == null ? 0 : tc.getArguments().length()) + ", args="
+                + tc.getArguments() + "}";
+    }
+
+    /**
+     * orEmpty.
+     * 
+     * @param s s
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String orEmpty(String s) {
+        return s != null ? s : "";
+    }
+
+    /**
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * Builder.
+     * 
+     * @since 0.1.7
+     */
+    public static class Builder extends AssistantMessage.Builder {
+        /**
+         * role.
+         * 
+         * @param role role
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder role(String role) {
+            super.role(role);
+            return this;
+        }
+
+        /**
+         * content.
+         * 
+         * @param content content
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder content(Object content) {
+            super.content(content);
+            return this;
+        }
+
+        /**
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder name(String name) {
+            super.name(name);
+            return this;
+        }
+
+        /**
+         * metadata.
+         * 
+         * @param metadata metadata
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder metadata(java.util.Map<String, Object> metadata) {
+            super.metadata(metadata);
+            return this;
+        }
+
+        /**
+         * toolCalls.
+         * 
+         * @param toolCalls toolCalls
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder toolCalls(List<ToolCall> toolCalls) {
+            super.toolCalls(toolCalls);
+            return this;
+        }
+
+        /**
+         * usageMetadata.
+         * 
+         * @param usageMetadata usageMetadata
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder usageMetadata(UsageMetadata usageMetadata) {
+            super.usageMetadata(usageMetadata);
+            return this;
+        }
+
+        /**
+         * finishReason.
+         * 
+         * @param finishReason finishReason
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder finishReason(String finishReason) {
+            super.finishReason(finishReason);
+            return this;
+        }
+
+        /**
+         * parserContent.
+         * 
+         * @param parserContent parserContent
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder parserContent(Object parserContent) {
+            super.parserContent(parserContent);
+            return this;
+        }
+
+        /**
+         * reasoningContent.
+         * 
+         * @param reasoningContent reasoningContent
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
+        public Builder reasoningContent(String reasoningContent) {
+            super.reasoningContent(reasoningContent);
+            return this;
+        }
+
+        /**
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
+        public AssistantMessageChunk build() {
+            AssistantMessageChunk chunk = new AssistantMessageChunk();
+            chunk.setRole(role);
+            chunk.setContent(content);
+            chunk.setName(name);
+            chunk.setMetadata(metadata);
+            chunk.setToolCalls(toolCalls);
+            chunk.setUsageMetadata(usageMetadata);
+            chunk.setFinishReason(finishReason);
+            chunk.setParserContent(parserContent);
+            chunk.setReasoningContent(reasoningContent);
+            return chunk;
+        }
     }
 }

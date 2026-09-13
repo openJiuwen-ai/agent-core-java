@@ -4,13 +4,14 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,353 +19,176 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * ReAct agent runtime configuration.
- *
- * <p>Mirrors Python's {@code ReActAgentConfig} in
- * {@code openjiuwen/core/single_agent/agents/react_agent.py}.</p>
+ * ReActAgent Configuration.
+ * 
+ * @since 0.1.7
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ReActAgentConfig {
-    @JsonProperty("mem_scope_id")
+    @Builder.Default
     private String memScopeId = "";
 
-    @JsonProperty("model_name")
+    @Builder.Default
     private String modelName = "";
 
-    @JsonProperty("model_provider")
+    @Builder.Default
     private String modelProvider = "openai";
 
-    @JsonProperty("api_key")
+    @Builder.Default
     private String apiKey = "";
 
-    @JsonProperty("api_base")
+    @Builder.Default
     private String apiBase = "";
 
-    @JsonProperty("custom_headers")
-    private Map<String, Object> customHeaders;
-
-    @JsonProperty("prompt_template_name")
+    @Builder.Default
     private String promptTemplateName = "";
 
-    @JsonProperty("prompt_template")
-    private List<Map<String, Object>> promptTemplate = new ArrayList<>();
+    @Builder.Default
+    private List<Map<String, String>> promptTemplate = new ArrayList<>();
 
-    @JsonProperty("max_iterations")
+    @Builder.Default
+    private String promptMode = "full";
+
+    private Map<String, String> customHeaders;
+
+    @Builder.Default
     private int maxIterations = 5;
 
-    /** Stream failure retry count (excluding the first attempt). */
-    @JsonProperty("stream_max_retries")
-    private int streamMaxRetries = 2;
+    @Builder.Default
+    private boolean shouldFailTaskOnToolError = false;
 
-    /** Delay between stream retries in milliseconds. */
-    @JsonProperty("stream_retry_delay_ms")
-    private long streamRetryDelayMs = 1000;
-
-    @JsonProperty("parallel_tool_calls")
-    private boolean parallelToolCalls = true;
-
-    @JsonProperty("max_parallel_tool_calls")
+    @Builder.Default
     private int maxParallelToolCalls = 3;
 
-    /**
-     * When true, a tool execution error force-finishes the task as FAILED instead of
-     * continuing the ReAct loop toward a misleading COMPLETED state (issue #51).
-     */
-    @JsonProperty("fail_task_on_tool_error")
-    private boolean shouldFailTaskOnToolError;
+    // 流式失败重试次数（不含首次调用）
+    @Builder.Default
+    private int streamMaxRetries = 2;
 
-    @JsonProperty("llm_return_token_ids")
-    private boolean llmReturnTokenIds;
+    // 流式重试间隔（毫秒）
+    @Builder.Default
+    private long streamRetryDelayMs = 1000;
 
-    @JsonProperty("llm_logprobs")
-    private boolean llmLogprobs;
-
-    @JsonProperty("llm_top_logprobs")
-    private int llmTopLogprobs = 1;
-
-    @JsonProperty("model_client_config")
     private ModelClientConfig modelClientConfig;
-
-    @JsonProperty("model_config_obj")
     private ModelRequestConfig modelConfigObj;
-
-    @JsonProperty("sys_operation_id")
     private String sysOperationId;
 
-    @JsonProperty("context_engine_config")
-    private ContextEngineConfig contextEngineConfig = defaultContextEngineConfig();
+    @Builder.Default
+    /**
+     * ContextEngineConfig.builder.
+     * 
+     * @since 0.1.7
+     */
+    private ContextEngineConfig contextEngineConfig =
+        ContextEngineConfig.builder().maxContextMessageNum(200).defaultWindowRoundNum(10).build();
 
-    @JsonProperty("context_processors")
-    private List<ContextEngine.ProcessorSpec> contextProcessors;
+    private List<Object> contextProcessors;
 
-    private Object workspace;
+    // Builder-pattern configuration methods
 
+    /**
+     * Set the model name.
+     * 
+     * @param modelName target model name
+     * @return this config
+     * @since 0.1.7
+     */
     public ReActAgentConfig configureModel(String modelName) {
-        this.modelName = normalizeString(modelName);
+        this.modelName = modelName;
         return this;
     }
 
-    public ReActAgentConfig configure_model(String modelName) {
-        return configureModel(modelName);
-    }
-
+    /**
+     * Set the model provider credentials.
+     * 
+     * @param provider provider name
+     * @param apiKey provider api key
+     * @param apiBase provider api base
+     * @return this config
+     * @since 0.1.7
+     */
     public ReActAgentConfig configureModelProvider(String provider, String apiKey, String apiBase) {
-        this.modelProvider = normalizeString(provider);
-        this.apiKey = normalizeString(apiKey);
-        this.apiBase = normalizeString(apiBase);
+        this.modelProvider = provider;
+        this.apiKey = apiKey;
+        this.apiBase = apiBase;
         return this;
     }
 
-    public ReActAgentConfig configure_model_provider(String provider, String apiKey, String apiBase) {
-        return configureModelProvider(provider, apiKey, apiBase);
-    }
-
+    /**
+     * Set the system prompt template name.
+     * 
+     * @param promptName prompt template name
+     * @return this config
+     * @since 0.1.7
+     */
     public ReActAgentConfig configurePrompt(String promptName) {
-        this.promptTemplateName = normalizeString(promptName);
+        this.promptTemplateName = promptName;
         return this;
     }
 
-    public ReActAgentConfig configure_prompt(String promptName) {
-        return configurePrompt(promptName);
-    }
-
-    public ReActAgentConfig configurePromptTemplate(List<? extends Map<String, ?>> promptTemplate) {
-        setPromptTemplate(promptTemplate);
+    /**
+     * Replace the explicit prompt template messages.
+     * 
+     * @param promptTemplate prompt template messages
+     * @return this config
+     * @since 0.1.7
+     */
+    public ReActAgentConfig configurePromptTemplate(List<Map<String, String>> promptTemplate) {
+        this.promptTemplate = promptTemplate;
         return this;
     }
 
-    public ReActAgentConfig configure_prompt_template(List<? extends Map<String, ?>> promptTemplate) {
-        return configurePromptTemplate(promptTemplate);
-    }
-
-    public ReActAgentConfig configureContextEngine(Integer maxContextMessageNum,
-                                                   Integer defaultWindowRoundNum,
-                                                   boolean enableReload,
-                                                   boolean enableKvCacheRelease) {
-        ContextEngineConfig config = new ContextEngineConfig();
-        config.setMaxContextMessageNum(maxContextMessageNum);
-        config.setDefaultWindowRoundNum(defaultWindowRoundNum);
-        config.setEnableReload(enableReload);
-        config.setEnableKvCacheRelease(enableKvCacheRelease);
-        this.contextEngineConfig = config;
+    /**
+     * Configure the context engine window limits.
+     * 
+     * @param maxContextMessageNum max messages retained in context
+     * @param defaultWindowRoundNum default rolling window rounds
+     * @param enableReload whether context reload is enabled
+     * @return this config
+     * @since 0.1.7
+     */
+    public ReActAgentConfig configureContextEngine(Integer maxContextMessageNum, Integer defaultWindowRoundNum,
+            boolean enableReload) {
+        this.contextEngineConfig = ContextEngineConfig.builder()
+                .maxContextMessageNum(maxContextMessageNum != null ? maxContextMessageNum : 200)
+                .defaultWindowRoundNum(defaultWindowRoundNum != null ? defaultWindowRoundNum : 10)
+                .enableReload(enableReload).build();
         return this;
     }
 
-    public ReActAgentConfig configure_context_engine(Integer maxContextMessageNum,
-                                                     Integer defaultWindowRoundNum,
-                                                     boolean enableReload,
-                                                     boolean enableKvCacheRelease) {
-        return configureContextEngine(maxContextMessageNum, defaultWindowRoundNum, enableReload,
-                enableKvCacheRelease);
-    }
-
+    /**
+     * Set the memory scope identifier.
+     * 
+     * @param memScopeId memory scope id
+     * @return this config
+     * @since 0.1.7
+     */
     public ReActAgentConfig configureMemScope(String memScopeId) {
-        this.memScopeId = normalizeString(memScopeId);
+        this.memScopeId = memScopeId;
         return this;
     }
 
-    public ReActAgentConfig configure_mem_scope(String memScopeId) {
-        return configureMemScope(memScopeId);
-    }
-
+    /**
+     * Set the maximum ReAct iteration count.
+     * 
+     * @param maxIterations maximum iterations
+     * @return this config
+     * @since 0.1.7
+     */
     public ReActAgentConfig configureMaxIterations(int maxIterations) {
         this.maxIterations = maxIterations;
         return this;
     }
 
-    public ReActAgentConfig configure_max_iterations(int maxIterations) {
-        return configureMaxIterations(maxIterations);
-    }
-
     /**
-     * Set the stream retry parameters for streaming model calls.
+     * Set the max number of tool calls from one model turn that may run in parallel.
+     * Non-positive values fall back to the default of {@code 3}.
      *
-     * @param maxRetries max retry count (excluding the first attempt)
-     * @param retryDelayMs delay between retries in milliseconds
+     * @param maxParallelToolCalls maximum in-flight tool calls per request
      * @return this config
-     */
-    public ReActAgentConfig configureStreamRetry(int maxRetries, long retryDelayMs) {
-        this.streamMaxRetries = maxRetries;
-        this.streamRetryDelayMs = retryDelayMs;
-        return this;
-    }
-
-    public ReActAgentConfig configureModelClient(String provider, String apiKey, String apiBase, String modelName,
-                                                 boolean verifySsl) {
-        return configureModelClient(provider, apiKey, apiBase, modelName, verifySsl, null);
-    }
-
-    public ReActAgentConfig configureModelClient(String provider, String apiKey, String apiBase, String modelName,
-                                                 boolean verifySsl, ModelHttpVersion httpVersion) {
-        this.modelProvider = normalizeString(provider);
-        this.apiKey = normalizeString(apiKey);
-        this.apiBase = normalizeString(apiBase);
-        this.modelName = normalizeString(modelName);
-        this.modelClientConfig = ModelClientConfig.builder()
-                .clientProvider(provider)
-                .apiKey(apiKey)
-                .apiBase(apiBase)
-                .verifySsl(verifySsl)
-                .customHeaders(customHeaders)
-                .httpVersion(httpVersion)
-                .build();
-        if (modelConfigObj == null) {
-            modelConfigObj = ModelRequestConfig.builder().modelName(this.modelName).build();
-        } else {
-            modelConfigObj.setModelName(this.modelName);
-        }
-        return this;
-    }
-
-    public ReActAgentConfig configure_model_client(String provider, String apiKey, String apiBase, String modelName,
-                                                   boolean verifySsl) {
-        return configureModelClient(provider, apiKey, apiBase, modelName, verifySsl);
-    }
-
-    public ReActAgentConfig configure_model_client(String provider, String apiKey, String apiBase, String modelName,
-                                                   boolean verifySsl, ModelHttpVersion httpVersion) {
-        return configureModelClient(provider, apiKey, apiBase, modelName, verifySsl, httpVersion);
-    }
-
-    public ReActAgentConfig configureCustomHeaders(Map<String, Object> customHeaders) {
-        setCustomHeaders(customHeaders);
-        if (modelClientConfig != null) {
-            modelClientConfig.setCustomHeaders(this.customHeaders);
-        }
-        return this;
-    }
-
-    public ReActAgentConfig configure_custom_headers(Map<String, Object> customHeaders) {
-        return configureCustomHeaders(customHeaders);
-    }
-
-    public ReActAgentConfig configureContextProcessors(List<ContextEngine.ProcessorSpec> processors) {
-        setContextProcessors(processors);
-        return this;
-    }
-
-    public ReActAgentConfig configure_context_processors(List<ContextEngine.ProcessorSpec> processors) {
-        return configureContextProcessors(processors);
-    }
-
-    public String getMemScopeId() {
-        return memScopeId;
-    }
-
-    public void setMemScopeId(String memScopeId) {
-        this.memScopeId = normalizeString(memScopeId);
-    }
-
-    public String getModelName() {
-        return modelName;
-    }
-
-    public void setModelName(String modelName) {
-        this.modelName = normalizeString(modelName);
-    }
-
-    public String getModelProvider() {
-        return modelProvider;
-    }
-
-    public void setModelProvider(String modelProvider) {
-        this.modelProvider = normalizeString(modelProvider);
-    }
-
-    public String getApiKey() {
-        return apiKey;
-    }
-
-    public void setApiKey(String apiKey) {
-        this.apiKey = normalizeString(apiKey);
-    }
-
-    public String getApiBase() {
-        return apiBase;
-    }
-
-    public void setApiBase(String apiBase) {
-        this.apiBase = normalizeString(apiBase);
-    }
-
-    public Map<String, Object> getCustomHeaders() {
-        return customHeaders == null ? null : new LinkedHashMap<>(customHeaders);
-    }
-
-    public void setCustomHeaders(Map<String, Object> customHeaders) {
-        this.customHeaders = customHeaders == null ? null : new LinkedHashMap<>(customHeaders);
-    }
-
-    public String getPromptTemplateName() {
-        return promptTemplateName;
-    }
-
-    public void setPromptTemplateName(String promptTemplateName) {
-        this.promptTemplateName = normalizeString(promptTemplateName);
-    }
-
-    public List<Map<String, Object>> getPromptTemplate() {
-        return deepCopyPromptTemplate(promptTemplate);
-    }
-
-    public void setPromptTemplate(List<? extends Map<String, ?>> promptTemplate) {
-        this.promptTemplate = deepCopyPromptTemplate(promptTemplate);
-    }
-
-    public int getMaxIterations() {
-        return maxIterations;
-    }
-
-    public void setMaxIterations(int maxIterations) {
-        this.maxIterations = maxIterations;
-    }
-
-    public int getStreamMaxRetries() {
-        return streamMaxRetries;
-    }
-
-    public void setStreamMaxRetries(int streamMaxRetries) {
-        this.streamMaxRetries = streamMaxRetries;
-    }
-
-    public long getStreamRetryDelayMs() {
-        return streamRetryDelayMs;
-    }
-
-    public void setStreamRetryDelayMs(long streamRetryDelayMs) {
-        this.streamRetryDelayMs = streamRetryDelayMs;
-    }
-
-    public boolean isParallelToolCalls() {
-        return parallelToolCalls;
-    }
-
-    public void setParallelToolCalls(boolean parallelToolCalls) {
-        this.parallelToolCalls = parallelToolCalls;
-    }
-
-    public ReActAgentConfig configureParallelToolCalls(boolean parallelToolCalls) {
-        this.parallelToolCalls = parallelToolCalls;
-        return this;
-    }
-
-    public ReActAgentConfig configure_parallel_tool_calls(boolean parallelToolCalls) {
-        return configureParallelToolCalls(parallelToolCalls);
-    }
-
-    public int getMaxParallelToolCalls() {
-        return maxParallelToolCalls;
-    }
-
-    public void setMaxParallelToolCalls(int maxParallelToolCalls) {
-        this.maxParallelToolCalls = maxParallelToolCalls;
-    }
-
-    /**
-     * Configure the maximum number of parallel tool calls.
-     *
-     * @param maxParallelToolCalls positive cap; non-positive values fall back to the default
-     * @return this config for chaining
+     * @since 0.1.15
      */
     public ReActAgentConfig configureMaxParallelToolCalls(int maxParallelToolCalls) {
         this.maxParallelToolCalls = maxParallelToolCalls;
@@ -372,257 +196,147 @@ public class ReActAgentConfig {
     }
 
     /**
-     * Python-compatible alias of {@link #configureMaxParallelToolCalls(int)}.
-     *
-     * @param maxParallelToolCalls positive cap; non-positive values fall back to the default
-     * @return this config for chaining
+     * Set the stream retry parameters for streaming model calls.
+     * 
+     * @param maxRetries max retry count (excluding the first attempt)
+     * @param retryDelayMs delay between retries in milliseconds
+     * @return this config
+     * @since 0.1.7
      */
-    public ReActAgentConfig configure_max_parallel_tool_calls(int maxParallelToolCalls) {
-        return configureMaxParallelToolCalls(maxParallelToolCalls);
-    }
-
-    public boolean isShouldFailTaskOnToolError() {
-        return shouldFailTaskOnToolError;
-    }
-
-    public void setShouldFailTaskOnToolError(boolean shouldFailTaskOnToolError) {
-        this.shouldFailTaskOnToolError = shouldFailTaskOnToolError;
-    }
-
-    public ReActAgentConfig configureFailTaskOnToolError(boolean shouldFailTaskOnToolError) {
-        this.shouldFailTaskOnToolError = shouldFailTaskOnToolError;
+    public ReActAgentConfig configureStreamRetry(int maxRetries, long retryDelayMs) {
+        this.streamMaxRetries = maxRetries;
+        this.streamRetryDelayMs = retryDelayMs;
         return this;
     }
 
-    public boolean isLlmReturnTokenIds() {
-        return llmReturnTokenIds;
+    /**
+     * Configure the model client without custom certificate or headers.
+     * 
+     * @param provider provider name
+     * @param apiKey provider api key
+     * @param apiBase provider api base
+     * @param modelName model name
+     * @param verifySsl whether ssl verification is enabled
+     * @return this config
+     * @since 0.1.7
+     */
+    public ReActAgentConfig configureModelClient(String provider, String apiKey, String apiBase, String modelName,
+            boolean verifySsl) {
+        return configureModelClient(provider, apiKey, apiBase, modelName, verifySsl, null, null);
     }
 
-    public void setLlmReturnTokenIds(boolean llmReturnTokenIds) {
-        this.llmReturnTokenIds = llmReturnTokenIds;
+    /**
+     * Configure the concrete model client request settings.
+     * 
+     * @param provider provider name
+     * @param apiKey provider api key
+     * @param apiBase provider api base
+     * @param modelName model name
+     * @param verifySsl whether ssl verification is enabled
+     * @param sslCert custom certificate path
+     * @param headers additional request headers
+     * @return this config
+     * @since 0.1.7
+     */
+    public ReActAgentConfig configureModelClient(String provider, String apiKey, String apiBase, String modelName,
+            boolean verifySsl, String sslCert, Map<String, String> headers) {
+        this.modelProvider = provider;
+        this.apiKey = apiKey;
+        this.apiBase = apiBase;
+        this.modelName = modelName;
+        Map<String, String> effectiveHeaders = mergeHeaders(this.customHeaders, headers);
+
+        this.modelClientConfig = ModelClientConfig.builder().clientProvider(provider).apiKey(apiKey).apiBase(apiBase)
+                .verifySsl(verifySsl).sslCert(sslCert).headers(effectiveHeaders).build();
+
+        if (this.modelConfigObj == null) {
+            this.modelConfigObj = ModelRequestConfig.builder().modelName(modelName).build();
+        } else {
+            this.modelConfigObj.setModelName(modelName);
+        }
+        return this;
     }
 
-    public boolean isLlmLogprobs() {
-        return llmLogprobs;
+    /**
+     * Configure additional headers sent with each LLM request.
+     * 
+     * @param customHeaders additional request headers
+     * @return this config
+     * @since 0.1.7
+     */
+    public ReActAgentConfig configureCustomHeaders(Map<String, ?> customHeaders) {
+        this.customHeaders = normalizeHeaders(customHeaders);
+        if (this.modelClientConfig != null) {
+            this.modelClientConfig = ModelClientConfig.builder().clientId(this.modelClientConfig.getClientId())
+                    .clientProvider(this.modelClientConfig.getClientProvider())
+                    .apiKey(this.modelClientConfig.getApiKey()).apiBase(this.modelClientConfig.getApiBase())
+                    .timeout(this.modelClientConfig.getTimeout()).maxRetries(this.modelClientConfig.getMaxRetries())
+                    .verifySsl(this.modelClientConfig.isVerifySsl()).sslCert(this.modelClientConfig.getSslCert())
+                    .headers(mergeHeaders(this.modelClientConfig.getHeaders(), this.customHeaders)).build();
+        }
+        return this;
     }
 
-    public void setLlmLogprobs(boolean llmLogprobs) {
-        this.llmLogprobs = llmLogprobs;
+    /**
+     * Configure context-engine processors.
+     *
+     * @param processors processors to install
+     * @return this config
+     * @since 0.1.7
+     */
+    public ReActAgentConfig configureContextProcessors(List<Object> processors) {
+        this.contextProcessors = processors;
+        return this;
     }
 
-    public int getLlmTopLogprobs() {
-        return llmTopLogprobs;
-    }
-
-    public void setLlmTopLogprobs(int llmTopLogprobs) {
-        this.llmTopLogprobs = llmTopLogprobs;
-    }
-
-    public ModelClientConfig getModelClientConfig() {
-        return modelClientConfig;
-    }
-
-    public void setModelClientConfig(ModelClientConfig modelClientConfig) {
+    /**
+     * Override the model client configuration built by
+     * {@link #configureModelClient(String, String, String, String, boolean)}.
+     * Use to inject fields not exposed by {@code configureModelClient}
+     * (e.g. {@code timeout}, {@code maxRetries}, {@code clientId}).
+     *
+     * @param modelClientConfig the new model client configuration
+     * @return this config
+     * @since 0.1.16
+     */
+    public ReActAgentConfig setModelClientConfig(ModelClientConfig modelClientConfig) {
         this.modelClientConfig = modelClientConfig;
+        return this;
     }
 
-    public ModelRequestConfig getModelConfigObj() {
-        return modelConfigObj;
+    /**
+     * mergeHeaders.
+     * 
+     * @param base base
+     * @param overlay overlay
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, String> mergeHeaders(Map<String, ?> base, Map<String, ?> overlay) {
+        Map<String, String> merged = new LinkedHashMap<String, String>();
+        merged.putAll(normalizeHeaders(base));
+        merged.putAll(normalizeHeaders(overlay));
+        return merged;
     }
 
-    public void setModelConfigObj(ModelRequestConfig modelConfigObj) {
-        this.modelConfigObj = modelConfigObj;
-    }
-
-    public String getSysOperationId() {
-        return sysOperationId;
-    }
-
-    public void setSysOperationId(String sysOperationId) {
-        this.sysOperationId = sysOperationId;
-    }
-
-    public ContextEngineConfig getContextEngineConfig() {
-        return contextEngineConfig;
-    }
-
-    public void setContextEngineConfig(ContextEngineConfig contextEngineConfig) {
-        this.contextEngineConfig = contextEngineConfig == null ? defaultContextEngineConfig() : contextEngineConfig;
-    }
-
-    public List<ContextEngine.ProcessorSpec> getContextProcessors() {
-        return contextProcessors == null ? null : new ArrayList<>(contextProcessors);
-    }
-
-    public void setContextProcessors(List<ContextEngine.ProcessorSpec> contextProcessors) {
-        this.contextProcessors = contextProcessors == null ? null : new ArrayList<>(contextProcessors);
-    }
-
-    public Object getWorkspace() {
-        return workspace;
-    }
-
-    public void setWorkspace(Object workspace) {
-        this.workspace = workspace;
-    }
-
-    private static ContextEngineConfig defaultContextEngineConfig() {
-        ContextEngineConfig config = new ContextEngineConfig();
-        config.setMaxContextMessageNum(200);
-        config.setDefaultWindowRoundNum(10);
-        return config;
-    }
-
-    private static String normalizeString(String value) {
-        return value == null ? "" : value;
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static class Builder {
-        protected final ReActAgentConfig config;
-
-        protected Builder() {
-            this(new ReActAgentConfig());
+    /**
+     * normalizeHeaders.
+     * 
+     * @param headers headers
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, String> normalizeHeaders(Map<String, ?> headers) {
+        Map<String, String> normalized = new LinkedHashMap<String, String>();
+        if (headers == null) {
+            return normalized;
         }
-
-        protected Builder(ReActAgentConfig config) {
-            if (config == null) {
-                throw new IllegalArgumentException("config must not be null");
+        for (Map.Entry<String, ?> entry : headers.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                continue;
             }
-            this.config = config;
+            normalized.put(entry.getKey(), String.valueOf(entry.getValue()));
         }
-
-        public Builder memScopeId(String memScopeId) {
-            config.setMemScopeId(memScopeId);
-            return this;
-        }
-
-        public Builder modelName(String modelName) {
-            config.setModelName(modelName);
-            return this;
-        }
-
-        public Builder modelProvider(String modelProvider) {
-            config.setModelProvider(modelProvider);
-            return this;
-        }
-
-        public Builder apiKey(String apiKey) {
-            config.setApiKey(apiKey);
-            return this;
-        }
-
-        public Builder apiBase(String apiBase) {
-            config.setApiBase(apiBase);
-            return this;
-        }
-
-        public Builder customHeaders(Map<String, Object> customHeaders) {
-            config.setCustomHeaders(customHeaders);
-            return this;
-        }
-
-        public Builder promptTemplateName(String promptTemplateName) {
-            config.setPromptTemplateName(promptTemplateName);
-            return this;
-        }
-
-        public Builder promptTemplate(List<? extends Map<String, ?>> promptTemplate) {
-            config.setPromptTemplate(promptTemplate);
-            return this;
-        }
-
-        public Builder maxIterations(int maxIterations) {
-            config.setMaxIterations(maxIterations);
-            return this;
-        }
-
-        public Builder streamMaxRetries(int streamMaxRetries) {
-            config.setStreamMaxRetries(streamMaxRetries);
-            return this;
-        }
-
-        public Builder streamRetryDelayMs(long streamRetryDelayMs) {
-            config.setStreamRetryDelayMs(streamRetryDelayMs);
-            return this;
-        }
-
-        public Builder parallelToolCalls(boolean parallelToolCalls) {
-            config.setParallelToolCalls(parallelToolCalls);
-            return this;
-        }
-
-        /**
-         * Configure the maximum number of parallel tool calls on the builder.
-         *
-         * @param maxParallelToolCalls positive cap; non-positive values fall back to the default
-         * @return this builder
-         */
-        public Builder maxParallelToolCalls(int maxParallelToolCalls) {
-            config.setMaxParallelToolCalls(maxParallelToolCalls);
-            return this;
-        }
-
-        public Builder llmReturnTokenIds(boolean llmReturnTokenIds) {
-            config.setLlmReturnTokenIds(llmReturnTokenIds);
-            return this;
-        }
-
-        public Builder llmLogprobs(boolean llmLogprobs) {
-            config.setLlmLogprobs(llmLogprobs);
-            return this;
-        }
-
-        public Builder llmTopLogprobs(int llmTopLogprobs) {
-            config.setLlmTopLogprobs(llmTopLogprobs);
-            return this;
-        }
-
-        public Builder modelClientConfig(ModelClientConfig modelClientConfig) {
-            config.setModelClientConfig(modelClientConfig);
-            return this;
-        }
-
-        public Builder modelConfigObj(ModelRequestConfig modelConfigObj) {
-            config.setModelConfigObj(modelConfigObj);
-            return this;
-        }
-
-        public Builder sysOperationId(String sysOperationId) {
-            config.setSysOperationId(sysOperationId);
-            return this;
-        }
-
-        public Builder contextEngineConfig(ContextEngineConfig contextEngineConfig) {
-            config.setContextEngineConfig(contextEngineConfig);
-            return this;
-        }
-
-        public Builder contextProcessors(List<ContextEngine.ProcessorSpec> contextProcessors) {
-            config.setContextProcessors(contextProcessors);
-            return this;
-        }
-
-        public Builder workspace(Object workspace) {
-            config.setWorkspace(workspace);
-            return this;
-        }
-
-        public ReActAgentConfig build() {
-            return config;
-        }
-    }
-
-    private static List<Map<String, Object>> deepCopyPromptTemplate(List<? extends Map<String, ?>> source) {
-        List<Map<String, Object>> copy = new ArrayList<>();
-        if (source != null) {
-            for (Map<String, ?> message : source) {
-                copy.add(message == null ? new LinkedHashMap<>() : new LinkedHashMap<>(message));
-            }
-        }
-        return copy;
+        return normalized;
     }
 }

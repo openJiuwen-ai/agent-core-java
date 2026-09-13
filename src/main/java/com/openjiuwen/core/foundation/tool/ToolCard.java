@@ -7,208 +7,198 @@ package com.openjiuwen.core.foundation.tool;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Tool metadata card.
- *
- * <p>Mirrors Python's {@code ToolCard} in
- * {@code openjiuwen/core/foundation/tool/base.py}.</p>
- *
- * <p>Builder compatibility supports Python's {@code OpenApiClient} cards in
- * {@code openjiuwen/core/foundation/tool/mcp/client/openapi_client.py}.</p>
+ * Tool card — configuration / metadata for a tool.
+ * <p>
+ * Extends {@link BaseCard} with input parameters and custom properties.
+ * Mirrors Python's {@code ToolCard} model.
+ * 
+ * @since 0.1.7
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class ToolCard extends BaseCard {
+    private Map<String, Object> inputParams = new HashMap<>();
 
-    private Map<String, Object> inputParams = new LinkedHashMap<>();
-    private Map<String, Object> properties = new LinkedHashMap<>();
-    private boolean isParallelSafe = true;
-    private boolean isStateless;
-    private boolean isIdempotent;
+    /**
+     * Custom properties map.
+     * 
+     * @since 0.1.7
+     */
+    private Map<String, Object> properties = new HashMap<>();
 
-    public ToolCard() {
-        super();
+    /**
+     * toolInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public ToolInfo toolInfo() {
+        String effectiveName = (getName() == null || getName().isBlank()) ? getId() : getName();
+        String effectiveDesc = (getDescription() == null || getDescription().isBlank()) ? "" : getDescription();
+        return ToolInfo.builder().name(effectiveName).description(effectiveDesc).parameters(inputParams).build();
     }
 
-    public ToolCard(String id, String name, String description) {
-        super(id, name, description);
-    }
-
-    public ToolCard(String id, String name, String description, Map<String, Object> inputParams) {
-        this(id, name, description, inputParams, null);
-    }
-
-    public ToolCard(String id, String name, String description,
-                    Map<String, Object> inputParams, Map<String, Object> properties) {
-        super(id, name, description);
-        setInputParams(inputParams);
-        setProperties(properties);
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
+    /**
+     * getInputParams.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getInputParams() {
         return inputParams;
     }
 
+    /**
+     * setInputParams.
+     * 
+     * @param inputParams inputParams
+     * @since 0.1.7
+     */
     public void setInputParams(Map<String, Object> inputParams) {
-        // Prefer caller reference when the map is already mutable (Python assigns directly).
-        // Copy unmodifiable maps (e.g. Map.of) so getters remain mutable per ToolCard instance.
-        if (inputParams == null) {
-            this.inputParams = new LinkedHashMap<>();
-            return;
-        }
-        if (inputParams instanceof LinkedHashMap || inputParams instanceof HashMap) {
-            this.inputParams = inputParams;
-            return;
-        }
-        this.inputParams = new LinkedHashMap<>(inputParams);
+        this.inputParams = inputParams;
     }
 
+    /**
+     * getProperties.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getProperties() {
         return properties;
     }
 
+    /**
+     * setProperties.
+     * 
+     * @param properties properties
+     * @since 0.1.7
+     */
     public void setProperties(Map<String, Object> properties) {
-        if (properties == null) {
-            this.properties = new LinkedHashMap<>();
-            return;
-        }
-        if (properties instanceof LinkedHashMap || properties instanceof HashMap) {
-            this.properties = properties;
-            return;
-        }
-        this.properties = new LinkedHashMap<>(properties);
-    }
-
-    public boolean isParallelSafe() {
-        return isParallelSafe;
-    }
-
-    public void setParallelSafe(boolean isParallelSafe) {
-        this.isParallelSafe = isParallelSafe;
-    }
-
-    public boolean isStateless() {
-        return isStateless;
-    }
-
-    public void setStateless(boolean isStateless) {
-        this.isStateless = isStateless;
-    }
-
-    public boolean isIdempotent() {
-        return isIdempotent;
-    }
-
-    public void setIdempotent(boolean isIdempotent) {
-        this.isIdempotent = isIdempotent;
+        this.properties = properties;
     }
 
     /**
-     * Build the tool function-calling descriptor.
-     *
-     * @return tool information with this card's name, description, and input parameters
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    @Override
-    public ToolInfo toolInfo() {
-        return ToolInfo.builder()
-                .name(getName())
-                .description(getDescription())
-                .parameters(inputParams != null ? inputParams : Map.of())
-                .build();
-    }
-
-    public ToolInfo tool_info() {
-        return toolInfo();
-    }
-
-    @Override
-    public String toString() {
-        return toStr();
+    public static Builder builder() {
+        return new Builder();
     }
 
     /**
-     * Builder kept for compatibility with existing translated Java callers.
-     *
-     * <p>Mirrors Python's {@code ToolCard} construction in
-     * {@code openjiuwen/core/foundation/tool/base.py}.</p>
-     *
-     * <p>Supports Python's {@code OpenApiClient} card compatibility in
-     * {@code openjiuwen/core/foundation/tool/mcp/client/openapi_client.py}.</p>
+     * Builder.
+     * 
+     * @since 0.1.7
      */
-    public static class Builder {
-        private String id;
-        private String name = "";
-        private String description = "";
-        private Map<String, Object> inputParams;
-        private Map<String, Object> properties;
-        private Boolean isParallelSafe;
-        private Boolean isStateless;
-        private Boolean isIdempotent;
+    public static class Builder extends BaseCard.Builder {
+        /**
+         * inputParams.
+         * 
+         * @since 0.1.7
+         */
+        protected Map<String, Object> inputParams = new HashMap<>();
 
-        protected Builder() {
-        }
+        /**
+         * properties.
+         * 
+         * @since 0.1.7
+         */
+        protected Map<String, Object> properties = new HashMap<>();
 
+        /**
+         * id.
+         * 
+         * @param id id
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
         public Builder id(String id) {
-            this.id = id;
+            super.id(id);
             return this;
         }
 
+        /**
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
         public Builder name(String name) {
-            this.name = name != null ? name : "";
+            super.name(name);
             return this;
         }
 
+        /**
+         * description.
+         * 
+         * @param description description
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
         public Builder description(String description) {
-            this.description = description != null ? description : "";
+            super.description(description);
             return this;
         }
 
+        /**
+         * inputParams.
+         * 
+         * @param inputParams inputParams
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder inputParams(Map<String, Object> inputParams) {
             this.inputParams = inputParams;
             return this;
         }
 
+        /**
+         * properties.
+         * 
+         * @param properties properties
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder properties(Map<String, Object> properties) {
             this.properties = properties;
             return this;
         }
 
-        public Builder parallelSafe(boolean isParallelSafe) {
-            this.isParallelSafe = isParallelSafe;
-            return this;
-        }
-
-        public Builder stateless(boolean isStateless) {
-            this.isStateless = isStateless;
-            return this;
-        }
-
-        public Builder idempotent(boolean isIdempotent) {
-            this.isIdempotent = isIdempotent;
-            return this;
-        }
-
+        /**
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
         public ToolCard build() {
-            ToolCard card = id == null ? new ToolCard() : new ToolCard(id, name, description);
+            ToolCard card = new ToolCard();
+            if (id != null) {
+                card.setId(id);
+            }
             card.setName(name);
             card.setDescription(description);
             card.setInputParams(inputParams);
             card.setProperties(properties);
-            if (isParallelSafe != null) {
-                card.setParallelSafe(isParallelSafe);
-            }
-            if (isStateless != null) {
-                card.setStateless(isStateless);
-            }
-            if (isIdempotent != null) {
-                card.setIdempotent(isIdempotent);
-            }
             return card;
         }
     }

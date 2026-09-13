@@ -135,6 +135,26 @@ class LLMSchemaSystemTest {
     @DisplayName("AssistantMessageChunk Merge Tests")
     class ChunkMergeTests {
         @Test
+        @DisplayName("Parallel tool calls with null ids and different indexes stay separate")
+        void testMergeParallelNullIdsByIndex() {
+            AssistantMessageChunk first = AssistantMessageChunk.builder()
+                    .toolCalls(List.of(ToolCall.builder()
+                            .index(0).type("function").name("a").arguments("{").build()))
+                    .build();
+            AssistantMessageChunk second = AssistantMessageChunk.builder()
+                    .toolCalls(List.of(ToolCall.builder()
+                            .index(1).type("function").name("b").arguments("}").build()))
+                    .build();
+
+            AssistantMessageChunk merged = first.merge(second);
+            assertEquals(2, merged.getToolCalls().size());
+            assertEquals("a", merged.getToolCalls().get(0).getName());
+            assertEquals("b", merged.getToolCalls().get(1).getName());
+            assertEquals("{", merged.getToolCalls().get(0).getArguments());
+            assertEquals("}", merged.getToolCalls().get(1).getArguments());
+        }
+
+        @Test
         @DisplayName("Merge two text chunks concatenates content")
         void testMergeTextChunks() {
             AssistantMessageChunk chunk1 = AssistantMessageChunk.builder().content("Hello, ").build();
@@ -229,30 +249,40 @@ class LLMSchemaSystemTest {
         }
 
         @Test
-        @DisplayName("Empty tool-call placeholders do not steal later argument fragments")
-        void testMergeSkipsVacuousToolCallFragments() {
-            AssistantMessageChunk named = AssistantMessageChunk.builder()
+        @DisplayName("Empty tool_call objects do not create ghost calls or steal later arguments")
+        void testMergeSkipsVacuousToolCallObjects() {
+            AssistantMessageChunk first = AssistantMessageChunk.builder()
                     .content("")
                     .toolCalls(List.of(ToolCall.builder()
                             .id("call_1")
-                            .name("search")
-                            .arguments("{\"q")
+                            .name("run_command")
+                            .arguments("{\"command\":\"")
                             .build()))
                     .build();
-            AssistantMessageChunk empty = AssistantMessageChunk.builder()
+            AssistantMessageChunk ghost = AssistantMessageChunk.builder()
                     .content("")
-                    .toolCalls(List.of(ToolCall.builder().build()))
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .name("")
+                            .type("function")
+                            .arguments("")
+                            .build()))
                     .build();
-            AssistantMessageChunk args = AssistantMessageChunk.builder()
+            AssistantMessageChunk last = AssistantMessageChunk.builder()
                     .content("")
-                    .toolCalls(List.of(ToolCall.builder().arguments("\":\"hi\"}").build()))
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .name("")
+                            .arguments("pwd\"}")
+                            .build()))
                     .build();
 
-            AssistantMessageChunk merged = named.merge(empty).merge(args);
+            AssistantMessageChunk merged = first.merge(ghost).merge(last);
+            assertNotNull(merged.getToolCalls());
             assertEquals(1, merged.getToolCalls().size());
             assertEquals("call_1", merged.getToolCalls().get(0).getId());
-            assertEquals("search", merged.getToolCalls().get(0).getName());
-            assertEquals("{\"q\":\"hi\"}", merged.getToolCalls().get(0).getArguments());
+            assertEquals("run_command", merged.getToolCalls().get(0).getName());
+            assertEquals("{\"command\":\"pwd\"}", merged.getToolCalls().get(0).getArguments());
         }
 
         @Test
@@ -345,7 +375,7 @@ class LLMSchemaSystemTest {
             String text = "Here's the JSON:\n```json\n{\"name\":\"test\",\"value\":42}\n```\nDone.";
 
             AssistantMessage msg = AssistantMessage.builder().content(text).build();
-            Object result = parser.parse(msg).join();
+            Object result = parser.parse(msg);
 
             assertNotNull(result);
             @SuppressWarnings("unchecked")
@@ -359,7 +389,7 @@ class LLMSchemaSystemTest {
         void testParsePlainJson() {
             JsonOutputParser parser = new JsonOutputParser();
 
-            Object result = parser.parse("{\"status\":\"ok\"}").join();
+            Object result = parser.parse("{\"status\":\"ok\"}");
 
             assertNotNull(result);
             @SuppressWarnings("unchecked")
@@ -371,7 +401,7 @@ class LLMSchemaSystemTest {
         @DisplayName("Parse returns null for invalid JSON")
         void testParseInvalidJson() {
             JsonOutputParser parser = new JsonOutputParser();
-            Object result = parser.parse("This is not JSON at all").join();
+            Object result = parser.parse("This is not JSON at all");
             assertNull(result);
         }
 

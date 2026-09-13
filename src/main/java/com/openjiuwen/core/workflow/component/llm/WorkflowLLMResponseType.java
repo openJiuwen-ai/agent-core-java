@@ -8,7 +8,8 @@ package com.openjiuwen.core.workflow.component.llm;
  * Response type for workflow LLM components.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.WorkflowLLMResponseType}.
-  * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
+ * 
+ * @since 0.1.7
  */
 public enum WorkflowLLMResponseType {
     JSON("json"),
@@ -21,6 +22,12 @@ public enum WorkflowLLMResponseType {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }

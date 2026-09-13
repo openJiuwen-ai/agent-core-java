@@ -4,104 +4,146 @@
 
 package com.openjiuwen.core.common.clients;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Mirrors Python's {@code RefCountedResource} in
- * {@code openjiuwen/core/common/clients/ref_counted.py}.
+ * Reference-counted resource base class.
+ * 
+ * @since 0.1.7
  */
-public abstract class RefCountedResource {
+public abstract class RefCountedResource implements AutoCloseable {
+    private final AtomicInteger refCount = new AtomicInteger(1);
 
-    private int refCount = 1;
-    private boolean closed;
-    private final double createdAt = epochSeconds();
-    private double lastUsed = createdAt;
+    /**
+     * System.currentTimeMillis.
+     * 
+     * @since 0.1.7
+     */
+    private final long createdAtMillis = System.currentTimeMillis();
+    private volatile long lastUsedMillis = createdAtMillis;
+    private volatile boolean isClosed;
 
+    /**
+     * getRefCount.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int getRefCount() {
-        return refCount;
+        return refCount.get();
     }
 
-    public double getLastUsed() {
-        return lastUsed;
+    /**
+     * getLastUsedMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public long getLastUsedMillis() {
+        return lastUsedMillis;
     }
 
+    /**
+     * getCreatedAtMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public long getCreatedAtMillis() {
+        return createdAtMillis;
+    }
+
+    /**
+     * isClosed.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public boolean isClosed() {
-        return closed;
+        return isClosed;
     }
 
-    public double getCreatedAt() {
-        return createdAt;
+    /**
+     * ageMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public long ageMillis() {
+        return isClosed ? 0L : Math.max(0L, System.currentTimeMillis() - createdAtMillis);
     }
 
-    public double getAge() {
-        return closed ? 0.0d : Math.max(0.0d, epochSeconds() - createdAt);
-    }
-
+    /**
+     * incrementRef.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int incrementRef() {
-        if (closed) {
-            throw new IllegalStateException("Cannot increment ref on closed resource");
+        if (isClosed) {
+            throw new IllegalStateException("Cannot increment ref on isClosed resource");
         }
-        refCount++;
-        lastUsed = monotonicSeconds();
-        return refCount;
+        lastUsedMillis = System.currentTimeMillis();
+        return refCount.incrementAndGet();
     }
 
+    /**
+     * decrementRef.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public boolean decrementRef() {
-        if (closed) {
+        if (isClosed) {
             return false;
         }
-        refCount--;
-        return refCount <= 0;
+        lastUsedMillis = System.currentTimeMillis();
+        return refCount.decrementAndGet() <= 0;
     }
 
-    protected abstract CompletableFuture<Void> doClose(Map<String, Object> kwargs);
-
-    public CompletableFuture<Void> close() {
-        return close(Map.of());
-    }
-
-    public CompletableFuture<Void> close(Map<String, Object> kwargs) {
-        if (closed) {
-            return CompletableFuture.completedFuture(null);
+    /**
+     * close.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    @Override
+    public synchronized void close() throws Exception {
+        if (isClosed) {
+            return;
         }
-        decrementRef();
-        CompletableFuture<Void> future;
         try {
-            future = doClose(kwargs != null ? kwargs : Map.of());
-        } catch (Exception exception) {
-            closed = true;
-            return CompletableFuture.failedFuture(exception);
+            doClose();
+        } finally {
+            isClosed = true;
+            refCount.set(0);
         }
-        if (future == null) {
-            future = CompletableFuture.completedFuture(null);
-        }
-        return future.handle((ignored, throwable) -> {
-            closed = true;
-            if (throwable != null) {
-                throw new CompletionException(throwable);
-            }
-            return null;
-        });
     }
 
+    /**
+     * doClose.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    protected abstract void doClose() throws Exception;
+
+    /**
+     * getStats.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getStats() {
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("ref_count", refCount);
-        stats.put("closed", closed);
-        stats.put("created_at", createdAt);
-        stats.put("last_used", lastUsed);
-        stats.put("age", getAge());
+        stats.put("ref_count", refCount.get());
+        stats.put("isClosed", isClosed);
+        stats.put("created_at", Instant.ofEpochMilli(createdAtMillis).toString());
+        stats.put("last_used", Instant.ofEpochMilli(lastUsedMillis).toString());
+        stats.put("age_millis", ageMillis());
         return stats;
-    }
-
-    private static double epochSeconds() {
-        return System.currentTimeMillis() / 1000.0d;
-    }
-
-    private static double monotonicSeconds() {
-        return System.nanoTime() / 1_000_000_000.0d;
     }
 }

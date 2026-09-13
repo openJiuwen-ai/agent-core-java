@@ -1,15 +1,13 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.harness.rails;
 
-import com.openjiuwen.core.singleagent.skills.Skill;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.singleagent.skills.SkillManager;
-import com.openjiuwen.core.singleagent.skills.SkillManagerTestHelper;
-import com.openjiuwen.core.sysop.Cwd;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.local.LocalFsOperation;
-import org.junit.jupiter.api.AfterEach;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,40 +15,27 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Compatibility tests for SkillUseRail hot-reload functionality.
- *
- * <p>Tests the core hot-reload mechanisms: signature comparison,
+ * <p>
+ * Tests the core hot-reload mechanisms: signature comparison,
  * incremental refresh, enableCache toggle, and skill lifecycle
- * (add/modify/delete without restart).</p>
+ * (add/modify/delete without restart).
+ * </p>
  */
 class SkillUseRailHotReloadTest {
-
-    @TempDir
-    private Path tempDir;
-
     private SkillManager manager;
 
     @BeforeEach
     void setUp() {
-        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
-        manager = SkillManagerTestHelper.createWithResolver("test-hot-reload", id -> new LocalFsOperation(
-                "fs", OperationMode.LOCAL, "local fs operation", null));
-    }
-
-    @AfterEach
-    void tearDown() {
-        Cwd.clear();
+        manager = new SkillManager("test-hot-reload");
     }
 
     @Test
-    void testSignatureSkipsRefreshWhenUnchanged() throws IOException {
+    void testSignatureSkipsRefreshWhenUnchanged(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("stable_skill");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Stable\n---");
@@ -63,28 +48,26 @@ class SkillUseRailHotReloadTest {
         assertThat(manager.count()).isEqualTo(1);
         assertThat(manager.get("stable_skill").getDescription()).isEqualTo("Stable");
 
-        // Rail signature keeps directory name keys for change detection compatibility.
-        List<Map.Entry<String, Long>> sig1 = buildSnapshotSignature(List.of(tempDir));
+        List<Map.Entry<String, Long>> sig1 = manager.buildSnapshotSignature(List.of(tempDir));
         assertThat(sig1).hasSize(1);
         assertThat(sig1.get(0).getKey()).contains("stable_skill");
-        assertThat(manager.buildSnapshotSignature(List.of(tempDir))).hasSize(1);
     }
 
     @Test
-    void testSignatureTriggersRefreshWhenChanged() throws IOException {
+    void testSignatureTriggersRefreshWhenChanged(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("change_skill");
         Files.createDirectories(skillDir);
         Path skillMd = skillDir.resolve("SKILL.md");
         Files.writeString(skillMd, "---\ndescription: V1\n---");
 
-        List<Map.Entry<String, Long>> sig1 = buildSnapshotSignature(List.of(tempDir));
+        List<Map.Entry<String, Long>> sig1 = manager.buildSnapshotSignature(List.of(tempDir));
         manager.refreshIncrementally(List.of(tempDir));
         assertThat(manager.get("change_skill").getDescription()).isEqualTo("V1");
 
         Files.writeString(skillMd, "---\ndescription: V2\n---");
         forceMtimeChange(skillMd);
 
-        List<Map.Entry<String, Long>> sig2 = buildSnapshotSignature(List.of(tempDir));
+        List<Map.Entry<String, Long>> sig2 = manager.buildSnapshotSignature(List.of(tempDir));
         assertThat(SkillUseRailHotReloadTest.signaturesEqual(sig1, sig2)).isFalse();
 
         manager.refreshIncrementally(List.of(tempDir));
@@ -92,7 +75,7 @@ class SkillUseRailHotReloadTest {
     }
 
     @Test
-    void testNewSkillDetectedWithoutRestart() throws IOException {
+    void testNewSkillDetectedWithoutRestart(@TempDir Path tempDir) throws IOException {
         manager.refreshIncrementally(List.of(tempDir));
         assertThat(manager.count()).isZero();
 
@@ -107,7 +90,7 @@ class SkillUseRailHotReloadTest {
     }
 
     @Test
-    void testDeletedSkillRemovedWithoutRestart() throws IOException {
+    void testDeletedSkillRemovedWithoutRestart(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("del_skill");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: To delete\n---");
@@ -124,7 +107,7 @@ class SkillUseRailHotReloadTest {
     }
 
     @Test
-    void testModifiedSkillUpdatedWithoutRestart() throws IOException {
+    void testModifiedSkillUpdatedWithoutRestart(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("mod_skill");
         Files.createDirectories(skillDir);
         Path skillMd = skillDir.resolve("SKILL.md");
@@ -141,34 +124,24 @@ class SkillUseRailHotReloadTest {
     }
 
     @Test
-    void testCorruptSkillFileDoesNotAffectOthers() throws IOException {
+    void testCorruptSkillFileDoesNotAffectOthers(@TempDir Path tempDir) throws IOException {
         Path goodDir = tempDir.resolve("good_skill");
         Files.createDirectories(goodDir);
         Files.writeString(goodDir.resolve("SKILL.md"), "---\ndescription: Good skill\n---");
+
+        Path badDir = tempDir.resolve("bad_skill");
+        Files.createDirectories(badDir);
+        Files.writeString(badDir.resolve("SKILL.md"), "No YAML front matter here");
 
         manager.refreshIncrementally(List.of(tempDir));
 
         assertThat(manager.has("good_skill")).isTrue();
         assertThat(manager.get("good_skill").getDescription()).isEqualTo("Good skill");
+        assertThat(manager.has("bad_skill")).isFalse();
     }
 
     @Test
-    void testCorruptSkillFileDoesNotBreakRefresh() throws IOException {
-        Path badDir = tempDir.resolve("bad_skill");
-        Files.createDirectories(badDir);
-        Files.writeString(badDir.resolve("SKILL.md"), "No YAML front matter here");
-
-        Path goodDir = tempDir.resolve("ok_skill");
-        Files.createDirectories(goodDir);
-        Files.writeString(goodDir.resolve("SKILL.md"), "---\ndescription: OK\n---");
-
-        // Incremental refresh swallows per-skill load errors so other skills remain loadable.
-        manager.refreshIncrementally(List.of(tempDir));
-        assertThat(manager.has("ok_skill")).isTrue();
-    }
-
-    @Test
-    void testEnableCacheFalseForcesFullRefresh() throws IOException {
+    void testEnableCacheFalseForcesFullRefresh(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("cache_skill");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Cached\n---");
@@ -176,7 +149,7 @@ class SkillUseRailHotReloadTest {
         manager.refreshIncrementally(List.of(tempDir));
         assertThat(manager.count()).isEqualTo(1);
 
-        manager.clear();
+        manager.clearAll();
         assertThat(manager.count()).isZero();
 
         manager.refreshIncrementally(List.of(tempDir));
@@ -185,7 +158,7 @@ class SkillUseRailHotReloadTest {
     }
 
     @Test
-    void testClearSkillsClearsCache() throws IOException {
+    void testClearSkillsClearsCache(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("clear_skill");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Clear\n---");
@@ -193,13 +166,14 @@ class SkillUseRailHotReloadTest {
         manager.refreshIncrementally(List.of(tempDir));
         assertThat(manager.count()).isEqualTo(1);
 
-        manager.clear();
+        manager.clearAll();
         assertThat(manager.count()).isZero();
         assertThat(manager.getAll()).isEmpty();
+        assertThat(manager.getAllInOrder()).isEmpty();
     }
 
     @Test
-    void testMultipleSkillDirectories() throws IOException {
+    void testMultipleSkillDirectories(@TempDir Path tempDir) throws IOException {
         Path root1 = tempDir.resolve("root1");
         Files.createDirectories(root1.resolve("skill_a"));
         Files.writeString(root1.resolve("skill_a").resolve("SKILL.md"), "---\ndescription: A from root1\n---");
@@ -215,38 +189,52 @@ class SkillUseRailHotReloadTest {
         assertThat(manager.has("skill_b")).isTrue();
     }
 
+    @Test
+    void testSkillUseRailConstructorWithEnableCache() {
+        SkillUseRail rail = new SkillUseRail(List.of("/skills"), "all", List.of(), List.of(), List.of(), false);
+        assertThat(rail.configuredSkillDirectories()).containsExactly("/skills");
+        assertThat(rail.skillMode()).isEqualTo("all");
+
+        SkillUseRail railDefault = new SkillUseRail(List.of("/skills"), "all");
+        assertThat(railDefault.configuredSkillDirectories()).containsExactly("/skills");
+    }
+
+    @Test
+    void testSkillUseRailSetEnableCache() {
+        SkillUseRail rail = new SkillUseRail(List.of("/skills"), "all");
+        rail.setEnableCache(false);
+        rail.setEnableCache(true);
+    }
+
+    @Test
+    void testSkillUseRailReloadAndClearSkills(@TempDir Path tempDir) throws IOException {
+        Path skillDir = tempDir.resolve("rail_skill");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Rail skill\n---");
+
+        SkillUseRail rail = new SkillUseRail(List.of(tempDir.toString()), "all");
+        assertThat(rail.registeredSkillNames()).isEmpty();
+
+        rail.clearSkills();
+        assertThat(rail.registeredSkillNames()).isEmpty();
+    }
+
     static boolean signaturesEqual(List<Map.Entry<String, Long>> a, List<Map.Entry<String, Long>> b) {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-        if (a.size() != b.size()) return false;
+        if (a == null && b == null) {
+            return true;
+        }
+        if (a == null || b == null) {
+            return false;
+        }
+        if (a.size() != b.size()) {
+            return false;
+        }
         for (int i = 0; i < a.size(); i++) {
-            if (!a.get(i).getKey().equals(b.get(i).getKey())
-                    || a.get(i).getValue() != b.get(i).getValue()) {
+            if (!a.get(i).getKey().equals(b.get(i).getKey()) || a.get(i).getValue() != b.get(i).getValue()) {
                 return false;
             }
         }
         return true;
-    }
-
-    private List<Map.Entry<String, Long>> buildSnapshotSignature(List<Path> roots) {
-        List<Map.Entry<String, Long>> signature = new ArrayList<>();
-        for (Path root : roots) {
-            if (!Files.isDirectory(root)) {
-                continue;
-            }
-            try (var stream = Files.list(root)) {
-                for (Path child : stream.toList()) {
-                    Path skillMd = child.resolve("SKILL.md");
-                    if (Files.isRegularFile(skillMd)) {
-                        long mtime = Files.getLastModifiedTime(skillMd).toMillis();
-                        signature.add(Map.entry(child.getFileName().toString(), mtime));
-                    }
-                }
-            } catch (IOException ignored) {
-                // Skip unreadable roots.
-            }
-        }
-        return signature;
     }
 
     private void forceMtimeChange(Path file) throws IOException {

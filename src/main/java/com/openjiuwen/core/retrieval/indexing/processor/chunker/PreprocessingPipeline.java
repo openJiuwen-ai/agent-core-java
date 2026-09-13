@@ -8,31 +8,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Mirrors Python's {@code PreprocessingPipeline} in
- * {@code openjiuwen/core/retrieval/indexing/processor/chunker/text_preprocessor.py}.
+ * Sequential text preprocessing pipeline.
+ * 
+ * @since 0.1.7
  */
 public class PreprocessingPipeline implements TextPreprocessor {
-
     private final List<TextPreprocessor> preprocessors = new ArrayList<>();
 
-    public PreprocessingPipeline() {
-        this(null);
-    }
-
+    /**
+     * PreprocessingPipeline.
+     * 
+     * @param preprocessors preprocessors
+     * @since 0.1.7
+     */
     public PreprocessingPipeline(List<TextPreprocessor> preprocessors) {
         if (preprocessors != null) {
             this.preprocessors.addAll(preprocessors);
         }
     }
 
-    public List<TextPreprocessor> getPreprocessors() {
-        return List.copyOf(preprocessors);
-    }
-
-    public void addPreprocessor(TextPreprocessor preprocessor) {
-        preprocessors.add(preprocessor);
-    }
-
+    /**
+     * process.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String process(String text) {
         String current = text;
@@ -42,12 +43,33 @@ public class PreprocessingPipeline implements TextPreprocessor {
         return current;
     }
 
-    @Override
-    public String call(String text) {
-        return process(text);
+    /**
+     * addPreprocessor.
+     * 
+     * @param preprocessor preprocessor
+     * @since 0.1.7
+     */
+    public void addPreprocessor(TextPreprocessor preprocessor) {
+        preprocessors.add(preprocessor);
     }
 
+    /**
+     * size.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int size() {
         return preprocessors.size();
+    }
+
+    /**
+     * getPreprocessors.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<TextPreprocessor> getPreprocessors() {
+        return List.copyOf(preprocessors);
     }
 }

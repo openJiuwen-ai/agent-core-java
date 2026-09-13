@@ -8,84 +8,116 @@ import com.openjiuwen.core.common.utils.SerializationUtils;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 /**
- * Interaction output payload.
- *
- * <p>Mirrors Python's {@code InteractionOutput} in
- * {@code openjiuwen/core/session/interaction/interaction.py}.</p>
+ * Output payload for interaction events.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.interaction.interaction.InteractionOutput}.
+ * 
+ * @since 0.1.7
  */
 public class InteractionOutput implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
     private String id;
-    private Object value;
-    private final Map<String, Object> metadata = new LinkedHashMap<>();
+    private Serializable value;
 
+    /**
+     * InteractionOutput.
+     * 
+     * @since 0.1.7
+     */
     public InteractionOutput() {
     }
 
-    public InteractionOutput(Object value) {
-        this.value = normalizeValue(value);
-    }
-
+    /**
+     * InteractionOutput.
+     * 
+     * @param id id
+     * @param value value
+     * @since 0.1.7
+     */
     public InteractionOutput(String id, Object value) {
         this.id = id;
-        this.value = normalizeValue(value);
+        if (value == null) {
+            this.value = null;
+        } else {
+            this.value = SerializationUtils.requireSerializable(value, "value");
+        }
     }
 
+    /**
+     * getId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getId() {
         return id;
     }
 
+    /**
+     * setId.
+     * 
+     * @param id id
+     * @since 0.1.7
+     */
     public void setId(String id) {
         this.id = id;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Object getValue() {
         return value;
     }
 
+    /**
+     * setValue.
+     * 
+     * @param value value
+     * @since 0.1.7
+     */
     public void setValue(Object value) {
-        this.value = normalizeValue(value);
+        if (value == null) {
+            this.value = null;
+        } else {
+            this.value = SerializationUtils.requireSerializable(value, "value");
+        }
     }
 
-    private static Object normalizeValue(Object value) {
-        return value == null ? null : SerializationUtils.requireSerializable(value, "value");
-    }
-
-    public Map<String, Object> getMetadata() {
-        return metadata;
-    }
-
+    /**
+     * equals.
+     * 
+     * @param o o
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public boolean equals(Object other) {
-        if (this == other) {
+    public boolean equals(Object o) {
+        if (this == o) {
             return true;
         }
-        if (!(other instanceof InteractionOutput that)) {
+        if (!(o instanceof InteractionOutput that)) {
             return false;
         }
-        return Objects.equals(id, that.id)
-                && Objects.equals(value, that.value)
-                && Objects.equals(metadata, that.metadata);
+        return Objects.equals(id, that.id) && Objects.equals(value, that.value);
     }
 
+    /**
+     * hashCode.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public int hashCode() {
-        return Objects.hash(id, value, metadata);
-    }
-
-    @Override
-    public String toString() {
-        return "InteractionOutput{"
-                + "id='" + id + '\''
-                + ", value=" + value
-                + ", metadata=" + metadata
-                + '}';
+        return Objects.hash(id, value);
     }
 }

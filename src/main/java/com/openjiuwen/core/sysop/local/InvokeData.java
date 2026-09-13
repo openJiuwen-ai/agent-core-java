@@ -4,41 +4,31 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
- * Mirrors Python's {@code InvokeData} in
- * {@code openjiuwen/core/sys_operation/local/utils.py}.
+ * Structured return model for one-time subprocess execution via {@code invoke()} method.
+ * <p>
+ * Mirrors Python's {@code InvokeData} in {@code local/utils.py}.
+ * 
+ * @since 0.1.7
  */
-public final class InvokeData {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class InvokeData {
+    private String stdout;
 
-    private final String stdout;
-    private final String stderr;
-    private final int exitCode;
-    private final Exception exception;
+    /** Complete standard error string captured from the subprocess execution. */
+    private String stderr;
 
-    public InvokeData(String stdout, String stderr, int exitCode, Exception exception) {
-        this.stdout = stdout != null ? stdout : "";
-        this.stderr = stderr != null ? stderr : "";
-        this.exitCode = exitCode;
-        this.exception = exception;
-    }
+    /** Exit code returned by the subprocess (0 for success, non-zero for errors). */
+    private int exitCode;
 
-    public InvokeData(String stdout, String stderr, int exitCode) {
-        this(stdout, stderr, exitCode, null);
-    }
-
-    public String getStdout() {
-        return stdout;
-    }
-
-    public String getStderr() {
-        return stderr;
-    }
-
-    public int getExitCode() {
-        return exitCode;
-    }
-
-    public Exception getException() {
-        return exception;
-    }
+    /** Exception captured during subprocess execution, if any. */
+    private Exception exception;
 }

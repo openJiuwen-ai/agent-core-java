@@ -4,138 +4,151 @@
 
 package com.openjiuwen.core.singleagent;
 
-import com.openjiuwen.core.runner.callback.AbortError;
-import com.openjiuwen.core.singleagent.rail.AgentCallback;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * Manager for function-style and rail-style agent callbacks.
- *
- * <p>Mirrors Python's {@code AgentCallbackManager} in
- * {@code openjiuwen/core/single_agent/agent_callback_manager.py}.</p>
+ * Manager for agent callback/rail registration and execution.
+ * <p>
+ * Supports both function-style and rail-style callbacks with priority ordering.
+ * Uses the Runner.callbackFramework() with agent_id-prefixed event names to avoid collisions.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class AgentCallbackManager {
     private final String agentId;
-    private final CallbackFramework globalCallbackFramework;
-    private final CallbackFramework instanceCallbackFramework;
-    private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> railCallbacks = new IdentityHashMap<>();
-    private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> instanceRailCallbacks = new IdentityHashMap<>();
 
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private final Map<String, Map<Consumer<AgentCallbackContext>, Function<Map<String, Object>, Object>>> wrappedCallbacks =
+        new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private final Map<String, List<RegisteredCallback>> localCallbacks = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private final Map<AgentRail, List<RailRegistration>> railRegistrations = new ConcurrentHashMap<>();
+
+    /**
+     * AgentCallbackManager.
+     * 
+     * @param agentId agentId
+     * @since 0.1.7
+     */
     public AgentCallbackManager(String agentId) {
-        this(agentId, new ReflectionRunnerCallbackFramework());
-    }
-
-    AgentCallbackManager(String agentId, CallbackFramework callbackFramework) {
-        this.agentId = agentId == null ? "" : agentId;
-        this.globalCallbackFramework = callbackFramework == null ? new ReflectionRunnerCallbackFramework() : callbackFramework;
-        this.instanceCallbackFramework = new InstanceCallbackFramework();
+        this.agentId = agentId;
     }
 
     /**
-     * Registers a callback for the given event.
-     *
+     * Register an agent callback for an event.
+     * 
      * @param event the agent callback event
      * @param callback the callback consumer
      * @param priority execution priority (higher value runs first)
+     * @since 0.1.7
      */
-    public CompletionStage<AgentCallbackManager> registerCallback(AgentCallbackEvent event,
-                                                                  AgentCallback callback,
-                                                                  int priority) {
-        if (event == null || callback == null) {
-            return CompletableFuture.completedFuture(this);
-        }
-        return globalCallbackFramework.register(getAgentEvent(event), callback, priority)
-                .thenApply(ignored -> this);
-    }
-
-    public CompletionStage<AgentCallbackManager> register_callback(AgentCallbackEvent event,
-                                                                   AgentCallback callback,
-                                                                   int priority) {
-        return registerCallback(event, callback, priority);
-    }
-
-    public CompletionStage<AgentCallbackManager> registerRail(AgentRail rail, Object agent) {
-        if (rail == null) {
-            return CompletableFuture.completedFuture(this);
-        }
-        Map<AgentCallbackEvent, AgentCallback> callbacks = rail.getCallbacks();
-        railCallbacks.put(rail, callbacks);
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-        for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
-            chain = chain.thenCompose(ignored -> globalCallbackFramework.register(
-                    getAgentEvent(entry.getKey()),
-                    entry.getValue(),
-                    rail.getPriority()
-            ));
-        }
-        return chain.thenApply(ignored -> this);
-    }
-
-    public CompletionStage<AgentCallbackManager> register_rail(AgentRail rail, Object agent) {
-        return registerRail(rail, agent);
+    public void registerCallback(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback, int priority) {
+        String agentEvent = getAgentEvent(event);
+        Function<Map<String, Object>, Object> wrappedCallback = kwargs -> {
+            Object ctxObj = kwargs.get("ctx");
+            if (ctxObj instanceof AgentCallbackContext ctx) {
+                callback.accept(ctx);
+            }
+            return null;
+        };
+        wrappedCallbacks.computeIfAbsent(agentEvent, key -> new ConcurrentHashMap<>()).put(callback, wrappedCallback);
+        localCallbacks
+                .computeIfAbsent(agentEvent, key -> Collections.synchronizedList(new ArrayList<RegisteredCallback>()))
+                .add(new RegisteredCallback(callback, priority));
+        localCallbacks.get(agentEvent).sort((left, right) -> Integer.compare(right.priority(), left.priority()));
+        String callbackName = agentEvent + "_cb_" + Integer.toHexString(System.identityHashCode(callback));
+        Runner.callbackFramework().register(agentEvent, wrappedCallback, priority, callbackName);
     }
 
     /**
-     * Whether {@code rail} is registered on the global callback framework.
-     *
-     * @param rail the rail to look up
-     * @return {@code true} if the rail is currently registered
-     * @since 0.1.15
+     * Register an agent callback with default priority.
+     * 
+     * @param event event
+     * @param callback callback
+     * @since 0.1.7
      */
-    public boolean isRailRegistered(AgentRail rail) {
-        return rail != null && railCallbacks.containsKey(rail);
+    public void registerCallback(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback) {
+        registerCallback(event, callback, 100);
     }
 
-    public CompletionStage<AgentCallbackManager> registerInstanceRail(AgentRail rail, Object agent) {
-        if (rail == null) {
-            return CompletableFuture.completedFuture(this);
+    /**
+     * Register a rail instance.
+     * 
+     * @param rail the AgentRail to register
+     * @param agent the BaseAgent instance (for tool registration)
+     * @since 0.1.7
+     */
+    public void registerRail(AgentRail rail, Object agent) {
+        rail.init(agent);
+        List<RailRegistration> registrations = new ArrayList<>();
+        for (Map.Entry<AgentCallbackEvent, Consumer<AgentCallbackContext>> entry : rail.getCallbacks().entrySet()) {
+            registerCallback(entry.getKey(), entry.getValue(), rail.getPriority());
+            registrations.add(new RailRegistration(entry.getKey(), entry.getValue()));
         }
-        Map<AgentCallbackEvent, AgentCallback> callbacks = rail.getCallbacks();
-        instanceRailCallbacks.put(rail, callbacks);
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-        for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
-            chain = chain.thenCompose(ignored -> instanceCallbackFramework.register(
-                    getInstanceEvent(entry.getKey()),
-                    entry.getValue(),
-                    rail.getPriority()
-            ));
+        railRegistrations.put(rail, registrations);
+
+        if (rail.getTools() != null && !rail.getTools().isEmpty()) {
+            if (agent instanceof BaseAgent baseAgent) {
+                for (Object toolCard : rail.getTools()) {
+                    baseAgent.getAbilityManager().add(toolCard);
+                }
+            }
         }
-        return chain.thenApply(ignored -> this);
     }
 
-    public CompletionStage<Void> unregisterRail(AgentRail rail, Object agent) {
-        if (rail == null) {
-            return CompletableFuture.completedFuture(null);
+    /**
+     * Unregister a rail instance.
+     * 
+     * @param rail the AgentRail to unregister
+     * @param agent the BaseAgent instance (for tool removal)
+     * @since 0.1.7
+     */
+    public void unregisterRail(AgentRail rail, Object agent) {
+        List<RailRegistration> registrations = railRegistrations.remove(rail);
+        if (registrations != null) {
+            for (RailRegistration registration : registrations) {
+                unregister(registration.event(), registration.callback());
+            }
         }
-        Map<AgentCallbackEvent, AgentCallback> callbacks = railCallbacks.remove(rail);
-        if (callbacks == null) {
-            callbacks = rail.getCallbacks();
-        }
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-        for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
-            chain = chain.thenCompose(ignored -> globalCallbackFramework.unregister(getAgentEvent(entry.getKey()),
-                    entry.getValue()));
-        }
-        return chain;
-    }
 
-    public CompletionStage<Void> unregister_rail(AgentRail rail, Object agent) {
-        return unregisterRail(rail, agent);
+        if (rail.getTools() != null && !rail.getTools().isEmpty()) {
+            if (agent instanceof BaseAgent baseAgent) {
+                for (var toolCard : rail.getTools()) {
+                    if (toolCard.getName() != null) {
+                        baseAgent.getAbilityManager().remove(toolCard.getName());
+                    }
+                }
+            }
+        }
+
+        rail.uninit(agent);
     }
 
     /**
@@ -143,276 +156,139 @@ public class AgentCallbackManager {
      *
      * <p>Per-task DeepAgent instances register business rails on their inner
      * BaseAgent; until the rails are unregistered, the process-global
-     * callback framework keeps one CallbackInfo per rail callback alive,
-     * pinning the whole agent object graph. This snapshot-based bulk
-     * unregister releases all of them without clearing shared event names.</p>
+     * {@code Runner.callbackFramework()} keeps one CallbackInfo per rail
+     * callback alive, pinning the whole agent object graph. This snapshot
+     * based bulk unregister releases all of them.</p>
      *
-     * @param agent the BaseAgent instance (for rail uninit)
+     * @param agent the BaseAgent instance (for tool removal)
+     * @since 0.1.15
      */
-    public CompletionStage<Void> unregisterAllRails(Object agent) {
-        List<AgentRail> rails = new ArrayList<>(railCallbacks.keySet());
-        List<AgentRail> instanceRails = new ArrayList<>(instanceRailCallbacks.keySet());
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+    public void unregisterAllRails(Object agent) {
+        List<AgentRail> rails = new ArrayList<>(railRegistrations.keySet());
         for (AgentRail rail : rails) {
-            chain = chain.thenCompose(ignored -> unregisterRail(rail, agent).thenApply(v -> {
-                if (rail != null && agent instanceof BaseAgent baseAgent) {
-                    rail.uninit(baseAgent);
-                }
-                return v;
-            }));
+            unregisterRail(rail, agent);
         }
-        for (AgentRail rail : instanceRails) {
-            chain = chain.thenCompose(ignored -> unregisterInstanceRail(rail, agent).thenApply(v -> {
-                if (rail != null && agent instanceof BaseAgent baseAgent) {
-                    rail.uninit(baseAgent);
-                }
-                return v;
-            }));
-        }
-        return chain;
     }
 
-    public CompletionStage<Void> unregisterInstanceRail(AgentRail rail, Object agent) {
-        if (rail == null) {
-            return CompletableFuture.completedFuture(null);
+    /**
+     * Unregister a callback from an event.
+     * 
+     * @param event the event
+     * @param callback the original callback consumer
+     * @since 0.1.7
+     */
+    public void unregister(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback) {
+        String agentEvent = getAgentEvent(event);
+        Map<Consumer<AgentCallbackContext>, Function<Map<String, Object>, Object>> callbacksForEvent =
+            wrappedCallbacks.get(agentEvent);
+        if (callbacksForEvent == null) {
+            return;
         }
-        Map<AgentCallbackEvent, AgentCallback> callbacks = instanceRailCallbacks.remove(rail);
-        if (callbacks == null) {
-            return CompletableFuture.completedFuture(null);
-        }
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-        for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
-            chain = chain.thenCompose(ignored -> instanceCallbackFramework.unregister(getInstanceEvent(entry.getKey()),
-                    entry.getValue()));
-        }
-        return chain;
-    }
 
-    public CompletionStage<Void> unregister(AgentCallbackEvent event, AgentCallback callback) {
-        if (event == null || callback == null) {
-            return CompletableFuture.completedFuture(null);
+        Function<Map<String, Object>, Object> wrappedCallback = callbacksForEvent.remove(callback);
+        if (wrappedCallback == null) {
+            return;
         }
-        return globalCallbackFramework.unregister(getAgentEvent(event), callback);
-    }
 
-    public CompletionStage<Void> clear(AgentCallbackEvent event) {
-        if (event == null) {
-            CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-            for (AgentCallbackEvent callbackEvent : AgentCallbackEvent.values()) {
-                chain = chain.thenCompose(ignored -> globalCallbackFramework.unregisterEvent(getAgentEvent(callbackEvent)));
+        List<RegisteredCallback> callbacksForAgentEvent = localCallbacks.get(agentEvent);
+        if (callbacksForAgentEvent != null) {
+            callbacksForAgentEvent.removeIf(registeredCallback -> registeredCallback.callback().equals(callback));
+            if (callbacksForAgentEvent.isEmpty()) {
+                localCallbacks.remove(agentEvent);
             }
-            return chain;
         }
-        return globalCallbackFramework.unregisterEvent(getAgentEvent(event));
+
+        Runner.callbackFramework().unregister(agentEvent, wrappedCallback);
+        if (callbacksForEvent.isEmpty()) {
+            wrappedCallbacks.remove(agentEvent);
+        }
     }
 
-    public CompletionStage<Void> clearInstance(AgentCallbackEvent event) {
-        if (event == null) {
-            CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-            for (AgentCallbackEvent callbackEvent : AgentCallbackEvent.values()) {
-                chain = chain.thenCompose(ignored -> instanceCallbackFramework.unregisterEvent(
-                        getInstanceEvent(callbackEvent)));
+    /**
+     * Clear hooks for a specific event or all events.
+     * 
+     * @param event specific event to clear, or null to clear all
+     * @since 0.1.7
+     */
+    public void clear(AgentCallbackEvent event) {
+        if (event != null) {
+            String agentEvent = getAgentEvent(event);
+            Runner.callbackFramework().unregisterEvent(agentEvent);
+            wrappedCallbacks.remove(agentEvent);
+            localCallbacks.remove(agentEvent);
+            railRegistrations.values()
+                    .forEach(registrations -> registrations.removeIf(registration -> registration.event() == event));
+        } else {
+            for (AgentCallbackEvent e : AgentCallbackEvent.values()) {
+                String agentEvent = getAgentEvent(e);
+                Runner.callbackFramework().unregisterEvent(agentEvent);
             }
-            return chain;
+            wrappedCallbacks.clear();
+            localCallbacks.clear();
+            railRegistrations.clear();
         }
-        return instanceCallbackFramework.unregisterEvent(getInstanceEvent(event));
     }
 
+    /**
+     * Check if any hooks are registered for an event.
+     * 
+     * @param event the event to check
+     * @return true if hooks are registered
+     * @since 0.1.7
+     */
     public boolean hasHooks(AgentCallbackEvent event) {
-        if (event == null) {
-            return false;
-        }
-        return !globalCallbackFramework.listCallbacks(getAgentEvent(event)).toCompletableFuture().join().isEmpty();
+        String agentEvent = getAgentEvent(event);
+        return !Runner.callbackFramework().listCallbacks(agentEvent).isEmpty();
     }
 
-    public boolean has_hooks(AgentCallbackEvent event) {
-        return hasHooks(event);
+    /**
+     * Execute all hooks for an event.
+     * 
+     * @param event the event
+     * @param ctx the callback context
+     * @since 0.1.7
+     */
+    public void execute(AgentCallbackEvent event, AgentCallbackContext ctx) {
+        String agentEvent = getAgentEvent(event);
+        List<RegisteredCallback> callbacksForEvent = localCallbacks.get(agentEvent);
+        if (callbacksForEvent == null) {
+            return;
+        }
+        List<RegisteredCallback> snapshot = new ArrayList<RegisteredCallback>(callbacksForEvent);
+        snapshot.sort((left, right) -> Integer.compare(right.priority(), left.priority()));
+        for (RegisteredCallback registeredCallback : snapshot) {
+            registeredCallback.callback().accept(ctx);
+        }
     }
 
-    public boolean hasInstanceHooks(AgentCallbackEvent event) {
-        if (event == null) {
-            return false;
-        }
-        return !instanceCallbackFramework.listCallbacks(getInstanceEvent(event)).toCompletableFuture().join().isEmpty();
+    /**
+     * Generate event name with agent_id prefix.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
+    private String getAgentEvent(AgentCallbackEvent event) {
+        return agentId + "_" + event.getValue();
     }
 
-    public CompletionStage<AgentCallbackContext> execute(AgentCallbackEvent event, AgentCallbackContext context) {
-        if (event == null) {
-            return CompletableFuture.completedFuture(context);
-        }
-        return globalCallbackFramework.trigger(getAgentEvent(event), context)
-                .thenCompose(ignored -> instanceCallbackFramework.trigger(getInstanceEvent(event), context))
-                .thenApply(ignored -> context);
+    /**
+     * RailRegistration.
+     * 
+     * @param event event
+     * @param callback callback
+     * @since 0.1.7
+     */
+    private record RailRegistration(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback) {
     }
 
-    public String agentEventName(AgentCallbackEvent event) {
-        return getAgentEvent(event);
-    }
-
-    public String getAgentEvent(AgentCallbackEvent event) {
-        return agentId + "_" + (event == null ? "" : "AgentCallbackEvent." + event.name());
-    }
-
-    public String _get_agent_event(AgentCallbackEvent event) {
-        return getAgentEvent(event);
-    }
-
-    private String getInstanceEvent(AgentCallbackEvent event) {
-        return event == null ? "" : "AgentCallbackEvent." + event.name();
-    }
-
-    public String getAgentId() {
-        return agentId;
-    }
-
-    interface CallbackFramework {
-        CompletionStage<Void> register(String event, AgentCallback callback, int priority);
-
-        CompletionStage<Void> unregister(String event, AgentCallback callback);
-
-        CompletionStage<Void> unregisterEvent(String event);
-
-        CompletionStage<List<Object>> listCallbacks(String event);
-
-        CompletionStage<Void> trigger(String event, AgentCallbackContext context);
-    }
-
-    private static final class ReflectionRunnerCallbackFramework implements CallbackFramework {
-        private final Map<AgentCallback, Function<Map<String, Object>, Object>> wrappers = new IdentityHashMap<>();
-
-        @Override
-        public CompletionStage<Void> register(String event, AgentCallback callback, int priority) {
-            try {
-                Object framework = runnerCallbackFramework();
-                Function<Map<String, Object>, Object> wrapper = kwargs -> {
-                    Object value = kwargs == null ? null : kwargs.get("ctx");
-                    AgentCallbackContext context = value instanceof AgentCallbackContext callbackContext
-                            ? callbackContext
-                            : null;
-                    if (context != null) {
-                        try {
-                            callback.handle(context).toCompletableFuture().join();
-                        } catch (CompletionException exception) {
-                            throw normalizeCallbackFailure(exception);
-                        }
-                    }
-                    return null;
-                };
-                wrappers.put(callback, wrapper);
-                framework.getClass().getMethod(
-                        "register",
-                        String.class,
-                        Function.class,
-                        int.class,
-                        boolean.class,
-                        String.class,
-                        Set.class,
-                        List.class,
-                        Function.class,
-                        Function.class,
-                        int.class,
-                        double.class,
-                        Double.class,
-                        String.class
-                ).invoke(framework, event, wrapper, priority, false, null, null, null, null, null, 0, 0.0D, null,
-                        "agent_callback");
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                // Missing Runner/callback framework means no callbacks can be registered yet.
-            }
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<Void> unregister(String event, AgentCallback callback) {
-            try {
-                Function<Map<String, Object>, Object> wrapper = wrappers.remove(callback);
-                if (wrapper != null) {
-                    runnerCallbackFramework().getClass()
-                            .getMethod("unregister", String.class, Function.class)
-                            .invoke(runnerCallbackFramework(), event, wrapper);
-                }
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                // Match Python's best-effort unregistration surface when framework is absent.
-            }
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<Void> unregisterEvent(String event) {
-            try {
-                runnerCallbackFramework().getClass()
-                        .getMethod("unregisterEvent", String.class)
-                        .invoke(runnerCallbackFramework(), event);
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                // Match Python's best-effort clear surface when framework is absent.
-            }
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<List<Object>> listCallbacks(String event) {
-            try {
-                Object result = runnerCallbackFramework().getClass()
-                        .getMethod("listCallbacks", String.class)
-                        .invoke(runnerCallbackFramework(), event);
-                if (result instanceof List<?> list) {
-                    return CompletableFuture.completedFuture(List.copyOf(list));
-                }
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                // Missing framework has no hooks.
-            }
-            return CompletableFuture.completedFuture(List.of());
-        }
-
-        @Override
-        public CompletionStage<Void> trigger(String event, AgentCallbackContext context) {
-            try {
-                Map<String, Object> kwargs = new LinkedHashMap<>();
-                kwargs.put("ctx", context);
-                runnerCallbackFramework().getClass()
-                        .getMethod("trigger", String.class, Object[].class, Map.class)
-                        .invoke(runnerCallbackFramework(), event, new Object[] {context}, kwargs);
-            } catch (InvocationTargetException exception) {
-                Throwable cause = exception.getCause();
-                if (cause instanceof RuntimeException runtimeException) {
-                    throw runtimeException;
-                }
-                if (cause instanceof Error error) {
-                    throw error;
-                }
-                throw new IllegalStateException("Agent callback execution failed", cause);
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                // Missing framework means there are no callbacks to trigger.
-            }
-            return CompletableFuture.completedFuture(null);
-        }
-
-        private static RuntimeException normalizeCallbackFailure(Throwable error) {
-            Throwable normalized = unwrapCallbackFailure(error);
-            if (normalized instanceof AbortError abortError) {
-                throw abortError;
-            }
-            if (normalized instanceof Error fatal) {
-                throw fatal;
-            }
-            if (error instanceof RuntimeException runtimeException) {
-                return runtimeException;
-            }
-            return new CompletionException(error);
-        }
-
-        private static Throwable unwrapCallbackFailure(Throwable error) {
-            Throwable current = error;
-            while ((current instanceof CompletionException || current instanceof ExecutionException)
-                    && current.getCause() != null) {
-                current = current.getCause();
-            }
-            return current;
-        }
-
-        private Object runnerCallbackFramework() throws ReflectiveOperationException {
-            Class<?> runnerType = Class.forName("com.openjiuwen.core.runner.Runner");
-            return runnerType.getMethod("getCallbackFramework").invoke(null);
-        }
+    /**
+     * RegisteredCallback.
+     * 
+     * @param callback callback
+     * @param priority priority
+     * @since 0.1.7
+     */
+    private record RegisteredCallback(Consumer<AgentCallbackContext> callback, int priority) {
     }
 }

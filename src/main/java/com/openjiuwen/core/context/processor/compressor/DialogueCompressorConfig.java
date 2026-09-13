@@ -4,117 +4,83 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 /**
- * Configuration for {@link DialogueCompressor}.
- *
- * <p>Mirrors Python's {@code DialogueCompressorConfig} in
- * {@code openjiuwen/core/context_engine/processor/compressor/dialogue_compressor.py}.</p>
+ * Configuration for the {@link DialogueCompressor} ContextProcessor.
+ * <p>
+ * Mirrors Python's {@code DialogueCompressorConfig}.
+ * 
+ * @since 0.1.7
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class DialogueCompressorConfig {
-    @JsonProperty("messages_threshold")
     private Integer messagesThreshold;
 
-    @JsonProperty("tokens_threshold")
+    /**
+     * Maximum accumulated token count before compression is triggered.
+     */
+    @Builder.Default
     private int tokensThreshold = 10000;
 
-    @JsonProperty("messages_to_keep")
+    /**
+     * Number of most-recent messages to retain regardless of thresholds.
+     */
     private Integer messagesToKeep;
 
-    @JsonProperty("keep_last_round")
+    /**
+     * If true, the most recent user-assistant round is always preserved.
+     */
+    @Builder.Default
     private boolean keepLastRound = true;
 
-    @JsonProperty("compression_target_tokens")
+    /**
+     * Per-block summary size hint used in the compression prompt.
+     */
+    @Builder.Default
     private int compressionTargetTokens = 1800;
 
-    @JsonProperty("custom_compression_prompt")
+    /**
+     * User-supplied prompt for the compression step.
+     */
     private String customCompressionPrompt;
 
+    /**
+     * Model request configuration.
+     */
     private ModelRequestConfig model;
 
-    @JsonProperty("model_client")
+    /**
+     * Optional client-level configuration for the model.
+     */
     private ModelClientConfig modelClient;
 
-    public Integer getMessagesThreshold() {
-        return messagesThreshold;
-    }
-
-    public void setMessagesThreshold(Integer messagesThreshold) {
-        validateNullableGt(messagesThreshold, "messages_threshold");
-        this.messagesThreshold = messagesThreshold;
-    }
-
-    public int getTokensThreshold() {
-        return tokensThreshold;
-    }
-
-    public void setTokensThreshold(int tokensThreshold) {
-        validateGt(tokensThreshold, "tokens_threshold");
-        this.tokensThreshold = tokensThreshold;
-    }
-
-    public Integer getMessagesToKeep() {
-        return messagesToKeep;
-    }
-
-    public void setMessagesToKeep(Integer messagesToKeep) {
-        validateNullableGt(messagesToKeep, "messages_to_keep");
-        this.messagesToKeep = messagesToKeep;
-    }
-
-    public boolean isKeepLastRound() {
-        return keepLastRound;
-    }
-
-    public void setKeepLastRound(boolean keepLastRound) {
-        this.keepLastRound = keepLastRound;
-    }
-
-    public int getCompressionTargetTokens() {
-        return compressionTargetTokens;
-    }
-
-    public void setCompressionTargetTokens(int compressionTargetTokens) {
-        validateGt(compressionTargetTokens, "compression_target_tokens");
-        this.compressionTargetTokens = compressionTargetTokens;
-    }
-
-    public String getCustomCompressionPrompt() {
-        return customCompressionPrompt;
-    }
-
-    public void setCustomCompressionPrompt(String customCompressionPrompt) {
-        this.customCompressionPrompt = customCompressionPrompt;
-    }
-
-    public ModelRequestConfig getModel() {
-        return model;
-    }
-
-    public void setModel(ModelRequestConfig model) {
-        this.model = model;
-    }
-
-    public ModelClientConfig getModelClient() {
-        return modelClient;
-    }
-
-    public void setModelClient(ModelClientConfig modelClient) {
-        this.modelClient = modelClient;
-    }
-
-    private static void validateNullableGt(Integer value, String fieldName) {
-        if (value != null && value <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be > 0");
+    /**
+     * Validate configuration constraints matching Python Pydantic rules.
+     * 
+     * @since 0.1.7
+     */
+    public void validate() {
+        if (messagesThreshold != null && messagesThreshold <= 0) {
+            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
         }
-    }
-
-    private static void validateGt(int value, String fieldName) {
-        if (value <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be > 0");
+        if (tokensThreshold <= 0) {
+            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
+        }
+        if (messagesToKeep != null && messagesToKeep <= 0) {
+            throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+        }
+        if (compressionTargetTokens <= 0) {
+            throw new IllegalArgumentException("compressionTargetTokens must be > 0, got " + compressionTargetTokens);
         }
     }
 }

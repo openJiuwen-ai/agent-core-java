@@ -4,25 +4,18 @@
 
 package com.openjiuwen.core.common.security;
 
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.StatusCode;
-import org.junit.jupiter.api.Test;
-
-import javax.net.ssl.SSLContext;
-import java.net.http.HttpClient;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Mirrors Python's behavior around
- * {@code openjiuwen/core/common/security/ssl_utils.py}.
- */
+import okhttp3.OkHttpClient;
+
+import org.junit.jupiter.api.Test;
+
+import java.net.http.HttpClient;
+import java.util.Arrays;
+
 class SslUtilsTest {
-
     @Test
     void configureHttpClientSslDisablesEndpointVerificationWhenRequested() {
         HttpClient.Builder builder = HttpClient.newBuilder();
@@ -32,31 +25,30 @@ class SslUtilsTest {
         HttpClient client = builder.build();
         assertNotNull(client.sslContext());
         assertEquals("", client.sslParameters().getEndpointIdentificationAlgorithm());
+        assertTrue(Arrays.asList(client.sslParameters().getProtocols()).contains("TLSv1.2"));
+        assertTrue(Arrays.asList(client.sslParameters().getProtocols()).contains("TLSv1.3"));
     }
 
     @Test
-    void getSslConfigReturnsFalsePairWhenUrlIsNotHttps() {
-        Object[] config = SslUtils.getSslConfig("SSL_VERIFY", "SSL_CERT", List.of("true"), false);
+    void configureOkHttpClientSslDisablesVerificationWhenRequested() {
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
 
-        assertEquals(false, config[0]);
-        assertEquals(false, config[1]);
+        SslUtils.configureOkHttpClientSsl(builder, "https://example.com/v1", false, null);
+
+        OkHttpClient client = builder.build();
+        assertNotNull(client.sslSocketFactory());
+        assertNotNull(client.x509TrustManager());
+        assertTrue(client.hostnameVerifier().verify("example.com", null));
     }
 
     @Test
-    void getSslConfigRaisesWhenVerifyIsOnAndCertMissing() {
-        BaseError error = assertThrows(
-                BaseError.class,
-                () -> SslUtils.getSslConfig("SSL_VERIFY", "SSL_CERT", List.of(), true)
-        );
+    void configureOkHttpClientSslSkipsNonHttpsTargets() {
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
+        OkHttpClient before = builder.build();
 
-        assertEquals(StatusCode.COMMON_SSL_CERT_INVALID, error.getStatus());
-    }
+        SslUtils.configureOkHttpClientSsl(builder, "http://example.com/v1", false, null);
 
-    @Test
-    void createStrictSslContextIgnoresMissingCertFile() {
-        assertSame(
-                SSLContext.class,
-                SslUtils.createStrictSslContext("target/missing-cert.pem").getClass()
-        );
+        OkHttpClient after = builder.build();
+        assertEquals(before.sslSocketFactory().getClass(), after.sslSocketFactory().getClass());
     }
 }

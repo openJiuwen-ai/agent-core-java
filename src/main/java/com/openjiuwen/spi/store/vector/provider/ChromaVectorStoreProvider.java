@@ -41,7 +41,6 @@ public final class ChromaVectorStoreProvider implements VectorStoreProvider {
      */
     @Override
     public BaseVectorStore create(Map<String, Object> conf) {
-        ChromaVectorStore asyncStore = new ChromaVectorStore(conf);
-        return BaseVectorStore.fromAsync(asyncStore);
+        return new ChromaVectorStore(conf);
     }
 }

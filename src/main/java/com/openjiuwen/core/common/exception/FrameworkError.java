@@ -7,15 +7,66 @@ package com.openjiuwen.core.common.exception;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code FrameworkError} in
- * {@code openjiuwen/core/common/exception/errors.py}.
+ * Infrastructure / environment / dependency failures.
+ * Must abort current execution.
+ * 
+ * @since 0.1.7
  */
 public class FrameworkError extends BaseError {
+    /**
+     * FrameworkError.
+     * 
+     * @param status status
+     * @param msg msg
+     * @param details details
+     * @param cause cause
+     * @param params params
+     * @since 0.1.7
+     */
     public FrameworkError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
         super(status, msg, details, cause, params);
     }
-    public FrameworkError(StatusCode status, Map<String, Object> params) { super(status, params); }
-    public FrameworkError(StatusCode status) { super(status); }
-    @Override protected boolean defaultRecoverable() { return false; }
-    @Override protected boolean defaultFatal() { return true; }
+
+    /**
+     * Creates a FrameworkError with status and parameters.
+     * 
+     * @param status the status code
+     * @param params template parameters for message rendering
+     * @since 0.1.7
+     */
+    public FrameworkError(StatusCode status, Map<String, Object> params) {
+        super(status, params);
+    }
+
+    /**
+     * Creates a FrameworkError with status only.
+     * 
+     * @param status the status code
+     * @since 0.1.7
+     */
+    public FrameworkError(StatusCode status) {
+        super(status);
+    }
+
+    /**
+     * defaultRecoverable.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    protected boolean defaultRecoverable() {
+        return false;
+    }
+
+    /**
+     * defaultFatal.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    protected boolean defaultFatal() {
+        return true;
+    }
 }

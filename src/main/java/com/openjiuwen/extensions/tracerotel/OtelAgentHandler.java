@@ -126,10 +126,6 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
         Span otelSpan = b.startSpan();
         otelSpan.setAttribute(SemConv.GEN_AI_SYSTEM, SemConv.GEN_AI_SYSTEM_VALUE);
         otelSpan.setAttribute(SemConv.OJ_TRACE_ID, span.getTraceId() != null ? span.getTraceId() : "");
-        // Absent for tracers not bound to a Session, so old consumers see no new key.
-        if (sessionId != null && !sessionId.isBlank()) {
-            otelSpan.setAttribute(SemConv.OJ_SESSION_ID, sessionId);
-        }
         otelSpan.setAttribute(SemConv.OJ_INVOKE_ID, span.getInvokeId() != null ? span.getInvokeId() : "");
         otelSpan.setAttribute(SemConv.OJ_PARENT_INVOKE_ID,
                 span.getParentInvokeId() != null ? span.getParentInvokeId() : "");

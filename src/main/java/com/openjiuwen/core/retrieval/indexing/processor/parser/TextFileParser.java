@@ -14,35 +14,43 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Simple UTF-8 text file parser.
+ * 
+ * @since 0.1.7
  */
 public class TextFileParser extends Parser {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parseContent.
+     * 
+     * @param doc doc
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    protected CompletableFuture<String> parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
+    @Override
+    protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
         Path path = Path.of(doc);
         if (!Files.exists(path)) {
-            return CompletableFuture.failedFuture(
-                    RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_FILE_NOT_FOUND, "file not found: " + doc));
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_FILE_NOT_FOUND, "file not found: " + doc);
         }
         try {
-            return CompletableFuture.completedFuture(Files.readString(path, StandardCharsets.UTF_8));
+            return Files.readString(path, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            return CompletableFuture.failedFuture(
-                    RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_FILE_NOT_FOUND, e.getMessage()));
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_FILE_NOT_FOUND, e.getMessage());
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supports.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supports(String doc) {
         String lower = doc == null ? "" : doc.toLowerCase(Locale.ROOT);
         return lower.endsWith(".txt") || lower.endsWith(".md");

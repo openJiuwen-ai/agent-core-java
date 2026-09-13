@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.extensions.context_evolver.schema;
@@ -10,38 +10,64 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Mirrors Python's schema helper behavior in
- * {@code openjiuwen/extensions/context_evolver/schema/io_schema.py}.
+ * Shared helpers for the context_evolver schema DTOs.
+ * 
+ * @since 0.1.7
  */
 public final class SchemaUtils {
-
+    /**
+     * SchemaUtils.
+     * 
+     * @since 0.1.7
+     */
     private SchemaUtils() {
+        // Utility class
     }
 
-    public static String md5Hex(String value) {
+    /**
+     * sha256Hex.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
+    public static String sha256Hex(String value) {
         String input = value != null ? value : "";
         try {
-            MessageDigest digest = MessageDigest.getInstance("MD5");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder(bytes.length * 2);
-            for (byte current : bytes) {
-                builder.append(String.format("%02x", current));
-            }
-            return builder.toString();
+            return HexFormat.of().formatHex(bytes);
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("MD5 digest unavailable", e);
+            throw new IllegalStateException("SHA-256 digest unavailable", e);
         }
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     public static String stringValue(Object value, String defaultValue) {
         return value != null ? String.valueOf(value) : defaultValue;
     }
 
+    /**
+     * intValue.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     public static int intValue(Object value, int defaultValue) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -56,6 +82,14 @@ public final class SchemaUtils {
         return defaultValue;
     }
 
+    /**
+     * doubleValue.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     public static double doubleValue(Object value, double defaultValue) {
         if (value instanceof Number number) {
             return number.doubleValue();
@@ -70,6 +104,13 @@ public final class SchemaUtils {
         return defaultValue;
     }
 
+    /**
+     * booleanValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static Boolean booleanValue(Object value) {
         if (value instanceof Boolean booleanValue) {
             return booleanValue;
@@ -80,6 +121,14 @@ public final class SchemaUtils {
         return null;
     }
 
+    /**
+     * instantValue.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     public static Instant instantValue(Object value, Instant defaultValue) {
         if (value instanceof Instant instant) {
             return instant;
@@ -94,10 +143,18 @@ public final class SchemaUtils {
         return defaultValue;
     }
 
+    /**
+     * mapValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> rawMap)) {
             return new LinkedHashMap<>();
         }
+
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
             if (entry.getKey() != null) {
@@ -107,6 +164,13 @@ public final class SchemaUtils {
         return result;
     }
 
+    /**
+     * stringListValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static List<String> stringListValue(Object value) {
         List<String> result = new ArrayList<>();
         if (value instanceof List<?> rawList) {
@@ -119,6 +183,13 @@ public final class SchemaUtils {
         return result;
     }
 
+    /**
+     * toPayload.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static Object toPayload(Object value) {
         if (value == null) {
             return null;
@@ -147,6 +218,12 @@ public final class SchemaUtils {
         if (value instanceof ReMeRetrievedMemory reMeRetrievedMemory) {
             return reMeRetrievedMemory.toMap();
         }
+        if (value instanceof TaskMemory taskMemory) {
+            return taskMemory.toMap();
+        }
+        if (value instanceof PersonalMemory personalMemory) {
+            return personalMemory.toMap();
+        }
         if (value instanceof Trajectory trajectory) {
             return trajectory.toDict();
         }
@@ -165,5 +242,17 @@ public final class SchemaUtils {
             return converted;
         }
         return value;
+    }
+
+    /**
+     * toPayloadMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
+    public static Map<String, Object> toPayloadMap(Object value) {
+        Object payload = toPayload(value);
+        return payload instanceof Map<?, ?> ? mapValue(payload) : new LinkedHashMap<>();
     }
 }

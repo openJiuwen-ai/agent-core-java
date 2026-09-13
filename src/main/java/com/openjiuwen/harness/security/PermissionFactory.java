@@ -7,36 +7,38 @@ package com.openjiuwen.harness.security;
 import com.openjiuwen.harness.rails.security.PermissionInterruptRail;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Production entry used by {@code DeepAgent.ensureInitialized}.
- *
- * <p>Delegates to {@link PermissionInterruptRailFactory} so the Java path matches
- * Python {@code build_permission_interrupt_rail}.</p>
+ * PermissionFactory.
+ * 
+ * @since 0.1.7
  */
 public final class PermissionFactory {
+    /**
+     * PermissionFactory.
+     * 
+     * @since 0.1.7
+     */
     private PermissionFactory() {
     }
 
     /**
-     * Build a permission interrupt rail, or {@code null} when permissions are disabled.
-     *
-     * @param permissions   permission config
-     * @param host          optional host; workspace resolver is bound when missing
-     * @param workspaceRoot workspace root used when the host has no resolver
-     * @return rail or {@code null}
+     * buildPermissionInterruptRail.
+     * 
+     * @param permissions permissions
+     * @param host host
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
      */
     public static PermissionInterruptRail buildPermissionInterruptRail(Map<String, Object> permissions,
-                                                                       ToolPermissionHost host,
-                                                                       Path workspaceRoot) {
-        return PermissionInterruptRailFactory.buildPermissionInterruptRail(
-                permissions,
-                null,
-                null,
-                null,
-                host,
-                workspaceRoot
-        );
+            ToolPermissionHost host, Path workspaceRoot) {
+        Path effectiveWorkspace = workspaceRoot != null ? workspaceRoot
+                : (host != null ? host.resolveWorkspaceDir() : null);
+        PermissionEngine engine = new PermissionEngine(permissions, effectiveWorkspace, List.of());
+        ToolPermissionHost effectiveHost = host != null ? host : ToolPermissionHost.builder().build();
+        return new PermissionInterruptRail(engine, effectiveHost);
     }
 }

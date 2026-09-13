@@ -11,29 +11,38 @@ import java.util.List;
 
 /**
  * Simple SLF4J-backed callback for batch progress.
+ * 
+ * @since 0.1.7
  */
 public class LoggingCallback extends BaseCallback {
-
     private static final Logger LOG = LoggerFactory.getLogger(LoggingCallback.class);
 
     private final int total;
     private final String desc;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LoggingCallback.
+     * 
+     * @param total total
+     * @param desc desc
+     * @since 0.1.7
      */
     public LoggingCallback(int total, String desc) {
-        super(List.of());
         this.total = Math.max(total, 0);
         this.desc = desc == null || desc.isBlank() ? "Indexing" : desc;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * onBatch.
+     * 
+     * @param startIdx startIdx
+     * @param endIdx endIdx
+     * @param batch batch
+     * @since 0.1.7
      */
-    public void call(int startIdx, int endIdx, List<String> batch) {
-        super.call(startIdx, endIdx, batch);
+    @Override
+    public void onBatch(int startIdx, int endIdx, List<String> batch) {
+        super.onBatch(startIdx, endIdx, batch);
         LOG.info("{} progress: {}/{}", desc, Math.min(endIdx, total), total);
     }
 }

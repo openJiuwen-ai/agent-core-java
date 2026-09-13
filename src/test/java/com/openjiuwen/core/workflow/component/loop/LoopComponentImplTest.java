@@ -5,6 +5,7 @@
 package com.openjiuwen.core.workflow.component.loop;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,8 +13,9 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.WorkflowSession;
+import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.core.workflow.component.End;
 import com.openjiuwen.core.workflow.component.Start;
 
@@ -24,6 +26,17 @@ import java.util.Map;
 import java.util.UUID;
 
 class LoopComponentImplTest {
+    @Test
+    void completedLoopRemovesExposedIndex() {
+        WorkflowOutput output = invokeFlow(3, baseInputs());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> endOutput = (Map<String, Object>) ((Map<String, Object>) output.getResult()).get("output");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> loopOutput = (Map<String, Object>) endOutput.get("end_out");
+        assertFalse(loopOutput.containsKey("index"));
+    }
+
     @Test
     void rejectsFractionalLoopNumber() {
         BaseError error = assertThrows(BaseError.class, () -> invokeFlow(5.5, baseInputs()));
@@ -48,9 +61,9 @@ class LoopComponentImplTest {
         assertTrue(error.getMessage().contains("loop_number"));
     }
 
-    private static void invokeFlow(Object loopNumber, Map<String, Object> inputs) {
+    private static WorkflowOutput invokeFlow(Object loopNumber, Map<String, Object> inputs) {
         Workflow flow = buildFlow(loopNumber);
-        flow.invoke(inputs, new WorkflowSession(null, UUID.randomUUID().toString(), Map.of()), null);
+        return flow.invoke(inputs, new WorkflowSessionApi(null, UUID.randomUUID().toString(), Map.of()), null);
     }
 
     private static Workflow buildFlow(Object loopNumber) {

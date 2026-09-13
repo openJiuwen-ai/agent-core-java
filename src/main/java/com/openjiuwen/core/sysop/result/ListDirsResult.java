@@ -4,18 +4,26 @@
 
 package com.openjiuwen.core.sysop.result;
 
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
 /**
- * Mirrors Python's {@code ListDirsResult} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ * Result type for list directories operation.
+ * 
+ * @since 0.1.7
  */
+@SuperBuilder
+@NoArgsConstructor
 public class ListDirsResult extends BaseResult<FileSystemData> {
-
-    public ListDirsResult() {
-    }
-
+    /**
+     * ListDirsResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
+     */
     public ListDirsResult(int code, String message, FileSystemData data) {
-        setCode(code);
-        setMessage(message);
-        setData(data);
+        super(code, message, data);
     }
 }

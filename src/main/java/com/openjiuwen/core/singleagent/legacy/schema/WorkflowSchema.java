@@ -14,16 +14,14 @@ import java.util.Map;
 
 /**
  * Legacy workflow schema for backward compatibility.
- * <p>
- * Mirrors Python's {@code WorkflowSchema} in
- * {@code openjiuwen/core/single_agent/legacy/schema.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkflowSchema {
-
     @Builder.Default
     private String id = "";
 
@@ -37,5 +35,10 @@ public class WorkflowSchema {
     private String version = "";
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> inputs = new LinkedHashMap<>();
 }

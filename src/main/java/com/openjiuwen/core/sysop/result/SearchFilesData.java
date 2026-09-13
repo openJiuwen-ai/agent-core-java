@@ -4,25 +4,34 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
- * Mirrors Python's {@code SearchFilesData} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ * Data structure for search files.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class SearchFilesData {
-
     private int totalMatches;
+
+    /** List of matching files. */
     private List<FileSystemItem> matchingFiles;
+
+    /** Original base path used for the search. */
     private String searchPath;
+
+    /** Original search pattern used. */
     private String searchPattern;
+
+    /** Original exclude patterns used. */
     private List<String> excludePatterns;
 }

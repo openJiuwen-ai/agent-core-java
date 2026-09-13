@@ -53,7 +53,7 @@ public final class GraphMemoryExampleSupport {
      * @since 0.1.7
      */
     public static void saveCheckpoint(InMemoryStore store, String sessionId, GraphStoreState state) {
-        store.save(sessionId, state.getNs(), state).toCompletableFuture().join();
+        store.save(sessionId, state.getNs(), state);
     }
 
     /**
@@ -66,7 +66,7 @@ public final class GraphMemoryExampleSupport {
      * @since 0.1.7
      */
     public static Optional<GraphStoreState> loadCheckpoint(InMemoryStore store, String sessionId, String ns) {
-        return store.get(sessionId, ns).toCompletableFuture().join();
+        return store.get(sessionId, ns);
     }
 
     /**

@@ -5,7 +5,7 @@
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.aio;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
 
 /**
  * SPI contract interface for AIO providers. Defines the shared contract

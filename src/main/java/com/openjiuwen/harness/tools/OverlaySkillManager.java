@@ -10,13 +10,8 @@ import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.core.singleagent.skills.SkillManager;
-import com.openjiuwen.core.sysop.BaseFsOperation;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
-import com.openjiuwen.core.sysop.local.LocalFsOperation;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,7 +20,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
  * OverlaySkillManager.
@@ -62,18 +56,9 @@ public class OverlaySkillManager {
      */
     private SkillManager getOrRefreshTenantSkillManager(TenantContext ctx, Path tenantSkillRoot) {
         String tenantId = ctx.getTenantId();
-        // develop SkillManager registers via BaseFsOperation (730 used java.nio.Files).
-        // Per-tenant cache managers must carry a local FS resolver.
-        Function<String, BaseFsOperation> fsResolver = id ->
-                new LocalFsOperation(id, OperationMode.LOCAL, "", new LocalWorkConfig());
         SkillManager manager = tenantSkillManagerCache.computeIfAbsent(tenantId,
-                id -> new SkillManager("tenant." + id, fsResolver));
-        try {
-            manager.refreshIncrementally(List.of(tenantSkillRoot));
-        } catch (IllegalArgumentException | IllegalStateException | NullPointerException
-                | UncheckedIOException | SecurityException e) {
-            Loggers.TOOL.warn("Failed to refresh tenant skills for {}: {}", tenantId, e.getMessage());
-        }
+                id -> new SkillManager("tenant." + id));
+        manager.refreshIncrementally(List.of(tenantSkillRoot));
         return manager;
     }
 

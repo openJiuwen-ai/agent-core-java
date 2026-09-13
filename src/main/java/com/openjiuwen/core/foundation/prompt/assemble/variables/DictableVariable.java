@@ -6,15 +6,15 @@ package com.openjiuwen.core.foundation.prompt.assemble.variables;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.logging.events.LogEventType;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -22,27 +22,28 @@ import java.util.regex.Pattern;
 /**
  * Variable class for processing dict or list type placeholders recursively.
  * <p>
- * Mirrors Python's {@code DictableVariable} in
- * {@code openjiuwen/core/foundation/prompt/assemble/variables/dictable.py}.
+ * Mirrors Python's {@code DictableVariable}.
+ * 
+ * @since 0.1.7
  */
 public class DictableVariable extends Variable {
+    private static final Logger LOG = LoggerFactory.getLogger(DictableVariable.class);
 
-    private static final LoggerProtocol PROMPT_LOGGER = Loggers.PROMPT;
-
-    private final Object data;
+    private final Object data; // List or Map
     private final String prefix;
     private final String suffix;
     private final Pattern pattern;
     private final List<String> placeholders;
 
-    public DictableVariable(Object data) {
-        this(data, "default");
-    }
-
-    public DictableVariable(Object data, String name) {
-        this(data, name, "{{", "}}");
-    }
-
+    /**
+     * Construct a DictableVariable.
+     * 
+     * @param data the template data (List or Map) containing placeholders
+     * @param name variable name
+     * @param prefix placeholder prefix
+     * @param suffix placeholder suffix
+     * @since 0.1.7
+     */
     public DictableVariable(Object data, String name, String prefix, String suffix) {
         super(name, List.of());
         this.data = data;
@@ -61,44 +62,58 @@ public class DictableVariable extends Variable {
         this.inputKeys = new ArrayList<>(keys);
     }
 
-    @Override
-    public Object update(Map<String, Object> kwargs) {
-        this.value = recursiveFormat(deepCopy(data), kwargs != null ? kwargs : Map.of());
-        return this.value;
-    }
-
+    /**
+     * scanPlaceholders.
+     * 
+     * @param obj obj
+     * @param result result
+     * @since 0.1.7
+     */
     private void scanPlaceholders(Object obj, LinkedHashSet<String> result) {
-        if (obj instanceof String text) {
-            Matcher matcher = pattern.matcher(text);
+        if (obj instanceof String s) {
+            Matcher matcher = pattern.matcher(s);
             while (matcher.find()) {
                 String placeholder = matcher.group(1).strip();
                 if (placeholder.isEmpty()) {
-                    throw ErrorHelper.buildError(
-                            StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                            null,
-                            null,
-                            null,
-                            Map.of("error_msg", "placeholders cannot be empty string")
-                    );
+                    throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
+                            "placeholders cannot be empty string");
                 }
                 result.add(placeholder);
             }
-            return;
-        }
-        if (obj instanceof List<?> list) {
+        } else if (obj instanceof List<?> list) {
             for (Object item : list) {
                 scanPlaceholders(item, result);
             }
-            return;
-        }
-        if (obj instanceof Map<?, ?> map) {
-            for (Object value : map.values()) {
-                scanPlaceholders(value, result);
+        } else if (obj instanceof Map<?, ?> map) {
+            for (Object v : map.values()) {
+                scanPlaceholders(v, result);
             }
+        } else {
+            // no-op
         }
     }
 
+    /**
+     * update.
+     * 
+     * @param kwargs kwargs
+     * @since 0.1.7
+     */
+    @Override
     @SuppressWarnings("unchecked")
+    public void update(Map<String, Object> kwargs) {
+        this.value = recursiveFormat(deepCopy(data), kwargs);
+    }
+
+    @SuppressWarnings("unchecked")
+    /**
+     * recursiveFormat.
+     * 
+     * @param obj obj
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private Object recursiveFormat(Object obj, Map<String, Object> kwargs) {
         if (obj instanceof List<?> list) {
             List<Object> result = new ArrayList<>(list.size());
@@ -109,107 +124,56 @@ public class DictableVariable extends Variable {
         }
         if (obj instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
-            for (Map.Entry<String, Object> entry : ((Map<String, Object>) map).entrySet()) {
+            for (var entry : ((Map<String, Object>) map).entrySet()) {
                 result.put(entry.getKey(), recursiveFormat(entry.getValue(), kwargs));
             }
             return result;
         }
-        if (!(obj instanceof String text)) {
+        if (!(obj instanceof String s)) {
             return obj;
         }
 
-        String formattedText = text;
+        String formattedText = s;
         for (String placeholder : placeholders) {
-            String placeholderText = prefix + placeholder + suffix;
-            if (!formattedText.contains(placeholderText)) {
+            String placeholderStr = prefix + placeholder + suffix;
+            if (!formattedText.contains(placeholderStr)) {
                 continue;
             }
-            Object value = kwargs;
+            Object val = kwargs;
             try {
                 for (String node : placeholder.split("\\.")) {
-                    value = resolveNode(value, node);
+                    if (val instanceof Map<?, ?> m) {
+                        val = m.get(node);
+                    } else {
+                        var field = val.getClass()
+                                .getMethod("get" + node.substring(0, 1).toUpperCase(Locale.ROOT) + node.substring(1));
+                        val = field.invoke(val);
+                    }
                 }
-            } catch (Exception error) {
-                throw ErrorHelper.buildError(
-                        StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                        null,
-                        null,
-                        error,
-                        Map.of("error_msg", "error parsing the placeholder `" + placeholder + "`")
-                );
+            } catch (Exception e) {
+                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
+                        "error parsing the placeholder `" + placeholder + "`");
             }
-            if (!(value instanceof String || value instanceof Number || value instanceof Boolean)) {
-                PROMPT_LOGGER.info(
-                        "Converting non-string value using str().Please check if the style is describe. eventType={}, placeholder={}",
-                        LogEventType.AGENT_START.getValue(),
-                        placeholder
-                );
+            if (!(val instanceof String || val instanceof Number || val instanceof Boolean)) {
+                LOG.info("Converting non-string value to String via toString(). " + "Placeholder: {}", placeholder);
             }
-            formattedText = formattedText.replace(placeholderText, pythonString(value));
+            formattedText = formattedText.replace(placeholderStr, String.valueOf(val));
         }
         return formattedText;
     }
 
-    private Object resolveNode(Object value, String node) throws ReflectiveOperationException {
-        if (value instanceof Map<?, ?> map) {
-            return map.get(node);
-        }
-        if (value == null) {
-            throw new NoSuchFieldException(node);
-        }
-
-        String suffix = node.substring(0, 1).toUpperCase() + node.substring(1);
-        for (String methodName : List.of("get" + suffix, "is" + suffix)) {
-            Method method = findNoArgMethod(value.getClass(), methodName);
-            if (method != null) {
-                return method.invoke(value);
-            }
-        }
-
-        Field field = findField(value.getClass(), node);
-        if (field != null) {
-            return field.get(value);
-        }
-        throw new NoSuchFieldException(node);
-    }
-
-    private Method findNoArgMethod(Class<?> type, String name) {
-        try {
-            Method method = type.getMethod(name);
-            method.setAccessible(true);
-            return method;
-        } catch (NoSuchMethodException error) {
-            try {
-                Method method = type.getDeclaredMethod(name);
-                method.setAccessible(true);
-                return method;
-            } catch (NoSuchMethodException ignored) {
-                return null;
-            }
-        }
-    }
-
-    private Field findField(Class<?> type, String name) {
-        try {
-            Field field = type.getField(name);
-            field.setAccessible(true);
-            return field;
-        } catch (NoSuchFieldException error) {
-            try {
-                Field field = type.getDeclaredField(name);
-                field.setAccessible(true);
-                return field;
-            } catch (NoSuchFieldException ignored) {
-                return null;
-            }
-        }
-    }
-
     @SuppressWarnings("unchecked")
+    /**
+     * deepCopy.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private Object deepCopy(Object obj) {
         if (obj instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
-            for (Map.Entry<String, Object> entry : ((Map<String, Object>) map).entrySet()) {
+            for (var entry : ((Map<String, Object>) map).entrySet()) {
                 copy.put(entry.getKey(), deepCopy(entry.getValue()));
             }
             return copy;
@@ -221,15 +185,6 @@ public class DictableVariable extends Variable {
             }
             return copy;
         }
-        return obj;
-    }
-
-    private String pythonString(Object rawValue) {
-        // Java-idiomatic rendering; keep Python null/container substitution semantics via String.valueOf.
-        return String.valueOf(rawValue);
-    }
-
-    public List<String> getPlaceholders() {
-        return List.copyOf(placeholders);
+        return obj; // immutable primitives / strings
     }
 }

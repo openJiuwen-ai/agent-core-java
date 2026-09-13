@@ -149,11 +149,15 @@ public class TenantWorkspaceResolver {
         if (!ctx.isTenantAware()) {
             return Path.of(baseWorkspacePath).toAbsolutePath().normalize();
         }
-        String tenantId = ctx.safeTenantId();
-        Path cached = initializedTenants.get(tenantId);
+        String tid = ctx.safeTenantId();
+        Path cached = initializedTenants.get(tid);
         if (cached != null) {
             return cached;
         }
+        // Two-phase init: create the on-disk structure OUTSIDE the map lock so that
+        // concurrent tenant initializations never serialize on disk I/O inside the
+        // ConcurrentHashMap bin lock. createDirectories is idempotent, so duplicate
+        // concurrent initialization is safe.
         Path tenantRoot = resolveTenantRoot(ctx);
         try {
             Files.createDirectories(tenantRoot);
@@ -165,10 +169,10 @@ public class TenantWorkspaceResolver {
             Files.createDirectories(tenantRoot.resolve(".overlay"));
         } catch (IOException e) {
             throw new FrameworkError(StatusCode.ERROR,
-                "Failed to initialize tenant space: " + tenantId, null, e, null);
+                "Failed to initialize tenant space: " + tid, null, e, null);
         }
-        Path existing = initializedTenants.putIfAbsent(tenantId, tenantRoot);
-        return existing != null ? existing : tenantRoot;
+        Path previous = initializedTenants.putIfAbsent(tid, tenantRoot);
+        return previous != null ? previous : tenantRoot;
     }
 
     /**

@@ -6,63 +6,110 @@ package com.openjiuwen.dev_tools.tune.optimizer;
 
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
 
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Optional;
 
 /**
- * Textual optimizer parameter wrapping a legacy LLM call.
- *
- * <p>Mirrors Python's {@code TextualParameter} in
- * {@code openjiuwen/dev_tools/tune/optimizer/base.py}.</p>
+ * Mirrors Python's openjiuwen.dev_tools.tune.optimizer.base.TextualParameter.
+ * 
+ * @since 0.1.7
  */
 public class TextualParameter {
-
     private final LLMCall llmCall;
-    private final Map<String, String> gradients = new LinkedHashMap<>();
-    private String description = "";
+    private Map<String, String> gradients;
+    private String description;
 
+    /**
+     * TextualParameter.
+     * 
+     * @param llmCall llmCall
+     * @since 0.1.7
+     */
     public TextualParameter(LLMCall llmCall) {
-        this.llmCall = Objects.requireNonNull(llmCall, "llmCall");
+        this.llmCall = llmCall;
+        this.gradients = new HashMap<>();
+        this.description = "";
     }
 
+    /**
+     * getLlmCall.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public LLMCall getLlmCall() {
         return llmCall;
     }
 
+    /**
+     * getGradients.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, String> getGradients() {
         return gradients;
     }
 
-    public void setGradient(String name, String gradient) {
-        gradients.put(name, gradient);
+    /**
+     * setGradients.
+     * 
+     * @param gradients gradients
+     * @since 0.1.7
+     */
+    public void setGradients(Map<String, String> gradients) {
+        this.gradients = gradients != null ? gradients : new HashMap<>();
     }
 
-    public void set_gradient(String name, String gradient) {
-        setGradient(name, gradient);
-    }
-
-    public String getGradient(String name) {
-        return gradients.get(name);
-    }
-
-    public String get_gradient(String name) {
-        return getGradient(name);
-    }
-
-    public void setDescription(String description) {
-        this.description = description == null ? "" : description;
-    }
-
-    public void set_description(String description) {
-        setDescription(description);
-    }
-
+    /**
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getDescription() {
         return description;
     }
 
-    public String get_description() {
-        return getDescription();
+    /**
+     * setDescription.
+     * 
+     * @param description description
+     * @since 0.1.7
+     */
+    public void setDescription(String description) {
+        this.description = description != null ? description : "";
+    }
+
+    /**
+     * setGradient.
+     * 
+     * @param name name
+     * @param gradient gradient
+     * @since 0.1.7
+     */
+    public void setGradient(String name, String gradient) {
+        gradients.put(name, gradient);
+    }
+
+    /**
+     * getGradient.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
+    public Optional<String> getGradient(String name) {
+        return Optional.ofNullable(gradients.get(name));
+    }
+
+    /**
+     * clearGradients.
+     * 
+     * @since 0.1.7
+     */
+    public void clearGradients() {
+        gradients.clear();
     }
 }

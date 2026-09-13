@@ -8,18 +8,20 @@ import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.component.SubWorkflowComponentImpl;
 
 /**
- * Public package alias for the sub-workflow component implementation.
- *
- * <p>Mirrors Python's {@code SubWorkflowComponent} in
- * {@code openjiuwen/core/workflow/components/flow/workflow_comp.py}.</p>
+ * Concrete sub-workflow component (alias for {@link SubWorkflowComponentImpl}).
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.workflow_comp.SubWorkflowComponent}.
+ * 
+ * @since 0.1.7
  */
 public class SubWorkflowComponent extends SubWorkflowComponentImpl {
-
+    /**
+     * SubWorkflowComponent.
+     * 
+     * @param subWorkflow subWorkflow
+     * @since 0.1.7
+     */
     public SubWorkflowComponent(Workflow subWorkflow) {
         super(subWorkflow);
-    }
-
-    public SubWorkflowComponent(Workflow subWorkflow, boolean cacheStream) {
-        super(subWorkflow, cacheStream);
     }
 }

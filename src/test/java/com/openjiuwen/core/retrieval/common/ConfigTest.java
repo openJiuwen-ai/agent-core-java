@@ -1,13 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.common;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.foundation.store.base_reranker.RerankerConfig;
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -16,8 +11,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ConfigTest {
+import com.openjiuwen.core.common.exception.BaseError;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+class ConfigTest {
     @Test
     void retrievalConfigRejectsNonPositiveTopK() {
         RetrievalConfig config = new RetrievalConfig();
@@ -33,10 +33,8 @@ class ConfigTest {
 
         config.setExtraBody(Map.of("provider", "openai"));
         assertEquals("openai", config.getExtraBody().get("provider"));
-        config.setTimeout(0.0);
-        assertEquals(0.0, config.getTimeout());
-        config.setApiBase(" ");
-        assertEquals(" ", config.getApiBase());
+        assertThrows(BaseError.class, () -> config.setTimeout(0.0));
+        assertThrows(BaseError.class, () -> config.setApiBase(" "));
     }
 
     @Test

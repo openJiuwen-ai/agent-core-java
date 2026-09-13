@@ -6,6 +6,7 @@ package com.openjiuwen.core.graph;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.pregel.Pregel;
 import com.openjiuwen.core.graph.pregel.PregelBuilder;
@@ -14,45 +15,92 @@ import com.openjiuwen.core.graph.pregel.PregelLoop;
 import com.openjiuwen.core.graph.store.GraphStore;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 
-import java.lang.reflect.Method;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
- * Mirrors Python's {@code PregelGraph} in
- * {@code openjiuwen/core/graph/graph.py}.
+ * PregelGraph is the main graph builder for constructing a Pregel-based workflow graph.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.graph.PregelGraph}.
+ * 
+ * @since 0.1.7
  */
 public class PregelGraph extends Graph {
+    private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private Pregel pregel;
-    private final List<Edge> edges = new ArrayList<>();
-    private final Set<String> waits = new LinkedHashSet<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private final List<Object[]> edges = new ArrayList<>(); // Each: Object[]{source, target}
+
+    /**
+     * HashSet<>.
+     * 
+     * @since 0.1.7
+     */
+    private final Set<String> waits = new HashSet<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Vertex> nodes = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Map<String, Branch>> branches = new LinkedHashMap<>();
-    private final Map<String, Set<String>> branchTargets = new LinkedHashMap<>();
-    private CompiledGraph.GraphCheckpointer checkpointer;
+    private Checkpointer checkpointer;
     private BaseSession session;
 
+    /**
+     * PregelGraph.
+     * 
+     * @since 0.1.7
+     */
+    public PregelGraph() {
+    }
+
+    /**
+     * startNode.
+     * 
+     * @param nodeId nodeId
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public PregelGraph startNode(String nodeId) {
+    public Graph startNode(String nodeId) {
         validateNodeId(nodeId);
         addEdge(List.of(PregelConstants.START), nodeId);
         return this;
     }
 
+    /**
+     * endNode.
+     * 
+     * @param nodeId nodeId
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public PregelGraph endNode(String nodeId) {
+    public Graph endNode(String nodeId) {
         validateNodeId(nodeId);
         Vertex vertex = nodes.get(nodeId);
         if (vertex != null) {
@@ -62,24 +110,40 @@ public class PregelGraph extends Graph {
         return this;
     }
 
+    /**
+     * addNode.
+     * 
+     * @param nodeId nodeId
+     * @param node node
+     * @param waitForAll waitForAll
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public PregelGraph addNode(String nodeId, Executable<?, ?> node, boolean waitForAll) {
+    public Graph addNode(String nodeId, Executable<?, ?> node, boolean waitForAll) {
         validateNodeId(nodeId);
         if (node == null) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_INVALID,
-                    "node_id", nodeId, "reason", "node is None");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_INVALID, "node_id", nodeId, "reason",
+                    "node is None");
         }
         if (nodes.containsKey(nodeId)) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_ID_INVALID,
-                    "node_id", nodeId, "reason", "already exist, can not add again");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_ID_INVALID, "node_id", nodeId, "reason",
+                    "already exist, can not add again");
         }
-        nodes.put(nodeId, new Vertex(nodeId, castExecutable(node)));
+        Vertex vertexNode = new Vertex(nodeId, node);
+        nodes.put(nodeId, vertexNode);
         if (waitForAll) {
             waits.add(nodeId);
         }
         return this;
     }
 
+    /**
+     * getNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Executable<?, ?>> getNodes() {
         Map<String, Executable<?, ?>> result = new LinkedHashMap<>();
@@ -89,108 +153,179 @@ public class PregelGraph extends Graph {
         return result;
     }
 
+    /**
+     * Get the internal vertex wrapper for a node.
+     * 
+     * @param nodeId nodeId
+     * @return the result
+     * @since 0.1.7
+     */
     public Vertex getVertex(String nodeId) {
         return nodes.get(nodeId);
     }
 
-    public List<Edge> getEdges() {
-        return List.copyOf(edges);
-    }
-
-    public Set<String> getWaits() {
-        return Set.copyOf(waits);
-    }
-
-    public Map<String, Set<String>> getBranchTargets() {
-        Map<String, Set<String>> result = new LinkedHashMap<>();
-        for (Map.Entry<String, Set<String>> entry : branchTargets.entrySet()) {
-            result.put(entry.getKey(), Set.copyOf(entry.getValue()));
-        }
-        return result;
-    }
-
+    /**
+     * addEdge.
+     * 
+     * @param sourceNodeId sourceNodeId
+     * @param targetNodeId targetNodeId
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public PregelGraph addEdge(Object sourceNodeId, String targetNodeId) {
-        validateEdge(sourceNodeId, targetNodeId);
-        edges.add(new Edge(sourceNodeId, targetNodeId));
+    public Graph addEdge(Object sourceNodeId, String targetNodeId) {
+        if (sourceNodeId == null || (sourceNodeId instanceof String && ((String) sourceNodeId).isEmpty())) {
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID, "source_id",
+                    String.valueOf(sourceNodeId), "target_node_id", targetNodeId, "reason",
+                    "source_node_id is None or empty");
+        }
+        if (sourceNodeId instanceof List) {
+            for (Object item : (List<?>) sourceNodeId) {
+                if (item == null || (item instanceof String && ((String) item).isEmpty())) {
+                    throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID, "source_id",
+                            String.valueOf(sourceNodeId), "target_node_id", targetNodeId, "reason",
+                            "source_node_id list has None or empty");
+                }
+            }
+        }
+        if (targetNodeId == null || targetNodeId.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID, "source_id",
+                    String.valueOf(sourceNodeId), "target_node_id", targetNodeId, "reason",
+                    "target_node_id is None or empty");
+        }
+        edges.add(new Object[]{sourceNodeId, targetNodeId});
         return this;
     }
 
+    /**
+     * addConditionalEdges.
+     * 
+     * @param sourceNodeId sourceNodeId
+     * @param router router
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public PregelGraph addConditionalEdges(String sourceNodeId, Object router) {
+    public Graph addConditionalEdges(String sourceNodeId, Object router) {
         if (sourceNodeId == null || sourceNodeId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONDITION_EDGE_INVALID,
-                    "source_id", sourceNodeId, "reason", "source_node_id is None or empty");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONDITION_EDGE_INVALID, "source_id", sourceNodeId,
+                    "reason", "source_node_id is None or empty");
         }
         if (router == null) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONDITION_EDGE_INVALID,
-                    "source_id", sourceNodeId, "reason", "router is None");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONDITION_EDGE_INVALID, "source_id", sourceNodeId,
+                    "reason", "router is None");
         }
         String name = getCallableName(router);
-        branches.computeIfAbsent(sourceNodeId, ignored -> new LinkedHashMap<>())
-                .put(name, new Branch(router));
+        branches.computeIfAbsent(sourceNodeId, k -> new LinkedHashMap<>()).put(name, new Branch(router));
         return this;
     }
 
-    public PregelGraph registerBranchTargets(String branchNodeId, Set<String> targets) {
-        if (branchNodeId != null && !branchNodeId.isEmpty() && targets != null && targets.size() > 1) {
-            branchTargets.put(branchNodeId, new LinkedHashSet<>(targets));
-        }
-        return this;
-    }
-
+    /**
+     * compile.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
+    @SuppressWarnings("unchecked")
+    public ExecutableGraph<?, ?> compile(BaseSession session) {
+        return compile(session, null);
+    }
+
+    /**
+     * compile.
+     * 
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    @SuppressWarnings("unchecked")
     public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
-        Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
-        if (session instanceof Vertex.VertexSession vertexSession) {
-            for (Vertex node : nodes.values()) {
-                node.init(vertexSession, options);
-            }
+        // Initialize all vertices
+        for (Map.Entry<String, Vertex> entry : nodes.entrySet()) {
+            entry.getValue().init(session, kwargs);
         }
 
+        // After-step callback
         Consumer<PregelLoop> afterStep = loop -> {
-            if (this.session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
-                CompiledGraph.WorkflowState state = runtimeSession.workflowState();
-                if (state != null) {
-                    state.commit();
-                }
+            if (this.session != null && this.session.state() instanceof WorkflowCommitState) {
+                ((WorkflowCommitState) this.session.state()).commit();
             }
-            Loggers.GRAPH.debug("Finished to run graph super-step [{}]", loop.getStep());
+            logger.debug("Finished to run graph super-step [{}]", loop.getStep());
         };
 
-        if (pregel == null) {
-            Store graphStore = null;
-            if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
-                checkpointer = runtimeSession.checkpointer();
-                if (checkpointer != null && checkpointer.graphStore() != null) {
-                    graphStore = new GraphStore(checkpointer.graphStore());
+        if (this.pregel == null) {
+            Object rawCheckpointer = session.checkpointer();
+            if (rawCheckpointer instanceof Checkpointer) {
+                this.checkpointer = (Checkpointer) rawCheckpointer;
+                Object rawGraphStore = this.checkpointer.graphStore();
+                Store graphStore = null;
+                if (rawGraphStore instanceof Store) {
+                    graphStore = new GraphStore((Store) rawGraphStore);
                 }
+                this.pregel = doCompile(graphStore, afterStep);
+            } else {
+                this.pregel = doCompile(null, afterStep);
             }
-            pregel = compilePregel(graphStore, afterStep);
+            this.session = session;
+        } else {
+            this.session = session;
         }
-        this.session = session;
-        return new CompiledGraph(pregel, checkpointer);
+        return new CompiledGraph(this.pregel, this.checkpointer);
     }
 
-    public Pregel compilePregel(Store graphStore, Consumer<PregelLoop> stepCallback) {
-        List<Edge> regularEdges = new ArrayList<>();
-        Map<String, List<Set<String>>> sources = new LinkedHashMap<>();
+    /**
+     * Build the Pregel engine from the graph definition.
+     * 
+     * @param graphStore graphStore
+     * @param stepCallback stepCallback
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    private Pregel doCompile(Store graphStore, Consumer<PregelLoop> stepCallback) {
+        List<Object[]> regularEdges = new ArrayList<>();
+        Map<String, Set<String>> sources = new HashMap<>();
+
         PregelBuilder builder = new PregelBuilder();
         for (Map.Entry<String, Vertex> entry : nodes.entrySet()) {
-            Vertex vertex = entry.getValue();
-            builder.addNode(entry.getKey(), invocation -> invokeVertex(vertex, invocation));
+            builder.addNode(entry.getKey(), entry.getValue());
         }
 
-        for (Edge edge : edges) {
-            Object sourceNodeId = edge.sourceNodeId();
-            String targetNodeId = edge.targetNodeId();
+        // Separate barrier edges from regular edges
+        // Self-connections (source == target) must not be included as barrier sources,
+        // because that would create a deadlock (node waits for itself). Instead they are
+        // added as regular edges so the node can re-trigger itself after execution.
+        for (Object[] edge : edges) {
+            Object sourceNodeId = edge[0];
+            String targetNodeId = (String) edge[1];
+
             if (waits.contains(targetNodeId)) {
-                List<Set<String>> groups = sources.computeIfAbsent(targetNodeId, ignored -> new ArrayList<>());
-                if (sourceNodeId instanceof String source) {
-                    groups.add(Set.of(source));
-                } else if (sourceNodeId instanceof Collection<?> collection) {
-                    for (Object item : collection) {
-                        groups.add(Set.of(String.valueOf(item)));
+                sources.computeIfAbsent(targetNodeId, k -> new HashSet<>());
+                if (sourceNodeId instanceof String) {
+                    if (sourceNodeId.equals(targetNodeId)) {
+                        // Self-connection: add as regular edge, not barrier
+                        regularEdges.add(edge);
+                    } else {
+                        sources.get(targetNodeId).add((String) sourceNodeId);
+                    }
+                } else if (sourceNodeId instanceof List) {
+                    boolean hasSelfConnection = false;
+                    for (Object s : (List<?>) sourceNodeId) {
+                        if (!(s instanceof String srcStr)) {
+                            continue;
+                        }
+                        if (srcStr.equals(targetNodeId)) {
+                            hasSelfConnection = true;
+                        } else {
+                            sources.get(targetNodeId).add(srcStr);
+                        }
+                    }
+                    if (hasSelfConnection) {
+                        regularEdges.add(new Object[]{targetNodeId, targetNodeId});
                     }
                 }
             } else {
@@ -198,212 +333,98 @@ public class PregelGraph extends Graph {
             }
         }
 
-        for (Map.Entry<String, List<Set<String>>> entry : sources.entrySet()) {
-            List<Set<String>> groups = resolveBarrierGroups(entry.getKey(), entry.getValue());
-            builder.addEdge(toBarrierStart(groups), entry.getKey());
+        // Add barrier edges
+        for (Map.Entry<String, Set<String>> entry : sources.entrySet()) {
+            builder.addEdge(entry.getValue(), entry.getKey());
         }
-        for (Edge edge : regularEdges) {
-            addBuilderEdge(builder, edge.sourceNodeId(), edge.targetNodeId());
+
+        // Add regular edges
+        for (Object[] edge : regularEdges) {
+            builder.addEdge(edge[0], (String) edge[1]);
         }
+
+        // Add conditional branches
         for (Map.Entry<String, Map<String, Branch>> startEntry : branches.entrySet()) {
-            for (Branch branch : startEntry.getValue().values()) {
-                builder.addBranch(startEntry.getKey(), branch.asSupplier());
+            String start = startEntry.getKey();
+            for (Map.Entry<String, Branch> branchEntry : startEntry.getValue().entrySet()) {
+                Branch branch = branchEntry.getValue();
+                builder.addBranch(start, branch.getCondition());
             }
         }
+
         return builder.build(graphStore, stepCallback);
     }
 
+    /**
+     * Reset all vertices for reuse.
+     * 
+     * @since 0.1.7
+     */
     public void reset() {
         for (Vertex node : nodes.values()) {
             node.reset();
         }
     }
 
-    static String getCallableName(Object func) {
-        if (func == null) {
-            return "None";
-        }
-        String reflectedName = reflectName(func);
-        if (reflectedName != null && !reflectedName.isEmpty()) {
-            return reflectedName;
-        }
-        String simpleName = func.getClass().getSimpleName();
-        return simpleName == null || simpleName.isEmpty() ? func.getClass().getName() : simpleName;
-    }
+    // ---- Helpers ----
 
-    private Set<String> forwardReachable(String startNode) {
-        Set<String> visited = new LinkedHashSet<>();
-        Queue<String> queue = new ArrayDeque<>();
-        queue.add(startNode);
-        while (!queue.isEmpty()) {
-            String node = queue.remove();
-            if (!visited.add(node)) {
-                continue;
-            }
-            for (Edge edge : edges) {
-                if (edge.sourceNodeId() instanceof String source
-                        && source.equals(node)
-                        && !visited.contains(edge.targetNodeId())) {
-                    queue.add(edge.targetNodeId());
-                }
-            }
-        }
-        return visited;
-    }
-
-    public List<Set<String>> resolveBarrierGroups(String targetId, List<Set<String>> sourceList) {
-        if (branchTargets.isEmpty() || sourceList == null || sourceList.isEmpty()) {
-            return sourceList;
-        }
-
-        Set<String> allPredecessors = new LinkedHashSet<>();
-        for (Set<String> group : sourceList) {
-            allPredecessors.addAll(group);
-        }
-
-        Map<BranchTarget, Set<String>> reachable = new LinkedHashMap<>();
-        for (Map.Entry<String, Set<String>> entry : branchTargets.entrySet()) {
-            for (String target : entry.getValue()) {
-                reachable.put(new BranchTarget(entry.getKey(), target), forwardReachable(target));
-            }
-        }
-
-        Map<String, Set<BranchTarget>> predecessorInfo = new LinkedHashMap<>();
-        for (String predecessor : allPredecessors) {
-            Set<BranchTarget> owners = new LinkedHashSet<>();
-            for (Map.Entry<BranchTarget, Set<String>> entry : reachable.entrySet()) {
-                if (entry.getValue().contains(predecessor)) {
-                    owners.add(entry.getKey());
-                }
-            }
-            predecessorInfo.put(predecessor, owners);
-        }
-
-        Map<String, Set<String>> branchGroups = new LinkedHashMap<>();
-        List<Set<String>> standalone = new ArrayList<>();
-        for (String predecessor : allPredecessors) {
-            Set<BranchTarget> owners = predecessorInfo.get(predecessor);
-            if (owners.size() == 1) {
-                String branchId = owners.iterator().next().branchId();
-                branchGroups.computeIfAbsent(branchId, ignored -> new LinkedHashSet<>()).add(predecessor);
-            } else {
-                standalone.add(Set.of(predecessor));
-            }
-        }
-
-        List<Set<String>> result = new ArrayList<>(branchGroups.values());
-        result.addAll(standalone);
-        return result.isEmpty() ? sourceList : result;
-    }
-
-    private static Object invokeVertex(Vertex vertex, Object invocation) {
-        Map<String, Object> invocationMap = CompiledGraph.copyConfigMap(invocation);
-        GraphState state = invocationMap.get("state") instanceof GraphState graphState ? graphState : new GraphState();
-        Map<String, Object> config = CompiledGraph.copyConfigMap(invocationMap.get("config"));
-        try {
-            return vertex.invoke(state, config).toCompletableFuture().join();
-        } catch (CompletionException ex) {
-            throw ex;
-        } catch (RuntimeException ex) {
-            throw ex;
-        }
-    }
-
-    private static void addBuilderEdge(PregelBuilder builder, Object sourceNodeId, String targetNodeId) {
-        if (sourceNodeId instanceof String source) {
-            builder.addEdge(source, targetNodeId);
-            return;
-        }
-        if (sourceNodeId instanceof Collection<?> collection) {
-            builder.addEdge(collection, targetNodeId);
-            return;
-        }
-        throw new IllegalArgumentException("Unsupported edge source type: " + sourceNodeId.getClass().getName());
-    }
-
-    private static List<Object> toBarrierStart(List<Set<String>> groups) {
-        List<Object> start = new ArrayList<>(groups.size());
-        for (Set<String> group : groups) {
-            if (group.size() == 1) {
-                start.add(group.iterator().next());
-            } else {
-                start.add(new LinkedHashSet<>(group));
-            }
-        }
-        return start;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Executable<Map<String, Object>, Map<String, Object>> castExecutable(Executable<?, ?> executable) {
-        return (Executable<Map<String, Object>, Map<String, Object>>) executable;
-    }
-
-    private static void validateNodeId(String nodeId) {
+    /**
+     * validateNodeId.
+     * 
+     * @param nodeId nodeId
+     * @since 0.1.7
+     */
+    private void validateNodeId(String nodeId) {
         if (nodeId == null || nodeId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_ID_INVALID,
-                    "node_id", nodeId, "reason", "is None or empty");
-        }
-    }
-
-    private static void validateEdge(Object sourceNodeId, String targetNodeId) {
-        if (sourceNodeId == null
-                || sourceNodeId instanceof String source && source.isEmpty()
-                || sourceNodeId instanceof Collection<?> collection && collection.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID,
-                    "source_id", String.valueOf(sourceNodeId), "target_node_id", targetNodeId,
-                    "reason", "source_node_id is None or empty");
-        }
-        if (sourceNodeId instanceof Collection<?> collection) {
-            for (Object item : collection) {
-                if (item == null || item instanceof String text && text.isEmpty()) {
-                    throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID,
-                            "source_id", String.valueOf(sourceNodeId), "target_node_id", targetNodeId,
-                            "reason", "source_node_id list has None or empty");
-                }
-            }
-        }
-        if (targetNodeId == null || targetNodeId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID,
-                    "source_id", String.valueOf(sourceNodeId), "target_node_id", targetNodeId,
-                    "reason", "target_node_id is None or empty");
-        }
-    }
-
-    private static String reflectName(Object func) {
-        try {
-            Method method = func.getClass().getMethod("__name__");
-            Object value = method.invoke(func);
-            return value == null ? null : String.valueOf(value);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_ID_INVALID, "node_id", nodeId, "reason",
+                    "is None or empty");
         }
     }
 
     /**
-     * Mirrors Python's edge tuple entries in
-     * {@code openjiuwen/core/graph/graph.py}.
+     * getCallableName.
+     * 
+     * @param func func
+     * @return the result
+     * @since 0.1.7
      */
-    public record Edge(Object sourceNodeId, String targetNodeId) {
+    private static String getCallableName(Object func) {
+        if (func instanceof Function) {
+            return func.getClass().getSimpleName();
+        }
+        return func.getClass().getName();
     }
 
     /**
-     * Mirrors Python's conditional branch wrapper in
-     * {@code openjiuwen/core/graph/graph.py}.
-     *
-     * <p>This nested type preserves the 0.1.12 public API after the branch
-     * implementation moved to {@link com.openjiuwen.core.graph.Branch}.</p>
+     * A conditional branch definition.
+     * 
+     * @since 0.1.7
      */
-    public static class Branch extends com.openjiuwen.core.graph.Branch {
+    public static class Branch {
+        private final Object condition;
 
+        /**
+         * Branch.
+         * 
+         * @param condition condition
+         * @since 0.1.7
+         */
         public Branch(Object condition) {
-            super(condition);
+            this.condition = condition;
         }
-    }
 
-    /**
-     * Mirrors Python's internal {@code (branch_id, target)} reachability key in
-     * {@code openjiuwen/core/graph/graph.py}.
-     */
-    private record BranchTarget(String branchId, String target) {
+        /**
+         * getCondition.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
+        @SuppressWarnings("unchecked")
+        public Function<Object, Object> getCondition() {
+            if (condition instanceof Function) {
+                return (Function<Object, Object>) condition;
+            }
+            return input -> null;
+        }
     }
 }

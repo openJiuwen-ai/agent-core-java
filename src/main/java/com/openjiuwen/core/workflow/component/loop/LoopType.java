@@ -8,7 +8,8 @@ package com.openjiuwen.core.workflow.component.loop;
  * Types of loop conditions.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopType}.
-  * Python file: {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.
+ * 
+ * @since 0.1.7
  */
 public enum LoopType {
     ARRAY("array"),
@@ -22,10 +23,23 @@ public enum LoopType {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
+    /**
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static LoopType fromValue(String value) {
         for (LoopType type : values()) {
             if (type.value.equals(value)) {

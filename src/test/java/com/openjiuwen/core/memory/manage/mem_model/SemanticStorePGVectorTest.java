@@ -1,24 +1,9 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.memory.manage.mem_model;
 
-import com.openjiuwen.core.foundation.store.BaseVectorStore;
-import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
-import com.openjiuwen.core.retrieval.embedding.Embedding;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
-import org.mockito.ArgumentCaptor;
-
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -26,9 +11,24 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class SemanticStorePGVectorTest {
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.vector_store.PGVectorStore;
+import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.List;
+import java.util.Map;
+
+import javax.sql.DataSource;
+
+class SemanticStorePGVectorTest {
     @Test
     void createCollectionUsesExplicitBootstrapWithoutInsert() throws Exception {
         DataSource dataSource = mock(DataSource.class);
@@ -45,10 +45,11 @@ class SemanticStorePGVectorTest {
         when(existsResult.next()).thenReturn(true);
         when(existsResult.getBoolean(1)).thenReturn(false);
 
-        BaseVectorStore store = new TestBaseVectorStore(dataSource);
-        SemanticStore semanticStore = new SemanticStore(store);
+        SemanticStore semanticStore = new SemanticStore(
+                new TestPGVectorStore(new VectorStoreConfig("pgvector", "memory_db", "memory_fragments", "cosine"),
+                        dataSource, "vector", Map.of("vector_field", "embedding")));
 
-        semanticStore.addDocs(List.of(Map.entry("mem-init", "init data")), "memory_fragments").join();
+        semanticStore.createCollection("memory_fragments", 3, Map.of("index_type", "hnsw"));
 
         ArgumentCaptor<String> ddlCaptor = ArgumentCaptor.forClass(String.class);
         verify(ddl, org.mockito.Mockito.atLeastOnce()).execute(ddlCaptor.capture());
@@ -56,7 +57,6 @@ class SemanticStorePGVectorTest {
         verify(connection, never()).prepareStatement(org.mockito.ArgumentMatchers.startsWith("INSERT INTO"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void addDocsBootstrapsAndWritesRows() throws Exception {
         DataSource dataSource = mock(DataSource.class);
@@ -80,10 +80,12 @@ class SemanticStorePGVectorTest {
         when(existsResult.next()).thenReturn(true);
         when(existsResult.getBoolean(1)).thenReturn(false);
 
-        BaseVectorStore store = new TestBaseVectorStore(dataSource);
-        SemanticStore semanticStore = new SemanticStore(store, new FixedEmbedding());
+        SemanticStore semanticStore = new SemanticStore(
+                new TestPGVectorStore(new VectorStoreConfig("pgvector", "memory_db", "memory_fragments", "cosine"),
+                        dataSource, "vector", Map.of("vector_field", "embedding")),
+                new FixedEmbedding());
 
-        boolean stored = semanticStore.addDocs(List.of(Map.entry("mem-1", "remember this")), "memory_fragments").join();
+        boolean stored = semanticStore.addDocs(List.of(Map.entry("mem-1", "remember this")), "memory_fragments");
 
         assertTrue(stored);
         verify(upsertStatement).executeBatch();
@@ -91,17 +93,15 @@ class SemanticStorePGVectorTest {
                 .execute(org.mockito.ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS"));
     }
 
-    private static final class FixedEmbedding extends Embedding {
+    private static final class FixedEmbedding implements Embedding {
         @Override
-        public java.util.concurrent.CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(List.of(1.0, 0.0, 0.5));
+        public List<Float> embedQuery(String text) {
+            return List.of(1.0f, 0.0f, 0.5f);
         }
 
         @Override
-        public java.util.concurrent.CompletableFuture<List<List<Double>>> embedDocuments(
-                List<String> texts, Integer batchSize, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(
-                    texts.stream().map(text -> List.of(1.0, 0.0, 0.5)).toList());
+        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
+            return texts.stream().map(text -> embedQuery(String.valueOf(text))).toList();
         }
 
         @Override
@@ -110,83 +110,28 @@ class SemanticStorePGVectorTest {
         }
     }
 
-    private static class TestBaseVectorStore extends BaseVectorStore {
+    private static class TestPGVectorStore extends PGVectorStore {
         private final DataSource dataSource;
+        private final String indexType;
+        private final Map<String, Object> options;
 
-        private TestBaseVectorStore(DataSource dataSource) {
+        private TestPGVectorStore(VectorStoreConfig config, DataSource dataSource, String indexType,
+                Map<String, Object> options) {
+            super(config, dataSource, indexType, options);
             this.dataSource = dataSource;
+            this.indexType = indexType;
+            this.options = options;
         }
 
         @Override
-        public java.util.concurrent.CompletableFuture<Void> createCollection(
-                String collectionName, Object schema, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        public VectorStore withCollection(String collectionName) {
+            return new TestPGVectorStore(
+                    new VectorStoreConfig("pgvector", getDatabaseName(), collectionName, getDistanceMetric()),
+                    dataSource, indexType, options);
         }
 
         @Override
-        public java.util.concurrent.CompletableFuture<Void> deleteCollection(
-                String collectionName, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<Boolean> collectionExists(
-                String collectionName, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(false);
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<com.openjiuwen.core.foundation.store.CollectionSchema> getSchema(
-                String collectionName, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<Void> addDocs(
-                String collectionName, List<Map<String, Object>> docs, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<List<com.openjiuwen.core.foundation.store.VectorSearchResult>> search(
-                String collectionName, List<Double> queryVector, String vectorField,
-                int topK, Map<String, Object> filters, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(List.of());
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<Void> deleteDocsByIds(
-                String collectionName, List<String> ids, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<Void> deleteDocsByFilters(
-                String collectionName, Map<String, Object> filters, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<List<String>> listCollectionNames() {
-            return java.util.concurrent.CompletableFuture.completedFuture(List.of());
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<Void> updateSchema(
-                String collectionName, List<com.openjiuwen.core.memory.migration.operation.BaseOperation> operations) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<Void> updateCollectionMetadata(
-                String collectionName, Map<String, Object> metadata) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public java.util.concurrent.CompletableFuture<Map<String, Object>> getCollectionMetadata(
-                String collectionName) {
-            return java.util.concurrent.CompletableFuture.completedFuture(Map.of());
+        protected void registerVectorTypes(Connection connection) {
         }
     }
 }

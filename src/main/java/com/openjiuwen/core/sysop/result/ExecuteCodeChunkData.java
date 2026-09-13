@@ -12,20 +12,29 @@ import lombok.NoArgsConstructor;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code ExecuteCodeChunkData} in
- * {@code openjiuwen/core/sys_operation/result/code_operation_result.py}.
+ * Data structure for chunked code execution output.
+ * <p>
+ * Mirrors Python's {@code ExecuteCodeChunkData}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ExecuteCodeChunkData {
-
     @Builder.Default
     private String text = "";
 
+    /** Type of the output chunk: "stdout" or "stderr". */
     private String type;
+
+    /** Index of current chunk (starting from 0). */
     private int chunkIndex;
+
+    /** Execution exit code. */
     private Integer exitCode;
+
+    /** Data for execution. */
     private Map<String, Object> metadata;
 }

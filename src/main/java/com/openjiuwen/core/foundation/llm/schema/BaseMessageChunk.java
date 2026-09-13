@@ -7,31 +7,66 @@ package com.openjiuwen.core.foundation.llm.schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
+
+import java.util.List;
 
 /**
- * Mirrors Python's {@code BaseMessageChunk} in
- * {@code openjiuwen/core/foundation/llm/schema/message_chunk.py}.
+ * Base streaming message chunk for accumulation via {@link #merge(BaseMessageChunk)}.
+ * <p>
+ * Mirrors Python's {@code BaseMessageChunk} model.
+ * 
+ * @since 0.1.7
  */
 @Data
-@SuperBuilder
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class BaseMessageChunk extends BaseMessage {
-
+    /**
+     * BaseMessageChunk.
+     * 
+     * @param role role
+     * @param content content
+     * @param name name
+     * @since 0.1.7
+     */
     public BaseMessageChunk(String role, Object content, String name) {
-        super(role, content, name, null);
+        super(role, content, name);
     }
 
-    public BaseMessageChunk merge(Object other) {
-        if (!(other instanceof BaseMessageChunk otherChunk)) {
-            throw new IllegalArgumentException("Cannot merge BaseMessageChunk with " + other);
+    /**
+     * Merge another chunk into this one (content concatenation).
+     * 
+     * @param other the chunk to merge
+     * @return a new merged chunk
+     * @since 0.1.7
+     */
+    public BaseMessageChunk merge(BaseMessageChunk other) {
+        if (other == null) {
+            return this;
         }
-        Object mergedContent = MessageChunkMerge.mergeParserContent(getContent(), otherChunk.getContent());
-        return new BaseMessageChunk(
-                getRole(),
-                mergedContent,
-                getName() != null ? getName() : otherChunk.getName()
-        );
+        Object combinedContent = mergeContent(this.getContent(), other.getContent());
+        return new BaseMessageChunk(this.getRole(), combinedContent,
+                this.getName() != null ? this.getName() : other.getName());
+    }
+
+    /**
+     * mergeContent.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    protected static Object mergeContent(Object left, Object right) {
+        if (left instanceof String ls && right instanceof String rs) {
+            return ls + rs;
+        }
+        if (left instanceof List<?> ll && right instanceof List<?> rl) {
+            var merged = new java.util.ArrayList<Object>(ll);
+            merged.addAll(rl);
+            return merged;
+        }
+        return right;
     }
 }

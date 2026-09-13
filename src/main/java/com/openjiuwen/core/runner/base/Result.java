@@ -5,30 +5,42 @@
 package com.openjiuwen.core.runner.base;
 
 /**
- * Backward-compatible single-generic result contract for runner resource APIs.
- *
- * <p>Mirrors Python's {@code Result} alias in
- * {@code openjiuwen/core/runner/resources_manager/base.py}.</p>
- *
- * @param <T> success value type
+ * Result type for type-safe error handling.
+ * <p>
+ * Mirrors Python's {@code Result = Ok | Error} pattern.
+ * 
+ * @since 0.1.7
  */
-public interface Result<T> {
-
+public sealed interface Result<T> permits Ok, Error {
+    /**
+     * isOk.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     boolean isOk();
 
-    boolean isErr();
+    /**
+     * isError.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    boolean isError();
 
-    Object msg();
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    T getValue();
 
-    default T getValue() {
-        return isOk() ? (T) msg() : null;
-    }
-
-    default boolean isError() {
-        return isErr();
-    }
-
-    default Object getError() {
-        return isErr() ? msg() : null;
-    }
+    /**
+     * getError.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    Exception getError();
 }

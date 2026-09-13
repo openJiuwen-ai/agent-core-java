@@ -4,29 +4,32 @@
 
 package com.openjiuwen.core.memory.manage.update;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * Single LLM memory check result item.
- *
- * <p>Mirrors Python's {@code MemCheckItem} in
- * {@code openjiuwen/core/memory/manage/update/mem_update_checker.py}.</p>
+ * Represents a single memory check result item.
+ * 
+ * @since 0.1.7
  */
-public record MemCheckItem(
-        @JsonProperty("info_id") String infoId,
-        @JsonProperty("info_text") String infoText,
-        CheckResult result,
-        @JsonProperty("related_infos") Map<String, String> relatedInfos
-) {
-
-    public MemCheckItem {
-        Objects.requireNonNull(infoId, "info_id");
-        Objects.requireNonNull(infoText, "info_text");
-        Objects.requireNonNull(result, "result");
-        relatedInfos = relatedInfos == null ? new LinkedHashMap<>() : new LinkedHashMap<>(relatedInfos);
-    }
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class MemCheckItem {
+    private String infoId;
+    private String infoText;
+    private CheckResult result;
+    @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private Map<String, String> relatedInfos = new LinkedHashMap<>();
 }

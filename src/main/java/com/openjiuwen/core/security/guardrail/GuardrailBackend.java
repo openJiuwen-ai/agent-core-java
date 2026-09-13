@@ -4,23 +4,22 @@
 
 package com.openjiuwen.core.security.guardrail;
 
+import java.util.Map;
+
 /**
- * Abstract detection backend for guardrail analysis.
- * <p>
- * Mirrors Python's {@code GuardrailBackend} in
- * {@code openjiuwen/core/security/guardrail/backends.py}.
+ * Pluggable backend for risk analysis.
+ * 
+ * @since 0.1.7
  */
-public abstract class GuardrailBackend {
-
-    public abstract RiskAssessment analyze(GuardrailContext ctx);
-
-    protected static String contextText(GuardrailContext ctx) {
-        if (ctx == null) {
-            return "";
-        }
-        return ctx.getText().orElseGet(() -> {
-            Object content = ctx.getContent();
-            return content == null ? "" : String.valueOf(content);
-        });
-    }
+@FunctionalInterface
+public interface GuardrailBackend {
+    /**
+     * analyze.
+     * 
+     * @param data data
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    RiskAssessment analyze(Map<String, Object> data) throws Exception;
 }

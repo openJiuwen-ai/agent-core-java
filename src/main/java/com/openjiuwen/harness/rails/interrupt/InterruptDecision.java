@@ -1,14 +1,13 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.rails.interrupt;
 
 /**
- * Base decision type for interrupt resume.
- *
- * <p>Mirrors Python's {@code InterruptDecision} in
- * {@code openjiuwen/harness/rails/interrupt/interrupt_base.py}.</p>
+ * Base decision type for interrupt-aware harness rails.
+ * 
+ * @since 0.1.7
  */
-public sealed interface InterruptDecision permits ApproveResult, RejectResult, InterruptResult {
+public abstract class InterruptDecision {
 }

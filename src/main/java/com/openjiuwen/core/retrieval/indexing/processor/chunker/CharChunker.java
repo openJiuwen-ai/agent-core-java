@@ -4,38 +4,47 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
-import com.openjiuwen.core.retrieval.common.Document;
-import com.openjiuwen.core.retrieval.common.TextChunk;
-
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Fixed-size chunker based on character length.
- * <p>
- * Mirrors Python's {@code CharChunker} in
- * {@code openjiuwen/core/retrieval/indexing/processor/chunker/char_chunker.py}.
- * </p>
+ * Character window chunker.
+ * 
+ * @since 0.1.7
  */
 public class CharChunker extends Chunker {
-
-    public CharChunker() {
-        this(512, 50);
-    }
-
+    /**
+     * CharChunker.
+     * 
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @since 0.1.7
+     */
     public CharChunker(int chunkSize, int chunkOverlap) {
-        super(chunkSize, chunkOverlap, null);
+        super(chunkSize, chunkOverlap);
     }
 
+    /**
+     * chunkText.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public List<String> chunkText(String text) {
         if (text == null || text.isEmpty()) {
             return List.of();
         }
-        CharSplitter splitter = new CharSplitter(getChunkSize(), getChunkOverlap());
-        Document document = new Document(null, text, new LinkedHashMap<>());
-        return splitter.split(document).stream()
-                .map(TextChunk::getText)
-                .toList();
+        List<String> parts = new ArrayList<>();
+        int step = chunkSize - chunkOverlap;
+        for (int start = 0; start < text.length(); start += step) {
+            int end = Math.min(start + chunkSize, text.length());
+            parts.add(text.substring(start, end));
+            if (end >= text.length()) {
+                break;
+            }
+        }
+        return parts;
     }
 }

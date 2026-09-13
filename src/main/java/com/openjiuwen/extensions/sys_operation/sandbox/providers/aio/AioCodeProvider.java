@@ -5,8 +5,8 @@
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.aio;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
-import com.openjiuwen.core.sysop.sandbox.providers.SyncBaseCodeProvider;
+import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.providers.BaseCodeProvider;
 
 /**
  * AIO code provider — SPI skeleton.
@@ -14,7 +14,7 @@ import com.openjiuwen.core.sysop.sandbox.providers.SyncBaseCodeProvider;
  * @version 1.0
  * @since 0.1.7
  */
-public class AioCodeProvider extends SyncBaseCodeProvider {
+public class AioCodeProvider extends BaseCodeProvider {
     /**
      * AioCodeProvider.
      * 

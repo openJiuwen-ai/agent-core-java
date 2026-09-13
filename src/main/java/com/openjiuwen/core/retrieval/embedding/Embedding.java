@@ -1,12 +1,88 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.embedding;
 
+import java.util.List;
+import java.util.Map;
+
 /**
- * Mirrors Python's {@code Embedding} in
- * {@code openjiuwen/core/retrieval/embedding/base.py}.
+ * Embedding model abstraction.
+ * 
+ * @since 0.1.7
  */
-public abstract class Embedding extends com.openjiuwen.core.foundation.store.Embedding {
+public interface Embedding extends AutoCloseable {
+    /**
+     * embedQuery.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
+    List<Float> embedQuery(String text);
+
+    /**
+     * embedQuery.
+     * 
+     * @param text text
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    default List<Float> embedQuery(String text, Map<String, Object> options) {
+        return embedQuery(text);
+    }
+
+    /**
+     * embedDocuments.
+     * 
+     * @param texts texts
+     * @param batchSize batchSize
+     * @return the result
+     * @since 0.1.7
+     */
+    List<List<Float>> embedDocuments(List<?> texts, Integer batchSize);
+
+    /**
+     * embedDocuments.
+     * 
+     * @param texts texts
+     * @param batchSize batchSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    default List<List<Float>> embedDocuments(List<?> texts, Integer batchSize, Map<String, Object> options) {
+        return embedDocuments(texts, batchSize);
+    }
+
+    /**
+     * getDimension.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    int getDimension();
+
+    /**
+     * getMaxBatchSize.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    default int getMaxBatchSize() {
+        return 256;
+    }
+
+    /**
+     * Release resources held by this embedding model (e.g. thread pools).
+     * Default implementation does nothing; subclasses that hold resources
+     * should override this method.
+     *
+     * @since 0.1.15
+     */
+    @Override
+    default void close() {
+    }
 }

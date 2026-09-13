@@ -4,63 +4,61 @@
 
 package com.openjiuwen.harness.security;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Mirrors Python's {@code PermissionResult} in
- * {@code openjiuwen/harness/security/models.py}.
+ * Permission decision produced by the harness permission engine.
+ *
+ * <p>Mirrors Python {@code openjiuwen.harness.security.models.PermissionResult}: the
+ * final {@link PermissionLevel} after merging the tool-level and path-level pipelines,
+ * the matched rule summary, an optional human-readable reason, and any external paths
+ * that triggered a path-level raise.
+ *
+ * @since 0.1.15
  */
-public final class PermissionResult {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class PermissionResult {
+    private PermissionLevel permission;
+    private String matchedRule;
+    private String reason;
+    @Builder.Default
+    private List<String> externalPaths = new ArrayList<>();
 
-    private final PermissionLevel permission;
-    private final String matchedRule;
-    private final String reason;
-    private final List<String> externalPaths;
-
-    public PermissionResult(PermissionLevel permission) {
-        this(permission, null, null, null);
-    }
-
-    public PermissionResult(PermissionLevel permission, String matchedRule, String reason) {
-        this(permission, matchedRule, reason, null);
-    }
-
-    public PermissionResult(
-            PermissionLevel permission,
-            String matchedRule,
-            String reason,
-            List<String> externalPaths
-    ) {
-        this.permission = permission;
-        this.matchedRule = matchedRule;
-        this.reason = reason;
-        this.externalPaths = externalPaths == null ? null : List.copyOf(externalPaths);
-    }
-
-    public PermissionLevel getPermission() {
-        return permission;
-    }
-
-    public String getMatchedRule() {
-        return matchedRule;
-    }
-
-    public String getReason() {
-        return reason;
-    }
-
-    public List<String> getExternalPaths() {
-        return externalPaths;
-    }
-
+    /**
+     * Whether the decision allows execution without confirmation.
+     *
+     * @return true when permission is ALLOW
+     * @since 0.1.15
+     */
     public boolean isAllowed() {
         return permission == PermissionLevel.ALLOW;
     }
 
+    /**
+     * Whether the decision denies execution.
+     *
+     * @return true when permission is DENY
+     * @since 0.1.15
+     */
     public boolean isDenied() {
         return permission == PermissionLevel.DENY;
     }
 
+    /**
+     * Whether the decision requires user approval before execution.
+     *
+     * @return true when permission is ASK
+     * @since 0.1.15
+     */
     public boolean needsApproval() {
         return permission == PermissionLevel.ASK;
     }

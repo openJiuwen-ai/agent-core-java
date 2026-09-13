@@ -4,134 +4,95 @@
 
 package com.openjiuwen.core.context.processor.offloader;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
- * Configuration for {@link MessageOffloader}.
- *
- * <p>Mirrors Python's {@code MessageOffloaderConfig} in
- * {@code openjiuwen/core/context_engine/processor/offloader/message_offloader.py}.</p>
+ * Configuration for the {@link MessageOffloader} ContextProcessor.
+ * <p>
+ * The offloader keeps conversation history within safe memory/token limits
+ * by trimming or offloading messages once thresholds are exceeded.
+ * <p>
+ * Mirrors Python's {@code MessageOffloaderConfig}.
+ * 
+ * @since 0.1.7
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class MessageOffloaderConfig {
-    private static final Set<String> VALID_ROLES = Set.of("user", "assistant", "tool");
-
-    @JsonProperty("messages_threshold")
     private Integer messagesThreshold;
 
-    @JsonProperty("tokens_threshold")
+    /**
+     * Maximum accumulated token count before offloading is triggered.
+     */
+    @Builder.Default
     private int tokensThreshold = 20000;
 
-    @JsonProperty("large_message_threshold")
+    /**
+     * Messages whose token count exceeds this value are considered 'large'.
+     */
+    @Builder.Default
     private int largeMessageThreshold = 1000;
 
-    @JsonProperty("offload_message_type")
+    /**
+     * Roles eligible for offloading (e.g., "user", "assistant", "tool").
+     * 
+     * @since 0.1.7
+     */
+    @Builder.Default
     private List<String> offloadMessageType = List.of("tool");
 
-    @JsonProperty("protected_tool_names")
+    /**
+     * Tool messages produced by these tools are never offloaded.
+     * 
+     * @since 0.1.7
+     */
+    @Builder.Default
     private List<String> protectedToolNames = List.of("reload_original_context_messages");
 
-    @JsonProperty("trim_size")
+    /**
+     * Number of tokens to retain when a message is offloaded.
+     */
+    @Builder.Default
     private int trimSize = 100;
 
-    @JsonProperty("messages_to_keep")
+    /**
+     * Number of most-recent messages to retain regardless of thresholds.
+     */
     private Integer messagesToKeep;
 
-    @JsonProperty("keep_last_round")
+    /**
+     * If true, the most recent user-assistant round is always preserved.
+     */
+    @Builder.Default
     private boolean keepLastRound = true;
 
-    public Integer getMessagesThreshold() {
-        return messagesThreshold;
-    }
-
-    public void setMessagesThreshold(Integer messagesThreshold) {
-        validateNullableGt(messagesThreshold, "messages_threshold");
-        this.messagesThreshold = messagesThreshold;
-    }
-
-    public int getTokensThreshold() {
-        return tokensThreshold;
-    }
-
-    public void setTokensThreshold(int tokensThreshold) {
-        validateGt(tokensThreshold, "tokens_threshold");
-        this.tokensThreshold = tokensThreshold;
-    }
-
-    public int getLargeMessageThreshold() {
-        return largeMessageThreshold;
-    }
-
-    public void setLargeMessageThreshold(int largeMessageThreshold) {
-        validateGt(largeMessageThreshold, "large_message_threshold");
-        this.largeMessageThreshold = largeMessageThreshold;
-    }
-
-    public List<String> getOffloadMessageType() {
-        return new ArrayList<>(offloadMessageType);
-    }
-
-    public void setOffloadMessageType(List<String> offloadMessageType) {
-        if (offloadMessageType == null) {
-            throw new IllegalArgumentException("offload_message_type must not be null");
+    /**
+     * Validate configuration constraints matching Python Pydantic {@code Field(gt=0)} rules.
+     * 
+     * @since 0.1.7
+     */
+    public void validate() {
+        if (messagesThreshold != null && messagesThreshold <= 0) {
+            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
         }
-        for (String role : offloadMessageType) {
-            if (!VALID_ROLES.contains(role)) {
-                throw new IllegalArgumentException("offload_message_type contains unsupported role: " + role);
-            }
+        if (tokensThreshold <= 0) {
+            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
         }
-        this.offloadMessageType = new ArrayList<>(offloadMessageType);
-    }
-
-    public List<String> getProtectedToolNames() {
-        return new ArrayList<>(protectedToolNames);
-    }
-
-    public void setProtectedToolNames(List<String> protectedToolNames) {
-        if (protectedToolNames == null) {
-            throw new IllegalArgumentException("protected_tool_names must not be null");
+        if (largeMessageThreshold <= 0) {
+            throw new IllegalArgumentException("largeMessageThreshold must be > 0, got " + largeMessageThreshold);
         }
-        this.protectedToolNames = new ArrayList<>(protectedToolNames);
-    }
-
-    public int getTrimSize() {
-        return trimSize;
-    }
-
-    public void setTrimSize(int trimSize) {
-        validateGt(trimSize, "trim_size");
-        this.trimSize = trimSize;
-    }
-
-    public Integer getMessagesToKeep() {
-        return messagesToKeep;
-    }
-
-    public void setMessagesToKeep(Integer messagesToKeep) {
-        validateNullableGt(messagesToKeep, "messages_to_keep");
-        this.messagesToKeep = messagesToKeep;
-    }
-
-    public boolean isKeepLastRound() {
-        return keepLastRound;
-    }
-
-    public void setKeepLastRound(boolean keepLastRound) {
-        this.keepLastRound = keepLastRound;
-    }
-
-    private static void validateNullableGt(Integer value, String fieldName) {
-        if (value != null && value <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be > 0");
+        if (trimSize <= 0) {
+            throw new IllegalArgumentException("trimSize must be > 0, got " + trimSize);
         }
-    }
-
-    private static void validateGt(int value, String fieldName) {
-        if (value <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be > 0");
+        if (messagesToKeep != null && messagesToKeep <= 0) {
+            throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
         }
     }
 }

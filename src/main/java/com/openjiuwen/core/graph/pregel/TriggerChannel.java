@@ -8,47 +8,87 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Mirrors Python's {@code TriggerChannel} in
- * {@code openjiuwen/core/graph/pregel/channels.py}.
+ * Channel that triggers when any message is received.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.pregel.channels.TriggerChannel}.
+ * 
+ * @since 0.1.7
  */
 public class TriggerChannel extends Channel {
-
     private final List<TriggerMessage> messages = new ArrayList<>();
 
+    /**
+     * TriggerChannel.
+     * 
+     * @param name name
+     * @since 0.1.7
+     */
     public TriggerChannel(String name) {
         super(name);
     }
 
+    /**
+     * isReady.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public boolean isReady() {
         return !messages.isEmpty();
     }
 
+    /**
+     * accept.
+     * 
+     * @param msg msg
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public void accept(Message msg) {
-        if (msg instanceof TriggerMessage triggerMessage) {
-            messages.add(triggerMessage);
+    public boolean accept(Message msg) {
+        if (msg instanceof TriggerMessage triggerMsg) {
+            messages.add(triggerMsg);
+            return true;
         }
+        return false;
     }
 
+    /**
+     * consume.
+     * 
+     * @since 0.1.7
+     */
     @Override
-    public Object consume() {
+    public void consume() {
         messages.clear();
-        return null;
     }
 
+    /**
+     * snapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object snapshot() {
         return new ArrayList<>(messages);
     }
 
+    /**
+     * restore.
+     * 
+     * @param snapshotData snapshotData
+     * @since 0.1.7
+     */
     @Override
-    public void restore(Object snapshot) {
-        if (snapshot instanceof List<?> list) {
+    @SuppressWarnings("unchecked")
+    public void restore(Object snapshotData) {
+        if (snapshotData instanceof List<?> list) {
             messages.clear();
             for (Object item : list) {
-                if (item instanceof TriggerMessage message) {
-                    messages.add(message);
+                if (item instanceof TriggerMessage msg) {
+                    messages.add(msg);
                 }
             }
         }

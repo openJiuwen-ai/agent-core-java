@@ -103,20 +103,7 @@ public class BashTool {
                 int exitCode = awaitProcessExit(process, command);
                 String stdout = stdoutFuture.join();
                 String stderr = stderrFuture.join();
-                int limit = maxOutputChars != null ? Math.max(200, Math.min(maxOutputChars, 20000)) : 8000;
-                boolean isExecutionSuccessful = exitCode == 0 || isNonErrorExit(command, exitCode);
-                Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("stdout", truncate(stdout, limit));
-                payload.put("stderr", truncate(stderr, limit));
-                payload.put("exit_code", exitCode);
-                payload.put("return_code_interpretation", interpret(command, exitCode));
-                payload.put("no_output_expected", isSilent(command));
-                payload.put("destructive_warning", getDestructiveWarning(command));
-                return ToolOutput.builder().success(isExecutionSuccessful).data(payload)
-                        .error(isExecutionSuccessful
-                                ? null
-                                : truncate(stderr.isBlank() ? "command failed" : stderr, limit))
-                        .build();
+                return buildBashResult(command, exitCode, stdout, stderr, maxOutputChars);
             } finally {
                 processIoExecutor.shutdownNow();
             }
@@ -125,25 +112,69 @@ public class BashTool {
         }
     }
 
+    /**
+     * Wait for the process to exit with the framework default process-join timeout.
+     * On expiry, forcibly destroy the child and raise a recoverable SysOperationError.
+     *
+     * @param process the started child process
+     * @param command the command line (for diagnostics)
+     * @return the process exit code
+     * @since 0.1.7
+     */
     private static int awaitProcessExit(Process process, String command) {
+        // process.onExit().join() is bounded by the framework default process-join
+        // timeout, so a deadlocked child process (e.g. waiting on a pipe whose reader
+        // died, or a REPL never exiting) cannot block forever. On expiry, forcibly
+        // destroy the child and surface a recoverable SysOperationError so the agent
+        // round can continue rather than hang.
         long joinMs = TimeoutConstants.processJoinMs();
         try {
             return process.onExit()
                     .orTimeout(joinMs, TimeUnit.MILLISECONDS)
                     .join()
                     .exitValue();
-        } catch (CompletionException exception) {
-            if (exception.getCause() instanceof TimeoutException) {
+        } catch (CompletionException ce) {
+            if (ce.getCause() instanceof TimeoutException) {
                 Loggers.PERFORMANCE.warning(
                         "BashTool process join timeout after {}ms, command='{}'",
                         joinMs, command);
                 process.destroyForcibly();
                 throw new SysOperationError(
                         StatusCode.SYS_OPERATION_PROCESS_JOIN_TIMEOUT,
-                        null, null, exception, Map.of("timeout", joinMs, "command", command));
+                        null, null, ce, Map.of(
+                                "timeout", joinMs, "command", command));
             }
-            throw exception;
+            throw ce;
         }
+    }
+
+    /**
+     * Build the ToolOutput for a finished bash execution.
+     *
+     * @param command the original command (for interpretation / warnings)
+     * @param exitCode exitCode
+     * @param stdout stdout
+     * @param stderr stderr
+     * @param maxOutputChars max output chars cap
+     * @return the result
+     * @since 0.1.7
+     */
+    private static ToolOutput buildBashResult(String command, int exitCode, String stdout, String stderr,
+            Integer maxOutputChars) {
+        int limit = maxOutputChars != null ? Math.max(200, Math.min(maxOutputChars, 20000)) : 8000;
+        boolean isExecutionSuccessful = exitCode == 0 || isNonErrorExit(command, exitCode);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("stdout", truncate(stdout, limit));
+        payload.put("stderr", truncate(stderr, limit));
+        payload.put("exit_code", exitCode);
+        payload.put("return_code_interpretation", interpret(command, exitCode));
+        payload.put("no_output_expected", isSilent(command));
+        payload.put("destructive_warning", getDestructiveWarning(command));
+        return ToolOutput.builder().success(isExecutionSuccessful).data(payload)
+                .error(isExecutionSuccessful
+                        ? null
+                        : truncate(stderr.isBlank() ? "command failed" : stderr, limit))
+                .build();
     }
 
     /**

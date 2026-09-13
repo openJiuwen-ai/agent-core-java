@@ -7,25 +7,41 @@ package com.openjiuwen.core.controller.schema;
 import java.util.Map;
 
 /**
- * Data-frame union used by the controller.
+ * DataFrame sealed interface for transmitting different types of data in the controller.
  * <p>
- * Mirrors Python's {@code DataFrame} in
- * {@code openjiuwen/core/controller/schema/dataframe.py}.
+ * Supported data types:
+ * <ul>
+ * <li>{@link TextDataFrame} - text data</li>
+ * <li>{@link FileDataFrame} - file data (bytes or URI)</li>
+ * <li>{@link JsonDataFrame} - JSON format data</li>
+ * </ul>
+ * <p>
+ * Mirrors Python's {@code DataFrame = Union[TextDataFrame, FileDataFrame, JsonDataFrame]}.
+ * 
+ * @since 0.1.7
  */
 public sealed interface DataFrame permits DataFrame.TextDataFrame, DataFrame.FileDataFrame, DataFrame.JsonDataFrame {
-
     /**
-     * Return the wire type.
-     *
-     * @return one of {@code text}, {@code file}, or {@code json}
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     String getType();
 
     /**
-     * Mirrors Python's {@code TextDataFrame} in
-     * {@code openjiuwen/core/controller/schema/dataframe.py}.
+     * Text data frame.
+     * 
+     * @param text text
+     * @since 0.1.7
      */
     record TextDataFrame(String text) implements DataFrame {
+        /**
+         * getType.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public String getType() {
             return "text";
@@ -33,21 +49,51 @@ public sealed interface DataFrame permits DataFrame.TextDataFrame, DataFrame.Fil
     }
 
     /**
-     * Mirrors Python's {@code FileDataFrame} in
-     * {@code openjiuwen/core/controller/schema/dataframe.py}.
+     * File data frame supporting both bytes and URI.
+     * 
+     * @param name name
+     * @param mimeType mimeType
+     * @param bytes bytes
+     * @param uri uri
+     * @since 0.1.7
      */
     record FileDataFrame(String name, String mimeType, byte[] bytes, String uri) implements DataFrame {
+        /**
+         * getType.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public String getType() {
             return "file";
         }
+
+        /**
+         * FileDataFrame.
+         * 
+         * @param name name
+         * @param mimeType mimeType
+         * @since 0.1.7
+         */
+        public FileDataFrame(String name, String mimeType) {
+            this(name, mimeType, null, null);
+        }
     }
 
     /**
-     * Mirrors Python's {@code JsonDataFrame} in
-     * {@code openjiuwen/core/controller/schema/dataframe.py}.
+     * JSON format data frame.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     record JsonDataFrame(Map<String, Object> data) implements DataFrame {
+        /**
+         * getType.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public String getType() {
             return "json";

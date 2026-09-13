@@ -4,231 +4,240 @@
 
 package com.openjiuwen.harness.harness_config;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Mirrors Python's {@code HarnessConfigLoader} in
- * {@code openjiuwen/harness/harness_config/loader.py}.
+ * HarnessConfigLoader.
+ * 
+ * @since 0.1.7
  */
 public final class HarnessConfigLoader {
-
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    private static final Pattern TEMPLATE_PATTERN = Pattern.compile("\\{\\{\\s*(\\w+)\\s*\\}\\}");
-
-    private HarnessConfigLoader() {}
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
-     * Load and resolve a {@code harness_config.yaml}.
-     *
-     * @param path path to the harness config file
-     * @param params template render parameters, or {@code null}
-     * @param workspaceRoot workspace root override, or {@code null}
-     * @return resolved harness config
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern TEMPLATE = Pattern.compile("\\{\\{\\s*(\\w+)\\s*\\}\\}");
+
+    /**
+     * HarnessConfigLoader.
+     * 
+     * @since 0.1.7
+     */
+    private HarnessConfigLoader() {
+    }
+
+    /**
+     * load.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
+    public static ResolvedHarnessConfig load(String path) {
+        return load(Path.of(path), Map.of(), null);
+    }
+
+    /**
+     * load.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
+    public static ResolvedHarnessConfig load(Path path) {
+        return load(path, Map.of(), null);
+    }
+
+    /**
+     * load.
+     * 
+     * @param path path
+     * @param params params
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
      */
     public static ResolvedHarnessConfig load(Path path, Map<String, Object> params, Path workspaceRoot) {
         Path resolvedPath = path.toAbsolutePath().normalize();
         if (!Files.exists(resolvedPath)) {
             throw new IllegalArgumentException("HarnessConfig file not found: " + resolvedPath);
         }
-
-        HarnessConfig config;
         try {
-            String raw = Files.readString(resolvedPath, StandardCharsets.UTF_8);
-            Object yamlObject = new Yaml().load(raw);
-            Map<String, Object> data = yamlObject instanceof Map<?, ?> map
-                    ? JSON_MAPPER.convertValue(map, new TypeReference<LinkedHashMap<String, Object>>() {})
-                    : new LinkedHashMap<>();
-            config = JSON_MAPPER.convertValue(data, HarnessConfig.class);
-            validateConfig(config, resolvedPath);
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (IOException e) {
-            throw new IllegalArgumentException("Failed to read HarnessConfig file: " + resolvedPath, e);
-        } catch (Exception e) {
+            String raw = Files.readString(resolvedPath);
+            Object loaded = new Yaml().load(raw);
+            Map<String, Object> data = loaded instanceof Map<?, ?> map ? castMap(map) : Map.of();
+            HarnessConfig config = MAPPER.convertValue(data, HarnessConfig.class);
+            return resolve(config, resolvedPath, params, workspaceRoot);
+        } catch (IOException ex) {
+            throw new UncheckedIOException(ex);
+        } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(
-                    "HarnessConfig validation failed in '" + resolvedPath + "': " + e.getMessage(),
-                    e
-            );
+                    "HarnessConfig validation failed in '" + resolvedPath + "': " + ex.getMessage(), ex);
         }
+    }
 
-        Map<String, Object> effectiveParams = new HashMap<>(params != null ? params : Map.of());
-        effectiveParams.putIfAbsent(
-                "workspace_root",
-                workspaceRoot != null ? workspaceRoot.toString() : resolvedPath.getParent().toString()
-        );
+    /**
+     * resolve.
+     * 
+     * @param config config
+     * @param sourcePath sourcePath
+     * @param params params
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
+     */
+    public static ResolvedHarnessConfig resolve(HarnessConfig config, Path sourcePath, Map<String, Object> params,
+            Path workspaceRoot) {
+        Objects.requireNonNull(config, "config");
+        Path normalizedSource =
+            sourcePath == null ? Path.of(".").toAbsolutePath().normalize() : sourcePath.toAbsolutePath().normalize();
+        Map<String, Object> effectiveParams = new LinkedHashMap<>(params == null ? Map.of() : params);
+        effectiveParams.putIfAbsent("workspace_root", String.valueOf(
+                workspaceRoot != null ? workspaceRoot.toAbsolutePath().normalize() : normalizedSource.getParent()));
 
-        String language = config.getLanguage() != null ? config.getLanguage() : "cn";
+        String language = config.getLanguage() == null || config.getLanguage().isBlank() ? "cn" : config.getLanguage();
         String systemPrompt = null;
-        List<ResolvedSection> extraSections = new java.util.ArrayList<>();
-        List<ResolvedFileSection> fileSections = new java.util.ArrayList<>();
+        List<ResolvedSection> extraSections = new ArrayList<>();
+        List<ResolvedFileSection> fileSections = new ArrayList<>();
 
-        if (config.getPrompts() != null && config.getPrompts().getSections() != null) {
+        if (config.getPrompts() != null) {
             for (HarnessConfig.SectionSchema section : config.getPrompts().getSections()) {
-                Map<String, String> rawContent = normalizeContent(section.getContent());
-                Map<String, String> rendered = new LinkedHashMap<>();
-                for (Map.Entry<String, String> entry : rawContent.entrySet()) {
-                    rendered.put(entry.getKey(), renderTemplate(entry.getValue(), effectiveParams));
-                }
-
-                if (section.getFile() != null) {
-                    fileSections.add(ResolvedFileSection.builder()
-                            .filename(section.getFile())
-                            .content(rendered)
-                            .build());
+                Map<String, String> normalizedContent = normalizeContent(section.getContent());
+                Map<String, String> rendered = renderAll(normalizedContent, effectiveParams);
+                if (section.getFile() != null && !section.getFile().isBlank()) {
+                    fileSections.add(new ResolvedFileSection(section.getFile(), rendered));
                 } else if ("identity".equals(section.getName())) {
-                    systemPrompt = rendered.getOrDefault(
-                            language,
-                            rendered.getOrDefault("cn", rendered.getOrDefault("en", null))
-                    );
+                    systemPrompt = pickLanguage(rendered, language);
                 } else {
-                    extraSections.add(ResolvedSection.builder()
-                            .name(section.getName())
-                            .priority(section.getPriority() != null ? section.getPriority() : 30)
-                            .content(rendered)
-                            .build());
+                    extraSections.add(new ResolvedSection(section.getName(),
+                            section.getPriority() != null ? section.getPriority() : 30, rendered));
                 }
             }
         }
 
-        return ResolvedHarnessConfig.builder()
-                .config(config)
-                .systemPrompt(systemPrompt)
-                .extraSections(extraSections)
-                .fileSections(fileSections)
-                .sourcePath(resolvedPath)
-                .build();
+        return new ResolvedHarnessConfig(config, systemPrompt, extraSections, fileSections, normalizedSource);
     }
 
     /**
-     * Load and resolve a {@code harness_config.yaml}.
-     *
-     * @param path path to the harness config file
-     * @param params template render parameters, or {@code null}
-     * @return resolved harness config
+     * castMap.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
      */
-    public static ResolvedHarnessConfig load(Path path, Map<String, Object> params) {
-        return load(path, params, null);
+    private static Map<String, Object> castMap(Map<?, ?> raw) {
+        Map<String, Object> converted = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (entry.getKey() != null) {
+                converted.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return converted;
     }
 
     /**
-     * Load and resolve a {@code harness_config.yaml}.
-     *
-     * @param path path to the harness config file
-     * @return resolved harness config
+     * normalizeContent.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
-    public static ResolvedHarnessConfig load(Path path) {
-        return load(path, null, null);
-    }
-
-    static Map<String, String> normalizeContent(Object content) {
+    private static Map<String, String> normalizeContent(Object content) {
         if (content == null) {
             return Map.of();
         }
         if (content instanceof String text) {
-            Map<String, String> normalized = new LinkedHashMap<>();
-            normalized.put("cn", text);
-            normalized.put("en", text);
-            return normalized;
+            return Map.of("cn", text, "en", text);
         }
         if (content instanceof Map<?, ?> map) {
             Map<String, String> normalized = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
-                normalized.put(String.valueOf(entry.getKey()), entry.getValue() == null ? null : String.valueOf(entry.getValue()));
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    normalized.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+                }
             }
             return normalized;
         }
-        return Map.of();
+        return Map.of("cn", String.valueOf(content), "en", String.valueOf(content));
     }
 
-    static String renderTemplate(String text, Map<String, Object> params) {
+    /**
+     * renderAll.
+     * 
+     * @param content content
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Map<String, String> renderAll(Map<String, String> content, Map<String, Object> params) {
+        Map<String, String> rendered = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : content.entrySet()) {
+            rendered.put(entry.getKey(), renderTemplate(entry.getValue(), params));
+        }
+        return rendered;
+    }
+
+    /**
+     * renderTemplate.
+     * 
+     * @param text text
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String renderTemplate(String text, Map<String, Object> params) {
         if (text == null || !text.contains("{{")) {
             return text;
         }
-
-        Matcher matcher = TEMPLATE_PATTERN.matcher(text);
-        StringBuilder rendered = new StringBuilder();
+        Matcher matcher = TEMPLATE.matcher(text);
+        StringBuffer sb = new StringBuffer();
         while (matcher.find()) {
-            String key = matcher.group(1).trim();
+            String key = matcher.group(1);
             Object value = params.get(key);
-            matcher.appendReplacement(
-                    rendered,
-                    value != null ? Matcher.quoteReplacement(value.toString()) : matcher.group(0)
-            );
+            matcher.appendReplacement(sb,
+                    Matcher.quoteReplacement(value != null ? String.valueOf(value) : matcher.group(0)));
         }
-        matcher.appendTail(rendered);
-        return rendered.toString();
+        matcher.appendTail(sb);
+        return sb.toString();
     }
 
-    private static void validateConfig(HarnessConfig config, Path path) {
-        if (config == null) {
-            throw new IllegalArgumentException("HarnessConfig validation failed in '" + path + "': empty config");
+    /**
+     * pickLanguage.
+     * 
+     * @param content content
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String pickLanguage(Map<String, String> content, String language) {
+        if (content == null || content.isEmpty()) {
+            return null;
         }
-        if (config.getPrompts() != null && config.getPrompts().getSections() != null) {
-            for (int i = 0; i < config.getPrompts().getSections().size(); i++) {
-                HarnessConfig.SectionSchema section = config.getPrompts().getSections().get(i);
-                if (section == null || isBlank(section.getName())) {
-                    throw new IllegalArgumentException(
-                            "HarnessConfig validation failed in '" + path + "': prompts.sections[" + i + "].name is required"
-                    );
-                }
-            }
+        String picked = content.get(language);
+        if (picked != null && !picked.isBlank()) {
+            return picked;
         }
-        if (config.getResources() != null) {
-            validateTools(config.getResources().getTools(), path, "resources.tools");
-            validateRails(config.getResources().getRails(), path, "resources.rails");
+        picked = content.get("cn");
+        if (picked != null && !picked.isBlank()) {
+            return picked;
         }
-    }
-
-    private static void validateTools(
-            List<HarnessConfig.ToolResourceSchema> tools,
-            Path path,
-            String prefix
-    ) {
-        if (tools == null) {
-            return;
-        }
-        for (int i = 0; i < tools.size(); i++) {
-            HarnessConfig.ToolResourceSchema tool = tools.get(i);
-            if (tool == null || isBlank(tool.getType())) {
-                throw new IllegalArgumentException(
-                        "HarnessConfig validation failed in '" + path + "': " + prefix + "[" + i + "].type is required"
-                );
-            }
-        }
-    }
-
-    private static void validateRails(
-            List<HarnessConfig.RailResourceSchema> rails,
-            Path path,
-            String prefix
-    ) {
-        if (rails == null) {
-            return;
-        }
-        for (int i = 0; i < rails.size(); i++) {
-            HarnessConfig.RailResourceSchema rail = rails.get(i);
-            if (rail == null || isBlank(rail.getType())) {
-                throw new IllegalArgumentException(
-                        "HarnessConfig validation failed in '" + path + "': " + prefix + "[" + i + "].type is required"
-                );
-            }
-        }
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
+        return content.get("en");
     }
 }

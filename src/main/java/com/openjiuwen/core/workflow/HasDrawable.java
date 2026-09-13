@@ -7,17 +7,20 @@ package com.openjiuwen.core.workflow;
 import com.openjiuwen.core.graph.visualization.Drawable;
 
 /**
- * Exposes the drawable graph carried by workflow containers.
- *
- * <p>Mirrors Python's {@code BaseWorkflow.drawable} access in
- * {@code openjiuwen/core/workflow/_workflow.py}.</p>
+ * Interface for components that have an associated {@link Drawable} graph for visualization.
+ * <p>
+ * Used by loop components, sub-workflow components, and any component containing
+ * a nested graph structure.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public interface HasDrawable {
-
     /**
-     * Gets the drawable visualization state.
-     *
-     * @return drawable graph holder
+     * getDrawable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     Drawable getDrawable();
 }

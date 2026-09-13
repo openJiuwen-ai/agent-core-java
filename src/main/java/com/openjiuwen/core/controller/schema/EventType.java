@@ -4,31 +4,26 @@
 
 package com.openjiuwen.core.controller.schema;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
-
 /**
  * Event type enumeration.
  * <p>
  * Defines all supported event types:
  * <ul>
- *   <li>INPUT - user input event</li>
- *   <li>TASK_INTERACTION - task interaction event</li>
- *   <li>TASK_COMPLETION - task completion event</li>
- *   <li>TASK_FAILED - task failed event</li>
- *   <li>FOLLOW_UP - follow-up event for continuing task loop</li>
+ * <li>INPUT - user input event</li>
+ * <li>TASK_INTERACTION - task interaction event</li>
+ * <li>TASK_COMPLETION - task completion event</li>
+ * <li>TASK_FAILED - task failed event</li>
  * </ul>
  * <p>
- * Mirrors Python's {@code EventType} in
- * {@code openjiuwen/core/controller/schema/event.py}.
+ * Mirrors Python's {@code EventType(str, Enum)}.
+ * 
+ * @since 0.1.7
  */
 public enum EventType {
-
     INPUT("input"),
     TASK_INTERACTION("task_interaction"),
     TASK_COMPLETION("task_completion"),
-    TASK_FAILED("task_failed"),
-    FOLLOW_UP("follow_up");
+    TASK_FAILED("task_failed");
 
     private final String value;
 
@@ -36,16 +31,24 @@ public enum EventType {
         this.value = value;
     }
 
-    @JsonValue
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
-    @JsonCreator
+    /**
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static EventType fromValue(String value) {
-        if (value == null) {
-            return null;
-        }
         for (EventType type : values()) {
             if (type.value.equals(value)) {
                 return type;
@@ -54,6 +57,12 @@ public enum EventType {
         throw new IllegalArgumentException("Unknown EventType: " + value);
     }
 
+    /**
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String toString() {
         return value;

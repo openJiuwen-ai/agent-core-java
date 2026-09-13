@@ -4,32 +4,39 @@
 
 package com.openjiuwen.core.graph.store;
 
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.logging.events.LogEventType;
+import com.openjiuwen.core.common.logging.Loggers;
+
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
 
 /**
- * Logging decorator for graph-state persistence.
+ * Decorator around {@link Store} that adds logging for graph state operations.
  * <p>
- * Mirrors Python's {@code GraphStore} in
- * {@code openjiuwen/core/graph/store/base.py}.
+ * Mirrors Python's {@code openjiuwen.core.graph.store.base.GraphStore}.
+ * 
+ * @since 0.1.7
  */
 public class GraphStore implements Store {
+    private static final LoggerProtocol logger = Loggers.GRAPH;
 
-    private static final LoggerProtocol GRAPH_LOGGER = Loggers.GRAPH;
+    private final Store delegate;
 
-    private final Store saver;
-
-    public GraphStore(Store saver) {
-        this.saver = wrapWithKeyLock(saver);
+    /**
+     * GraphStore.
+     * 
+     * @param delegate delegate
+     * @since 0.1.7
+     */
+    public GraphStore(Store delegate) {
+        this.delegate = wrapWithKeyLock(delegate);
     }
 
     /**
      * Ensures the delegate is wrapped with {@link KeyLockedStore} for per-session write locking.
+     *
+     * @param delegate store to wrap; already-wrapped or {@code null} values are returned as-is
+     * @return a key-locked store, or the original value when wrapping is unnecessary
+     * @since 0.1.14
      */
     private static Store wrapWithKeyLock(Store delegate) {
         if (delegate == null || delegate instanceof KeyLockedStore) {
@@ -38,110 +45,69 @@ public class GraphStore implements Store {
         return new KeyLockedStore(delegate);
     }
 
+    /**
+     * get.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletionStage<Optional<GraphStoreState>> get(String sessionId, String ns) {
+    public Optional<GraphStoreState> get(String sessionId, String ns) {
         try {
-            return saver.get(sessionId, ns).handle((state, error) -> {
-                if (error != null) {
-                    GRAPH_LOGGER.error(
-                            "Failed to get graph state, eventType={}, sessionId={}, graphId={}",
-                            LogEventType.GRAPH_STORE_GET.getValue(),
-                            sessionId,
-                            ns
-                    );
-                    throw propagate(error);
-                }
-                if (state == null || state.isEmpty()) {
-                    GRAPH_LOGGER.debug(
-                            "Not found graph state for session, eventType={}, sessionId={}, graphId={}",
-                            LogEventType.GRAPH_STORE_GET.getValue(),
-                            sessionId,
-                            ns
-                    );
-                    return Optional.empty();
-                }
-                return state;
-            });
-        } catch (RuntimeException error) {
-            return CompletableFuture.failedFuture(error);
+            Optional<GraphStoreState> state = delegate.get(sessionId, ns);
+            if (state.isEmpty()) {
+                logger.debug("Not found graph state for session, sessionId={}, ns={}", sessionId, ns);
+            }
+            return state;
+        } catch (Exception e) {
+            logger.error("Failed to get graph state, sessionId={}, ns={}", sessionId, ns, e);
+            throw e;
         }
     }
 
+    /**
+     * save.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @param state state
+     * @since 0.1.7
+     */
     @Override
-    public CompletionStage<Void> save(String sessionId, String ns, GraphStoreState state) {
-        GRAPH_LOGGER.debug(
-                "Begin to save graph state of super-step[{}], eventType={}, sessionId={}, graphId={}",
-                state.getStep(),
-                LogEventType.GRAPH_STORE_SAVE.getValue(),
-                sessionId,
-                ns
-        );
+    public void save(String sessionId, String ns, GraphStoreState state) {
+        logger.debug("Begin to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(), sessionId,
+                ns);
         try {
-            return saver.save(sessionId, ns, state).handle((ignored, error) -> {
-                if (error != null) {
-                    GRAPH_LOGGER.error(
-                            "Succeed to save graph state of super-step[{}], eventType={}, sessionId={}, graphId={}",
-                            state.getStep(),
-                            LogEventType.GRAPH_STORE_SAVE.getValue(),
-                            sessionId,
-                            ns
-                    );
-                    throw propagate(error);
-                }
-                GRAPH_LOGGER.debug(
-                        "Succeed to save graph state of super-step[{}], eventType={}, sessionId={}, graphId={}",
-                        state.getStep(),
-                        LogEventType.GRAPH_STORE_SAVE.getValue(),
-                        sessionId,
-                        ns
-                );
-                return null;
-            });
-        } catch (RuntimeException error) {
-            return CompletableFuture.failedFuture(error);
+            delegate.save(sessionId, ns, state);
+            logger.debug("Succeed to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(),
+                    sessionId, ns);
+        } catch (Exception e) {
+            logger.error("Failed to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(),
+                    sessionId, ns, e);
+            throw e;
         }
     }
 
+    /**
+     * delete.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @since 0.1.7
+     */
     @Override
-    public CompletionStage<Void> delete(String sessionId, String ns) {
-        String graphId = ns != null ? ns : "all";
-        GRAPH_LOGGER.debug(
-                "Begin to delete {} graph states for session, eventType={}, sessionId={}, graphId={}",
-                graphId,
-                LogEventType.GRAPH_STORE_DELETE.getValue(),
-                sessionId,
-                ns
-        );
+    public void delete(String sessionId, String ns) {
+        logger.debug("Begin to delete {} graph states for session, sessionId={}", ns != null ? ns : "all", sessionId);
         try {
-            return saver.delete(sessionId, ns).handle((ignored, error) -> {
-                if (error != null) {
-                    GRAPH_LOGGER.debug(
-                            "Failed delete {} graph states for session, eventType={}, sessionId={}, graphId={}",
-                            graphId,
-                            LogEventType.GRAPH_STORE_DELETE.getValue(),
-                            sessionId,
-                            ns
-                    );
-                    throw propagate(error);
-                }
-                GRAPH_LOGGER.debug(
-                        "Succeed to delete {} graph states for session, eventType={}, sessionId={}, graphId={}",
-                        graphId,
-                        LogEventType.GRAPH_STORE_DELETE.getValue(),
-                        sessionId,
-                        ns
-                );
-                return null;
-            });
-        } catch (RuntimeException error) {
-            return CompletableFuture.failedFuture(error);
+            delegate.delete(sessionId, ns);
+            logger.debug("Succeed to delete {} graph states for session, sessionId={}", ns != null ? ns : "all",
+                    sessionId);
+        } catch (Exception e) {
+            logger.error("Failed to delete {} graph states for session, sessionId={}", ns != null ? ns : "all",
+                    sessionId, e);
+            throw e;
         }
-    }
-
-    private static CompletionException propagate(Throwable error) {
-        if (error instanceof CompletionException completionException) {
-            return completionException;
-        }
-        return new CompletionException(error);
     }
 }

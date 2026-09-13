@@ -4,171 +4,87 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
-/**
- * Configuration for {@link RoundLevelCompressor}.
- *
- * <p>Mirrors Python's {@code RoundLevelCompressorConfig} in
- * {@code openjiuwen/core/context_engine/processor/compressor/round_level_compressor.py}.</p>
- */
-public class RoundLevelCompressorConfig {
-    private static final String DEFAULT_TRUNCATED_MARKER = "...[TRUNCATED]...";
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-    @JsonProperty("trigger_total_tokens")
+/**
+ * Configuration for the {@link RoundLevelCompressor} ContextProcessor.
+ * 
+ * @since 0.1.7
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class RoundLevelCompressorConfig {
+    @Builder.Default
     private int triggerTotalTokens = 230000;
 
-    @JsonProperty("target_total_tokens")
+    @Builder.Default
     private int targetTotalTokens = 160000;
 
-    @JsonProperty("keep_recent_messages")
+    @Builder.Default
     private int keepRecentMessages = 0;
+
+    @Builder.Default
+    private int compressionCallMaxTokens = 250000;
+
+    @Builder.Default
+    private int firstPassTargetTokens = 30000;
+
+    @Builder.Default
+    private int secondPassTargetTokens = 20000;
+
+    @Builder.Default
+    private int thirdPassTargetTokens = 10000;
+
+    @Builder.Default
+    private double truncateHeadRatio = 0.2;
+
+    @Builder.Default
+    private String truncatedMarker = "...[TRUNCATED]...";
+
+    @Builder.Default
+    private String compressionMarker = RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER;
 
     private ModelRequestConfig model;
 
-    @JsonProperty("model_client")
     private ModelClientConfig modelClient;
 
-    @JsonProperty("compression_call_max_tokens")
-    private int compressionCallMaxTokens = 250000;
-
-    @JsonProperty("first_pass_target_tokens")
-    private int firstPassTargetTokens = 30000;
-
-    @JsonProperty("second_pass_target_tokens")
-    private int secondPassTargetTokens = 20000;
-
-    @JsonProperty("third_pass_target_tokens")
-    private int thirdPassTargetTokens = 10000;
-
-    @JsonProperty("truncate_head_ratio")
-    private double truncateHeadRatio = 0.2d;
-
-    @JsonProperty("truncated_marker")
-    private String truncatedMarker = DEFAULT_TRUNCATED_MARKER;
-
-    @JsonProperty("compression_marker")
-    private String compressionMarker = RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER;
-
-    public int getTriggerTotalTokens() {
-        return triggerTotalTokens;
-    }
-
-    public void setTriggerTotalTokens(int triggerTotalTokens) {
-        validateGt(triggerTotalTokens, "trigger_total_tokens");
-        this.triggerTotalTokens = triggerTotalTokens;
-    }
-
-    public int getTargetTotalTokens() {
-        return targetTotalTokens;
-    }
-
-    public void setTargetTotalTokens(int targetTotalTokens) {
-        validateGt(targetTotalTokens, "target_total_tokens");
-        this.targetTotalTokens = targetTotalTokens;
-    }
-
-    public int getKeepRecentMessages() {
-        return keepRecentMessages;
-    }
-
-    public void setKeepRecentMessages(int keepRecentMessages) {
-        validateGe(keepRecentMessages, "keep_recent_messages");
-        this.keepRecentMessages = keepRecentMessages;
-    }
-
-    public ModelRequestConfig getModel() {
-        return model;
-    }
-
-    public void setModel(ModelRequestConfig model) {
-        this.model = model;
-    }
-
-    public ModelClientConfig getModelClient() {
-        return modelClient;
-    }
-
-    public void setModelClient(ModelClientConfig modelClient) {
-        this.modelClient = modelClient;
-    }
-
-    public int getCompressionCallMaxTokens() {
-        return compressionCallMaxTokens;
-    }
-
-    public void setCompressionCallMaxTokens(int compressionCallMaxTokens) {
-        validateGt(compressionCallMaxTokens, "compression_call_max_tokens");
-        this.compressionCallMaxTokens = compressionCallMaxTokens;
-    }
-
-    public int getFirstPassTargetTokens() {
-        return firstPassTargetTokens;
-    }
-
-    public void setFirstPassTargetTokens(int firstPassTargetTokens) {
-        validateGt(firstPassTargetTokens, "first_pass_target_tokens");
-        this.firstPassTargetTokens = firstPassTargetTokens;
-    }
-
-    public int getSecondPassTargetTokens() {
-        return secondPassTargetTokens;
-    }
-
-    public void setSecondPassTargetTokens(int secondPassTargetTokens) {
-        validateGt(secondPassTargetTokens, "second_pass_target_tokens");
-        this.secondPassTargetTokens = secondPassTargetTokens;
-    }
-
-    public int getThirdPassTargetTokens() {
-        return thirdPassTargetTokens;
-    }
-
-    public void setThirdPassTargetTokens(int thirdPassTargetTokens) {
-        validateGt(thirdPassTargetTokens, "third_pass_target_tokens");
-        this.thirdPassTargetTokens = thirdPassTargetTokens;
-    }
-
-    public double getTruncateHeadRatio() {
-        return truncateHeadRatio;
-    }
-
-    public void setTruncateHeadRatio(double truncateHeadRatio) {
-        if (truncateHeadRatio <= 0.0d || truncateHeadRatio >= 1.0d) {
-            throw new IllegalArgumentException("truncate_head_ratio must be > 0 and < 1");
+    /**
+     * validate.
+     * 
+     * @since 0.1.7
+     */
+    public void validate() {
+        if (triggerTotalTokens <= 0) {
+            throw new IllegalArgumentException("triggerTotalTokens must be > 0, got " + triggerTotalTokens);
         }
-        this.truncateHeadRatio = truncateHeadRatio;
-    }
-
-    public String getTruncatedMarker() {
-        return truncatedMarker;
-    }
-
-    public void setTruncatedMarker(String truncatedMarker) {
-        this.truncatedMarker = truncatedMarker == null ? DEFAULT_TRUNCATED_MARKER : truncatedMarker;
-    }
-
-    public String getCompressionMarker() {
-        return compressionMarker;
-    }
-
-    public void setCompressionMarker(String compressionMarker) {
-        this.compressionMarker = compressionMarker == null
-                ? RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER
-                : compressionMarker;
-    }
-
-    private static void validateGt(int value, String fieldName) {
-        if (value <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be > 0");
+        if (targetTotalTokens <= 0) {
+            throw new IllegalArgumentException("targetTotalTokens must be > 0, got " + targetTotalTokens);
         }
-    }
-
-    private static void validateGe(int value, String fieldName) {
-        if (value < 0) {
-            throw new IllegalArgumentException(fieldName + " must be >= 0");
+        if (keepRecentMessages < 0) {
+            throw new IllegalArgumentException("keepRecentMessages must be >= 0, got " + keepRecentMessages);
+        }
+        if (compressionCallMaxTokens <= 0) {
+            throw new IllegalArgumentException("compressionCallMaxTokens must be > 0, got " + compressionCallMaxTokens);
+        }
+        if (firstPassTargetTokens <= 0) {
+            throw new IllegalArgumentException("firstPassTargetTokens must be > 0, got " + firstPassTargetTokens);
+        }
+        if (secondPassTargetTokens <= 0) {
+            throw new IllegalArgumentException("secondPassTargetTokens must be > 0, got " + secondPassTargetTokens);
+        }
+        if (thirdPassTargetTokens <= 0) {
+            throw new IllegalArgumentException("thirdPassTargetTokens must be > 0, got " + thirdPassTargetTokens);
+        }
+        if (truncateHeadRatio <= 0.0 || truncateHeadRatio >= 1.0) {
+            throw new IllegalArgumentException("truncateHeadRatio must be > 0 and < 1, got " + truncateHeadRatio);
         }
     }
 }

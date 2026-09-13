@@ -1,10 +1,9 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.spi.store.query;
 
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -12,282 +11,253 @@ import java.util.function.Function;
  * <p>
  * Each function converts a specific {@link QueryExpr} subtype into a
  * database-native expression (usually a String or filter object).
- * Mirrors Python's {@code QueryLanguageDefinition} in
- * {@code openjiuwen/core/foundation/store/query/base.py}.
- * </p>
+ * 
+ * @since 0.1.7
  */
-public final class QueryLanguageDefinition {
-
-    private final Function<ComparisonExpr, Object> comparison;
-    private final Function<RangeExpr, Object> range;
-    private final Function<ArithmeticExpr, Object> arithmetic;
-    private final Function<NullExpr, Object> nullExpr;
-    private final Function<JSONExpr, Object> jsonFilter;
-    private final Function<ArrayExpr, Object> array;
-    private final Function<LogicalExpr, Object> logical;
-    private final Function<MatchExpr, Object> textMatch;
+public class QueryLanguageDefinition {
+    private final Function<QueryExpr, Object> comparison;
+    private final Function<QueryExpr, Object> range;
+    private final Function<QueryExpr, Object> arithmetic;
+    private final Function<QueryExpr, Object> nullCheck;
+    private final Function<QueryExpr, Object> jsonFilter;
+    private final Function<QueryExpr, Object> array;
+    private final Function<QueryExpr, Object> logical;
+    private final Function<QueryExpr, Object> textMatch;
 
     /**
-     * Create a query language definition with typed handler functions.
-     *
-     * @param comparison  handler for comparison expressions
-     * @param range       handler for range expressions
-     * @param arithmetic  handler for arithmetic expressions
-     * @param nullExpr    handler for null-check expressions
-     * @param jsonFilter  handler for JSON filter expressions
-     * @param array       handler for array index expressions
-     * @param logical     handler for logical combination expressions
-     * @param textMatch   handler for text match expressions
+     * QueryLanguageDefinition.
+     * 
+     * @param builder builder
+     * @since 0.1.7
      */
-    public QueryLanguageDefinition(
-            Function<ComparisonExpr, Object> comparison,
-            Function<RangeExpr, Object> range,
-            Function<ArithmeticExpr, Object> arithmetic,
-            Function<NullExpr, Object> nullExpr,
-            Function<JSONExpr, Object> jsonFilter,
-            Function<ArrayExpr, Object> array,
-            Function<LogicalExpr, Object> logical,
-            Function<MatchExpr, Object> textMatch) {
-        this.comparison = Objects.requireNonNull(comparison, "comparison");
-        this.range = Objects.requireNonNull(range, "range");
-        this.arithmetic = Objects.requireNonNull(arithmetic, "arithmetic");
-        this.nullExpr = Objects.requireNonNull(nullExpr, "nullExpr");
-        this.jsonFilter = Objects.requireNonNull(jsonFilter, "jsonFilter");
-        this.array = Objects.requireNonNull(array, "array");
-        this.logical = Objects.requireNonNull(logical, "logical");
-        this.textMatch = Objects.requireNonNull(textMatch, "textMatch");
+    private QueryLanguageDefinition(Builder builder) {
+        this.comparison = builder.comparison;
+        this.range = builder.range;
+        this.arithmetic = builder.arithmetic;
+        this.nullCheck = builder.nullCheck;
+        this.jsonFilter = builder.jsonFilter;
+        this.array = builder.array;
+        this.logical = builder.logical;
+        this.textMatch = builder.textMatch;
     }
 
     /**
-     * Apply comparison handler.
-     *
-     * @param expr comparison expression
-     * @return database-specific expression
+     * applyComparison.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
-    public Object applyComparison(ComparisonExpr expr) {
+    public Object applyComparison(QueryExpr expr) {
         return comparison.apply(expr);
     }
 
     /**
-     * Apply comparison handler (QueryExpr overload, casts internally).
-     *
-     * @param expr query expression (must be ComparisonExpr)
-     * @return database-specific expression
+     * applyRange.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
-    public Object applyComparison(QueryExpr expr) {
-        return comparison.apply((ComparisonExpr) expr);
-    }
-
-    /**
-     * Apply range handler.
-     *
-     * @param expr range expression
-     * @return database-specific expression
-     */
-    public Object applyRange(RangeExpr expr) {
+    public Object applyRange(QueryExpr expr) {
         return range.apply(expr);
     }
 
     /**
-     * Apply range handler (QueryExpr overload, casts internally).
-     *
-     * @param expr query expression (must be RangeExpr)
-     * @return database-specific expression
+     * applyArithmetic.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
-    public Object applyRange(QueryExpr expr) {
-        return range.apply((RangeExpr) expr);
-    }
-
-    /**
-     * Apply arithmetic handler.
-     *
-     * @param expr arithmetic expression
-     * @return database-specific expression
-     */
-    public Object applyArithmetic(ArithmeticExpr expr) {
+    public Object applyArithmetic(QueryExpr expr) {
         return arithmetic.apply(expr);
     }
 
     /**
-     * Apply arithmetic handler (QueryExpr overload, casts internally).
-     *
-     * @param expr query expression (must be ArithmeticExpr)
-     * @return database-specific expression
-     */
-    public Object applyArithmetic(QueryExpr expr) {
-        return arithmetic.apply((ArithmeticExpr) expr);
-    }
-
-    /**
-     * Apply null-check handler.
-     *
-     * @param expr null expression
-     * @return database-specific expression
-     */
-    public Object applyNull(NullExpr expr) {
-        return nullExpr.apply(expr);
-    }
-
-    /**
-     * Apply null-check handler (QueryExpr overload, casts internally).
-     *
-     * @param expr query expression (must be NullExpr)
-     * @return database-specific expression
+     * applyNullCheck.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyNullCheck(QueryExpr expr) {
-        return nullExpr.apply((NullExpr) expr);
+        return nullCheck.apply(expr);
     }
 
     /**
-     * Apply JSON filter handler.
-     *
-     * @param expr JSON expression
-     * @return database-specific expression
+     * applyJsonFilter.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
-    public Object applyJsonFilter(JSONExpr expr) {
+    public Object applyJsonFilter(QueryExpr expr) {
         return jsonFilter.apply(expr);
     }
 
     /**
-     * Apply JSON filter handler (QueryExpr overload, casts internally).
-     *
-     * @param expr query expression (must be JSONExpr)
-     * @return database-specific expression
+     * applyArray.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
-    public Object applyJsonFilter(QueryExpr expr) {
-        return jsonFilter.apply((JSONExpr) expr);
-    }
-
-    /**
-     * Apply array handler.
-     *
-     * @param expr array expression
-     * @return database-specific expression
-     */
-    public Object applyArray(ArrayExpr expr) {
+    public Object applyArray(QueryExpr expr) {
         return array.apply(expr);
     }
 
     /**
-     * Apply array handler (QueryExpr overload, casts internally).
-     *
-     * @param expr query expression (must be ArrayExpr)
-     * @return database-specific expression
+     * applyLogical.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
-    public Object applyArray(QueryExpr expr) {
-        return array.apply((ArrayExpr) expr);
-    }
-
-    /**
-     * Apply logical handler.
-     *
-     * @param expr logical expression
-     * @return database-specific expression
-     */
-    public Object applyLogical(LogicalExpr expr) {
+    public Object applyLogical(QueryExpr expr) {
         return logical.apply(expr);
     }
 
     /**
-     * Apply logical handler (QueryExpr overload, casts internally).
-     *
-     * @param expr query expression (must be LogicalExpr)
-     * @return database-specific expression
+     * applyTextMatch.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
-    public Object applyLogical(QueryExpr expr) {
-        return logical.apply((LogicalExpr) expr);
-    }
-
-    /**
-     * Apply text match handler.
-     *
-     * @param expr match expression
-     * @return database-specific expression
-     */
-    public Object applyTextMatch(MatchExpr expr) {
+    public Object applyTextMatch(QueryExpr expr) {
         return textMatch.apply(expr);
     }
 
     /**
-     * Apply text match handler (QueryExpr overload, casts internally).
-     *
-     * @param expr query expression (must be MatchExpr)
-     * @return database-specific expression
-     */
-    public Object applyTextMatch(QueryExpr expr) {
-        return textMatch.apply((MatchExpr) expr);
-    }
-
-    /**
-     * Creates a new builder for {@link QueryLanguageDefinition}.
-     *
-     * @return a new builder instance
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Builder for {@link QueryLanguageDefinition}.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
-    public static final class Builder {
+    public static class Builder {
+        private Function<QueryExpr, Object> comparison;
+        private Function<QueryExpr, Object> range;
+        private Function<QueryExpr, Object> arithmetic;
+        private Function<QueryExpr, Object> nullCheck;
+        private Function<QueryExpr, Object> jsonFilter;
+        private Function<QueryExpr, Object> array;
+        private Function<QueryExpr, Object> logical;
+        private Function<QueryExpr, Object> textMatch;
 
-        private Function<ComparisonExpr, Object> comparison;
-        private Function<RangeExpr, Object> range;
-        private Function<ArithmeticExpr, Object> arithmetic;
-        private Function<NullExpr, Object> nullExpr;
-        private Function<JSONExpr, Object> jsonFilter;
-        private Function<ArrayExpr, Object> array;
-        private Function<LogicalExpr, Object> logical;
-        private Function<MatchExpr, Object> textMatch;
-
-        private Builder() {
-        }
-
-        public Builder comparison(Function<ComparisonExpr, Object> comparison) {
+        /**
+         * comparison.
+         * 
+         * @param comparison comparison
+         * @return the result
+         * @since 0.1.7
+         */
+        public Builder comparison(Function<QueryExpr, Object> comparison) {
             this.comparison = comparison;
             return this;
         }
 
-        public Builder range(Function<RangeExpr, Object> range) {
+        /**
+         * range.
+         * 
+         * @param range range
+         * @return the result
+         * @since 0.1.7
+         */
+        public Builder range(Function<QueryExpr, Object> range) {
             this.range = range;
             return this;
         }
 
-        public Builder arithmetic(Function<ArithmeticExpr, Object> arithmetic) {
+        /**
+         * arithmetic.
+         * 
+         * @param arithmetic arithmetic
+         * @return the result
+         * @since 0.1.7
+         */
+        public Builder arithmetic(Function<QueryExpr, Object> arithmetic) {
             this.arithmetic = arithmetic;
             return this;
         }
 
-        public Builder nullCheck(Function<NullExpr, Object> nullExpr) {
-            this.nullExpr = nullExpr;
+        /**
+         * nullCheck.
+         * 
+         * @param nullCheck nullCheck
+         * @return the result
+         * @since 0.1.7
+         */
+        public Builder nullCheck(Function<QueryExpr, Object> nullCheck) {
+            this.nullCheck = nullCheck;
             return this;
         }
 
-        public Builder jsonFilter(Function<JSONExpr, Object> jsonFilter) {
+        /**
+         * jsonFilter.
+         * 
+         * @param jsonFilter jsonFilter
+         * @return the result
+         * @since 0.1.7
+         */
+        public Builder jsonFilter(Function<QueryExpr, Object> jsonFilter) {
             this.jsonFilter = jsonFilter;
             return this;
         }
 
-        public Builder array(Function<ArrayExpr, Object> array) {
+        /**
+         * array.
+         * 
+         * @param array array
+         * @return the result
+         * @since 0.1.7
+         */
+        public Builder array(Function<QueryExpr, Object> array) {
             this.array = array;
             return this;
         }
 
-        public Builder logical(Function<LogicalExpr, Object> logical) {
+        /**
+         * logical.
+         * 
+         * @param logical logical
+         * @return the result
+         * @since 0.1.7
+         */
+        public Builder logical(Function<QueryExpr, Object> logical) {
             this.logical = logical;
             return this;
         }
 
-        public Builder textMatch(Function<MatchExpr, Object> textMatch) {
+        /**
+         * textMatch.
+         * 
+         * @param textMatch textMatch
+         * @return the result
+         * @since 0.1.7
+         */
+        public Builder textMatch(Function<QueryExpr, Object> textMatch) {
             this.textMatch = textMatch;
             return this;
         }
 
+        /**
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         public QueryLanguageDefinition build() {
-            return new QueryLanguageDefinition(
-                    comparison, range, arithmetic, nullExpr,
-                    jsonFilter, array, logical, textMatch);
+            return new QueryLanguageDefinition(this);
         }
     }
 }

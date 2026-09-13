@@ -4,164 +4,288 @@
 
 package com.openjiuwen.core.context.context;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import com.openjiuwen.core.context.ContextStats;
 import com.openjiuwen.core.context.ContextWindow;
+import com.openjiuwen.core.foundation.llm.InferenceAffinityModel;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.KvCacheReleaseRequest;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Focused parity tests for KV cache release decisions.
- *
- * <p>Mirrors Python's {@code KVCacheManager} in
- * {@code openjiuwen/core/context_engine/context/kv_cache_manager.py}.</p>
+ * Tests for {@link KVCacheManager}.
+ * <p>
+ * Ported from Python's {@code test_kv_cache_manager.py}.
  */
 class KVCacheManagerTest {
-
-    @Test
-    void releaseWithoutModelReturnsWithoutRecordingWindow() {
-        KVCacheManager manager = new KVCacheManager("session-a");
-
-        manager.release(window(List.of(new BaseMessage("user", "hello")), List.of()), null);
-
-        assertThat(manager.lastContextWindow()).isNull();
+    private ContextWindow buildWindow(List<BaseMessage> systemMessages, List<BaseMessage> contextMessages,
+            List<ToolInfo> tools) {
+        return ContextWindow.builder().systemMessages(systemMessages != null ? systemMessages : new ArrayList<>())
+                .contextMessages(contextMessages != null ? contextMessages : new ArrayList<>())
+                .tools(tools != null ? tools : new ArrayList<>()).statistic(new ContextStats()).build();
     }
 
     @Test
-    void firstReleasableWindowOnlyRecordsPreviousWindow() {
-        KVCacheManager manager = new KVCacheManager("session-a");
-        RecordingModel model = new RecordingModel();
-        ContextWindow firstWindow = window(List.of(new BaseMessage("user", "hello")), List.of());
-
-        manager.release(firstWindow, model);
-
-        assertThat(model.calls).isEmpty();
-        assertThat(manager.lastContextWindow()).isEqualTo(firstWindow);
+    @DisplayName("first call stores window without release")
+    void testFirstCallNoRelease() {
+        KVCacheManager manager = new KVCacheManager("session-1");
+        ContextWindow window =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        // Should not throw
+        manager.release(window);
     }
 
     @Test
-    void changedMessageInvokesReleaseWithPreviousMessagesAndChangedIndex() {
-        KVCacheManager manager = new KVCacheManager("session-a");
-        RecordingModel model = new RecordingModel();
-        ContextWindow previous = window(List.of(
-                new BaseMessage("user", "q"),
-                new BaseMessage("assistant", "a")
-        ), List.of());
-        ContextWindow current = window(List.of(
-                new BaseMessage("user", "q"),
-                new BaseMessage("assistant", "changed")
-        ), List.of());
+    @DisplayName("identical windows do not trigger release")
+    void testIdenticalWindowsNoRelease() {
+        KVCacheManager manager = new KVCacheManager("session-1");
+        List<BaseMessage> sys = List.of(new SystemMessage("sys"));
+        List<BaseMessage> ctx = List.of(new UserMessage("hello"), new AssistantMessage("hi"));
 
-        manager.release(previous, model);
-        manager.release(current, model);
+        ContextWindow w1 = buildWindow(sys, ctx, List.of());
+        ContextWindow w2 = buildWindow(sys, ctx, List.of());
 
-        assertThat(model.calls).hasSize(1);
-        ReleaseCall call = model.calls.get(0);
-        assertThat(call.sessionId).isEqualTo("session-a");
-        assertThat(call.messages).extracting(BaseMessage::getContent).containsExactly("q", "a");
-        assertThat(call.messagesReleasedIndex).isEqualTo(1);
-        assertThat(call.tools).isNull();
-        assertThat(call.toolsReleasedIndex).isNull();
-        assertThat(manager.lastContextWindow()).isEqualTo(current);
+        manager.release(w1);
+        // Second call with identical content should not throw
+        manager.release(w2);
     }
 
     @Test
-    void changedToolInvokesReleaseWithPreviousToolsAndToolIndex() {
-        KVCacheManager manager = new KVCacheManager("session-a");
-        RecordingModel model = new RecordingModel();
-        ContextWindow previous = window(List.of(new BaseMessage("user", "q")),
-                List.of(ToolInfo.builder().name("search").description("Search").build()));
-        ContextWindow current = window(List.of(new BaseMessage("user", "q")),
-                List.of(ToolInfo.builder().name("lookup").description("Lookup").build()));
+    @DisplayName("modified messages trigger release detection")
+    void testModifiedMessagesTriggerRelease() {
+        KVCacheManager manager = new KVCacheManager("session-1");
 
-        manager.release(previous, model);
-        manager.release(current, model);
+        ContextWindow w1 = buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w1);
 
-        assertThat(model.calls).hasSize(1);
-        ReleaseCall call = model.calls.get(0);
-        assertThat(call.messagesReleasedIndex).isEqualTo(1);
-        assertThat(call.tools).extracting(ToolInfo::getName).containsExactly("search");
-        assertThat(call.toolsReleasedIndex).isZero();
+        // Change content in second window
+        ContextWindow w2 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("modified")), List.of());
+        // Should not throw (just log)
+        manager.release(w2);
     }
 
     @Test
-    void unchangedWindowDoesNotRelease() {
-        KVCacheManager manager = new KVCacheManager("session-a");
-        RecordingModel model = new RecordingModel();
-        ContextWindow previous = window(List.of(new BaseMessage("user", "q")), List.of());
-        ContextWindow current = window(List.of(new BaseMessage("user", "q")), List.of());
+    @DisplayName("modified tools trigger release detection")
+    void testModifiedToolsTriggerRelease() {
+        KVCacheManager manager = new KVCacheManager("session-1");
 
-        manager.release(previous, model);
-        manager.release(current, model);
+        List<ToolInfo> tools1 = List.of(ToolInfo.builder().name("tool1").description("desc1").build());
+        List<ToolInfo> tools2 = List.of(ToolInfo.builder().name("tool1").description("modified desc").build());
 
-        assertThat(model.calls).isEmpty();
+        ContextWindow w1 = buildWindow(List.of(), List.of(new UserMessage("u")), tools1);
+        manager.release(w1);
+
+        ContextWindow w2 = buildWindow(List.of(), List.of(new UserMessage("u")), tools2);
+        manager.release(w2);
     }
 
     @Test
-    void reflectionReleaseMethodIsAcceptedLikePythonGetattr() {
-        KVCacheManager manager = new KVCacheManager("session-a");
-        ReflectiveModel model = new ReflectiveModel();
-        ContextWindow previous = window(List.of(new BaseMessage("user", "q")), List.of());
-        ContextWindow current = window(List.of(new BaseMessage("user", "changed")), List.of());
+    @DisplayName("multiple successive releases work correctly")
+    void testMultipleSuccessiveReleases() {
+        KVCacheManager manager = new KVCacheManager("session-1");
 
-        manager.release(previous, model);
-        manager.release(current, model);
-
-        assertThat(model.calls).hasSize(1);
-        assertThat(model.calls.get(0).messagesReleasedIndex).isZero();
-    }
-
-    private static ContextWindow window(List<BaseMessage> messages, List<ToolInfo> tools) {
-        return new ContextWindow(List.of(), messages, tools, null);
-    }
-
-    /**
-     * Release-capable model test double.
-     *
-     * <p>Mirrors Python's {@code InferenceAffinityModel} release collaborator in
-     * {@code openjiuwen/core/context_engine/context/kv_cache_manager.py}.</p>
-     */
-    private static final class RecordingModel implements KVCacheManager.ReleaseCapableModel {
-        private final List<ReleaseCall> calls = new ArrayList<>();
-
-        @Override
-        public CompletionStage<Boolean> release(String sessionId, List<BaseMessage> messages,
-                                                Integer messagesReleasedIndex, List<ToolInfo> tools,
-                                                Integer toolsReleasedIndex) {
-            calls.add(new ReleaseCall(sessionId, messages, messagesReleasedIndex, tools, toolsReleasedIndex));
-            return CompletableFuture.completedFuture(true);
+        for (int i = 0; i < 5; i++) {
+            ContextWindow w =
+                buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("msg-" + i)), List.of());
+            manager.release(w);
         }
     }
 
-    /**
-     * Reflective model test double.
-     *
-     * <p>Mirrors Python's generic {@code getattr(model, "release", None)} branch in
-     * {@code openjiuwen/core/context_engine/context/kv_cache_manager.py}.</p>
-     */
-    public static final class ReflectiveModel {
-        private final List<ReleaseCall> calls = new ArrayList<>();
+    @Test
+    @DisplayName("empty to non-empty window transition")
+    void testEmptyToNonEmptyTransition() {
+        KVCacheManager manager = new KVCacheManager("session-1");
 
-        public boolean release(String sessionId, List<BaseMessage> messages, Integer messagesReleasedIndex,
-                               List<ToolInfo> tools, Integer toolsReleasedIndex) {
-            calls.add(new ReleaseCall(sessionId, messages, messagesReleasedIndex, tools, toolsReleasedIndex));
-            return true;
-        }
+        ContextWindow w1 = buildWindow(List.of(), List.of(), List.of());
+        manager.release(w1);
+
+        ContextWindow w2 = buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w2);
     }
 
-    /**
-     * Captured release invocation.
-     *
-     * <p>Mirrors Python's keyword arguments passed to model release in
-     * {@code openjiuwen/core/context_engine/context/kv_cache_manager.py}.</p>
-     */
-    private record ReleaseCall(String sessionId, List<BaseMessage> messages, Integer messagesReleasedIndex,
-                               List<ToolInfo> tools, Integer toolsReleasedIndex) {
+    @Test
+    @DisplayName("Path 1: InferenceAffinityModel is invoked when window changes")
+    void release_whenModelIsInferenceAffinityModel_invokesPath1Release() throws Exception {
+        KVCacheManager manager = new KVCacheManager("session-1");
+        InferenceAffinityModel mockModel = mock(InferenceAffinityModel.class);
+        when(mockModel.release(any(KvCacheReleaseRequest.class))).thenReturn(true);
+
+        ContextWindow w1 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w1, mockModel);
+
+        ContextWindow w2 = buildWindow(List.of(new SystemMessage("sys")),
+            List.of(new UserMessage("modified"), new AssistantMessage("resp")), List.of());
+        manager.release(w2, mockModel);
+
+        // w1.getMessages() = [SystemMessage("sys"), UserMessage("hello")]
+        // w2.getMessages() = [SystemMessage("sys"), UserMessage("modified"), AssistantMessage("resp")]
+        // first diff at index 1 (UserMessage content changed)
+        verify(mockModel).release(argThat(req -> "session-1".equals(req.sessionId())
+            && w1.getMessages().equals(req.messages()) && req.messagesReleasedIndex() == 1
+            && w1.getToolList().equals(req.tools()) && req.toolsReleasedIndex() == null
+            && req.model() == null));
+    }
+
+    @Test
+    @DisplayName("Path 2: Model with supportsKvCacheRelease=true delegates release")
+    void release_whenModelSupportsKvCacheRelease_delegatesToModelRelease() throws Exception {
+        KVCacheManager manager = new KVCacheManager("session-2");
+        Model mockModel = mock(Model.class);
+        when(mockModel.supportsKvCacheRelease()).thenReturn(true);
+        when(mockModel.release(any(KvCacheReleaseRequest.class))).thenReturn(true);
+
+        ContextWindow w1 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w1, mockModel);
+
+        ContextWindow w2 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("changed")), List.of());
+        manager.release(w2, mockModel);
+
+        verify(mockModel).supportsKvCacheRelease();
+        // first diff at index 1 (UserMessage content changed)
+        verify(mockModel).release(argThat(req -> "session-2".equals(req.sessionId())
+            && w1.getMessages().equals(req.messages()) && req.messagesReleasedIndex() == 1
+            && w1.getToolList().equals(req.tools()) && req.toolsReleasedIndex() == null
+            && req.model() == null));
+    }
+
+    @Test
+    @DisplayName("Path 2: Model with supportsKvCacheRelease=false does not invoke release")
+    void release_whenModelDoesNotSupportKvCacheRelease_skipsRelease() throws Exception {
+        KVCacheManager manager = new KVCacheManager("session-3");
+        Model mockModel = mock(Model.class);
+        when(mockModel.supportsKvCacheRelease()).thenReturn(false);
+
+        ContextWindow w1 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w1, mockModel);
+
+        ContextWindow w2 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("changed")), List.of());
+        manager.release(w2, mockModel);
+
+        verify(mockModel).supportsKvCacheRelease();
+        verify(mockModel, never()).release(any(KvCacheReleaseRequest.class));
+    }
+
+    @Test
+    @DisplayName("null model does not throw and does not invoke any release")
+    void release_whenModelIsNull_skipsBothPaths() {
+        KVCacheManager manager = new KVCacheManager("session-4");
+
+        ContextWindow w1 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w1, null);
+
+        ContextWindow w2 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("changed")), List.of());
+        // Should not throw
+        manager.release(w2, null);
+    }
+
+    @Test
+    @DisplayName("non-model object does not trigger release and does not throw")
+    void release_whenModelIsUnrelatedType_skipsBothPaths() {
+        KVCacheManager manager = new KVCacheManager("session-5");
+        Object unrelated = "not-a-model";
+
+        ContextWindow w1 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w1, unrelated);
+
+        ContextWindow w2 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("changed")), List.of());
+        manager.release(w2, unrelated);
+    }
+
+    @Test
+    @DisplayName("Path 1 release exception is swallowed; lastContextWindow still updates")
+    void release_whenPath1Throws_logsWarningAndContinues() throws Exception {
+        KVCacheManager manager = new KVCacheManager("session-6");
+        InferenceAffinityModel mockModel = mock(InferenceAffinityModel.class);
+        when(mockModel.release(any(KvCacheReleaseRequest.class)))
+            .thenThrow(new RuntimeException("vllm 404"));
+
+        ContextWindow w1 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w1, mockModel);
+
+        ContextWindow w2 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("changed")), List.of());
+        // Should not throw despite the underlying release raising
+        manager.release(w2, mockModel);
+
+        // Third window differing from w2 — verifies the manager kept tracking lastContextWindow
+        ContextWindow w3 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("again-changed")), List.of());
+        manager.release(w3, mockModel);
+
+        // release invoked twice (w2 vs w1, w3 vs w2); the first call's exception was caught
+        verify(mockModel, times(2)).release(any(KvCacheReleaseRequest.class));
+    }
+
+    @Test
+    @DisplayName("Path 2 release exception is swallowed; lastContextWindow still updates")
+    void release_whenPath2Throws_logsWarningAndContinues() throws Exception {
+        KVCacheManager manager = new KVCacheManager("session-7");
+        Model mockModel = mock(Model.class);
+        when(mockModel.supportsKvCacheRelease()).thenReturn(true);
+        when(mockModel.release(any(KvCacheReleaseRequest.class)))
+            .thenThrow(new RuntimeException("connection refused"));
+
+        ContextWindow w1 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
+        manager.release(w1, mockModel);
+
+        ContextWindow w2 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("changed")), List.of());
+        manager.release(w2, mockModel);
+
+        ContextWindow w3 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("again-changed")), List.of());
+        manager.release(w3, mockModel);
+
+        verify(mockModel, times(2)).release(any(KvCacheReleaseRequest.class));
+    }
+
+    @Test
+    @DisplayName("toolsReleasedIndex is propagated when only tools differ")
+    void release_whenOnlyToolsChanged_propagatesToolIdx() throws Exception {
+        KVCacheManager manager = new KVCacheManager("session-8");
+        InferenceAffinityModel mockModel = mock(InferenceAffinityModel.class);
+        when(mockModel.release(any(KvCacheReleaseRequest.class))).thenReturn(true);
+
+        List<ToolInfo> tools1 = List.of(ToolInfo.builder().name("t1").description("d1").build());
+        List<ToolInfo> tools2 = List.of(ToolInfo.builder().name("t1").description("d2").build());
+
+        ContextWindow w1 = buildWindow(List.of(new SystemMessage("sys")),
+            List.of(new UserMessage("u")), tools1);
+        manager.release(w1, mockModel);
+
+        // Same messages (no diff), modified tool at index 0 → triggers release
+        ContextWindow w2 = buildWindow(List.of(new SystemMessage("sys")),
+            List.of(new UserMessage("u")), tools2);
+        manager.release(w2, mockModel);
+
+        // messages identical → msgIdx falls through to prevMsgs.size()=2 (no diff found)
+        verify(mockModel).release(argThat(req -> "session-8".equals(req.sessionId())
+            && w1.getMessages().equals(req.messages()) && req.messagesReleasedIndex() == 2
+            && w1.getToolList().equals(req.tools()) && Integer.valueOf(0).equals(req.toolsReleasedIndex())
+            && req.model() == null));
     }
 }

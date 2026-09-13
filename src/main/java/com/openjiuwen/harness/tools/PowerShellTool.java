@@ -113,24 +113,37 @@ public class PowerShellTool {
         };
     }
 
+    /**
+     * Wait for the process to exit with the framework default process-join timeout.
+     * On expiry, forcibly destroy the child and raise a recoverable SysOperationError.
+     *
+     * @param process the started child process
+     * @param command the command line (for diagnostics)
+     * @return the process exit code
+     * @since 0.1.7
+     */
     private static int awaitProcessExit(Process process, String command) {
+        // process.onExit().join() is bounded by the framework default process-join
+        // timeout; on expiry, destroyForcibly and raise a recoverable SysOperationError.
+        // Mirrors BashTool / CodeTool treatment.
         long joinMs = TimeoutConstants.processJoinMs();
         try {
             return process.onExit()
                     .orTimeout(joinMs, TimeUnit.MILLISECONDS)
                     .join()
                     .exitValue();
-        } catch (CompletionException exception) {
-            if (exception.getCause() instanceof TimeoutException) {
+        } catch (CompletionException ce) {
+            if (ce.getCause() instanceof TimeoutException) {
                 Loggers.PERFORMANCE.warning(
                         "PowerShellTool process join timeout after {}ms, command='{}'",
                         joinMs, command);
                 process.destroyForcibly();
                 throw new SysOperationError(
                         StatusCode.SYS_OPERATION_PROCESS_JOIN_TIMEOUT,
-                        null, null, exception, Map.of("timeout", joinMs, "command", command));
+                        null, null, ce, Map.of(
+                                "timeout", joinMs, "command", command));
             }
-            throw exception;
+            throw ce;
         }
     }
 

@@ -9,69 +9,115 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Deterministic local embedding implementation.
- *
- * <p>Mirrors Python's {@code Embedding} compatibility surface in
- * {@code openjiuwen/core/retrieval/embedding/base.py}.</p>
+ * Deterministic local embedding based on SHA-256 hashing.
+ * 
+ * @since 0.1.7
  */
-public class HashEmbedding extends Embedding {
-
+public class HashEmbedding implements Embedding {
     private final int dimension;
     private final int maxBatchSize;
 
+    /**
+     * HashEmbedding.
+     * 
+     * @since 0.1.7
+     */
     public HashEmbedding() {
         this(32, 256);
     }
 
+    /**
+     * HashEmbedding.
+     * 
+     * @param dimension dimension
+     * @param maxBatchSize maxBatchSize
+     * @since 0.1.7
+     */
     public HashEmbedding(int dimension, int maxBatchSize) {
         this.dimension = Math.max(1, dimension);
         this.maxBatchSize = Math.max(1, maxBatchSize);
     }
 
+    /**
+     * embedQuery.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
-        return CompletableFuture.completedFuture(embedText(text == null ? "" : text));
+    public List<Float> embedQuery(String text) {
+        return embedText(text == null ? "" : text);
     }
 
+    /**
+     * embedDocuments.
+     * 
+     * @param texts texts
+     * @param batchSize batchSize
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<List<List<Double>>> embedDocuments(
-            List<String> texts,
-            Integer batchSize,
-            Map<String, Object> kwargs
-    ) {
-        List<List<Double>> result = new ArrayList<>();
+    public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
+        List<List<Float>> result = new ArrayList<>();
         if (texts == null) {
-            return CompletableFuture.completedFuture(result);
+            return result;
         }
-        for (String text : texts) {
-            result.add(embedText(text == null ? "" : text));
+        for (Object text : texts) {
+            result.add(embedText(text == null ? "" : String.valueOf(text)));
         }
-        return CompletableFuture.completedFuture(result);
+        return result;
     }
 
+    /**
+     * getDimension.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public int getDimension() {
         return dimension;
     }
 
+    /**
+     * getMaxBatchSize.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
     public int getMaxBatchSize() {
         return maxBatchSize;
     }
 
-    private List<Double> embedText(String text) {
+    /**
+     * embedText.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Float> embedText(String text) {
         byte[] digest = digest(text);
-        List<Double> vector = new ArrayList<>(dimension);
+        List<Float> vector = new ArrayList<>(dimension);
         for (int i = 0; i < dimension; i++) {
             int unsigned = digest[i % digest.length] & 0xff;
-            vector.add((unsigned / 255.0d) * 2.0d - 1.0d);
+            vector.add((unsigned / 255.0f) * 2.0f - 1.0f);
         }
         return vector;
     }
 
+    /**
+     * digest.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private static byte[] digest(String text) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");

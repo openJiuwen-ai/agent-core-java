@@ -4,7 +4,6 @@
 
 package com.openjiuwen.harness.tools;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.spi.store.BaseKVStore;
@@ -13,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -25,8 +23,6 @@ import java.util.Objects;
  */
 public class KvTodoStorage implements TodoStorage {
     private static final Logger logger = LoggerFactory.getLogger(KvTodoStorage.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private final BaseKVStore kvStore;
 
     public KvTodoStorage(BaseKVStore kvStore) {
@@ -46,10 +42,11 @@ public class KvTodoStorage implements TodoStorage {
             logger.info("No todo data found in Redis for key: {}", key);
             return new ArrayList<>();
         }
-        // Redis clients may return String or byte[]; String.valueOf(byte[]) is not JSON.
+
+        // 【修复点】：安全地将 Object 转换为 String，兼容底层返回 byte[] 的情况
         String json;
-        if (value instanceof byte[] bytes) {
-            json = new String(bytes, StandardCharsets.UTF_8);
+        if (value instanceof byte[]) {
+            json = new String((byte[]) value, java.nio.charset.StandardCharsets.UTF_8);
         } else {
             json = String.valueOf(value);
         }
@@ -57,15 +54,14 @@ public class KvTodoStorage implements TodoStorage {
             logger.info("No todo data found in Redis for key: {}", key);
             return new ArrayList<>();
         }
-        TodoItem[] items = MAPPER.readValue(json, TodoItem[].class);
-        return items == null ? new ArrayList<>() : new ArrayList<>(List.of(items));
+        TodoItem[] items = JsonUtils.safeJsonLoads(json, TodoItem[].class, new TodoItem[0]);
+        return new ArrayList<>(List.of(items));
     }
 
     @Override
     public void save(String sessionId, List<TodoItem> todos) throws IOException {
         String key = buildKey(sessionId);
-        Object dumped = JsonUtils.safeJsonDumps(todos, "[]");
-        kvStore.set(key, dumped == null ? "[]" : String.valueOf(dumped));
+        kvStore.set(key, JsonUtils.safeJsonDumps(todos, "[]"));
     }
 
     @Override

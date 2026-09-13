@@ -92,7 +92,11 @@ final class ContextClosingStream<T> implements OperatorStream<T> {
     @Override
     public T next() {
         try {
-            return delegate.next();
+            T value = delegate.next();
+            if (!delegate.hasNext()) {
+                close();
+            }
+            return value;
         } catch (RuntimeException | Error ex) {
             close();
             throw ex;

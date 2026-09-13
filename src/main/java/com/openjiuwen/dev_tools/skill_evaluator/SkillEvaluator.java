@@ -4,11 +4,10 @@
 
 package com.openjiuwen.dev_tools.skill_evaluator;
 
-import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.foundation.tool.ToolDecorator;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -17,232 +16,246 @@ import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
 
 /**
- * Skill evaluator that builds a ReAct agent for evaluating skill packages.
- *
- * <p>Mirrors Python's {@code SkillEvaluator} in
- * {@code openjiuwen/dev_tools/skill_evaluator/skill_evaluator.py}.</p>
+ * SkillEvaluator - Use LLM plus bundled evaluation skills to assess another skill.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.dev_tools.skill_evaluator.SkillEvaluator} while staying
+ * aligned with the current Java 17 stack.
+ * 
+ * @since 0.1.7
  */
 public class SkillEvaluator {
-    private static final String DEFAULT_SKILLS_DIR = "openjiuwen/dev_tools/skill_evaluator/skills";
-    private static final String DEFAULT_FILES_BASE_DIR = "openjiuwen/dev_tools/skill_evaluator";
-    private static final int DEFAULT_MAX_ITERATIONS = 25;
+    static final String DEFAULT_OUTPUT_DIR = "outputs/evaluations";
+    private static final String DEFAULT_CONVERSATION_ID = "skill_eval_001";
+    private static final String DEFAULT_SUBAGENT_CONVERSATION_ID = "skill_eval_subagent";
 
-    private final Map<String, String> environment;
     private ReActAgent agent;
-    private List<ToolCard> tools = new ArrayList<>();
+    private ReActAgentConfig config;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private final List<Object> tools = new ArrayList<>();
+    private Path skillsDir;
     private Path targetSkillsRoot;
+    private Path outputDir;
 
-    public SkillEvaluator() {
-        this(System.getenv());
-    }
+    /**
+     * Create and configure the evaluation agent from environment variables.
+     * 
+     * @return async completion signal
+     * @since 0.1.7
+     */
+    public CompletableFuture<Void> createAgent() {
+        return OpenJiuwenExecutors.runBackgroundAsync(() -> {
+            Path resolvedSkillsDir = resolveDefaultSkillsDir();
+            Path resolvedTargetSkillsRoot = resolveTargetSkillsRoot();
+            Path resolvedOutputDir = resolvePathConfig("OUTPUT_DIR", Path.of(DEFAULT_OUTPUT_DIR));
 
-    public SkillEvaluator(Map<String, String> environment) {
-        this.environment = Collections.unmodifiableMap(loadDotEnv(environment));
-    }
+            this.skillsDir = resolvedSkillsDir;
+            this.targetSkillsRoot = resolvedTargetSkillsRoot;
+            this.outputDir = resolvedOutputDir;
+            this.agent = new ReActAgent(
+                    AgentCard.builder().name("skill_evaluator_agent").description("Skill Evaluator Agent").build());
 
-    public CompletionStage<Void> createAgent() {
-        Path skillsDir = expandUser(env("SKILLS_DIR", DEFAULT_SKILLS_DIR)).toAbsolutePath().normalize();
-        this.targetSkillsRoot = resolveTargetSkillsRoot(skillsDir);
-        String filesBaseDir = env("FILES_BASE_DIR", expandUser(DEFAULT_FILES_BASE_DIR)
-                .toAbsolutePath()
-                .normalize()
-                .toString());
-        int maxIterations = parseInt(env("MAX_ITERATIONS", String.valueOf(DEFAULT_MAX_ITERATIONS)),
-                DEFAULT_MAX_ITERATIONS);
-        String outputDir = env("OUTPUT_DIR", "");
+            Path filesBaseDir = Paths.get("").toAbsolutePath().normalize();
+            String systemPrompt = String.join("\n", "You are an intelligent assistant.",
+                    "All user-provided files are located at '" + filesBaseDir + "'",
+                    "Put all generated files into '" + resolvedOutputDir.toAbsolutePath().normalize() + "'.",
+                    "You may use tools when necessary.");
+            int maxIterations = parseIntConfig("MAX_ITERATIONS", 25);
 
-        String apiBase = env("API_BASE", "");
-        String apiKey = env("API_KEY", "");
-        String modelName = env("MODEL_NAME", "");
-        String modelProvider = env("MODEL_PROVIDER", "");
-        boolean verifySsl = parseBoolean(env("LLM_SSL_VERIFY", "False"));
+            SysOperationCard sysopCard = SysOperationCard.builder().mode(OperationMode.LOCAL)
+                    .workConfig(LocalWorkConfig.builder().workDir(null).build()).build();
+            Runner.resourceMgr().addSysOperation(sysopCard, null);
 
-        AgentCard card = new AgentCard();
-        card.setName("skill_evaluator_agent");
-        card.setDescription("Skill Evaluator Agent");
-        this.agent = new ReActAgent(card);
+            this.config = ReActAgentConfig.builder().build()
+                    .configureModelClient(resolveStringConfig("MODEL_PROVIDER", ""), resolveStringConfig("API_KEY", ""),
+                            resolveStringConfig("API_BASE", ""), resolveStringConfig("MODEL_NAME", ""),
+                            Boolean.parseBoolean(resolveStringConfig("LLM_SSL_VERIFY", "false")))
+                    .configurePromptTemplate(List.of(Map.of("role", "system", "content", systemPrompt)))
+                    .configureMaxIterations(maxIterations).configureContextEngine(null, null, false);
+            this.config.setSysOperationId(sysopCard.getId());
+            this.agent.configure(this.config);
 
-        String systemPrompt = "You are an intelligent assistant.\n"
-                + "All user-provided files are located at '" + filesBaseDir + "'\n"
-                + "Put all generated files into " + outputDir + "\n"
-                + "You may use tools when necessary.\n";
+            tools.clear();
+            addSysOpTool(sysopCard.getId(), "fs", "readFile");
+            addSysOpTool(sysopCard.getId(), "fs", "writeFile");
+            addSysOpTool(sysopCard.getId(), "fs", "listFiles");
+            addSysOpTool(sysopCard.getId(), "fs", "listDirectories");
+            addSysOpTool(sysopCard.getId(), "fs", "searchFiles");
+            addSysOpTool(sysopCard.getId(), "shell", "executeCmd");
+            addSysOpTool(sysopCard.getId(), "code", "executeCode");
 
-        SysOperationCard sysopCard = new SysOperationCard();
-        sysopCard.setMode(OperationMode.LOCAL);
-        sysopCard.setWorkConfig(new LocalWorkConfig());
-        Runner.resourceMgr().addSysOperation(sysopCard);
-
-        ReActAgentConfig config = new ReActAgentConfig()
-                .configureModelClient(modelProvider, apiKey, apiBase, modelName, verifySsl)
-                .configurePromptTemplate(List.of(Map.of("role", "system", "content", systemPrompt)))
-                .configureMaxIterations(maxIterations)
-                .configureContextEngine(null, null, false, false);
-        config.setSysOperationId(sysopCard.getId());
-        this.agent.configure(config);
-
-        this.tools = new ArrayList<>();
-        addSysOpTool(sysopCard.getId(), "fs", "read_file");
-        addSysOpTool(sysopCard.getId(), "code", "execute_code");
-        addSysOpTool(sysopCard.getId(), "shell", "execute_cmd");
-        addSysOpTool(sysopCard.getId(), "fs", "write_file");
-        this.agent.getAbilityManager().add(this.tools);
-
-        Tool subagentTool = createSubagentTool(config, this.tools, skillsDir.toString());
-        Runner.resourceMgr().addTool(subagentTool);
-        this.agent.getAbilityManager().add(subagentTool.getCard());
-
-        if (!Files.exists(skillsDir)) {
-            return CompletableFuture.failedFuture(
-                    new NoSuchFileException("Skills directory '" + skillsDir + "' does not exist."));
-        }
-        return this.agent.registerSkill(skillsDir.toString()).thenApply(ignored -> null);
-    }
-
-    public CompletionStage<Map<String, Object>> evaluate(Path skillPath) {
-        return evaluate(skillPath, "", null);
-    }
-
-    public CompletionStage<Map<String, Object>> evaluate(Path skillPath, String requirement) {
-        return evaluate(skillPath, requirement, null);
+            this.agent.getAbilityManager().add(createSubagentTool());
+            this.agent.registerSkill(resolvedSkillsDir.toString(), Path.of("").toAbsolutePath().normalize());
+        });
     }
 
     /**
-     * Evaluates a skill package located under the configured {@code SKILLS_DIR}.
-     *
-     * <p>Both relative paths (resolved against {@code SKILLS_DIR}) and absolute paths are accepted
-     * when their canonical path remains inside the configured skills root. Paths containing {@code ..}
-     * or escaping via symlinks are rejected.</p>
+     * Evaluate a skill and write reports into the requested output directory.
+     * 
+     * @param skillPath relative skill path within {@code SKILLS_DIR}
+     * @param requirement extra requirement text
+     * @param outputPath output directory
+     * @return async evaluation result object
+     * @since 0.1.7
      */
-    public CompletionStage<Map<String, Object>> evaluate(Path skillPath, String requirement, Path outputPath) {
-        Objects.requireNonNull(skillPath, "skillPath");
-        Path reportDir = outputPath != null ? outputPath : missingOutputDir();
-        if (agent == null) {
-            throw new IllegalStateException("SkillEvaluator.agent is not initialized. Call createAgent() first.");
-        }
-        if (targetSkillsRoot == null) {
-            throw new IllegalStateException("SkillEvaluator skills root is not initialized. Call createAgent() first.");
-        }
-        Path resolvedSkillPath = resolveTargetSkillPath(skillPath.toString(), targetSkillsRoot);
-        String query = buildEvaluationQuery(resolvedSkillPath, requirement, reportDir);
-        Map<String, Object> inputs = new LinkedHashMap<>();
-        inputs.put("query", query);
-        inputs.put("conversation_id", "skill_eval_001");
-        return Runner.runAgent(agent, inputs).thenApply(SkillEvaluator::asResultMap);
+    public CompletableFuture<Object> evaluate(String skillPath, String requirement, String outputPath) {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
+            ensureAgentReady();
+            Path resolvedSkillPath = resolveTargetSkillPath(skillPath, targetSkillsRoot);
+            Path reportDir = resolveReportDir(outputPath, outputDir);
+            String query = buildEvaluationQuery(resolvedSkillPath, reportDir, requirement);
+
+            Map<String, Object> inputs = new LinkedHashMap<>();
+            inputs.put("query", query);
+            inputs.put("conversation_id", DEFAULT_CONVERSATION_ID);
+            return Runner.runAgent(agent, inputs, null, null);
+        });
     }
 
+    /**
+     * evaluate.
+     * 
+     * @param skillPath relative skill path within {@code SKILLS_DIR}
+     * @param requirement requirement
+     * @param outputPath outputPath
+     * @return the result
+     * @since 0.1.7
+     */
+    public CompletableFuture<Object> evaluate(Path skillPath, String requirement, Path outputPath) {
+        return evaluate(skillPath.toString(), requirement,
+                outputPath != null ? outputPath.toAbsolutePath().normalize().toString() : null);
+    }
+
+    /**
+     * evaluate.
+     * 
+     * @param skillPath skillPath
+     * @return the result
+     * @since 0.1.7
+     */
+    public CompletableFuture<Object> evaluate(Path skillPath) {
+        return evaluate(skillPath, "", null);
+    }
+
+    /**
+     * getAgent.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public ReActAgent getAgent() {
         return agent;
     }
 
-    public void setAgent(ReActAgent agent) {
-        this.agent = agent;
+    Path getSkillsDir() {
+        return skillsDir;
     }
 
-    public List<ToolCard> getTools() {
-        return List.copyOf(tools);
+    Path getOutputDir() {
+        return outputDir;
     }
 
-    String buildEvaluationQuery(Path skillPath, String requirement, Path reportDir) {
-        String suffix = requirement == null ? "" : requirement;
-        return "Help me evaluate the skill in the '" + skillPath + "'.\n"
-                + "Save evaluation report to '" + reportDir + "' foler." + suffix;
-    }
-
-    private void addSysOpTool(String sysOperationId, String operationName, String toolName) {
-        Object toolCard = Runner.resourceMgr().getSysOpToolCards(
-                sysOperationId,
-                List.of(operationName),
-                List.of(toolName)
-        );
-        if (toolCard instanceof ToolCard card) {
-            tools.add(card);
+    static String buildEvaluationQuery(Path skillPath, Path reportDir, String requirement) {
+        StringBuilder query = new StringBuilder().append("Help me evaluate the skill in '")
+                .append(skillPath.toAbsolutePath().normalize()).append("'.\n").append("Save the evaluation report to '")
+                .append(reportDir.toAbsolutePath().normalize()).append("' folder.");
+        if (requirement != null && !requirement.isBlank()) {
+            query.append("\n").append(requirement.trim());
         }
+        return query.toString();
     }
 
-    private Tool createSubagentTool(ReActAgentConfig config, List<ToolCard> toolCards, String defaultSkillsDir) {
-        return ToolDecorator.tool(
-                inputs -> invokeSubagent(config, toolCards, defaultSkillsDir, inputs),
-                ToolDecorator.Options.builder()
-                        .name("create_subagent")
-                        .description("Create and invoke a subagent to complete a specified task. "
-                                + "The subagent loads skills from the provided skills directory and executes it.")
-                        .build()
-        );
-    }
-
-    private String invokeSubagent(ReActAgentConfig config,
-                                  List<ToolCard> toolCards,
-                                  String defaultSkillsDir,
-                                  Map<String, Object> inputs) {
-        String userPrompt = stringValue(inputs, "user_prompt", "");
-        String skillsDir = stringValue(inputs, "skills_dir", "default");
-        Path resolvedDir = expandUser("default".equals(skillsDir) ? defaultSkillsDir : skillsDir);
-
-        AgentCard card = new AgentCard();
-        card.setName("skill_evaluator_subagent");
-        card.setDescription("Subagent");
-        ReActAgent subAgent = new ReActAgent(card);
-
-        SysOperationCard sysopCard = new SysOperationCard();
-        sysopCard.setMode(OperationMode.LOCAL);
-        sysopCard.setWorkConfig(new LocalWorkConfig());
-        Runner.resourceMgr().addSysOperation(sysopCard);
-
-        ReActAgentConfig subConfig = copyConfig(config);
-        subConfig.setSysOperationId(sysopCard.getId());
-        subAgent.configure(subConfig);
-        subAgent.getAbilityManager().add(toolCards);
-
-        if (Files.exists(resolvedDir)) {
-            await(subAgent.registerSkill(resolvedDir.toString()));
+    static Path resolveReportDir(String outputPath, Path fallbackOutputDir) {
+        if (outputPath != null && !outputPath.isBlank()) {
+            return Paths.get(outputPath).toAbsolutePath().normalize();
         }
-        AgentSessionApi apiSession = null;
-        Object result = subAgent.invoke(userPrompt, apiSession);
-        return result == null ? null : String.valueOf(result);
+        return fallbackOutputDir.toAbsolutePath().normalize();
     }
 
-    private static Path missingOutputDir() {
-        throw new IllegalStateException("SkillEvaluator has no attribute '_output_dir'");
+    static Path resolveDefaultSkillsDir() {
+        List<Path> candidates = List.of(Path.of("openjiuwen", "dev_tools", "skill_evaluator", "skills"),
+                Path.of("src", "main", "resources", "openjiuwen", "dev_tools", "skill_evaluator", "skills"));
+        for (Path candidate : candidates) {
+            Path normalized = candidate.toAbsolutePath().normalize();
+            if (Files.isDirectory(normalized)) {
+                return normalized;
+            }
+        }
+        throw new IllegalStateException("Could not resolve SkillEvaluator skills directory. Tried: "
+                + candidates.stream().map(path -> path.toAbsolutePath().normalize().toString()).toList());
+    }
+
+    static ReActAgentConfig copyConfig(ReActAgentConfig source) {
+        List<Map<String, String>> promptTemplate = new ArrayList<>();
+        if (source.getPromptTemplate() != null) {
+            for (Map<String, String> item : source.getPromptTemplate()) {
+                promptTemplate.add(item != null ? new LinkedHashMap<>(item) : null);
+            }
+        }
+        Map<String, String> headers =
+            source.getCustomHeaders() != null ? new LinkedHashMap<>(source.getCustomHeaders()) : null;
+        List<Object> contextProcessors =
+            source.getContextProcessors() != null ? new ArrayList<>(source.getContextProcessors()) : null;
+
+        return ReActAgentConfig.builder().memScopeId(source.getMemScopeId()).modelName(source.getModelName())
+                .modelProvider(source.getModelProvider()).apiKey(source.getApiKey()).apiBase(source.getApiBase())
+                .promptTemplateName(source.getPromptTemplateName()).promptTemplate(promptTemplate)
+                .customHeaders(headers).maxIterations(source.getMaxIterations())
+                .modelClientConfig(source.getModelClientConfig()).modelConfigObj(source.getModelConfigObj())
+                .sysOperationId(source.getSysOperationId()).contextEngineConfig(source.getContextEngineConfig())
+                .contextProcessors(contextProcessors).build();
     }
 
     /**
-     * Resolves an evaluation target skill path against a trusted skills root.
-     *
-     * <p>Relative paths are resolved against {@code skillsRoot}. Absolute paths are accepted when
-     * their canonical path remains under {@code skillsRoot}. Path segments containing {@code ..}
-     * are always rejected.</p>
-     *
-     * @param skillPath requested skill path
-     * @param skillsRoot trusted skills root directory
-     * @return canonical skill directory containing {@code SKILL.md}
-     * @throws SecurityException if the path escapes the skills root
+     * ensureAgentReady.
+     * 
+     * @since 0.1.7
      */
+    private void ensureAgentReady() {
+        if (agent == null || config == null || skillsDir == null || targetSkillsRoot == null || outputDir == null) {
+            throw new IllegalStateException("Agent not initialized. Call createAgent() first.");
+        }
+    }
+
+    private Path resolveTargetSkillsRoot() {
+        String configured = resolveStringConfig("SKILLS_DIR", "");
+        Path path = configured == null || configured.isBlank()
+                ? Path.of("")
+                : Paths.get(configured);
+        try {
+            Path realPath = path.toAbsolutePath().normalize().toRealPath();
+            if (!Files.isDirectory(realPath)) {
+                throw new IllegalStateException("Configured SKILLS_DIR is not a directory: " + realPath);
+            }
+            return realPath;
+        } catch (IOException e) {
+            throw new IllegalStateException("Configured SKILLS_DIR does not exist: " + path, e);
+        }
+    }
+
     static Path resolveTargetSkillPath(String skillPath, Path skillsRoot) {
         if (skillPath == null || skillPath.isBlank()) {
             throw new IllegalArgumentException("Skill path must not be blank.");
         }
-        if (skillsRoot == null) {
-            throw new IllegalArgumentException("Skills root must not be null.");
-        }
         Path requestedPath = Path.of(skillPath);
+        if (requestedPath.isAbsolute()) {
+            throw new SecurityException("Skill path must be relative to SKILLS_DIR.");
+        }
         for (Path segment : requestedPath) {
             if ("..".equals(segment.toString())) {
                 throw new SecurityException("Skill path must not contain '..'.");
@@ -251,10 +264,8 @@ public class SkillEvaluator {
 
         try {
             Path realSkillsRoot = skillsRoot.toRealPath();
-            Path targetPath = requestedPath.isAbsolute()
-                    ? requestedPath.toAbsolutePath().normalize()
-                    : realSkillsRoot.resolve(requestedPath).normalize();
-            if (!targetPath.startsWith(skillsRoot.toAbsolutePath().normalize())) {
+            Path targetPath = realSkillsRoot.resolve(requestedPath).normalize();
+            if (!targetPath.startsWith(realSkillsRoot)) {
                 throw new SecurityException("Skill path is outside SKILLS_DIR.");
             }
             Path realTargetPath = targetPath.toRealPath();
@@ -274,165 +285,160 @@ public class SkillEvaluator {
         }
     }
 
-    private static Path resolveTargetSkillsRoot(Path configuredSkillsDir) {
+    /**
+     * resolvePathConfig.
+     * 
+     * @param key key
+     * @param defaultPath defaultPath
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Path resolvePathConfig(String key, Path defaultPath) {
+        String configured = resolveStringConfig(key, "");
+        Path path = configured.isBlank() ? defaultPath : Path.of(configured);
+        return path.toAbsolutePath().normalize();
+    }
+
+    /**
+     * resolveStringConfig.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String resolveStringConfig(String key, String defaultValue) {
+        String env = System.getenv(key);
+        if (env != null && !env.isBlank()) {
+            return env;
+        }
+        String property = System.getProperty(key);
+        if (property != null && !property.isBlank()) {
+            return property;
+        }
+        return defaultValue;
+    }
+
+    /**
+     * parseIntConfig.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
+    private static int parseIntConfig(String key, int defaultValue) {
+        String configured = resolveStringConfig(key, "");
+        if (configured.isBlank()) {
+            return defaultValue;
+        }
         try {
-            Path realPath = configuredSkillsDir.toRealPath();
-            if (!Files.isDirectory(realPath)) {
-                throw new IllegalStateException("Configured SKILLS_DIR is not a directory: " + realPath);
+            return Integer.parseInt(configured);
+        } catch (NumberFormatException ex) {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * addSysOpTool.
+     * 
+     * @param sysOperationId sysOperationId
+     * @param operationName operationName
+     * @param toolName toolName
+     * @since 0.1.7
+     */
+    private void addSysOpTool(String sysOperationId, String operationName, String toolName) {
+        Object toolCard = Runner.resourceMgr().getSysOpToolCards(sysOperationId, operationName, toolName);
+        if (toolCard != null) {
+            tools.add(toolCard);
+            agent.getAbilityManager().add(toolCard);
+        }
+    }
+
+    /**
+     * createSubagentTool.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    private LocalFunction createSubagentTool() {
+        ToolCard card = ToolCard.builder().id("create_subagent").name("create_subagent").description(
+                "Create a subagent that loads evaluation skills and executes a focused evaluation" + " subtask.")
+                .inputParams(buildSubagentInputSchema()).build();
+        return new LocalFunction(card, inputs -> {
+            String userPrompt = String.valueOf(inputs.getOrDefault("user_prompt", ""));
+            String requestedSkillsDir = String.valueOf(inputs.getOrDefault("skills_dir", "default"));
+            Path subagentSkillsDir = "default".equals(requestedSkillsDir)
+                    ? skillsDir
+                    : Paths.get(requestedSkillsDir).toAbsolutePath().normalize();
+            if (!Files.isDirectory(subagentSkillsDir)) {
+                throw new IllegalStateException("Subagent skills directory does not exist: " + subagentSkillsDir);
             }
-            return realPath;
-        } catch (IOException e) {
-            throw new IllegalStateException("Configured SKILLS_DIR does not exist: " + configuredSkillsDir, e);
-        }
-    }
 
-    private static ReActAgentConfig copyConfig(ReActAgentConfig source) {
-        ReActAgentConfig copy = new ReActAgentConfig();
-        copy.setMemScopeId(source.getMemScopeId());
-        copy.setModelName(source.getModelName());
-        copy.setModelProvider(source.getModelProvider());
-        copy.setApiKey(source.getApiKey());
-        copy.setApiBase(source.getApiBase());
-        copy.setCustomHeaders(copyMap(source.getCustomHeaders()));
-        copy.setPromptTemplateName(source.getPromptTemplateName());
-        copy.setPromptTemplate(copyPromptTemplate(source.getPromptTemplate()));
-        copy.setMaxIterations(source.getMaxIterations());
-        copy.setLlmReturnTokenIds(source.isLlmReturnTokenIds());
-        copy.setLlmLogprobs(source.isLlmLogprobs());
-        copy.setLlmTopLogprobs(source.getLlmTopLogprobs());
-        copy.setModelClientConfig(source.getModelClientConfig());
-        copy.setModelConfigObj(source.getModelConfigObj());
-        copy.setSysOperationId(source.getSysOperationId());
-        copy.setContextEngineConfig(source.getContextEngineConfig());
-        copy.setContextProcessors(source.getContextProcessors());
-        copy.setWorkspace(source.getWorkspace());
-        return copy;
-    }
+            ReActAgent subAgent = new ReActAgent(AgentCard.builder().name("skill_evaluator_subagent")
+                    .description("Skill Evaluator Subagent").build());
+            SysOperationCard sysopCard = SysOperationCard.builder().mode(OperationMode.LOCAL)
+                    .workConfig(LocalWorkConfig.builder().workDir(null).build()).build();
+            Runner.resourceMgr().addSysOperation(sysopCard, null);
 
-    private static List<Map<String, Object>> copyPromptTemplate(List<Map<String, Object>> source) {
-        if (source == null) {
-            return null;
-        }
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> item : source) {
-            result.add(copyMap(item));
-        }
-        return result;
-    }
-
-    private static Map<String, Object> copyMap(Map<String, ?> source) {
-        if (source == null) {
-            return null;
-        }
-        return new LinkedHashMap<>(source);
-    }
-
-    private static <T> T await(CompletionStage<T> stage) {
-        try {
-            return stage.toCompletableFuture().get();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new CompletionException(interrupted);
-        } catch (ExecutionException executionException) {
-            Throwable cause = executionException.getCause();
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
+            ReActAgentConfig subConfig = copyConfig(config);
+            subConfig.setSysOperationId(sysopCard.getId());
+            subAgent.configure(subConfig);
+            for (Object tool : tools) {
+                subAgent.getAbilityManager().add(tool);
             }
-            throw new CompletionException(cause == null ? executionException : cause);
-        }
+            subAgent.registerSkill(subagentSkillsDir.toString(), Path.of("").toAbsolutePath().normalize());
+
+            Map<String, Object> runInputs = new LinkedHashMap<>();
+            runInputs.put("query", userPrompt);
+            runInputs.put("conversation_id", DEFAULT_SUBAGENT_CONVERSATION_ID);
+            Object result = Runner.runAgent(subAgent, runInputs, null, null);
+            return extractOutput(result);
+        });
     }
 
-    private static Map<String, Object> asResultMap(Object result) {
+    /**
+     * buildSubagentInputSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Map<String, Object> buildSubagentInputSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("user_prompt",
+                Map.of("type", "string", "description", "Instruction or task description for the subagent."));
+        properties.put("skills_dir", Map.of("type", "string", "description",
+                "Directory from which the subagent loads skills. Use 'default' to reuse the" + " evaluator skills."));
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("user_prompt"));
+        return schema;
+    }
+
+    @SuppressWarnings("unchecked")
+    /**
+     * extractOutput.
+     * 
+     * @param result result
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String extractOutput(Object result) {
         if (result instanceof Map<?, ?> map) {
-            Map<String, Object> output = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                output.put(String.valueOf(entry.getKey()), entry.getValue());
+            Object output = map.get("output");
+            if (output == null) {
+                return String.valueOf(result);
             }
-            return output;
-        }
-        Map<String, Object> output = new LinkedHashMap<>();
-        output.put("output", result);
-        return output;
-    }
-
-    private static Path expandUser(String rawPath) {
-        String value = rawPath == null ? "" : rawPath;
-        if (value.equals("~")) {
-            return Path.of(System.getProperty("user.home"));
-        }
-        if (value.startsWith("~/") || value.startsWith("~\\")) {
-            return Path.of(System.getProperty("user.home")).resolve(value.substring(2));
-        }
-        return Path.of(value);
-    }
-
-    private static String stringValue(Map<String, Object> inputs, String key, String defaultValue) {
-        if (inputs == null || !inputs.containsKey(key)) {
-            return defaultValue;
-        }
-        Object value = inputs.get(key);
-        return value == null ? defaultValue : String.valueOf(value);
-    }
-
-    private String env(String key, String defaultValue) {
-        String value = environment.get(key);
-        return value == null ? defaultValue : value;
-    }
-
-    private static int parseInt(String value, int defaultValue) {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException exception) {
-            return defaultValue;
-        }
-    }
-
-    private static boolean parseBoolean(String value) {
-        if (value == null) {
-            return false;
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        return "1".equals(normalized) || "true".equals(normalized) || "yes".equals(normalized)
-                || "y".equals(normalized) || "on".equals(normalized);
-    }
-
-    private static Map<String, String> loadDotEnv(Map<String, String> baseEnvironment) {
-        Map<String, String> result = new LinkedHashMap<>();
-        if (baseEnvironment != null) {
-            result.putAll(baseEnvironment);
-        }
-        Path dotEnv = Path.of(".env");
-        if (!Files.isRegularFile(dotEnv)) {
-            return result;
-        }
-        try {
-            for (String line : Files.readAllLines(dotEnv, StandardCharsets.UTF_8)) {
-                parseDotEnvLine(line, result);
+            if (output instanceof Map<?, ?> outputMap) {
+                Object response = outputMap.get("response");
+                if (response != null) {
+                    return String.valueOf(response);
+                }
             }
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
+            return String.valueOf(output);
         }
-        return result;
-    }
-
-    private static void parseDotEnvLine(String line, Map<String, String> target) {
-        String trimmed = line == null ? "" : line.trim();
-        if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-            return;
-        }
-        if (trimmed.startsWith("export ")) {
-            trimmed = trimmed.substring("export ".length()).trim();
-        }
-        int separator = trimmed.indexOf('=');
-        if (separator <= 0) {
-            return;
-        }
-        String key = trimmed.substring(0, separator).trim();
-        String value = trimmed.substring(separator + 1).trim();
-        if ((value.startsWith("\"") && value.endsWith("\""))
-                || (value.startsWith("'") && value.endsWith("'"))) {
-            value = value.substring(1, value.length() - 1);
-        }
-        target.putIfAbsent(key, value);
+        return Objects.toString(result, "");
     }
 }

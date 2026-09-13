@@ -4,19 +4,21 @@
 
 package com.openjiuwen.core.common.clients;
 
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-
 /**
  * Shared HTTP session wrapper.
+ * 
+ * @since 0.1.7
  */
 public class HttpSession extends RefCountedResource {
     private final java.net.http.HttpClient session;
     private final SessionConfig config;
-    private BaseRefResourceMgr.ResourceLease<HttpSession> lastLease;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HttpSession.
+     * 
+     * @param session session
+     * @param config config
+     * @since 0.1.7
      */
     public HttpSession(java.net.http.HttpClient session, SessionConfig config) {
         this.session = session;
@@ -24,39 +26,35 @@ public class HttpSession extends RefCountedResource {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SessionConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * session.
+     *
+     * @return HttpClient
+     * @since 0.1.7
      */
     public java.net.http.HttpClient session() {
         if (isClosed()) {
-            throw new IllegalStateException("Session is closed");
+            throw new IllegalStateException("Session is isClosed");
         }
         return session;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * doClose.
+     * 
+     * @since 0.1.7
      */
-    public BaseRefResourceMgr.ResourceLease<HttpSession> join() {
-        return lastLease == null ? new BaseRefResourceMgr.ResourceLease<>(this, false) : lastLease;
-    }
-
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    void setLastLease(BaseRefResourceMgr.ResourceLease<HttpSession> lastLease) {
-        this.lastLease = lastLease;
-    }
-
     @Override
-    protected CompletableFuture<Void> doClose(Map<String, Object> kwargs) {
+    protected void doClose() {
         // JDK HttpClient does not expose an explicit close hook.
-        return CompletableFuture.completedFuture(null);
     }
 }

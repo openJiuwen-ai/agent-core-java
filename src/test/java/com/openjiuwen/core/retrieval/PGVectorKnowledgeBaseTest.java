@@ -1,7 +1,15 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
@@ -11,10 +19,9 @@ import com.openjiuwen.core.retrieval.indexing.indexer.InMemoryIndexer;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.CharChunker;
 import com.openjiuwen.core.retrieval.vector_store.PGVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
-import org.junit.jupiter.api.Tag;
+
 import org.junit.jupiter.api.Test;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -22,18 +29,10 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import javax.sql.DataSource;
 
 class PGVectorKnowledgeBaseTest {
-
     @Test
-    @Tag("system-test")
     void simpleKnowledgeBaseUsesInMemoryIndexerAgainstPgVectorStore() throws Exception {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
@@ -56,22 +55,16 @@ class PGVectorKnowledgeBaseTest {
         when(existsResult.next()).thenReturn(true);
         when(existsResult.getBoolean(1)).thenReturn(false);
 
-        PGVectorStore store = new TestPGVectorStore(
-                new VectorStoreConfig("pgvector", "kb_db", "kb_pg_kb_chunks", "cosine"),
-                dataSource);
+        PGVectorStore store =
+            new TestPGVectorStore(new VectorStoreConfig("pgvector", "kb_db", "kb_pg_kb_chunks", "cosine"), dataSource,
+                    "vector", Map.of());
 
-        SimpleKnowledgeBase knowledgeBase = new SimpleKnowledgeBase(
-                new KnowledgeBaseConfig("pg_kb", "vector", false, 64, 8),
-                store,
-                new FixedEmbedding(),
-                null,
-                new CharChunker(64, 8),
-                null,
-                null,
-                null);
+        SimpleKnowledgeBase knowledgeBase =
+            new SimpleKnowledgeBase(new KnowledgeBaseConfig("pg_kb", "vector", false, 64, 8), store,
+                    new FixedEmbedding(), null, new CharChunker(64, 8), null, null, null);
 
-        List<String> docIds = knowledgeBase.addDocuments(List.of(
-                new Document("doc-1", "hello world from pgvector", Map.of("source", "test"))));
+        List<String> docIds = knowledgeBase
+                .addDocuments(List.of(new Document("doc-1", "hello world from pgvector", Map.of("source", "test"))));
 
         assertEquals(List.of("doc-1"), docIds);
         assertInstanceOf(InMemoryIndexer.class, knowledgeBase.getIndexManager());
@@ -79,17 +72,15 @@ class PGVectorKnowledgeBaseTest {
         verify(ddl).execute(org.mockito.ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS"));
     }
 
-    private static final class FixedEmbedding extends Embedding {
+    private static final class FixedEmbedding implements Embedding {
         @Override
-        public java.util.concurrent.CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(List.of(1.0, 0.0));
+        public List<Float> embedQuery(String text) {
+            return List.of(1.0f, 0.0f);
         }
 
         @Override
-        public java.util.concurrent.CompletableFuture<List<List<Double>>> embedDocuments(
-                List<String> texts, Integer batchSize, Map<String, Object> kwargs) {
-            return java.util.concurrent.CompletableFuture.completedFuture(
-                    texts.stream().map(text -> List.of(1.0, 0.0)).toList());
+        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
+            return texts.stream().map(text -> embedQuery(String.valueOf(text))).toList();
         }
 
         @Override
@@ -100,11 +91,22 @@ class PGVectorKnowledgeBaseTest {
 
     private static class TestPGVectorStore extends PGVectorStore {
         private final DataSource dataSource;
+        private final String indexType;
+        private final Map<String, Object> options;
 
-        private TestPGVectorStore(VectorStoreConfig config,
-                                  DataSource dataSource) {
-            super(config, dataSource);
+        private TestPGVectorStore(VectorStoreConfig config, DataSource dataSource, String indexType,
+                Map<String, Object> options) {
+            super(config, dataSource, indexType, options);
             this.dataSource = dataSource;
+            this.indexType = indexType;
+            this.options = options;
+        }
+
+        @Override
+        public VectorStore withCollection(String collectionName) {
+            return new TestPGVectorStore(
+                    new VectorStoreConfig("pgvector", getDatabaseName(), collectionName, getDistanceMetric()),
+                    dataSource, indexType, options);
         }
 
         @Override

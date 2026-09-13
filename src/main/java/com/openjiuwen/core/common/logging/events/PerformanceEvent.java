@@ -12,9 +12,8 @@ import java.util.Map;
 
 /**
  * Performance metric related event.
- *
- * <p>Mirrors Python's {@code PerformanceEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -26,11 +25,22 @@ public class PerformanceEvent extends BaseLogEvent {
     private String resourceType;
     private String operation;
 
+    /**
+     * PerformanceEvent.
+     * 
+     * @since 0.1.7
+     */
     public PerformanceEvent() {
         super();
         setModuleType(ModuleType.SYSTEM);
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "metric_name", metricName);
@@ -40,5 +50,3 @@ public class PerformanceEvent extends BaseLogEvent {
         putIfNotNull(map, "operation", operation);
     }
 }
-
-

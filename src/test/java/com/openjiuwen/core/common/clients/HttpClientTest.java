@@ -1,8 +1,12 @@
+
 package com.openjiuwen.core.common.clients;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,10 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HttpClientTest {
-
     private HttpServer server;
 
     @AfterEach
@@ -28,19 +29,15 @@ class HttpClientTest {
             server.stop(0);
         }
         HttpSessionManager.getInstance().closeAll();
+        ConnectorPoolManager.getInstance().resetForTests();
     }
 
     @Test
     void sessionConfigKeyShouldBeStable() {
-        Map<String, Object> raw = new java.util.LinkedHashMap<>();
-        raw.put("headers", Map.of("User-Agent", "Test"));
-        raw.put("timeout", 30.0);
-        raw.put("connect_timeout", 10.0);
-        raw.put("timeout_args", Map.of("sock_read_timeout", 5));
-        raw.put("raise_for_status", false);
-        raw.put("trust_env", true);
-        SessionConfig first = new SessionConfig(raw);
-        SessionConfig second = new SessionConfig(raw);
+        SessionConfig first = new SessionConfig(new ConnectorPoolConfig(), Map.of("User-Agent", "Test"), null, 30.0,
+                10.0, Map.of("sock_read_timeout", 5), null, false, true, Map.of());
+        SessionConfig second = new SessionConfig(new ConnectorPoolConfig(), Map.of("User-Agent", "Test"), null, 30.0,
+                10.0, Map.of("sock_read_timeout", 5), null, false, true, Map.of());
 
         assertThat(first.generateKey()).isEqualTo(second.generateKey());
     }
@@ -50,8 +47,8 @@ class HttpClientTest {
         HttpSessionManager manager = HttpSessionManager.getInstance();
         SessionConfig config = new SessionConfig();
 
-        BaseRefResourceMgr.ResourceLease<HttpSession> first = manager.acquire(config).join();
-        BaseRefResourceMgr.ResourceLease<HttpSession> second = manager.acquire(config).join();
+        BaseRefResourceMgr.Acquisition<HttpSession> first = manager.acquire(config);
+        BaseRefResourceMgr.Acquisition<HttpSession> second = manager.acquire(config);
 
         assertThat(second.resource()).isSameAs(first.resource());
         assertThat(first.resource().getRefCount()).isEqualTo(2);
@@ -68,10 +65,8 @@ class HttpClientTest {
         server.start();
 
         int port = server.getAddress().getPort();
-        HttpClient client = new HttpClient(new SessionConfig(Map.of(
-                "headers", Map.of("User-Agent", "Codex-Test"),
-                "timeout", 10.0
-        )));
+        HttpClient client = new HttpClient(new SessionConfig(new ConnectorPoolConfig(),
+                Map.of("User-Agent", "Codex-Test"), null, 10.0, null, Map.of(), null, false, true, Map.of()));
 
         Map<String, Object> response = client.get("http://127.0.0.1:" + port + "/json", Map.of("q", "1"));
 
@@ -107,20 +102,15 @@ class HttpClientTest {
     @Test
     void shouldSupportAsyncRequest() throws Exception {
         server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/async", exchange -> writeResponse(exchange, "application/json", "{\"message\":\"async\"}"));
+        server.createContext("/async",
+                exchange -> writeResponse(exchange, "application/json", "{\"message\":\"async\"}"));
         server.start();
 
         int port = server.getAddress().getPort();
         HttpClient client = new HttpClient(new SessionConfig(), true);
 
-        CompletableFuture<Map<String, Object>> future = client.requestAsync(
-                "GET",
-                "http://127.0.0.1:" + port + "/async",
-                null,
-                null,
-                null,
-                Map.of()
-        );
+        CompletableFuture<Map<String, Object>> future =
+            client.requestAsync("GET", "http://127.0.0.1:" + port + "/async", null, null, null, Map.of());
 
         Map<String, Object> response = future.join();
         assertThat(response.get("code")).isEqualTo(200);

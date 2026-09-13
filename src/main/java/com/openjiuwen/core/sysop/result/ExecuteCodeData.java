@@ -10,22 +10,30 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Mirrors Python's {@code ExecuteCodeData} in
- * {@code openjiuwen/core/sys_operation/result/code_operation_result.py}.
+ * Code execution result data model.
+ * <p>
+ * Mirrors Python's {@code ExecuteCodeData}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ExecuteCodeData {
-
     private String codeContent;
+
+    /** Programming language of the original code. */
     private String language;
+
+    /** Execution exit code. */
     private Integer exitCode;
 
+    /** Standard output stream. */
     @Builder.Default
     private String stdout = "";
 
+    /** Standard error stream. */
     @Builder.Default
     private String stderr = "";
 }

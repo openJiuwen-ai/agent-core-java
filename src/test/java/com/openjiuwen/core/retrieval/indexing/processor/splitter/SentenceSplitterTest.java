@@ -1,7 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.splitter;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
@@ -9,14 +13,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.assertj.core.api.Assertions.assertThat;
-
 class SentenceSplitterTest {
-
     @Test
     void splitTextHandlesChinesePunctuationWithoutSpaces() {
-        SentenceSplitter splitter = new SentenceSplitter(null, 3, 0, "auto");
+        SentenceSplitter splitter = new SentenceSplitter(3, 0, null, "auto");
 
         List<String> chunks = splitter.splitText("第一句。第二句！第三句？");
 
@@ -25,12 +25,10 @@ class SentenceSplitterTest {
 
     @Test
     void splitTextUsesTokenizerForEnglishWindowing() {
-        Function<String, List<String>> tokenizer = text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ")
-                        .trim()
-                        .split("\\s+"))
-                .filter(part -> !part.isBlank())
-                .toList();
-        SentenceSplitter splitter = new SentenceSplitter(tokenizer, 4, 0, "en");
+        Function<String, List<String>> tokenizer =
+            text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ").trim().split("\\s+"))
+                    .filter(part -> !part.isBlank()).toList();
+        SentenceSplitter splitter = new SentenceSplitter(4, 0, tokenizer, "en");
 
         List<String> chunks = splitter.splitText("Alpha beta. Gamma delta.");
 
@@ -38,23 +36,23 @@ class SentenceSplitterTest {
     }
 
     @Test
-    void splitShouldReturnStartAndEndOffsets() {
-        Function<String, List<String>> tokenizer = text -> Arrays.stream(text.split("\\s+")).toList();
-        SentenceSplitter splitter = new SentenceSplitter(tokenizer, 5, 0, "en");
+    void splitSpansShouldReturnStartAndEndOffsets() {
+        SentenceSplitter splitter =
+            new SentenceSplitter(5, 0, text -> Arrays.stream(text.split("\\s+")).toList(), "en");
 
-        List<Splitter.SplitChunk> chunks = splitter.split("one two three four five. six seven.");
+        List<SplitSpan> spans = splitter.splitSpans("one two three four five. six seven.");
 
-        assertThat(chunks).hasSize(2);
-        assertThat(chunks.get(0).text()).contains("one").contains("five");
-        assertThat(chunks.get(0).startIdx()).isEqualTo(0);
-        assertThat(chunks.get(1).text()).contains("six").contains("seven");
-        assertThat(chunks.get(1).startIdx()).isGreaterThan(chunks.get(0).startIdx());
+        assertThat(spans).hasSize(2);
+        assertThat(spans.get(0).text()).contains("one").contains("five");
+        assertThat(spans.get(0).start()).isEqualTo(0);
+        assertThat(spans.get(1).text()).contains("six").contains("seven");
+        assertThat(spans.get(1).start()).isGreaterThan(spans.get(0).start());
     }
 
     @Test
     void splitTextShouldCarryOverlapSentencesByTokenCount() {
-        Function<String, List<String>> tokenizer = text -> Arrays.stream(text.split("\\s+")).toList();
-        SentenceSplitter splitter = new SentenceSplitter(tokenizer, 4, 3, "en");
+        SentenceSplitter splitter =
+            new SentenceSplitter(4, 3, text -> Arrays.stream(text.split("\\s+")).toList(), "en");
 
         List<String> chunks = splitter.splitText("w1 w2. w3 w4. w5 w6.");
 
@@ -66,39 +64,35 @@ class SentenceSplitterTest {
     @Test
     void longSentenceShouldSplitIntoTokenWindowsWhenDecoderProvided() {
         Function<String, List<String>> tokenizer = text -> Arrays.stream(text.split("\\s+")).toList();
-        Function<List<?>, String> decoder = tokens -> String.join(" ", tokens.stream().map(String::valueOf).toList());
-        SentenceSplitter splitter = new SentenceSplitter(tokenizer, 10, 0, "en", decoder);
-        String longSentence = String.join(" ", java.util.stream.IntStream.range(0, 25)
-                .mapToObj(i -> "w" + i)
-                .toList());
+        Function<List<String>, String> decoder = tokens -> String.join(" ", tokens);
+        SentenceSplitter splitter = new SentenceSplitter(10, 0, tokenizer, "en", decoder);
+        String longSentence = String.join(" ", java.util.stream.IntStream.range(0, 25).mapToObj(i -> "w" + i).toList());
 
-        List<Splitter.SplitChunk> chunks = splitter.split(longSentence);
+        List<SplitSpan> spans = splitter.splitSpans(longSentence);
 
-        assertThat(chunks).hasSize(3);
-        assertThat(chunks).allSatisfy(chunk -> {
-            assertThat(chunk.startIdx()).isEqualTo(0);
-            assertThat(chunk.endIdx()).isEqualTo(longSentence.length());
-            assertThat(chunk.text().split("\\s+").length).isLessThanOrEqualTo(10);
+        assertThat(spans).hasSize(3);
+        assertThat(spans).allSatisfy(span -> {
+            assertThat(span.start()).isEqualTo(0);
+            assertThat(span.end()).isEqualTo(longSentence.length());
+            assertThat(span.text().split("\\s+").length).isLessThanOrEqualTo(10);
         });
     }
 
     @Test
     void longSentenceWithoutDecoderShouldStaySingleChunk() {
         Function<String, List<String>> tokenizer = text -> Arrays.stream(text.split("\\s+")).toList();
-        SentenceSplitter splitter = new SentenceSplitter(tokenizer, 10, 0, "en");
-        String longSentence = String.join(" ", java.util.stream.IntStream.range(0, 25)
-                .mapToObj(i -> "w" + i)
-                .toList());
+        SentenceSplitter splitter = new SentenceSplitter(10, 0, tokenizer, "en");
+        String longSentence = String.join(" ", java.util.stream.IntStream.range(0, 25).mapToObj(i -> "w" + i).toList());
 
         assertThat(splitter.splitText(longSentence)).containsExactly(longSentence);
     }
 
     @Test
     void detectLanguageShouldUseChineseRatioAndPunctuationHeuristic() {
-        assertThat(SentenceSplitter.detectChinese("")).isEqualTo("en");
-        assertThat(SentenceSplitter.detectChinese("Hello world. How are you?")).isEqualTo("en");
-        assertThat(SentenceSplitter.detectChinese("这是中文句子。它应该被检测为中文。")).isEqualTo("zh");
-        assertThat(SentenceSplitter.detectChinese("Hello world " + "x".repeat(40) + "中文")).isEqualTo("en");
-        assertThat(SentenceSplitter.detectChinese("Latin only here？？！！")).isEqualTo("zh");
+        assertThat(SentenceSplitter.detectLanguage("")).isEqualTo("en");
+        assertThat(SentenceSplitter.detectLanguage("Hello world. How are you?")).isEqualTo("en");
+        assertThat(SentenceSplitter.detectLanguage("这是中文句子。它应该被检测为中文。")).isEqualTo("zh");
+        assertThat(SentenceSplitter.detectLanguage("Hello world " + "x".repeat(40) + "中文")).isEqualTo("en");
+        assertThat(SentenceSplitter.detectLanguage("Latin only here？？！！")).isEqualTo("zh");
     }
 }

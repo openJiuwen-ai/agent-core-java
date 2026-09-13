@@ -6,41 +6,93 @@ package com.openjiuwen.core.foundation.store.graph;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Mirrors Python's {@code Episode} in
- * {@code openjiuwen/core/foundation/store/graph/graph_object.py}.
+ * Episode nodes with no name.
+ * 
+ * @since 0.1.7
  */
 public class Episode extends BaseGraphObject {
+    private int validSince = -1;
 
-    private long validSince;
-    private final List<Object> entities = new ArrayList<>();
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private List<Object> entities = new ArrayList<>();
 
+    /**
+     * Episode.
+     * 
+     * @since 0.1.7
+     */
     public Episode() {
         setObjType("Episode");
-        this.validSince = getCreatedAt();
     }
 
-    public List<String> serializeEntities() {
-        return serializeGraphObjectList(entities);
-    }
-
-    public long getValidSince() {
+    /**
+     * getValidSince.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public int getValidSince() {
         return validSince;
     }
 
-    public void setValidSince(long validSince) {
-        this.validSince = validSince == -1 ? getCreatedAt() : validSince;
+    /**
+     * setValidSince.
+     * 
+     * @param validSince validSince
+     * @since 0.1.7
+     */
+    public void setValidSince(int validSince) {
+        this.validSince = validSince;
     }
 
+    /**
+     * getEntities.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public List<Object> getEntities() {
         return entities;
     }
 
-    public void setEntities(List<?> values) {
-        entities.clear();
-        if (values != null) {
-            entities.addAll(values);
+    /**
+     * setEntities.
+     * 
+     * @param entities entities
+     * @since 0.1.7
+     */
+    public void setEntities(List<Object> entities) {
+        this.entities = entities;
+    }
+
+    /**
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public Map<String, Object> toMap() {
+        Map<String, Object> result = super.toMap();
+        List<String> entityIds = new ArrayList<>();
+        for (Object entity : entities) {
+            if (entity instanceof String entityId) {
+                entityIds.add(entityId);
+            } else if (entity instanceof BaseGraphObject graphObject) {
+                entityIds.add(graphObject.getUuid());
+            } else {
+                throw new IllegalArgumentException("entity must be a String or BaseGraphObject");
+            }
         }
+        result.put("valid_since", validSince);
+        result.put("entities", entityIds.stream().distinct().sorted().toList());
+        return result;
     }
 }

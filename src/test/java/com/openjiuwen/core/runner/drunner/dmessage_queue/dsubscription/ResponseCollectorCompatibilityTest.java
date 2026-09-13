@@ -1,20 +1,19 @@
+
 package com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription;
-
-import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
-import com.openjiuwen.core.runner.drunner.dmessage_queue.message.ResultType;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
-
-import java.util.List;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class ResponseCollectorCompatibilityTest {
+import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
+import com.openjiuwen.core.runner.drunner.dmessage_queue.message.ResultType;
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
+import org.junit.jupiter.api.Test;
+
+import java.util.Iterator;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeoutException;
+
+class ResponseCollectorCompatibilityTest {
     @Test
     void collectorShouldReturnSingleResultAndClose() throws Exception {
         ResponseCollector collector = new ResponseCollector("m-1", "remote-1", null, 5.0);
@@ -29,7 +28,7 @@ class ResponseCollectorCompatibilityTest {
     }
 
     @Test
-    void collectorStreamShouldYieldChunksUntilLastChunk() throws Exception {
+    void collectorStreamShouldYieldChunksUntilLastChunk() {
         ResponseCollector collector = new ResponseCollector("m-2", "remote-1", null, 5.0);
         DmqResponseMessage first = new DmqResponseMessage();
         first.setBody("chunk-1");
@@ -40,27 +39,24 @@ class ResponseCollectorCompatibilityTest {
         collector.putMessage(first);
         collector.putMessage(last);
 
-        List<Object> stream = collector.stream(1.0).join();
+        Iterator<Object> stream = collector.stream(1.0);
 
-        assertThat(stream).hasSize(1);
-        assertThat(stream.get(0)).isEqualTo("chunk-1");
+        assertThat(stream.hasNext()).isTrue();
+        assertThat(stream.next()).isEqualTo("chunk-1");
+        assertThat(stream.hasNext()).isFalse();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void collectorShouldTranslateQueueFullAndTtlCancellation() {
         ResponseCollector collector = new ResponseCollector("m-3", "remote-1", null, 5.0);
         collector.close(CancelReason.QUEUE_FULL);
 
-        assertThatThrownBy(() -> collector.result(0.1))
-                .isInstanceOf(CancellationException.class);
+        assertThatThrownBy(() -> collector.result(0.1)).isInstanceOf(CancellationException.class);
 
         ResponseCollector ttlCollector = new ResponseCollector("m-4", "remote-1", null, 0.01);
-        assertThatThrownBy(() -> ttlCollector.result(0.1))
-                .isInstanceOf(TimeoutException.class);
+        assertThatThrownBy(() -> ttlCollector.result(0.1)).isInstanceOf(TimeoutException.class);
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void collectorShouldSurfaceRemoteErrorResponses() {
         ResponseCollector collector = new ResponseCollector("m-5", "remote-1", null, 5.0);
@@ -71,8 +67,7 @@ class ResponseCollectorCompatibilityTest {
         response.setLastChunk(true);
         collector.putMessage(response);
 
-        assertThatThrownBy(() -> collector.result(1.0))
-                .isInstanceOf(IllegalStateException.class)
+        assertThatThrownBy(() -> collector.result(1.0)).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("boom");
     }
 }

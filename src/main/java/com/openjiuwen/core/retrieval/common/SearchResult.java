@@ -4,85 +4,95 @@
 
 package com.openjiuwen.core.retrieval.common;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code SearchResult} in
- * {@code openjiuwen/core/retrieval/common/retrieval_result.py}.
+ * Raw search result.
+ * 
+ * @since 0.1.7
  */
+@Getter
+@Setter
 public class SearchResult {
-
     private String id;
     private String text;
     private double score;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
+    /**
+     * SearchResult.
+     * 
+     * @since 0.1.7
+     */
     public SearchResult() {
-        throw RetrievalExceptions.validation("id, text, and score are required");
     }
 
-    public SearchResult(String id) {
-        this(id, null, null, null);
-    }
-
-    public SearchResult(String id, String text) {
-        this(id, text, null, null);
-    }
-
-    public SearchResult(String id, String text, Double score) {
+    /**
+     * SearchResult.
+     * 
+     * @param id id
+     * @param text text
+     * @param score score
+     * @since 0.1.7
+     */
+    public SearchResult(String id, String text, double score) {
         this(id, text, score, null);
     }
 
+    /**
+     * SearchResult.
+     * 
+     * @param id id
+     * @param text text
+     * @param score score
+     * @param metadata metadata
+     * @since 0.1.7
+     */
     public SearchResult(String id, String text, double score, Map<String, Object> metadata) {
-        this(id, text, Double.valueOf(score), metadata);
-    }
-
-    public SearchResult(String id, String text, Double score, Map<String, Object> metadata) {
-        if (id == null || text == null || score == null) {
-            throw RetrievalExceptions.validation("id, text, and score are required");
-        }
-        this.id = id;
-        this.text = text;
-        this.score = score.doubleValue();
+        setId(id);
+        setText(text);
+        setScore(score);
         setMetadata(metadata);
     }
 
-    public String getId() {
-        return id;
-    }
-
+    /**
+     * setId.
+     * 
+     * @param id id
+     * @since 0.1.7
+     */
     public void setId(String id) {
+        RetrievalValidation.requireNonBlank(id, "SearchResult.id");
         this.id = id;
     }
 
-    public String getText() {
-        return text;
-    }
-
+    /**
+     * setText.
+     * 
+     * @param text text
+     * @since 0.1.7
+     */
     public void setText(String text) {
+        RetrievalValidation.requireNonNull(text, "SearchResult.text");
         this.text = text;
     }
 
-    public double getScore() {
-        return score;
-    }
-
-    public void setScore(double score) {
-        this.score = score;
-    }
-
-    public void setScore(Double score) {
-        if (score == null) {
-            throw RetrievalExceptions.validation("score is required");
-        }
-        this.score = score.doubleValue();
-    }
-
-    public Map<String, Object> getMetadata() {
-        return metadata;
-    }
-
+    /**
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
+     */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
     }

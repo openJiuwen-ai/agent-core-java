@@ -4,571 +4,404 @@
 
 package com.openjiuwen.harness.rails.security;
 
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
+import com.openjiuwen.harness.rails.interrupt.ApproveResult;
+import com.openjiuwen.harness.rails.interrupt.BaseInterruptRail;
+import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
+import com.openjiuwen.harness.rails.interrupt.InterruptResult;
+import com.openjiuwen.harness.rails.interrupt.RejectResult;
+import com.openjiuwen.harness.security.PermissionCheckResult;
+import com.openjiuwen.harness.security.PermissionConfirmResponse;
+import com.openjiuwen.harness.security.PermissionConfirmationRequest;
+import com.openjiuwen.harness.security.PermissionEngine;
+import com.openjiuwen.harness.security.PermissionLevel;
+import com.openjiuwen.harness.security.PermissionResult;
+import com.openjiuwen.harness.security.ToolPermissionHost;
+import com.openjiuwen.harness.security.patterns.PermissionsYamlWriter;
+import com.openjiuwen.harness.security.shellast.ShellAst;
+import com.openjiuwen.harness.security.shellast.ShellAstParseResult;
+import com.openjiuwen.harness.security.shellast.ShellSubcommand;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import com.openjiuwen.harness.rails.CallbackContext;
-import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail.ConfirmPayload;
-import com.openjiuwen.harness.security.PermissionConfirmResponse;
-import com.openjiuwen.harness.security.PermissionEngine;
-import com.openjiuwen.harness.security.PermissionLevel;
-import com.openjiuwen.harness.security.PermissionPatterns;
-import com.openjiuwen.harness.security.PermissionResult;
-import com.openjiuwen.harness.security.PermissionsSection;
-import com.openjiuwen.harness.security.ShellAst;
-import com.openjiuwen.harness.security.ShellAstParseResult;
-import com.openjiuwen.harness.security.ToolPermissionHost;
-
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Tool permission interrupt rail.
+ * Permission interrupt rail enforcing ALLOW/DENY/ASK three-state tool guardrails.
  *
- * <p>Mirrors Python's {@code PermissionInterruptRail} in
- * {@code openjiuwen/harness/rails/security/tool_security_rail.py}.</p>
+ * <p>Mirrors Python {@code openjiuwen.harness.rails.security.tool_security_rail.PermissionInterruptRail}.
+ * Unlike the base rail, this rail intercepts <strong>every</strong> tool call (the configured
+ * {@code tool_names} are retained only for {@code getToolNames()} display, mirroring Python's
+ * "intercept=all_tools" mode) so that tools not listed under {@code tools} still flow through
+ * {@code defaults.*}. Each call is normalized (shell aliases collapse to {@code bash}), evaluated
+ * by {@link PermissionEngine}, and either approved, rejected with a {@code [PERMISSION_DENIED]}
+ * message, or surfaced for confirmation. The confirmation flow supports a hosted callback
+ * ({@link ToolPermissionHost#requestPermissionConfirmation}) and the built-in interrupt/resume
+ * path, with session-scoped auto-confirm and permanent "always allow" persistence to the agent
+ * YAML via {@link PermissionsYamlWriter}.
+ *
+ * @since 0.1.7
  */
-public class PermissionInterruptRail extends BaseSecurityRail {
+@Getter
+public class PermissionInterruptRail extends BaseInterruptRail {
+    private static final Logger logger = LoggerFactory.getLogger(PermissionInterruptRail.class);
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(PermissionInterruptRail.class);
-    private static final ObjectMapper ARGUMENTS_MAPPER = new ObjectMapper();
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
-    };
+    private static final Set<String> SHELL_TOOL_ALIASES = Set.of("bash", "mcp_exec_command", "create_terminal");
+    private static final String SHELL_COMMAND_KEY = "command";
+    private static final String SHELL_CMD_KEY = "cmd";
+    private static final String DENIED_PREFIX = "[PERMISSION_DENIED] ";
+    private static final String REJECTED_DEFAULT = "[PERMISSION_REJECTED] User rejected the request.";
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-    private static final Map<String, String> TOOL_NAME_ALIASES = Map.of(
-            "free_search", "mcp_free_search",
-            "paid_search", "mcp_paid_search",
-            "fetch_webpage", "mcp_fetch_webpage",
-            "exec_command", "mcp_exec_command"
-    );
-    private static final Set<String> SHELL_TOOL_NAMES = Set.of("bash", "mcp_exec_command", "create_terminal");
+    private final PermissionEngine engine;
+    private final ToolPermissionHost host;
+    private final Map<String, Boolean> sessionAutoConfirm = new ConcurrentHashMap<>();
 
-    private Map<String, Object> staticConfig;
-    private PermissionEngine engine;
-    private Object llm;
-    private String modelName;
-    private ToolPermissionHost host;
-
-    public PermissionInterruptRail(Map<String, Object> config) {
-        this(config, null, Set.of(), null, null, null);
-    }
-
-    public PermissionInterruptRail(PermissionsSection config) {
-        this(toConfigMap(config), null, Set.of(), null, null, null);
-    }
-
-    public PermissionInterruptRail(
-            Map<String, Object> config,
-            PermissionEngine engine,
-            Iterable<String> toolNames,
-            Object llm,
-            String modelName,
-            ToolPermissionHost host
-    ) {
-        super(toolNames);
-        setPriority(90);
-        setSupportedEvents(Set.of(BEFORE_TOOL_CALL));
-        this.staticConfig = deepCopyMap(config);
-        this.llm = llm;
-        this.modelName = modelName;
-        this.host = host == null ? new ToolPermissionHost() : host;
-        this.engine = engine == null ? new PermissionEngine(this.staticConfig, llm, modelName, workspaceRoot()) : engine;
-    }
-
-    public void updateConfig(Map<String, Object> config) {
-        this.staticConfig = deepCopyMap(config);
-        this.engine.updateConfig(this.staticConfig);
-    }
-
-    public void updateConfig(PermissionsSection config) {
-        updateConfig(toConfigMap(config));
-    }
-
-    public void updateLlm(Object llm, String modelName) {
-        this.llm = llm;
-        this.modelName = modelName;
-        this.engine.updateLlm(llm, modelName);
-    }
-
-    public Map<String, Object> getStaticConfig() {
-        return deepCopyMap(staticConfig);
-    }
-
-    public PermissionEngine getEngine() {
-        return engine;
-    }
-
-    public ToolPermissionHost getHost() {
-        return host;
-    }
-
-    public Object getLlm() {
-        return llm;
-    }
-
-    public String getModelName() {
-        return modelName;
-    }
-
-    @Override
-    protected SecurityDecision runSecurityCheck(SecurityCheckContext securityCtx) {
-        CallbackContext ctx = securityCtx.callbackContext();
-        String rawToolName = stringValue(ctx.get("tool_name"));
-        if (rawToolName.isBlank()) {
-            return allow();
-        }
-        String normalizedName = normalizeToolName(rawToolName);
-
-        Map<String, Object> toolArgs = parseToolArgs(ctx.get("tool_args"));
-        refreshConfigFromHostSnapshot();
-
-        if (host.getPermissionSceneHook() != null) {
-            SecurityDecision sceneDecision = resolveHostedScene(ctx, normalizedName, toolArgs, securityCtx.userInput());
-            if (sceneDecision != null) {
-                return sceneDecision;
-            }
-        }
-
-        PermissionResult result = engine.checkPermission(normalizedName, toolArgs);
-        ctx.put("permission_result", result);
-        if (result.isAllowed()) {
-            return allow();
-        }
-        if (result.isDenied()) {
-            return reject("[PERMISSION_DENIED] " + fallback(result.getReason(), "Operation not allowed"));
-        }
-
-        String autoConfirmKey = getAutoConfirmKey(rawToolName, toolArgs);
-        if (isAutoConfirmed(securityCtx.autoConfirmConfig(), autoConfirmKey)) {
-            return allow();
-        }
-
-        PermissionConfirmResponse response = hostedConfirmation(ctx, result, autoConfirmKey);
-        if (response != null) {
-            return resolveConfirmationResponse(ctx, normalizedName, toolArgs, autoConfirmKey, response);
-        }
-
-        PermissionConfirmResponse userResponse = parseConfirmPayload(securityCtx.userInput());
-        if (userResponse != null) {
-            return resolveConfirmationResponse(ctx, normalizedName, toolArgs, autoConfirmKey, userResponse);
-        }
-
-        Map<String, Object> request = buildRequest(rawToolName, toolArgs, result, autoConfirmKey);
-        return interrupt(request, securityCtx.subjectId());
-    }
-
-    private SecurityDecision resolveHostedScene(
-            CallbackContext ctx,
-            String toolName,
-            Map<String, Object> toolArgs,
-            Object userInput
-    ) {
-        try {
-            ToolPermissionHost.PermissionSceneHookInput input = new ToolPermissionHost.PermissionSceneHookInput(
-                    ctx,
-                    ctx.get("tool_call"),
-                    userInput,
-                    toolName,
-                    toolArgs,
-                    engine
-            );
-            CompletionStage<ToolPermissionHost.PermissionSceneDecision> stage = host.getPermissionSceneHook().apply(input);
-            ToolPermissionHost.PermissionSceneDecision decision = stage == null ? null : stage.toCompletableFuture().join();
-            if (decision == null || decision.action() == null) {
-                return null;
-            }
-            if ("approve".equals(decision.action())) {
-                return allow();
-            }
-            if ("reject".equals(decision.action())) {
-                return reject(fallback(decision.message(), "[PERMISSION_DENIED]"));
-            }
-            return null;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private PermissionConfirmResponse hostedConfirmation(
-            CallbackContext ctx,
-            PermissionResult result,
-            String autoConfirmKey
-    ) {
-        if (host.getRequestPermissionConfirmationHook() == null) {
-            return null;
-        }
-        try {
-            ToolPermissionHost.PermissionConfirmationRequest request =
-                    new ToolPermissionHost.PermissionConfirmationRequest(
-                            ctx,
-                            ctx.get("tool_call"),
-                            result,
-                            autoConfirmKey
-                    );
-            CompletionStage<ToolPermissionHost.PermissionConfirmationResult> stage =
-                    host.getRequestPermissionConfirmationHook().apply(request);
-            ToolPermissionHost.PermissionConfirmationResult confirmation =
-                    stage == null ? null : stage.toCompletableFuture().join();
-            if (confirmation instanceof ToolPermissionHost.PermissionConfirmResponseWrapper wrapper) {
-                return wrapper.response();
-            }
-            if (confirmation instanceof ToolPermissionHost.InterruptPermissionConfirmationResult) {
-                return null;
-            }
-            return null;
-        } catch (Exception ignored) {
-            return new PermissionConfirmResponse(false, "Hosted permission request failed", false);
-        }
-    }
-
-    private SecurityDecision resolveConfirmationResponse(
-            CallbackContext ctx,
-            String toolName,
-            Map<String, Object> toolArgs,
-            String autoConfirmKey,
-            PermissionConfirmResponse response
-    ) {
-        if (response.isApproved()) {
-            boolean persisted = false;
-            if (response.isPersistAllow()) {
-                persisted = persistAllowAlways(toolName, toolArgs);
-            }
-            if (response.isAutoConfirm() && !persisted && !autoConfirmKey.isBlank()) {
-                storeAutoConfirm(ctx, autoConfirmKey);
-            }
-            ctx.put("permission_confirmed", Map.of(
-                    "approved", true,
-                    "auto_confirm", response.isAutoConfirm(),
-                    "persisted", persisted
-            ));
-            return allow();
-        }
-        return reject(fallback(response.getFeedback(), "[PERMISSION_REJECTED] User rejected the request."));
-    }
-
-    private boolean persistAllowAlways(String toolName, Map<String, Object> toolArgs) {
-        Map<String, Object> previous = deepCopyMap(engine.getConfig());
-        PermissionPatterns.PermissionsMergeResult toolMerge =
-                PermissionPatterns.mergePermissionAllowRuleIntoPermissions(previous, toolName, toolArgs);
-        Map<String, Object> merged = toolMerge.permissions();
-        boolean changed = toolMerge.changed();
-        List<String> externalPaths = collectExternalDirectoryPersistPaths(toolName, toolArgs, merged);
-        if (!externalPaths.isEmpty()) {
-            PermissionPatterns.PermissionsMergeResult externalMerge =
-                    PermissionPatterns.mergeExternalDirectoryAllowIntoPermissions(merged, externalPaths);
-            merged = externalMerge.permissions();
-            changed = changed || externalMerge.changed();
-        }
-        if (!changed) {
-            return false;
-        }
-
-        Map<String, Object> oldConfig = deepCopyMap(engine.getConfig());
-        updateConfig(merged);
-        boolean persisted;
-        if (host.getPersistAllowRuleHook() != null) {
-            try {
-                persisted = host.getPersistAllowRuleHook().apply(deepCopyMap(merged));
-            } catch (Exception ignored) {
-                persisted = false;
-            }
-        } else {
-            persisted = PermissionPatterns.writePermissionsSectionToAgentConfigYaml(
-                    host.getPermissionYamlPath(),
-                    merged
-            );
-        }
-        if (!persisted) {
-            updateConfig(oldConfig);
-        }
-        return persisted;
-    }
-
-    private List<String> collectExternalDirectoryPersistPaths(
-            String toolName,
-            Map<String, Object> toolArgs,
-            Map<String, Object> permissions
-    ) {
-        Path workspace = workspaceRoot();
-        if (workspace == null) {
-            return List.of();
-        }
-        try {
-            PermissionEngine checker = new PermissionEngine(permissions, llm, modelName, workspace);
-            PermissionResult result = checker.evaluateGlobalPolicyDirectly(toolName, toolArgs, true).permission() == null
-                    ? null
-                    : checker.checkPermission(toolName, toolArgs);
-            if (result == null || result.getPermission() != PermissionLevel.ASK || result.getExternalPaths() == null) {
-                return List.of();
-            }
-            return result.getExternalPaths();
-        } catch (Exception ignored) {
-            return List.of();
-        }
-    }
-
-    private void refreshConfigFromHostSnapshot() {
-        if (host.getPermissionsSnapshotSupplier() == null) {
-            engine.updateConfig(staticConfig);
-            return;
-        }
-        try {
-            Map<String, Object> snapshot = host.getPermissionsSnapshotSupplier().get();
-            if (snapshot != null) {
-                updateConfig(snapshot);
-                return;
-            }
-        } catch (Exception ignored) {
-            // Fall back to static config below.
-        }
-        engine.updateConfig(staticConfig);
-    }
-
-    private Path workspaceRoot() {
-        if (host != null && host.getWorkspaceDirResolver() != null) {
-            try {
-                return host.getWorkspaceDirResolver().get();
-            } catch (Exception ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private Map<String, Object> buildRequest(
-            String toolName,
-            Map<String, Object> toolArgs,
-            PermissionResult result,
-            String autoConfirmKey
-    ) {
-        Map<String, Object> request = new LinkedHashMap<>();
-        request.put("message", buildMessage(toolName, toolArgs, result));
-        request.put("tool_name", toolName);
-        request.put("tool_args", new LinkedHashMap<>(toolArgs));
-        request.put("matched_rule", result.getMatchedRule());
-        request.put("reason", result.getReason());
-        request.put("payload_schema", permissionPayloadSchema());
-        request.put("auto_confirm_key", autoConfirmKey);
-        return request;
+    /**
+     * PermissionInterruptRail.
+     *
+     * @param engine engine
+     * @param host host
+     * @since 0.1.7
+     */
+    public PermissionInterruptRail(PermissionEngine engine, ToolPermissionHost host) {
+        super(null);
+        this.engine = engine;
+        this.host = host;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tools = (Map<String, Object>) engine.getConfig().getOrDefault("tools", Map.of());
+        addTools(tools.keySet());
     }
 
     /**
-     * Extend the shared confirm schema with the permission-specific
-     * {@code persist_allow} flag without mutating {@link ConfirmPayload#toSchema()},
-     * which is shared with other confirm rails.
+     * Intercept every tool call, bypassing the base rail's tool-name gate so that tools not
+     * listed under {@code tools} still resolve through {@code defaults.*}.
      *
-     * @return schema map including {@code persist_allow}
+     * @param ctx ctx
+     * @since 0.1.15
      */
-    private static Map<String, Object> permissionPayloadSchema() {
-        Map<String, Object> schema = new LinkedHashMap<>(ConfirmPayload.toSchema());
-        Map<String, Object> properties = new LinkedHashMap<>();
-        Object rawProperties = schema.get("properties");
-        if (rawProperties instanceof Map<?, ?> map) {
-            map.forEach((key, value) -> properties.put(String.valueOf(key), value));
+    @Override
+    public void beforeToolCall(AgentCallbackContext ctx) {
+        if (!(ctx.getInputs() instanceof ToolCallInputs)) {
+            return;
         }
-        properties.put("persist_allow", Map.of("type", "boolean", "default", false));
-        schema.put("properties", properties);
-        return schema;
+        ToolCallInputs inputs = (ToolCallInputs) ctx.getInputs();
+        ToolCall toolCall = inputs.getToolCall();
+        String toolCallId = toolCall != null ? toolCall.getId() : "";
+        Object userInput = getUserInput(ctx, toolCallId);
+        InterruptDecision decision = resolveInterrupt(ctx, toolCall, userInput);
+        applyResolvedDecision(ctx, toolCall, decision);
     }
 
-    private String buildMessage(String toolName, Map<String, Object> toolArgs, PermissionResult result) {
-        return "Tool `" + toolName + "` requires permission before execution.\n"
-                + "Arguments: " + toolArgs + "\n"
-                + "Matched rule: " + fallback(result.getMatchedRule(), "N/A");
+    /**
+     * Resolve the permission decision for the current tool invocation.
+     *
+     * <p>On the first check ({@code userInput == null}) the engine decides ALLOW/DENY/ASK. On
+     * resume ({@code userInput != null}) the carried {@link PermissionConfirmResponse} is applied.
+     *
+     * @param ctx callback context
+     * @param toolCall current tool call
+     * @param userInput resume input, when present
+     * @return rail decision
+     * @since 0.1.7
+     */
+    @Override
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
+        String rawName = toolCall != null ? toolCall.getName() : "";
+        String toolName = normalizeToolName(rawName);
+        Map<String, Object> toolArgs = extractToolArgs(ctx);
+        String autoConfirmKey = buildAutoConfirmKey(toolName, toolArgs);
+
+        if (userInput == null) {
+            return resolveFirstCheck(toolName, toolArgs, autoConfirmKey);
+        }
+        PermissionConfirmResponse payload = parseConfirmPayload(userInput);
+        if (payload == null) {
+            return interrupt(buildInterruptRequest(toolName, toolArgs, autoConfirmKey));
+        }
+        return handleConfirmResponse(payload, toolName, toolArgs, autoConfirmKey);
     }
 
-    private static String stringValue(Object rawName) {
-        return rawName == null ? "" : String.valueOf(rawName).trim();
+    private InterruptDecision resolveFirstCheck(String toolName, Map<String, Object> toolArgs,
+                                                 String autoConfirmKey) {
+        PermissionCheckResult result = engine.checkPermission(toolName, toolArgs);
+        if (result.getPermission() == PermissionLevel.ALLOW) {
+            return approve();
+        }
+        if (result.getPermission() == PermissionLevel.DENY) {
+            String rule = result.getMatchedRule();
+            String detail = (rule == null || rule.isEmpty()) ? "Operation not allowed" : rule;
+            return reject(DENIED_PREFIX + detail);
+        }
+        if (isAutoConfirmed(autoConfirmKey)) {
+            logger.info("[PermissionEngine] permission.auto_confirm.hit tool={} key={}", toolName, autoConfirmKey);
+            return approve();
+        }
+        PermissionConfirmResponse response = host.requestPermissionConfirmation(
+                PermissionConfirmationRequest.builder()
+                        .toolName(toolName)
+                        .toolArgs(toolArgs)
+                        .result(toPermissionResult(result))
+                        .autoConfirmKey(autoConfirmKey)
+                        .build());
+        if (response != null) {
+            return handleConfirmResponse(response, toolName, toolArgs, autoConfirmKey);
+        }
+        return interrupt(buildInterruptRequest(toolName, toolArgs, autoConfirmKey));
     }
 
-    private static String normalizeToolName(String rawName) {
-        String toolName = rawName == null ? "" : rawName.trim();
-        return TOOL_NAME_ALIASES.getOrDefault(toolName, toolName);
+    private InterruptDecision handleConfirmResponse(PermissionConfirmResponse response, String toolName,
+                                                     Map<String, Object> toolArgs, String autoConfirmKey) {
+        boolean isPersisted = false;
+        if (response.isApproved() && response.isAutoConfirm() && response.isPersistAllow()) {
+            isPersisted = persistAllowAlways(toolName, toolArgs);
+            logger.info("[PermissionEngine] permission.persist.result tool={} persisted={} persist_allow={}",
+                    toolName, isPersisted, response.isPersistAllow());
+        }
+        if (shouldStoreSessionAutoConfirm(response.isApproved(), response.isAutoConfirm(),
+                autoConfirmKey, isPersisted)) {
+            sessionAutoConfirm.put(autoConfirmKey, Boolean.TRUE);
+            logger.info("[PermissionEngine] permission.auto_confirm.store key={}", autoConfirmKey);
+        }
+        if (response.isApproved()) {
+            return approve();
+        }
+        String feedback = response.getFeedback();
+        return reject((feedback == null || feedback.isEmpty()) ? REJECTED_DEFAULT : feedback);
     }
 
-    private static String getAutoConfirmKey(String toolName, Map<String, Object> toolArgs) {
-        if (SHELL_TOOL_NAMES.contains(toolName)) {
-            Object command = toolArgs.containsKey("command") ? toolArgs.get("command") : toolArgs.get("cmd");
-            return buildShellAutoConfirmKey(toolName, command == null ? "" : String.valueOf(command));
+    private boolean persistAllowAlways(String toolName, Map<String, Object> toolArgs) {
+        Map<String, Object> baseCfg = host.getPermissionsSnapshot();
+        if (baseCfg == null || baseCfg.isEmpty()) {
+            baseCfg = new LinkedHashMap<>(engine.getConfig());
+        } else {
+            baseCfg = new LinkedHashMap<>(baseCfg);
+        }
+        Map<String, Object> merged = PermissionsYamlWriter.mergeAllowRule(baseCfg, toolName, toolArgs);
+        boolean isPersisted = host.persistAllowRule(merged);
+        if (isPersisted) {
+            refreshEngineConfig(merged);
+        } else {
+            logger.warn("[PermissionEngine] permission.persist.host_failed tool={} rollback_memory=true", toolName);
+        }
+        return isPersisted;
+    }
+
+    private void refreshEngineConfig(Map<String, Object> snapshot) {
+        if (snapshot == null) {
+            return;
+        }
+        Map<String, Object> cfg = engine.getConfig();
+        try {
+            cfg.clear();
+            cfg.putAll(snapshot);
+        } catch (UnsupportedOperationException ex) {
+            logger.warn("[PermissionEngine] permission.rail.config_refresh_skipped reason=immutable_config");
+        }
+    }
+
+    private String normalizeToolName(String toolName) {
+        if (toolName == null) {
+            return "";
+        }
+        if (SHELL_TOOL_ALIASES.contains(toolName)) {
+            return "bash";
         }
         return toolName;
     }
 
-    private static String buildShellAutoConfirmKey(String toolName, String command) {
-        String text = command == null ? "" : command.trim();
-        if (text.isBlank()) {
+    private String buildAutoConfirmKey(String toolName, Map<String, Object> toolArgs) {
+        if (toolName == null || toolName.isEmpty()) {
             return "";
         }
-        ShellAstParseResult result = ShellAst.parseShellForPermission(text);
-        if (!"simple".equals(result.getKind()) || result.getFlags().hasRiskyStructure()
-                || result.getSubcommands().size() != 1) {
-            return "";
+        if (SHELL_TOOL_ALIASES.contains(toolName)) {
+            return buildShellAutoConfirmKey(toolName, commandText(toolArgs));
         }
-        String subcommand = result.getSubcommands().get(0).getText().trim();
-        return subcommand.isBlank() ? "" : toolName + ":" + subcommand;
+        return toolName;
     }
 
-    private static boolean isAutoConfirmed(Map<String, Object> config, String key) {
-        Object value = config == null ? null : config.get(key);
-        return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
+    private String buildShellAutoConfirmKey(String toolName, String command) {
+        if (command == null || command.isBlank()) {
+            return "";
+        }
+        ShellAstParseResult parse = ShellAst.parse(command);
+        if (!"simple".equals(parse.getKind())) {
+            return "";
+        }
+        if (parse.getFlags() != null && parse.getFlags().hasRiskyStructure()) {
+            return "";
+        }
+        List<ShellSubcommand> subcommands = parse.getSubcommands();
+        if (subcommands == null || subcommands.size() != 1) {
+            return "";
+        }
+        ShellSubcommand first = subcommands.get(0);
+        String text = first != null ? first.getText() : null;
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        return toolName + ":" + text.strip();
+    }
+
+    private boolean isAutoConfirmed(String key) {
+        if (key == null || key.isEmpty()) {
+            return false;
+        }
+        return sessionAutoConfirm.getOrDefault(key, Boolean.FALSE);
+    }
+
+    private static boolean shouldStoreSessionAutoConfirm(boolean isApproved, boolean isAutoConfirm,
+                                                          String autoConfirmKey, boolean isPersisted) {
+        return isApproved && isAutoConfirm && autoConfirmKey != null && !autoConfirmKey.isEmpty() && !isPersisted;
+    }
+
+    private PermissionConfirmResponse parseConfirmPayload(Object userInput) {
+        if (userInput instanceof PermissionConfirmResponse response) {
+            return response;
+        }
+        if (userInput instanceof Map<?, ?> map) {
+            return PermissionConfirmResponse.builder()
+                    .approved(toBool(map.get("approved")))
+                    .feedback(toStr(map.get("feedback")))
+                    .autoConfirm(toBool(map.get("auto_confirm")))
+                    .persistAllow(toBool(map.get("persist_allow")))
+                    .build();
+        }
+        return null;
+    }
+
+    private static boolean toBool(Object value) {
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value).trim());
+    }
+
+    private static String toStr(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private PermissionResult toPermissionResult(PermissionCheckResult result) {
+        return PermissionResult.builder()
+                .permission(result.getPermission())
+                .matchedRule(result.getMatchedRule())
+                .build();
+    }
+
+    private String commandText(Map<String, Object> toolArgs) {
+        if (toolArgs == null) {
+            return "";
+        }
+        Object raw = toolArgs.get(SHELL_COMMAND_KEY);
+        String value = raw == null ? "" : raw.toString();
+        if (value.isEmpty()) {
+            Object cmd = toolArgs.get(SHELL_CMD_KEY);
+            value = cmd == null ? "" : cmd.toString();
+        }
+        return value.strip();
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> parseToolArgs(Object value) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        if (value instanceof Map<?, ?> map) {
-            map.forEach((key, item) -> result.put(String.valueOf(key), item));
+    private Map<String, Object> extractToolArgs(AgentCallbackContext ctx) {
+        Object toolArgsObj = ctx.getInputs() instanceof ToolCallInputs inputs ? inputs.getToolArgs() : null;
+        if (toolArgsObj instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
             return result;
         }
-        if (value instanceof String rawArgs) {
-            return parseJsonToolArgs(rawArgs);
+        if (toolArgsObj instanceof String rawArgs) {
+            return parseJsonArgs(rawArgs);
         }
-        return result;
+        return new LinkedHashMap<>();
     }
 
-    /**
-     * Parse a JSON-encoded tool-arguments string into a map. Tool calls carry their
-     * arguments as a raw JSON string (see {@code AbilityManager#newToolCallContext}),
-     * so the rail must decode it before the engine can match parameter-level rules
-     * (Pipeline A patterns) or extract guarded paths (Pipeline B file_guard).
-     *
-     * @param rawArgs JSON object text, or blank when the tool call has no arguments
-     * @return parsed argument map; never {@code null}
-     */
-    private static Map<String, Object> parseJsonToolArgs(String rawArgs) {
+    private static Map<String, Object> parseJsonArgs(String rawArgs) {
         if (rawArgs == null || rawArgs.isBlank()) {
             return new LinkedHashMap<>();
         }
         try {
-            Map<String, Object> parsed = ARGUMENTS_MAPPER.readValue(rawArgs, MAP_TYPE);
-            return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
-        } catch (JsonProcessingException | IllegalArgumentException ex) {
-            LOGGER.warn("[PermissionEngine] permission.tool_args.parse_failed raw={}", rawArgs, ex);
+            Map<String, Object> parsed = JSON_MAPPER.readValue(rawArgs, new TypeReference<>() {
+            });
+            return new LinkedHashMap<>(parsed);
+        } catch (JsonProcessingException ex) {
+            logger.warn("[PermissionEngine] permission.tool_args.parse_failed raw={}", rawArgs, ex);
             return new LinkedHashMap<>();
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static PermissionConfirmResponse parseConfirmPayload(Object userInput) {
-        if (userInput instanceof PermissionConfirmResponse response) {
-            return response;
-        }
-        if (userInput instanceof ConfirmPayload payload) {
-            return new PermissionConfirmResponse(payload.approved(), payload.feedback(), payload.autoConfirm());
-        }
-        if (!(userInput instanceof Map<?, ?> map)) {
-            return null;
-        }
-        boolean approved = booleanValue(map.get("approved"), false);
-        boolean autoConfirm = booleanValue(map.get("auto_confirm"), false);
-        boolean persistAllow = booleanValue(firstPresent(map, "persist_allow", "persistAllow"), false);
-        Object feedback = map.get("feedback");
-        return new PermissionConfirmResponse(
-                approved,
-                feedback == null ? "" : String.valueOf(feedback),
-                autoConfirm,
-                persistAllow
-        );
+    private InterruptRequest buildInterruptRequest(String toolName, Map<String, Object> toolArgs,
+                                                   String autoConfirmKey) {
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("tool_name", toolName);
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("approved", Map.of("type", "boolean", "description", "approve the tool call"));
+        schema.put("feedback", Map.of("type", "string", "description", "rejection reason"));
+        schema.put("auto_confirm", Map.of("type", "boolean", "description", "remember for this session"));
+        schema.put("persist_allow", Map.of("type", "boolean", "description", "write a permanent allow rule"));
+        String argsPreview = formatArgsPreview(toolArgs);
+        String message = "Permission approval required for tool: " + toolName + argsPreview;
+        return InterruptRequest.builder()
+                .message(message)
+                .context(context)
+                .payloadSchema(schema)
+                .autoConfirmKey(autoConfirmKey)
+                .build();
     }
 
-    private static Object firstPresent(Map<?, ?> map, String first, String second) {
-        return map.containsKey(first) ? map.get(first) : map.get(second);
+    private static String formatArgsPreview(Map<String, Object> toolArgs) {
+        if (toolArgs == null || toolArgs.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("\n\narguments:\n");
+        for (Map.Entry<String, Object> entry : toolArgs.entrySet()) {
+            sb.append("  ").append(entry.getKey()).append("=").append(entry.getValue()).append("\n");
+        }
+        String preview = sb.toString();
+        return preview.length() > 1000 ? preview.substring(0, 1000) : preview;
     }
 
-    private static void storeAutoConfirm(CallbackContext ctx, String key) {
-        Object rawConfig = ctx.get("auto_confirm_config");
-        Map<String, Object> config = new LinkedHashMap<>();
-        if (rawConfig instanceof Map<?, ?> map) {
-            map.forEach((mapKey, value) -> config.put(String.valueOf(mapKey), value));
+    private void applyResolvedDecision(AgentCallbackContext ctx, ToolCall toolCall, InterruptDecision decision) {
+        if (!(ctx.getInputs() instanceof ToolCallInputs inputs)) {
+            return;
         }
-        config.put(key, true);
-        ctx.put("auto_confirm_config", config);
-    }
-
-    private static boolean booleanValue(Object value, boolean defaultValue) {
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        if (value == null) {
-            return defaultValue;
-        }
-        return "true".equalsIgnoreCase(String.valueOf(value)) || "1".equals(String.valueOf(value));
-    }
-
-    private static String fallback(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
-    }
-
-    private static Map<String, Object> toConfigMap(PermissionsSection config) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        if (config == null) {
-            return result;
-        }
-        if (config.getEnabled() != null) {
-            result.put("enabled", config.getEnabled());
-        }
-        if (config.getSchema() != null) {
-            result.put("schema", config.getSchema());
-        }
-        if (config.getDefaults() != null) {
-            result.put("defaults", new LinkedHashMap<>(config.getDefaults()));
-        }
-        if (config.getTools() != null) {
-            result.put("tools", new LinkedHashMap<>(config.getTools()));
-        }
-        if (config.getRules() != null) {
-            List<Map<String, Object>> rules = new ArrayList<>();
-            for (Map<String, Object> rule : config.getRules()) {
-                rules.add(rule == null ? null : new LinkedHashMap<>(rule));
+        if (decision instanceof ApproveResult approveResult) {
+            if (approveResult.getNewArgs() != null) {
+                inputs.setToolArgs(approveResult.getNewArgs());
             }
-            result.put("rules", rules);
+            return;
         }
-        if (config.getApprovalOverrides() != null) {
-            List<Map<String, Object>> overrides = new ArrayList<>();
-            config.getApprovalOverrides().forEach(entry -> {
-                Map<String, Object> override = new LinkedHashMap<>();
-                override.put("id", entry.getId());
-                override.put("tools", entry.getTools());
-                override.put("match_type", entry.getMatchType());
-                override.put("pattern", entry.getPattern());
-                override.put("action", entry.getAction());
-                overrides.add(override);
-            });
-            result.put("approval_overrides", overrides);
-        }
-        if (config.getExternalDirectory() != null) {
-            result.put("external_directory", new LinkedHashMap<>(config.getExternalDirectory()));
-        }
-        result.putAll(config.getExtensions());
-        return result;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> deepCopyMap(Map<String, Object> source) {
-        Map<String, Object> copy = new LinkedHashMap<>();
-        if (source == null) {
-            return copy;
-        }
-        source.forEach((key, value) -> {
-            if (value instanceof Map<?, ?> map) {
-                Map<String, Object> nested = new LinkedHashMap<>();
-                map.forEach((nestedKey, nestedValue) -> nested.put(String.valueOf(nestedKey), nestedValue));
-                copy.put(key, deepCopyMap(nested));
-            } else if (value instanceof List<?> list) {
-                copy.put(key, new ArrayList<>(list));
-            } else {
-                copy.put(key, value);
+        if (decision instanceof RejectResult rejectResult) {
+            ctx.getExtra().put("_skip_tool", Boolean.TRUE);
+            inputs.setToolResult(rejectResult.getToolResult());
+            ToolMessage toolMessage = rejectResult.getToolMessage();
+            if (toolMessage == null) {
+                String toolCallId = toolCall != null ? toolCall.getId() : "";
+                toolMessage = ToolMessage.builder()
+                        .content(String.valueOf(rejectResult.getToolResult()))
+                        .toolCallId(toolCallId)
+                        .build();
             }
-        });
-        return copy;
+            inputs.setToolMsg(toolMessage);
+            return;
+        }
+        if (decision instanceof InterruptResult interruptResult) {
+            throw new ToolInterruptException(interruptResult.getRequest(), toolCall);
+        }
     }
 }

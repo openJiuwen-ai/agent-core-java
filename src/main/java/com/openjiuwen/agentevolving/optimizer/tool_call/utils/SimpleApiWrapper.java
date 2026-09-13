@@ -1,93 +1,123 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Simplified version of the custom BFCL-style API wrapper.
- *
- * <p>Mirrors Python's {@code SimpleAPIWrapper} in
- * {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/customized_api.py}.</p>
+ * Simple API wrapper for tool execution.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.customized_api.SimpleAPIWrapper}.
+ * 
+ * @since 0.1.7
  */
 public class SimpleApiWrapper {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    protected final Map<String, Object> functions = new LinkedHashMap<>();
+    /**
+     * functions.
+     * 
+     * @since 0.1.7
+     */
+    protected final Map<String, Object> functions = new HashMap<>();
+
+    /**
+     * fnCallName.
+     * 
+     * @since 0.1.7
+     */
     protected String fnCallName;
+
+    /**
+     * module.
+     * 
+     * @since 0.1.7
+     */
     protected Object module;
 
-    public SimpleApiWrapper(String fnCallName, Map<String, Object> customFunctions) {
-        this(null, fnCallName, customFunctions, null);
+    /**
+     * Create API wrapper with callable.
+     * 
+     * @param toolCallable Tool callable
+     * @param name Function name
+     * @param config Configuration
+     * @since 0.1.7
+     */
+    public SimpleApiWrapper(Object toolCallable, String name, Map<String, Object> config) {
+        this.fnCallName = name;
+        this.functions.put(name, toolCallable);
     }
 
-    public SimpleApiWrapper(
-            String toolPath,
-            String fnCallName,
-            Map<String, Object> customFunctions,
-            ToolModuleLoader moduleLoader
-    ) {
+    /**
+     * Create API wrapper from a custom-function map.
+     * 
+     * @param fnCallName Function name to invoke
+     * @param customFunctions Custom function registry
+     * @since 0.1.7
+     */
+    public SimpleApiWrapper(String fnCallName, Map<String, Object> customFunctions) {
         this.fnCallName = fnCallName;
-        this.module = null;
-        if (toolPath != null && !toolPath.isBlank() && Files.exists(Path.of(toolPath)) && moduleLoader != null) {
-            LoadedToolModule loaded = moduleLoader.load(toolPath);
-            if (loaded != null) {
-                this.module = loaded.module();
-                if (loaded.functions() != null) {
-                    this.functions.putAll(loaded.functions());
-                }
-            }
-        }
         if (customFunctions != null) {
             this.functions.putAll(customFunctions);
         }
     }
 
-    public void addFunction(String name, Object func) {
-        functions.put(name, func);
-    }
-
-    public void setFnCallName(String fnCallName) {
-        this.fnCallName = fnCallName;
-    }
-
+    /**
+     * Execute tool call.
+     * 
+     * @param tool Tool definition
+     * @param toolInput Tool input parameters
+     * @return Array of [response, status_code]
+     * @since 0.1.7
+     */
     public Object[] call(Map<String, Object> tool, Map<String, Object> toolInput) {
-        String toolName = String.valueOf(tool.get("name"));
-        Loggers.AGENT.info("=== Trying to execute tool: " + tool + ", tool_input: " + toolInput + " ===");
+        String toolName = (String) tool.get("name");
+        Loggers.AGENT.info("=== Trying to execute tool: {}, tool_input: {} ===", tool, toolInput);
 
+        Map<String, Object> params = toolInput;
         Object fn = functions.get(fnCallName);
+
         if (fn == null) {
-            String error = "request invalid, no function '" + toolName + "' found";
-            Loggers.AGENT.error(error);
-            return buildErrorResponse(error);
+            Loggers.AGENT.error("request invalid, no function '{}' found", toolName);
+            return buildErrorResponse("request invalid, no function '" + toolName + "' found");
         }
 
         try {
-            Object output = executeFunction(fn, toolInput);
+            Object output = executeFunction(fn, params);
             return new Object[]{OBJECT_MAPPER.writeValueAsString(Map.of("response", output)), 0};
-        } catch (Exception exception) {
-            String error = "request invalid, error: " + exception.getMessage();
-            Loggers.AGENT.error(error);
-            return buildErrorResponse(error);
+        } catch (Exception e) {
+            Loggers.AGENT.error("request invalid, error: {}", e.getMessage());
+            return buildErrorResponse("request invalid, error: " + e.getMessage());
         }
     }
 
+    /**
+     * executeFunction.
+     * 
+     * @param fn fn
+     * @param params params
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @SuppressWarnings("unchecked")
     protected Object executeFunction(Object fn, Map<String, Object> params) throws Exception {
-        if (fn instanceof Function<?, ?> function) {
-            return ((Function<Map<String, Object>, Object>) function).apply(params);
+        if (fn instanceof Function<?, ?>) {
+            return ((Function<Map<String, Object>, Object>) fn).apply(params);
         }
         for (String methodName : List.of("apply", "call", "invoke")) {
             for (java.lang.reflect.Method method : fn.getClass().getMethods()) {
@@ -99,8 +129,29 @@ public class SimpleApiWrapper {
         throw new NoSuchMethodException("No single-argument callable method found on " + fn.getClass().getName());
     }
 
+    /**
+     * Add function to wrapper.
+     * 
+     * @param name Function name
+     * @param func Function callable
+     * @since 0.1.7
+     */
+    public void addFunction(String name, Object func) {
+        functions.put(name, func);
+    }
+
+    /**
+     * loadCustomData.
+     * 
+     * @param dataPath dataPath
+     * @param apiWrapper apiWrapper
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @SuppressWarnings("unchecked")
-    public static List<Map<String, Object>> loadCustomData(String dataPath, SimpleApiWrapper apiWrapper) throws Exception {
+    public static List<Map<String, Object>> loadCustomData(String dataPath, SimpleApiWrapper apiWrapper)
+            throws Exception {
         if (dataPath == null || dataPath.isBlank()) {
             return List.of();
         }
@@ -110,8 +161,8 @@ public class SimpleApiWrapper {
             return List.of();
         }
 
-        List<Map<String, Object>> tools = new ArrayList<>();
-        String fileName = path.getFileName().toString().toLowerCase();
+        List<Map<String, Object>> tools = new java.util.ArrayList<>();
+        String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
 
         if (fileName.endsWith(".jsonl")) {
             for (String line : Files.readAllLines(path)) {
@@ -119,7 +170,7 @@ public class SimpleApiWrapper {
                     continue;
                 }
                 Object parsed = OBJECT_MAPPER.readValue(line, Object.class);
-                if (parsed instanceof Map<?, ?> data && data.containsKey("function")) {
+                if (parsed instanceof Map<?, ?> data) {
                     Object functions = data.get("function");
                     if (functions instanceof List<?> list) {
                         for (Object function : list) {
@@ -150,12 +201,21 @@ public class SimpleApiWrapper {
                         addToolEntry(tools, function);
                     }
                 }
+            } else {
+                // no-op
             }
         }
 
         return tools;
     }
 
+    /**
+     * addToolEntry.
+     * 
+     * @param tools tools
+     * @param functionDefinition functionDefinition
+     * @since 0.1.7
+     */
     private static void addToolEntry(List<Map<String, Object>> tools, Object functionDefinition) {
         if (!(functionDefinition instanceof Map<?, ?> map)) {
             return;
@@ -166,33 +226,21 @@ public class SimpleApiWrapper {
                 function.put(String.valueOf(entry.getKey()), entry.getValue());
             }
         }
-        Map<String, Object> toolEntry = new LinkedHashMap<>();
-        toolEntry.put("type", "function");
-        toolEntry.put("function", function);
-        tools.add(toolEntry);
+        tools.add(new LinkedHashMap<>(Map.of("type", "function", "function", Collections.unmodifiableMap(function))));
     }
 
+    /**
+     * buildErrorResponse.
+     * 
+     * @param errorMessage errorMessage
+     * @return the result
+     * @since 0.1.7
+     */
     private Object[] buildErrorResponse(String errorMessage) {
         try {
             return new Object[]{OBJECT_MAPPER.writeValueAsString(Map.of("error", errorMessage, "response", "")), 12};
-        } catch (Exception ignored) {
+        } catch (JsonProcessingException ignored) {
             return new Object[]{"{\"error\":\"" + errorMessage + "\",\"response\":\"\"}", 12};
         }
-    }
-
-    /**
-     * Mirrors the dynamic tool-module loading boundary in
-     * {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/customized_api.py}.
-     */
-    public interface ToolModuleLoader {
-
-        LoadedToolModule load(String toolPath);
-    }
-
-    /**
-     * Mirrors the loaded module payload in
-     * {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/customized_api.py}.
-     */
-    public record LoadedToolModule(Object module, Map<String, Object> functions) {
     }
 }

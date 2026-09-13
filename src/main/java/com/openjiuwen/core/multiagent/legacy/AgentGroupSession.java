@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.multiagent.legacy;
 
+import com.openjiuwen.core.session.AgentGroupSessionApi;
+
 import java.util.Map;
 
 /**
@@ -11,13 +13,13 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.multi_agent.legacy.AgentGroupSession}
  * export while keeping the shared Java implementation in
- * {@link com.openjiuwen.core.session.AgentGroupSession}.
- *
+ * {@link AgentGroupSessionApi}.
+ * 
  * @deprecated Use {@link com.openjiuwen.core.multiagent.Session}.
  * @since 0.1.7
  */
 @Deprecated
-public class AgentGroupSession extends com.openjiuwen.core.session.AgentGroupSession {
+public class AgentGroupSession extends AgentGroupSessionApi {
     /**
      * AgentGroupSession.
      * 

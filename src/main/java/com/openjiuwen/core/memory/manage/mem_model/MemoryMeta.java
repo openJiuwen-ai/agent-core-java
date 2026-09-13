@@ -5,12 +5,9 @@
 package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
- * Memory SQL metadata row that records schema versions per table.
- *
- * <p>Mirrors Python's {@code MemoryMeta} in
- * {@code openjiuwen/core/memory/manage/mem_model/db_model.py}.</p>
+ * Public row model matching the memory_meta table.
+ * 
+ * @since 0.1.7
  */
-public class MemoryMeta extends MemoryMetaMixin {
-
-    public static final String TABLE_NAME = "memory_meta";
+public record MemoryMeta(String tableName, String schemaVersion) {
 }

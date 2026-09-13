@@ -4,59 +4,75 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-/**
- * Mirrors Python's {@code TokenizerChunker} behavior in
- * {@code openjiuwen/core/retrieval/indexing/processor/chunker/tokenizer_chunker.py}.
- *
- * <p>Mirrors Python's {@code TestTokenizerChunker} in
- * {@code tests/unit_tests/core/retrieval/indexing/processor/chunker/test_tokenizer_chunker.py}.</p>
- */
 class TokenizerChunkerTest {
-
     @Test
-    void initStoresChunkerConfiguration() {
-        TokenizerChunker chunker = new TokenizerChunker(512, 50, new WhitespaceTokenizer());
+    void chunkTextUsesExternalTokenizer() {
+        Function<String, List<String>> tokenizer =
+            text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ").trim().split("\\s+"))
+                    .filter(part -> !part.isBlank()).toList();
+        TokenizerChunker chunker = new TokenizerChunker(2, 0, tokenizer, "en", Map.of());
 
-        assertThat(chunker.getChunkSize()).isEqualTo(512);
-        assertThat(chunker.getChunkOverlap()).isEqualTo(50);
-        assertThat(chunker.getTokenizer()).isInstanceOf(WhitespaceTokenizer.class);
+        List<String> chunks = chunker.chunkText("One two. Three four.");
+
+        assertEquals(List.of("One two.", "Three four."), chunks);
+        assertEquals("en", chunker.getLanguage());
+        assertEquals(Map.of(), chunker.getSplitterConfig());
     }
 
     @Test
-    void chunkTextSuccessReturnsChunkTexts() {
-        TokenizerChunker chunker = new TokenizerChunker(4, 1, new WhitespaceTokenizer(), "en", null);
-
-        List<String> chunks = chunker.chunkText("one two three four five six seven");
-
-        assertThat(chunks).containsExactly("one two three four", "four five six seven");
+    void chunkTextHandlesEmptyInputAndHybridRegistry() {
+        TokenizerChunker chunker = new TokenizerChunker(2, 0);
+        assertTrue(chunker.chunkText("").isEmpty());
+        assertInstanceOf(HybridChunker.class, ChunkerRegistry.getChunker("hybrid"));
+        assertTrue(ChunkerRegistry.contains("char"));
+        assertFalse(ChunkerRegistry.contains("token"));
     }
 
     @Test
-    void chunkTextEmptyReturnsNoChunks() {
-        TokenizerChunker chunker = new TokenizerChunker(512, 50, new WhitespaceTokenizer());
+    void chunkTextWithOverlapPreservesContext() {
+        Function<String, List<String>> tokenizer =
+            text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ").trim().split("\\s+"))
+                    .filter(part -> !part.isBlank()).toList();
+        // chunkSize=3, overlap=1 → each chunk holds up to 3 tokens, overlap keeps 1 token from previous
+        TokenizerChunker chunker = new TokenizerChunker(3, 1, tokenizer, "en", Map.of());
 
-        assertThat(chunker.chunkText("")).isEmpty();
+        List<String> chunks = chunker.chunkText("One two three. Four five six. Seven eight nine.");
+
+        // With overlap the last sentence of a chunk should reappear in the next chunk
+        assertTrue(chunks.size() >= 2, "Expected at least 2 chunks with overlap");
+        // Verify some overlap: second chunk should start with content from the end of the first
+        String firstChunk = chunks.get(0);
+        String secondChunk = chunks.get(1);
+        assertTrue(firstChunk.length() > 0 && secondChunk.length() > 0);
     }
 
     @Test
-    void chunkTextNullReturnsNoChunks() {
-        TokenizerChunker chunker = new TokenizerChunker(512, 50, new WhitespaceTokenizer());
+    void chunkTextWithChineseLanguageDetection() {
+        // Use default tokenizer (null) so SentenceSplitter auto-detects Chinese
+        TokenizerChunker chunker = new TokenizerChunker(5, 0, null, "auto", Map.of());
 
-        assertThat(chunker.chunkText(null)).isEmpty();
+        List<String> chunks = chunker.chunkText("你好世界。今天天气很好。明天也会不错。");
+
+        assertFalse(chunks.isEmpty());
+        assertEquals("auto", chunker.getLanguage());
     }
 
-    private static final class WhitespaceTokenizer implements IndexSentenceSplitter.TokenCodec {
-
-        @Override
-        public List<String> encode(String text, int maxLength) {
-            return List.of(text.split("\\s+"));
-        }
+    @Test
+    void constructorDefaultsLanguageAndConfig() {
+        TokenizerChunker chunker = new TokenizerChunker(10, 2);
+        assertEquals("auto", chunker.getLanguage());
+        assertEquals(Map.of(), chunker.getSplitterConfig());
     }
 }

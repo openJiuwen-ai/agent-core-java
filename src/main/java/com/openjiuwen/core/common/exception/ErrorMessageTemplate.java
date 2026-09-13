@@ -4,27 +4,31 @@
 
 package com.openjiuwen.core.common.exception;
 
-import java.util.LinkedHashSet;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 /**
- * Mirrors Python's {@code ErrorMessageTemplate} in
- * {@code openjiuwen/core/common/exception/code_template.py}.
- *
- * @param template rendered message template
- * @param params template placeholder names
+ * Generates human-readable error message templates from structured inputs.
+ * @since 0.1.7
  */
 public record ErrorMessageTemplate(String template, Set<String> params) {
+    /**
+     * generate.
+     * @param scope scope
+     * @param subject subject
+     * @param failureType failureType
+     * @param withReason withReason
+     * @return the result
+     * @since 0.1.7
+     */
+    public static ErrorMessageTemplate generate(String scope, String subject, String failureType, boolean withReason) {
+        String scopeLower = scope.toLowerCase(Locale.ROOT);
+        String subjectLower = subject.toLowerCase(Locale.ROOT);
+        Set<String> params = new HashSet<>();
+        String msg;
 
-    public static ErrorMessageTemplate generateErrorMessageTemplate(
-            String scope,
-            String subject,
-            String failureType,
-            boolean withReason) {
-        String scopeLower = scope.toLowerCase();
-        String subjectLower = subject.toLowerCase();
-        LinkedHashSet<String> params = new LinkedHashSet<>();
-        String message = switch (failureType) {
+        msg = switch (failureType) {
             case "INVALID" -> scopeLower + " " + subjectLower + " is invalid";
             case "PARAM_ERROR" -> scopeLower + " " + subjectLower + " parameter error";
             case "NOT_FOUND" -> scopeLower + " " + subjectLower + " not found";
@@ -42,14 +46,24 @@ public record ErrorMessageTemplate(String template, Set<String> params) {
             case "INTERRUPTED" -> scopeLower + " " + subjectLower + " interrupted";
             default -> throw new IllegalArgumentException("Unsupported failure type: " + failureType);
         };
+
         if (withReason) {
             params.add("error_msg");
-            message += ", reason: {error_msg}";
+            msg += ", reason: {error_msg}";
         }
-        return new ErrorMessageTemplate(message, Set.copyOf(params));
+
+        return new ErrorMessageTemplate(msg, Set.copyOf(params));
     }
 
-    public static ErrorMessageTemplate generateErrorMessageTemplate(String scope, String subject, String failureType) {
-        return generateErrorMessageTemplate(scope, subject, failureType, true);
+    /**
+     * generate.
+     * @param scope scope
+     * @param subject subject
+     * @param failureType failureType
+     * @return the result
+     * @since 0.1.7
+     */
+    public static ErrorMessageTemplate generate(String scope, String subject, String failureType) {
+        return generate(scope, subject, failureType, true);
     }
 }

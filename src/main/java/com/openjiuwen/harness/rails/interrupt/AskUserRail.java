@@ -4,138 +4,109 @@
 
 package com.openjiuwen.harness.rails.interrupt;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
-import com.openjiuwen.harness.deep_agent.DeepAgent;
-import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
-import com.openjiuwen.harness.rails.CallbackContext;
-import com.openjiuwen.harness.tools.AskUserTool;
+import com.openjiuwen.core.singleagent.interrupt.AskUserRequest;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Handles ask-user tool interruptions.
+ * Ask-user rail: returns user input without executing the tool.
  *
- * <p>Mirrors Python's {@code AskUserRail} and payload classes in
- * {@code openjiuwen/harness/rails/interrupt/ask_user_rail.py}.</p>
+ * @since 0.1.7
  */
 public class AskUserRail extends BaseInterruptRail {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
-    };
-
-    private AskUserTool askUserTool;
-
+    /**
+     * AskUserRail.
+     *
+     * @since 0.1.7
+     */
     public AskUserRail() {
         super(List.of("ask_user"));
     }
 
+    /**
+     * resolveInterrupt.
+     *
+     * @param ctx ctx
+     * @param toolCall toolCall
+     * @param userInput userInput
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public void init(DeepAgent agent) {
-        super.init(agent);
-        if (agent == null) {
-            return;
-        }
-        String language = HarnessPromptsPackage.resolveLanguage(
-                agent.deepConfig() == null ? null : agent.deepConfig().getLanguage());
-        String agentId = agent.getCard() == null ? null : agent.getCard().getId();
-        askUserTool = new AskUserTool(language, agentId);
-        agent.registerTool(askUserTool);
-    }
-
-    @Override
-    public void uninit(DeepAgent agent) {
-        if (agent != null && askUserTool != null && askUserTool.getCard() != null) {
-            agent.unregisterTool(askUserTool.getCard().getName());
-        }
-        askUserTool = null;
-    }
-
-    @Override
-    public void beforeToolCall(CallbackContext ctx) {
-        if ("ask_user".equals(ctx.get("tool_name"))) {
-            ctx.put("interrupt_kind", "ask_user");
-        }
-        super.beforeToolCall(ctx);
-    }
-
-    public InterruptDecision resolveInterrupt(CallbackContext ctx, ToolCall toolCall, Object userInput) {
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
         if (userInput == null) {
             return interrupt(buildAskRequest(toolCall));
         }
 
-        AskUserPayload payload;
         try {
+            AskUserPayload payload;
             if (userInput instanceof AskUserPayload askUserPayload) {
                 payload = askUserPayload;
-            } else if (userInput instanceof Map<?, ?> inputMap) {
-                payload = parseUserInputMap(inputMap, toolCall);
+            } else if (userInput instanceof Map<?, ?> map) {
+                payload = parseUserInputDict(castStringObjectMap(map), toolCall);
             } else if (userInput instanceof String text) {
                 if (text.isEmpty()) {
                     return interrupt(buildAskRequest(toolCall));
                 }
-                List<Map<String, Object>> questions = questions(toolCall);
-                if (questions.isEmpty()) {
+                List<Map<String, Object>> questions = extractQuestions(parseToolArgs(toolCall));
+                if (!questions.isEmpty()) {
+                    String firstQuestion = stringField(questions.get(0), "question");
+                    Map<String, String> answers = new LinkedHashMap<>();
+                    answers.put(firstQuestion, text);
+                    payload = AskUserPayload.builder().answers(answers).build();
+                } else {
                     return interrupt(buildAskRequest(toolCall));
                 }
-                payload = new AskUserPayload(Map.of(questionText(questions.get(0)), text));
             } else {
                 return interrupt(buildAskRequest(toolCall));
             }
-        } catch (RuntimeException exception) {
+
+            if (payload.getAnswers() == null || payload.getAnswers().isEmpty()) {
+                return interrupt(buildAskRequest(toolCall));
+            }
+            return reject(formatToolResult(toolCall, payload));
+        } catch (RuntimeException ignored) {
             return interrupt(buildAskRequest(toolCall));
         }
-
-        if (payload.answers().isEmpty()) {
-            return interrupt(buildAskRequest(toolCall));
-        }
-        return reject(formatToolResult(toolCall, payload));
     }
 
-    private AskUserPayload parseUserInputMap(Map<?, ?> userInput, ToolCall toolCall) {
-        Object answers = userInput.get("answers");
-        if (answers instanceof Map<?, ?> answerMap) {
-            Map<String, String> values = new LinkedHashMap<>();
-            answerMap.forEach((key, value) -> values.put(String.valueOf(key), value == null ? "" : String.valueOf(value)));
-            return new AskUserPayload(values);
-        }
-        List<Map<String, Object>> questions = questions(toolCall);
-        if (questions.size() == 1 && userInput.containsKey("answer")) {
-            return new AskUserPayload(Map.of(questionText(questions.get(0)), String.valueOf(userInput.get("answer"))));
-        }
-        return new AskUserPayload();
-    }
+    /**
+     * Build AskUserRequest with questions from tool call arguments.
+     *
+     * @param toolCall ask_user tool call; may be null
+     * @return interrupt request
+     * @since 0.1.14
+     */
+    static AskUserRequest buildAskRequest(ToolCall toolCall) {
+        Map<String, Object> args = parseToolArgs(toolCall);
+        List<Map<String, Object>> questions = extractQuestions(args);
 
-    private String formatToolResult(ToolCall toolCall, AskUserPayload payload) {
-        List<Map<String, Object>> questions = questions(toolCall);
-        if (questions.isEmpty()) {
-            return pythonDictString(payload.answers());
-        }
+        String interruptId = toolCall != null && toolCall.getId() != null && !toolCall.getId().isBlank()
+                ? toolCall.getId()
+                : "ask_user_interrupt";
 
-        List<String> answerParts = new ArrayList<>();
-        for (Map<String, Object> question : questions) {
-            String questionText = questionText(question);
-            String answer = payload.answers().getOrDefault(questionText, "");
-            answerParts.add("\"" + questionText + "\"=\"" + answer + "\"");
-        }
-        return "User has answered your questions: "
-                + String.join(", ", answerParts)
-                + ". You can now continue with the user's answers in mind.";
-    }
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("tool_call_id", interruptId);
+        context.put("tool_name", "ask_user");
 
-    private AskUserRequest buildAskRequest(ToolCall toolCall) {
-        List<Map<String, Object>> questionList = questions(toolCall);
         AskUserRequest request = new AskUserRequest();
-        // Fill message for apps that only read InterruptRequest.message.
-        request.setMessage(formatMessageFromQuestions(questionList));
+        request.setInterruptId(interruptId);
+        // Fill message for apps that only read message.
+        request.setMessage(formatMessageFromQuestions(questions));
         request.setPayloadSchema(AskUserPayload.toSchema());
-        request.setQuestions(questionList);
+        request.setContext(context);
+        request.setQuestions(questions);
         return request;
     }
 
@@ -144,6 +115,7 @@ public class AskUserRail extends BaseInterruptRail {
      *
      * @param questions normalized ask_user questions; may be null/empty
      * @return concatenated message, or empty string when there is no usable content
+     * @since 0.1.14
      */
     static String formatMessageFromQuestions(List<Map<String, Object>> questions) {
         if (questions == null || questions.isEmpty()) {
@@ -199,8 +171,9 @@ public class AskUserRail extends BaseInterruptRail {
 
     private static String formatOptionLine(Object option) {
         if (option instanceof Map<?, ?> map) {
-            String label = stringField(map, "label").trim();
-            String description = stringField(map, "description").trim();
+            Map<String, Object> optionMap = castStringObjectMap(map);
+            String label = stringField(optionMap, "label").trim();
+            String description = stringField(optionMap, "description").trim();
             if (!label.isEmpty() && !description.isEmpty()) {
                 return "- " + label + ": " + description;
             }
@@ -219,102 +192,98 @@ public class AskUserRail extends BaseInterruptRail {
         return text.isEmpty() ? "" : "- " + text;
     }
 
-    private static String stringField(Map<?, ?> map, String key) {
+    /**
+     * Parse tool_call.arguments to a map.
+     *
+     * @param toolCall tool call
+     * @return parsed args or empty map
+     * @since 0.1.14
+     */
+    static Map<String, Object> parseToolArgs(ToolCall toolCall) {
+        if (toolCall == null || toolCall.getArguments() == null || toolCall.getArguments().isBlank()) {
+            return Collections.emptyMap();
+        }
+        String raw = toolCall.getArguments().trim();
+        try {
+            Map<String, Object> parsed = MAPPER.readValue(raw, new TypeReference<>() {
+            });
+            return parsed != null ? parsed : Collections.emptyMap();
+        } catch (JsonProcessingException ignored) {
+            return Collections.emptyMap();
+        }
+    }
+
+    static List<Map<String, Object>> extractQuestions(Map<String, Object> args) {
+        if (args == null) {
+            return Collections.emptyList();
+        }
+        Object questions = args.get("questions");
+        if (!(questions instanceof List<?> list) || list.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                normalized.add(castStringObjectMap(map));
+            } else if (item != null) {
+                // tolerate plain string questions from older callers
+                Map<String, Object> wrapper = new LinkedHashMap<>();
+                wrapper.put("question", String.valueOf(item));
+                normalized.add(wrapper);
+            }
+        }
+        return normalized;
+    }
+
+    private static AskUserPayload parseUserInputDict(Map<String, Object> userInput, ToolCall toolCall) {
+        Object answersObj = userInput.get("answers");
+        if (answersObj instanceof Map<?, ?> answersMap) {
+            Map<String, String> answers = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : answersMap.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    answers.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+                }
+            }
+            return AskUserPayload.builder().answers(answers).build();
+        }
+        List<Map<String, Object>> questions = extractQuestions(parseToolArgs(toolCall));
+        if (questions.size() == 1 && userInput.containsKey("answer")) {
+            String firstQuestion = stringField(questions.get(0), "question");
+            Map<String, String> answers = new LinkedHashMap<>();
+            answers.put(firstQuestion, String.valueOf(userInput.get("answer")));
+            return AskUserPayload.builder().answers(answers).build();
+        }
+        return AskUserPayload.builder().build();
+    }
+
+    private static String formatToolResult(ToolCall toolCall, AskUserPayload payload) {
+        List<Map<String, Object>> questions = extractQuestions(parseToolArgs(toolCall));
+        if (questions.isEmpty()) {
+            return String.valueOf(payload.getAnswers());
+        }
+        List<String> answerParts = new ArrayList<>();
+        for (Map<String, Object> question : questions) {
+            String questionText = stringField(question, "question");
+            String answerValue = payload.getAnswers().getOrDefault(questionText, "");
+            answerParts.add("\"" + questionText + "\"=\"" + answerValue + "\"");
+        }
+        return "User has answered your questions: " + String.join(", ", answerParts)
+                + ". You can now continue with the user's answers in mind.";
+    }
+
+    private static String stringField(Map<String, Object> map, String key) {
         Object value = map.get(key);
         return value == null ? "" : String.valueOf(value);
     }
 
-    private List<Map<String, Object>> questions(ToolCall toolCall) {
-        Object value = parseToolArgs(toolCall).get("questions");
-        if (!(value instanceof List<?> rawList)) {
-            return List.of();
-        }
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Object item : rawList) {
-            if (item instanceof Map<?, ?> rawMap) {
-                Map<String, Object> question = new LinkedHashMap<>();
-                rawMap.forEach((key, rawValue) -> question.put(String.valueOf(key), rawValue));
-                result.add(question);
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castStringObjectMap(Map<?, ?> map) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
             }
         }
         return result;
-    }
-
-    private Map<String, Object> parseToolArgs(ToolCall toolCall) {
-        if (toolCall == null || toolCall.getArguments() == null || toolCall.getArguments().isBlank()) {
-            return Map.of();
-        }
-        try {
-            return OBJECT_MAPPER.readValue(toolCall.getArguments(), MAP_TYPE);
-        } catch (Exception exception) {
-            return Map.of();
-        }
-    }
-
-    private static InterruptResult interrupt(AskUserRequest request) {
-        return new InterruptResult(request);
-    }
-
-    private static RejectResult reject(String toolResult) {
-        return new RejectResult(toolResult);
-    }
-
-    private static String questionText(Map<String, Object> question) {
-        Object value = question.get("question");
-        return value == null ? "" : String.valueOf(value);
-    }
-
-    private static String pythonDictString(Map<String, String> answers) {
-        List<String> entries = new ArrayList<>();
-        answers.forEach((key, value) -> entries.add("'" + key + "': '" + value + "'"));
-        return "{" + String.join(", ", entries) + "}";
-    }
-
-    /**
-     * Mirrors Python's {@code AskUserPayload} in
-     * {@code openjiuwen/harness/rails/interrupt/ask_user_rail.py}.
-     *
-     * @param answers question text to answer mapping
-     */
-    public record AskUserPayload(Map<String, String> answers) {
-        public AskUserPayload() {
-            this(Map.of());
-        }
-
-        public AskUserPayload {
-            answers = answers == null ? Map.of() : new LinkedHashMap<>(answers);
-        }
-
-        public static Map<String, Object> toSchema() {
-            return Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "answers", Map.of(
-                                    "type", "object",
-                                    "additionalProperties", Map.of("type", "string"),
-                                    "description", "Question text to answer mapping"
-                            )
-                    )
-            );
-        }
-    }
-
-    /**
-     * Ask-user request configuration with structured questions.
-     *
-     * <p>Mirrors Python's {@code AskUserRequest} in
-     * {@code openjiuwen/harness/rails/interrupt/ask_user_rail.py}.</p>
-     */
-    public static class AskUserRequest extends InterruptRequest {
-        private List<Map<String, Object>> questions = new ArrayList<>();
-
-        public List<Map<String, Object>> getQuestions() {
-            return questions;
-        }
-
-        public void setQuestions(List<Map<String, Object>> questions) {
-            this.questions = questions == null ? new ArrayList<>() : new ArrayList<>(questions);
-            putExtraField("questions", this.questions);
-        }
     }
 }

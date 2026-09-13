@@ -220,11 +220,11 @@ public class TodoTool {
     }
 
     /**
-     * Resolves the update payload; the primary {@code todos} field takes precedence over the
-     * compatibility {@code updates} field.
+     * Resolves the update action payload while preserving the primary {@code todos} field precedence.
      *
-     * @param inputs tool input map
-     * @return todo update maps
+     * @param inputs action inputs
+     * @return todo item updates
+     * @since 0.1.15
      */
     private static List<Map<String, Object>> resolveUpdates(Map<String, Object> inputs) {
         if (inputs.containsKey("todos")) {

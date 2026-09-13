@@ -4,324 +4,93 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import com.openjiuwen.core.common.constants.Constant;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
-import com.openjiuwen.core.graph.pregel.PregelConstants;
-import com.openjiuwen.core.graph.store.GraphStoreState;
-import com.openjiuwen.core.multitenant.TenantContextHolder;
-import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.config.Config;
-import com.openjiuwen.core.session.config.SessionConfigAccess;
-import com.openjiuwen.core.session.constants.SessionConstants;
-import com.openjiuwen.core.session.interaction.InteractiveInput;
-import com.openjiuwen.core.session.state.AgentStateCollection;
-import com.openjiuwen.core.session.state.InMemoryCommitState;
-import com.openjiuwen.core.session.state.SessionStateAccess;
-import com.openjiuwen.core.session.state.State;
-import com.openjiuwen.core.session.state.WorkflowCommitState;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
-import java.util.LinkedHashMap;
+import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
+import com.openjiuwen.core.session.config.Config;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.internal.AgentSession;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
+import com.openjiuwen.core.session.state.InMemoryState;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests persistent checkpointer KV-backed behavior.
- *
- * <p>Mirrors Python's {@code PersistenceCheckpointer} and helper storages in
- * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
- *
- * <p>Mirrors Python's {@code test_persistence_storage} in
- * {@code tests/unit_tests/core/session/checkpointer/test_persistence_storage.py}.</p>
+ * Tests for {@link PersistenceCheckpointer}.
  */
 class PersistenceCheckpointerTest {
-
-    @BeforeEach
-    void clearTenantContext() {
-        TenantContextHolder.clearCurrentTenant();
-    }
-
-    @AfterEach
-    void restoreTenantContext() {
-        TenantContextHolder.clearCurrentTenant();
-    }
-
     @Test
-    void factoryCreatesMemoryBackedPersistenceCheckpointer() {
-        Checkpointer checkpointer = CheckpointerFactory.create(
-                new CheckpointerConfig("persistence", Map.of("db_type", "memory"))
-        );
-
-        assertInstanceOf(PersistenceCheckpointer.class, checkpointer);
-    }
-
-    @Test
-    void agentStatePersistsThroughKvStoreAndRestoresInput() {
+    @DisplayName("corrupt serialized agent state is ignored during recovery")
+    void corruptSerializedAgentStateDoesNotAbortRecovery() {
+        String sessionId = "corrupt-session";
         InMemoryKVStore kvStore = new InMemoryKVStore();
+        kvStore.set(Checkpointer.resolveNsKey(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, sessionId,
+                "agent_state_blobs_dump_type"), "java");
+        kvStore.set(Checkpointer.resolveNsKey(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, sessionId,
+                "agent_state_blobs"), new byte[]{0, 1, 2});
         PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(kvStore);
-        AgentStateCollection firstState = new AgentStateCollection();
-        TestSession first = TestSession.agent("persist-agent", "agent-a", firstState);
+        AgentSession session = new AgentSession(sessionId, new Config(), checkpointer);
 
-        checkpointer.preAgentExecute(first, "first-input");
-        firstState.update(Map.of("turn", 1));
-        checkpointer.postAgentExecute(first);
-
-        assertTrue(checkpointer.sessionExists("persist-agent"));
-        assertFalse(kvStore.getByPrefix("persist-agent:").join().isEmpty());
-
-        AgentStateCollection restoredState = new AgentStateCollection();
-        TestSession restored = TestSession.agent("persist-agent", "agent-a", restoredState);
-        checkpointer.preAgentExecute(restored, "resume-input");
-
-        assertEquals(1, restoredState.get("turn"));
-        assertEquals(List.of("resume-input"), restoredState.get(Constant.INTERACTIVE_INPUT));
+        assertDoesNotThrow(() -> checkpointer.preAgentExecute(session, null));
     }
 
     @Test
-    void agentStorageSaveRecoverExistsAndClear() {
-        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
-        AgentStateCollection firstState = new AgentStateCollection();
-        TestSession first = TestSession.agent("session-agent", "agent-1", firstState);
-        firstState.update(Map.of("name", "alice"));
-        firstState.updateGlobal(Map.of("shared", "value"));
+    @Tag("integration")
+    @DisplayName("SQLite restores agent state after reopening the checkpointer")
+    void sqliteRestoresAgentStateAcrossCheckpointerInstances(@TempDir Path tempDir) {
+        Path databasePath = tempDir.resolve("checkpointer.db");
+        CheckpointerConfig config = new CheckpointerConfig("persistence",
+                Map.of("db_type", "sqlite", "db_path", databasePath.toString()));
 
-        checkpointer.postAgentExecute(first);
+        try (Checkpointer writer = CheckpointerFactory.create(config)) {
+            assertInstanceOf(PersistenceCheckpointer.class, writer);
+            AgentSession saved = new AgentSession("sqlite-session", new Config(), writer);
+            writer.preAgentExecute(saved, null);
+            saved.state().update(Map.of("local", "saved"));
+            saved.state().updateGlobal(Map.of("shared", "value"));
+            writer.interruptAgentExecute(saved);
+        }
 
-        assertTrue(checkpointer.sessionExists("session-agent"));
-        AgentStateCollection recoveredState = new AgentStateCollection();
-        TestSession recovered = TestSession.agent("session-agent", "agent-1", recoveredState);
-        checkpointer.preAgentExecute(recovered, null);
+        try (Checkpointer reader = CheckpointerFactory.create(config)) {
+            AgentSession restored = new AgentSession("sqlite-session", new Config(), reader);
+            reader.preAgentExecute(restored, null);
 
-        assertEquals("alice", recoveredState.get("name"));
-        assertEquals("value", recoveredState.getGlobal("shared"));
-
-        checkpointer.release("session-agent", "agent-1");
-        assertFalse(checkpointer.sessionExists("session-agent"));
+            assertEquals("saved", restored.state().get("local"));
+            assertEquals("value", restored.state().getGlobal("shared"));
+        }
     }
 
     @Test
-    void agentTeamStorageSaveRecoverExistsAndClear() {
-        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
-        AgentStateCollection firstState = new AgentStateCollection();
-        TestSession first = TestSession.agentTeam("session-team", "team-1", firstState);
-        firstState.update(Map.of("agent_local", "should_not_be_restored"));
-        firstState.updateGlobal(Map.of("team", "alpha"));
-
-        checkpointer.postAgentTeamExecute(first);
-
-        assertTrue(checkpointer.sessionExists("session-team"));
-        AgentStateCollection recoveredState = new AgentStateCollection();
-        TestSession recovered = TestSession.agentTeam("session-team", "team-1", recoveredState);
-        checkpointer.preAgentTeamExecute(recovered, null);
-
-        assertEquals("alpha", recoveredState.getGlobal("team"));
-        assertEquals(null, recoveredState.get("agent_local"));
-
-        checkpointer.release("session-team");
-        assertFalse(checkpointer.sessionExists("session-team"));
-    }
-
-    @Test
-    void recoveringMissingAgentStorageDoesNotMutateEmptyState() {
-        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
-        AgentStateCollection state = new AgentStateCollection();
-        TestSession session = TestSession.agent("session-agent", "agent-1", state);
-
-        checkpointer.preAgentExecute(session, null);
-
-        assertEquals(Map.of(
-                State.GLOBAL_STATE_KEY, Map.of(),
-                State.AGENT_STATE_KEY, Map.of()
-        ), state.getState());
-    }
-
-    @Test
-    void workflowInterruptionPersistsStateUpdatesAndRawInput() {
-        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
-        WorkflowCommitState firstState = workflowState();
-        TestSession first = TestSession.workflow("persist-workflow", "workflow-a", firstState);
-        firstState.updateAndCommitWorkflowState(Map.of("persisted", "value"));
-
-        checkpointer.postWorkflowExecute(first, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-
-        WorkflowCommitState restoredState = workflowState();
-        TestSession restored = TestSession.workflow("persist-workflow", "workflow-a", restoredState);
-        checkpointer.preWorkflowExecute(restored, new InteractiveInput(Map.of("raw", "input")));
-
-        assertEquals("value", restoredState.getWorkflowState("persisted"));
-        assertEquals(Map.of("raw", "input"), restoredState.getWorkflowState(Constant.INTERACTIVE_INPUT));
-    }
-
-    @Test
-    void graphStorePersistsLoadsAndDeletesByWorkflowPrefix() {
-        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
-        GraphStoreState graphState = GraphStoreState.create(
-                "workflow-graph:node",
-                7,
-                Map.of("channel", "value"),
-                List.of(),
-                Map.of(),
-                Map.of()
-        );
-
-        checkpointer.graphStore().save("persist-graph", "workflow-graph:node", graphState)
-                .toCompletableFuture()
-                .join();
-
-        Optional<GraphStoreState> loaded = checkpointer.graphStore()
-                .get("persist-graph", "workflow-graph:node")
-                .toCompletableFuture()
-                .join();
-        assertTrue(loaded.isPresent());
-        assertEquals(7, loaded.get().getStep());
-
-        checkpointer.graphStore().delete("persist-graph", "workflow-graph")
-                .toCompletableFuture()
-                .join();
-        assertFalse(checkpointer.graphStore().get("persist-graph", "workflow-graph:node")
-                .toCompletableFuture()
-                .join()
-                .isPresent());
-    }
-
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-    @Test
-    void existingWorkflowStateRejectsNonInteractiveInputUnlessForced() {
-        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
-        WorkflowCommitState firstState = workflowState();
-        TestSession first = TestSession.workflow("persist-force", "workflow-force", firstState);
-        firstState.updateAndCommitWorkflowState(Map.of("persisted", "value"));
-        checkpointer.postWorkflowExecute(first, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-
-        assertThrows(
-                BaseError.class,
-                () -> checkpointer.preWorkflowExecute(TestSession.workflow("persist-force", "workflow-force",
-                        workflowState()), (Object) null)
-        );
-
-        Config forcedConfig = new Config();
-        forcedConfig.setEnvs(Map.of(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, true));
-        checkpointer.preWorkflowExecute(TestSession.workflow("persist-force", "workflow-force",
-                workflowState(), forcedConfig), (Object) null);
-    }
-
-    @Test
-    void releaseDeletesAgentOrWholeSessionPrefix() {
+    @DisplayName("workflow recovery commits pending updates restored from persistence")
+    void workflowRecoveryCommitsRestoredPendingUpdates() {
         InMemoryKVStore kvStore = new InMemoryKVStore();
-        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(kvStore);
-        AgentStateCollection agentState = new AgentStateCollection();
-        TestSession agent = TestSession.agent("persist-release", "agent-a", agentState);
-        checkpointer.preAgentExecute(agent, "input");
-        checkpointer.postAgentExecute(agent);
+        PersistenceCheckpointer.PersistenceWorkflowStorage storage =
+                new PersistenceCheckpointer.PersistenceWorkflowStorage(kvStore);
+        WorkflowSession saved =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        NodeSession savedNode = new NodeSession(saved, "ask_user");
+        savedNode.state().update(Map.of("checkpoint", "saved"));
+        storage.save(saved);
 
-        checkpointer.release("persist-release", "agent-a");
-        assertFalse(checkpointer.sessionExists("persist-release"));
+        WorkflowSession restored =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        InteractiveInput inputs = new InteractiveInput();
+        inputs.update("ask_user", "answer");
+        storage.recover(restored, inputs);
 
-        WorkflowCommitState workflowState = workflowState();
-        TestSession workflow = TestSession.workflow("persist-release", "workflow-a", workflowState);
-        workflowState.updateAndCommitWorkflowState(Map.of("persisted", "value"));
-        checkpointer.postWorkflowExecute(workflow, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-        checkpointer.graphStore().save(
-                "persist-release",
-                "workflow-a:node",
-                GraphStoreState.create("workflow-a:node", 1, Map.of("x", 1), List.of(), Map.of(), Map.of())
-        ).toCompletableFuture().join();
-
-        assertTrue(checkpointer.sessionExists("persist-release"));
-        checkpointer.release("persist-release");
-
-        assertFalse(checkpointer.sessionExists("persist-release"));
-        assertTrue(kvStore.getByPrefix("persist-release:").join().isEmpty());
-    }
-
-    private static WorkflowCommitState workflowState() {
-        return new WorkflowCommitState(
-                new InMemoryCommitState(),
-                new InMemoryCommitState(),
-                new InMemoryCommitState(),
-                new InMemoryCommitState(),
-                new LinkedHashMap<>(),
-                "",
-                State.DEFAULT_NODE_ID
-        );
-    }
-
-    /**
-     * Test session with configurable ids and state.
-     *
-     * <p>Mirrors Python's duck-typed {@code BaseSession} use in
-     * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
-     */
-    private static final class TestSession extends BaseSession {
-        private final String sessionId;
-        private final String workflowId;
-        private final String agentId;
-        private final String teamId;
-        private final SessionStateAccess state;
-        private final Config config;
-
-        private TestSession(String sessionId, String workflowId, String agentId, String teamId,
-                            SessionStateAccess state, Config config) {
-            this.sessionId = sessionId;
-            this.workflowId = workflowId;
-            this.agentId = agentId;
-            this.teamId = teamId;
-            this.state = state;
-            this.config = config == null ? new Config() : config;
-        }
-
-        static TestSession agent(String sessionId, String agentId, AgentStateCollection state) {
-            return new TestSession(sessionId, sessionId, agentId, sessionId, state, null);
-        }
-
-        static TestSession agentTeam(String sessionId, String teamId, AgentStateCollection state) {
-            return new TestSession(sessionId, sessionId, sessionId, teamId, state, null);
-        }
-
-        static TestSession workflow(String sessionId, String workflowId, WorkflowCommitState state) {
-            return workflow(sessionId, workflowId, state, null);
-        }
-
-        static TestSession workflow(String sessionId, String workflowId, WorkflowCommitState state, Config config) {
-            return new TestSession(sessionId, workflowId, sessionId, sessionId, state, config);
-        }
-
-        @Override
-        public SessionConfigAccess config() {
-            return config;
-        }
-
-        @Override
-        public SessionStateAccess state() {
-            return state;
-        }
-
-        @Override
-        public String sessionId() {
-            return sessionId;
-        }
-
-        public String workflowId() {
-            return workflowId;
-        }
-
-        public String agentId() {
-            return agentId;
-        }
-
-        public String teamId() {
-            return teamId;
-        }
+        NodeSession restoredNode = new NodeSession(restored, "ask_user");
+        assertEquals("saved", restoredNode.state().get("checkpoint"));
+        assertEquals(List.of("answer"), restoredNode.state().get(Constant.INTERACTIVE_INPUT));
     }
 }

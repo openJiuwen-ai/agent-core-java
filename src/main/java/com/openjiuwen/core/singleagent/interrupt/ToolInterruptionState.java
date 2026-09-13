@@ -4,43 +4,52 @@
 
 package com.openjiuwen.core.singleagent.interrupt;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.io.Serial;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Tool interruption state for resume support.
- *
- * <p>Mirrors Python's {@code ToolInterruptionState} in
- * {@code openjiuwen/core/single_agent/interrupt/state.py}.</p>
+ * Persisted single-agent interruption state.
+ * 
+ * @since 0.1.7
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class ToolInterruptionState extends BaseInterruptionState {
-    @JsonProperty("interrupted_tools")
-    private Map<String, ToolInterruptEntry> interruptedTools = new LinkedHashMap<>();
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ToolInterruptionState implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
 
-    @JsonProperty("auto_confirm_mapping")
-    private Map<String, String> autoConfirmMapping = new LinkedHashMap<>();
+    /**
+     * INTERRUPTION_KEY.
+     * 
+     * @since 0.1.7
+     */
+    public static final String INTERRUPTION_KEY = "__react_agent_interruption__";
 
-    public Map<String, ToolInterruptEntry> getInterruptedTools() {
-        return interruptedTools;
-    }
+    /**
+     * RESUME_USER_INPUT_KEY.
+     * 
+     * @since 0.1.7
+     */
+    public static final String RESUME_USER_INPUT_KEY = "_resume_user_input";
 
-    public void setInterruptedTools(Map<String, ToolInterruptEntry> interruptedTools) {
-        this.interruptedTools = interruptedTools == null
-                ? new LinkedHashMap<>()
-                : new LinkedHashMap<>(interruptedTools);
-    }
+    private int iteration;
 
-    public Map<String, String> getAutoConfirmMapping() {
-        return autoConfirmMapping;
-    }
+    @Builder.Default
+    /**
+     * ArrayList<ToolInterruptEntry>.
+     * 
+     * @since 0.1.7
+     */
+    private List<ToolInterruptEntry> interruptedTools = new ArrayList<ToolInterruptEntry>();
 
-    public void setAutoConfirmMapping(Map<String, String> autoConfirmMapping) {
-        this.autoConfirmMapping = autoConfirmMapping == null
-                ? new LinkedHashMap<>()
-                : new LinkedHashMap<>(autoConfirmMapping);
-    }
+    private String originalQuery;
 }

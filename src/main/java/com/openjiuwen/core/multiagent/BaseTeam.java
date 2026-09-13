@@ -4,227 +4,242 @@
 
 package com.openjiuwen.core.multiagent;
 
-import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.multiagent.runtime.TeamRuntime;
 import com.openjiuwen.core.multiagent.schema.TeamCard;
-import com.openjiuwen.core.multiagent.team_runtime.MessageBusConfig;
-import com.openjiuwen.core.multiagent.team_runtime.RuntimeConfig;
-import com.openjiuwen.core.multiagent.team_runtime.TeamRuntime;
-import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.runner.base.AgentProvider;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.session.AgentGroupSessionApi;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletionStage;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 /**
- * Abstract base class for agent teams.
- *
- * <p>Mirrors Python's {@code BaseTeam} in
- * {@code openjiuwen/core/multi_agent/team.py}.</p>
+ * Team-oriented compatibility surface aligned with Python's {@code BaseTeam}.
+ * <p>
+ * The older Java {@link BaseGroup} remains available for legacy callers.
+ * This type adds the Python naming surface plus a local {@link TeamRuntime}
+ * for point-to-point and publish/subscribe dispatch.
+ * </p>
+ * 
+ * @since 0.1.7
  */
-public abstract class BaseTeam {
-
-    private final TeamCard card;
-
-    private TeamConfig config;
-
-    private final String teamId;
-
+public abstract class BaseTeam extends BaseGroup {
+    private TeamConfig teamConfig;
     private final TeamRuntime runtime;
 
-    public BaseTeam(TeamCard card) {
-        this(card, null, null);
+    /**
+     * BaseTeam.
+     * 
+     * @param card card
+     * @param config config
+     * @param runtime runtime
+     * @since 0.1.7
+     */
+    protected BaseTeam(TeamCard card, TeamConfig config, TeamRuntime runtime) {
+        super(card, config);
+        this.teamConfig = config != null ? config : new TeamConfig();
+        this.runtime = runtime != null ? runtime : new TeamRuntime(card.getId());
     }
 
-    public BaseTeam(TeamCard card, TeamConfig config) {
+    /**
+     * BaseTeam.
+     * 
+     * @param card card
+     * @param config config
+     * @since 0.1.7
+     */
+    protected BaseTeam(TeamCard card, TeamConfig config) {
         this(card, config, null);
     }
 
-    public BaseTeam(TeamCard card, TeamConfig config, TeamRuntime runtime) {
-        this.card = card;
-        this.config = config != null ? config : createDefaultConfig();
-        this.teamId = card.getName();
-        this.runtime = runtime != null ? runtime : createDefaultRuntime();
+    /**
+     * BaseTeam.
+     * 
+     * @param card card
+     * @since 0.1.7
+     */
+    protected BaseTeam(TeamCard card) {
+        this(card, null, null);
     }
 
-    protected TeamConfig createDefaultConfig() {
-        return new TeamConfig();
+    /**
+     * configure.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public BaseTeam configure(GroupConfig config) {
+        this.teamConfig = config instanceof TeamConfig team ? team : copyConfig(config);
+        super.configure(this.teamConfig);
+        return this;
     }
 
-    protected TeamRuntime createDefaultRuntime() {
-        MessageBusConfig messageBusConfig = new MessageBusConfig();
-        messageBusConfig.setMaxQueueSize(config.getMaxConcurrentMessages());
-        messageBusConfig.setProcessTimeout(config.getMessageTimeout());
-
-        RuntimeConfig runtimeConfig = new RuntimeConfig();
-        runtimeConfig.setTeamId(card.getId());
-        runtimeConfig.setMessageBus(messageBusConfig);
-        return new TeamRuntime(runtimeConfig);
-    }
-
+    /**
+     * configure.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     public BaseTeam configure(TeamConfig config) {
-        this.config = config;
+        this.teamConfig = config != null ? config : new TeamConfig();
+        super.configure(this.teamConfig);
         return this;
     }
 
-    public BaseTeam addAgent(AgentCard agentCard, Function<AgentCard, ?> provider) {
-        String agentId = agentCard.getId();
-        if (runtime.hasAgent(agentId)) {
-            Loggers.MULTI_AGENT.warning(
-                    "[{}] Agent ID '{}' already exists in team '{}', skipping add",
-                    getClass().getSimpleName(),
-                    agentId,
-                    teamId
-            );
-            return this;
-        }
-
-        if (runtime.getAgentCount() >= config.getMaxAgents()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_TEAM_ADD_RUNTIME_ERROR,
-                    "error_msg",
-                    "Agent count exceeds max_agents (" + config.getMaxAgents() + ")"
-            );
-        }
-
-        runtime.registerAgent(agentCard, provider);
-        List<AgentCard> agentCards = new ArrayList<>(card.getAgentCards());
-        agentCards.add(agentCard);
-        card.setAgentCards(agentCards);
-        Loggers.MULTI_AGENT.debug(
-                "[{}] Added agent '{}' to team '{}'",
-                getClass().getSimpleName(),
-                agentId,
-                teamId
-        );
+    /**
+     * addAgent.
+     * 
+     * @param card card
+     * @param provider provider
+     * @return the result
+     * @since 0.1.7
+     */
+    public BaseTeam addAgent(AgentCard card, AgentProvider<? extends BaseAgent> provider) {
+        runtime.registerAgent(card, provider);
+        getTeamCard().getAgentCards().removeIf(candidate -> candidate.getId().equals(card.getId()));
+        getTeamCard().getAgentCards().add(card);
         return this;
     }
 
+    /**
+     * removeAgent.
+     * 
+     * @param agentId agentId
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
     public BaseTeam removeAgent(String agentId) {
-        AgentCard removedCard = runtime.unregisterAgent(agentId);
-        if (removedCard != null) {
-            List<AgentCard> remainingCards = new ArrayList<>();
-            for (AgentCard agentCard : card.getAgentCards()) {
-                if (!removedCard.getId().equals(agentCard.getId())) {
-                    remainingCards.add(agentCard);
-                }
-            }
-            card.setAgentCards(remainingCards);
-            Loggers.MULTI_AGENT.debug(
-                    "[{}] Removed agent '{}' from team '{}'",
-                    getClass().getSimpleName(),
-                    agentId,
-                    teamId
-            );
-        }
+        runtime.unregisterAgent(agentId);
+        getTeamCard().getAgentCards().removeIf(candidate -> candidate.getId().equals(agentId));
         return this;
     }
 
-    public BaseTeam removeAgent(AgentCard agentCard) {
-        return removeAgent(agentCard.getId());
-    }
-
-    public CompletionStage<Void> subscribe(String agentId, String topic) {
-        return runtime.subscribe(agentId, topic);
-    }
-
-    public CompletionStage<Void> unsubscribe(String agentId, String topic) {
-        return runtime.unsubscribe(agentId, topic);
-    }
-
-    public AgentCard getAgentCard(String agentId) {
-        return runtime.getAgentCard(agentId);
-    }
-
+    /**
+     * getAgentCount.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
     public int getAgentCount() {
         return runtime.getAgentCount();
     }
 
+    /**
+     * listAgents.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
     public List<String> listAgents() {
         return runtime.listAgents();
     }
 
-    public CompletionStage<Object> send(
-            Object message,
-            String recipient,
-            String sender,
-            String sessionId,
-            Double timeout
-    ) {
-        if (!runtime.hasAgent(sender)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_TEAM_AGENT_NOT_FOUND,
-                    "error_msg",
-                    "Sender '" + sender + "' not found in team '" + teamId + "'"
-            );
-        }
-        if (!runtime.hasAgent(recipient)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_TEAM_AGENT_NOT_FOUND,
-                    "error_msg",
-                    "Recipient '" + recipient + "' not found in team '" + teamId + "'"
-            );
-        }
-        return runtime.send(message, recipient, sender, sessionId, timeout);
+    /**
+     * send.
+     * 
+     * @param message message
+     * @param recipient recipient
+     * @param sender sender
+     * @param sessionId sessionId
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
+    public Object send(Object message, String recipient, String sender, String sessionId,
+            AgentGroupSessionApi session) {
+        return runtime.send(message, recipient, sender, sessionId, session);
     }
 
-    public CompletionStage<Object> send(Object message, String recipient, String sender) {
-        return send(message, recipient, sender, null, null);
+    /**
+     * publish.
+     * 
+     * @param message message
+     * @param topicId topicId
+     * @param sender sender
+     * @param sessionId sessionId
+     * @param session session
+     * @since 0.1.7
+     */
+    public void publish(Object message, String topicId, String sender, String sessionId, AgentGroupSessionApi session) {
+        runtime.publish(message, topicId, sender, sessionId, session);
     }
 
-    public CompletionStage<Void> publish(Object message, String topicId, String sender, String sessionId) {
-        if (!runtime.hasAgent(sender)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_TEAM_AGENT_NOT_FOUND,
-                    "error_msg",
-                    "Sender '" + sender + "' not found in team '" + teamId + "'"
-            );
-        }
-        return runtime.publish(message, topicId, sender, sessionId);
+    /**
+     * subscribe.
+     * 
+     * @param agentId agentId
+     * @param topic topic
+     * @since 0.1.7
+     */
+    public void subscribe(String agentId, String topic) {
+        runtime.subscribe(agentId, topic);
     }
 
-    public CompletionStage<Void> publish(Object message, String topicId, String sender) {
-        return publish(message, topicId, sender, null);
+    /**
+     * unsubscribe.
+     * 
+     * @param agentId agentId
+     * @param topic topic
+     * @since 0.1.7
+     */
+    public void unsubscribe(String agentId, String topic) {
+        runtime.unsubscribe(agentId, topic);
     }
 
-    public abstract CompletionStage<Object> invoke(Object message, AgentSessionApi session);
-
-    public abstract Stream<Object> stream(Object message, AgentSessionApi session);
-
-    public CompletionStage<Object> invoke(Object message) {
-        AgentSessionApi session = null;
-        return invoke(message, session);
-    }
-
-    public Stream<Object> stream(Object message) {
-        AgentSessionApi session = null;
-        return stream(message, session);
-    }
-
-    public TeamCard getCard() {
-        return card;
-    }
-
-    public TeamConfig getConfig() {
-        return config;
-    }
-
-    public String getTeamId() {
-        return teamId;
-    }
-
+    /**
+     * getRuntime.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public TeamRuntime getRuntime() {
         return runtime;
     }
 
-    public BaseTeam addAgent(AgentCard agentCard, Supplier<? extends BaseAgent> provider) {
-        java.util.Objects.requireNonNull(provider, "provider must not be null");
-        return addAgent(agentCard, ignored -> provider.get());
+    /**
+     * getTeamConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public TeamConfig getTeamConfig() {
+        return teamConfig;
+    }
+
+    /**
+     * getTeamCard.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public TeamCard getTeamCard() {
+        if (getCard() instanceof TeamCard teamCard) {
+            return teamCard;
+        }
+        return TeamCard.class.cast(getCard());
+    }
+
+    /**
+     * copyConfig.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
+    private static TeamConfig copyConfig(GroupConfig config) {
+        TeamConfig copied = new TeamConfig();
+        if (config == null) {
+            return copied;
+        }
+        copied.setMaxAgents(config.getMaxAgents());
+        copied.setMaxConcurrentMessages(config.getMaxConcurrentMessages());
+        copied.setMessageTimeout(config.getMessageTimeout());
+        return copied;
     }
 }

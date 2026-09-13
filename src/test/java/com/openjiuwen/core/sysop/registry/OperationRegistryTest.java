@@ -6,15 +6,14 @@ package com.openjiuwen.core.sysop.registry;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.openjiuwen.core.sysop.OperationDef;
 import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.OperationRegistry;
 import com.openjiuwen.core.sysop.local.LocalCodeOperation;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Tests for OperationRegistry.
@@ -33,8 +32,8 @@ class OperationRegistryTest {
     @Test
     @DisplayName("getOperationInfo returns empty for non-existent operation")
     void testGetOperationInfoNotFound() {
-        OperationDef def = OperationRegistry.getOperationInfo("non_existent", OperationMode.LOCAL);
-        assertNull(def);
+        Optional<OperationDef> def = OperationRegistry.getOperationInfo("non_existent", OperationMode.LOCAL);
+        assertFalse(def.isPresent());
     }
 
     @Test
@@ -42,10 +41,10 @@ class OperationRegistryTest {
     void testRegisterAndRetrieve() {
         OperationRegistry.register(LocalCodeOperation.class, "test_op", OperationMode.LOCAL, "test operation");
 
-        OperationDef retrieved = OperationRegistry.getOperationInfo("test_op", OperationMode.LOCAL);
-        assertNotNull(retrieved);
-        assertEquals("test_op", retrieved.name());
-        assertEquals(OperationMode.LOCAL, retrieved.mode());
-        assertEquals("test operation", retrieved.description());
+        Optional<OperationDef> retrieved = OperationRegistry.getOperationInfo("test_op", OperationMode.LOCAL);
+        assertTrue(retrieved.isPresent());
+        assertEquals("test_op", retrieved.get().getName());
+        assertEquals(OperationMode.LOCAL, retrieved.get().getMode());
+        assertEquals("test operation", retrieved.get().getDescription());
     }
 }

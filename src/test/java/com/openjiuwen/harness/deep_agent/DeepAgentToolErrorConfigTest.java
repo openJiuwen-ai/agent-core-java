@@ -9,7 +9,6 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,13 +23,12 @@ class DeepAgentToolErrorConfigTest {
 
     private DeepAgent newAgent(DeepAgentConfig config) {
         AgentCard card = AgentCard.builder().name("tool_error_agent").description("test").build();
-        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        Workspace workspace = Workspace.builder().rootPath(baseDir.toString()).language("cn").build();
         return new DeepAgent(card, config, workspace);
     }
 
     private static boolean runtimeShouldFailTaskOnToolError(DeepAgent agent) {
-        Object config = agent.getAgent().getConfig();
-        return ((ReActAgentConfig) config).isShouldFailTaskOnToolError();
+        return ((ReActAgentConfig) agent.getAgent().getConfig()).isShouldFailTaskOnToolError();
     }
 
     @Test
@@ -64,7 +62,7 @@ class DeepAgentToolErrorConfigTest {
 
     private DeepAgent factoryAgent(DeepAgentConfig config, String name) {
         AgentCard card = AgentCard.builder().name(name).description("test").build();
-        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        Workspace workspace = Workspace.builder().rootPath(baseDir.toString()).language("cn").build();
         return HarnessFactory.createDeepAgent(card, config, workspace);
     }
 

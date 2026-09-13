@@ -10,178 +10,177 @@ import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.internal.NodeSession;
 
 import java.util.Iterator;
 
 /**
- * Mirrors Python's {@code ComponentExecutable} in
- * {@code openjiuwen/core/workflow/components/component.py}.
- *
- * @param <I> component input type
- * @param <O> component output type
+ * Base executable for workflow components, providing the four fundamental execution patterns:
+ * invoke, stream, collect, transform.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.workflow.components.component.ComponentExecutable}.
+ * 
+ * @since 0.1.7
  */
-public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
-
+public abstract class ComponentExecutable extends Executable<Object, Object>
+        implements com.openjiuwen.core.graph.Vertex.MixModeAware {
+    /**
+     * onInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public O onInvoke(I inputs, BaseSession session, Object... kwargs) {
-        ensureSession(session, "on_invoke");
-        return invoke(inputs, adaptSession(session, false), adaptContext(extractContext(kwargs)));
+    public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
+        if (!(session instanceof NodeSession)) {
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_INNER_ORCHESTRATION_ERROR, "reason",
+                    "session type must be NodeSession when on_invoke");
+        }
+        ModelContext context = extractContext(kwargs);
+        return invoke(inputs, new NodeSessionApi((NodeSession) session, false), context);
     }
 
+    /**
+     * onStream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public Iterator<O> onStream(I inputs, BaseSession session, Object... kwargs) {
-        ensureSession(session, "on_stream");
-        return stream(inputs, adaptSession(session, false), adaptContext(extractContext(kwargs)));
+    public Iterator<Object> onStream(Object inputs, BaseSession session, Object... kwargs) {
+        if (!(session instanceof NodeSession)) {
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_INNER_ORCHESTRATION_ERROR, "reason",
+                    "session type must be NodeSession when on_stream");
+        }
+        ModelContext context = extractContext(kwargs);
+        return stream(inputs, new NodeSessionApi((NodeSession) session, false), context);
     }
 
+    /**
+     * onCollect.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public O onCollect(I inputs, BaseSession session, Object... kwargs) {
-        ensureSession(session, "on_collect");
-        return collect(inputs, adaptSession(session, true), adaptContext(extractContext(kwargs)));
+    public Object onCollect(Object inputs, BaseSession session, Object... kwargs) {
+        if (!(session instanceof NodeSession)) {
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_INNER_ORCHESTRATION_ERROR, "reason",
+                    "session type must be NodeSession when on_collect");
+        }
+        ModelContext context = extractContext(kwargs);
+        return collect(inputs, new NodeSessionApi((NodeSession) session, true), context);
     }
 
+    /**
+     * onTransform.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public Iterator<O> onTransform(I inputs, BaseSession session, Object... kwargs) {
-        ensureSession(session, "on_transform");
-        return transform(inputs, adaptSession(session, true), adaptContext(extractContext(kwargs)));
+    public Iterator<Object> onTransform(Object inputs, BaseSession session, Object... kwargs) {
+        if (!(session instanceof NodeSession)) {
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_INNER_ORCHESTRATION_ERROR, "reason",
+                    "session is not NodeSession when on_transform");
+        }
+        ModelContext context = extractContext(kwargs);
+        return transform(inputs, new NodeSessionApi((NodeSession) session, true), context);
+    }
+
+    /**
+     * setMix.
+     * 
+     * @since 0.1.7
+     */
+    @Override
+    public void setMix() {
+        // Default no-op; components that need mixed batch/stream behavior override this.
     }
 
     /**
      * Execute component synchronously with batch input and output.
-     *
-     * @param inputs component input
-     * @param session current execution session
-     * @param context context engine
-     * @return component output
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
-    public O invoke(I inputs, BaseSession session, ModelContext context) {
-        throw missingRequiredMethod("invoke",
-                "async def invoke(self, inputs: Input, session: Session, context: ModelContext) -> Output");
-    }
-
-    /**
-     * Execute component synchronously with the pre-0.1.14 public session/context wrappers.
-     *
-     * @param inputs component input
-     * @param session current execution session facade
-     * @param context root package model context facade
-     * @return component output
-     */
-    public O invoke(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return invoke(inputs, session.getInner(), com.openjiuwen.core.context.ModelContext.unwrap(context));
+    public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
+        throw new UnsupportedOperationException(
+                "Component '" + getClass().getSimpleName() + "' is missing required method: invoke()");
     }
 
     /**
      * Execute component with batch input but streaming output.
-     *
-     * @param inputs component input
-     * @param session current execution session
-     * @param context context engine
-     * @return streamed component output
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
-    public Iterator<O> stream(I inputs, BaseSession session, ModelContext context) {
-        throw missingRequiredMethod("stream",
-                "async def stream(self, inputs: Input, session: Session, "
-                        + "context: ModelContext) -> AsyncIterator[Output]");
-    }
-
-    /**
-     * Execute component with batch input and streaming output through the legacy facade.
-     *
-     * @param inputs component input
-     * @param session current execution session facade
-     * @param context root package model context facade
-     * @return streamed component output
-     */
-    public Iterator<O> stream(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return stream(inputs, session.getInner(), com.openjiuwen.core.context.ModelContext.unwrap(context));
+    public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
+        throw new UnsupportedOperationException(
+                "Component '" + getClass().getSimpleName() + "' is missing required method: stream()");
     }
 
     /**
      * Execute component with streaming input but batch output.
-     *
-     * @param inputs component input
-     * @param session current execution session
-     * @param context context engine
-     * @return collected component output
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
-    public O collect(I inputs, BaseSession session, ModelContext context) {
-        throw missingRequiredMethod("collect",
-                "async def collect(self, inputs: Input, session: Session, context: ModelContext) -> Output");
-    }
-
-    /**
-     * Execute component with streaming input and batch output through the legacy facade.
-     *
-     * @param inputs component input
-     * @param session current execution session facade
-     * @param context root package model context facade
-     * @return collected component output
-     */
-    public O collect(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return collect(inputs, session.getInner(), com.openjiuwen.core.context.ModelContext.unwrap(context));
+    public Object collect(Object inputs, NodeSessionApi session, ModelContext context) {
+        throw new UnsupportedOperationException(
+                "Component '" + getClass().getSimpleName() + "' is missing required method: collect()");
     }
 
     /**
      * Execute component with streaming input and streaming output.
-     *
-     * @param inputs component input
-     * @param session current execution session
-     * @param context context engine
-     * @return transformed component output
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
-    public Iterator<O> transform(I inputs, BaseSession session, ModelContext context) {
-        throw missingRequiredMethod("transform",
-                "async def transform(self, inputs: Input, session: Session, "
-                        + "context: ModelContext) -> AsyncIterator[Output]");
+    public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
+        throw new UnsupportedOperationException(
+                "Component '" + getClass().getSimpleName() + "' is missing required method: transform()");
     }
 
     /**
-     * Execute component with streaming input and output through the legacy facade.
-     *
-     * @param inputs component input
-     * @param session current execution session facade
-     * @param context root package model context facade
-     * @return transformed component output
+     * extractContext.
+     * 
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
-    public Iterator<O> transform(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return transform(inputs, session.getInner(), com.openjiuwen.core.context.ModelContext.unwrap(context));
-    }
-
-    private void ensureSession(BaseSession session, String methodName) {
-        if (session == null) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_INNER_ORCHESTRATION_ERROR,
-                    "reason", "session type must be BaseSession when " + methodName);
-        }
-    }
-
-    private ModelContext extractContext(Object... kwargs) {
-        if (kwargs == null) {
-            return null;
-        }
-        for (Object item : kwargs) {
-            if (item instanceof ModelContext modelContext) {
-                return modelContext;
-            }
-            if (item instanceof com.openjiuwen.core.context.ModelContext modelContext) {
-                return modelContext.unwrap();
+    private static ModelContext extractContext(Object... kwargs) {
+        if (kwargs != null) {
+            for (Object arg : kwargs) {
+                if (arg instanceof ModelContext) {
+                    return (ModelContext) arg;
+                }
             }
         }
         return null;
-    }
-
-    private NodeSessionApi adaptSession(BaseSession session, boolean streamMode) {
-        return new NodeSessionApi(session, streamMode);
-    }
-
-    private com.openjiuwen.core.context.ModelContext adaptContext(ModelContext context) {
-        return com.openjiuwen.core.context.ModelContext.wrap(context);
-    }
-
-    private UnsupportedOperationException missingRequiredMethod(String methodName, String signature) {
-        String className = getClass().getSimpleName();
-        return new UnsupportedOperationException(
-                "Component '" + className + "' is missing required method: " + methodName + "()\n"
-                        + "  -> Expected signature: " + signature);
     }
 }

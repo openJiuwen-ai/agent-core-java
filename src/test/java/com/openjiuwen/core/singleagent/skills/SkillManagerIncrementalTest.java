@@ -1,12 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.sysop.Cwd;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.local.LocalFsOperation;
-import org.junit.jupiter.api.AfterEach;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,52 +16,42 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Unit tests for SkillManager incremental refresh and snapshot signature.
  */
 class SkillManagerIncrementalTest {
-
-    @TempDir
-    private Path tempDir;
-
     private SkillManager manager;
 
     @BeforeEach
     void setUp() {
-        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
-        manager = new SkillManager("test-sysop", id -> new LocalFsOperation(
-                "fs", OperationMode.LOCAL, "local fs operation", null));
-    }
-
-    @AfterEach
-    void tearDown() {
-        Cwd.clear();
+        manager = new SkillManager("test-sysop");
     }
 
     @Test
-    void testRefreshIncrementallyLoadsSkills() throws IOException {
+    void testRefreshIncrementallyOnlyLoadsNewSkill(@TempDir Path tempDir) throws IOException {
         Path skill1Dir = tempDir.resolve("alpha_skill");
         Files.createDirectories(skill1Dir);
         Files.writeString(skill1Dir.resolve("SKILL.md"), "---\ndescription: Alpha skill\n---\n# Alpha");
 
         manager.refreshIncrementally(List.of(tempDir));
+
         assertThat(manager.count()).isEqualTo(1);
         assertThat(manager.has("alpha_skill")).isTrue();
+        assertThat(manager.get("alpha_skill").getUpdateAt()).isGreaterThan(0);
 
         Path skill2Dir = tempDir.resolve("beta_skill");
         Files.createDirectories(skill2Dir);
         Files.writeString(skill2Dir.resolve("SKILL.md"), "---\ndescription: Beta skill\n---\n# Beta");
 
         manager.refreshIncrementally(List.of(tempDir));
+
         assertThat(manager.count()).isEqualTo(2);
         assertThat(manager.has("alpha_skill")).isTrue();
         assertThat(manager.has("beta_skill")).isTrue();
     }
 
     @Test
-    void testRefreshIncrementallyReloadsUpdatedSkill() throws IOException {
+    void testRefreshIncrementallyReloadsUpdatedSkillByMtime(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("update_skill");
         Files.createDirectories(skillDir);
         Path skillMd = skillDir.resolve("SKILL.md");
@@ -71,15 +60,19 @@ class SkillManagerIncrementalTest {
         manager.refreshIncrementally(List.of(tempDir));
         assertThat(manager.get("update_skill").getDescription()).isEqualTo("Original desc");
 
+        long originalMtime = skillMd.toFile().lastModified();
+
         Files.writeString(skillMd, "---\ndescription: Updated desc\n---\n# Updated");
+
         forceMtimeChange(skillMd);
 
         manager.refreshIncrementally(List.of(tempDir));
         assertThat(manager.get("update_skill").getDescription()).isEqualTo("Updated desc");
+        assertThat(manager.get("update_skill").getUpdateAt()).isNotEqualTo(originalMtime);
     }
 
     @Test
-    void testRefreshIncrementallyRemovesStaleSkill() throws IOException {
+    void testRefreshIncrementallyRemovesStaleSkill(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("stale_skill");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Stale\n---\n# Stale");
@@ -96,23 +89,48 @@ class SkillManagerIncrementalTest {
     }
 
     @Test
-    void testBuildSnapshotSignature() throws IOException {
-        Path skillDir = tempDir.resolve("sig_skill");
-        Files.createDirectories(skillDir);
-        Path skillMd = skillDir.resolve("SKILL.md");
-        Files.writeString(skillMd, "---\ndescription: Sig\n---");
+    void testBuildSnapshotSignature(@TempDir Path tempDir) throws IOException {
+        Path skill1Dir = tempDir.resolve("skill_a");
+        Files.createDirectories(skill1Dir);
+        Files.writeString(skill1Dir.resolve("SKILL.md"), "---\ndescription: A\n---");
 
-        List<Map.Entry<String, Long>> sig1 = manager.buildSnapshotSignature(List.of(tempDir));
-        assertThat(sig1).hasSize(1);
-        assertThat(sig1.get(0).getKey()).contains("sig_skill");
+        Path skill2Dir = tempDir.resolve("skill_b");
+        Files.createDirectories(skill2Dir);
+        Files.writeString(skill2Dir.resolve("SKILL.md"), "---\ndescription: B\n---");
 
-        forceMtimeChange(skillMd);
-        List<Map.Entry<String, Long>> sig2 = manager.buildSnapshotSignature(List.of(tempDir));
-        assertThat(sig2.get(0).getValue()).isNotEqualTo(sig1.get(0).getValue());
+        List<Map.Entry<String, Long>> signature = manager.buildSnapshotSignature(List.of(tempDir));
+
+        assertThat(signature).hasSize(2);
+        assertThat(signature.get(0).getKey()).contains("skill_a");
+        assertThat(signature.get(1).getKey()).contains("skill_b");
+        assertThat(signature.get(0).getValue()).isGreaterThan(0);
+        assertThat(signature.get(1).getValue()).isGreaterThan(0);
     }
 
     @Test
-    void testGetAllInOrder() throws IOException {
+    void testBuildSnapshotSignatureSkipsNonexistentRoot(@TempDir Path tempDir) {
+        Path nonexistent = tempDir.resolve("no_such_dir");
+        List<Map.Entry<String, Long>> signature = manager.buildSnapshotSignature(List.of(nonexistent));
+        assertThat(signature).isEmpty();
+    }
+
+    @Test
+    void testClearAll(@TempDir Path tempDir) throws IOException {
+        Path skillDir = tempDir.resolve("clear_skill");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Clear\n---");
+
+        manager.refreshIncrementally(List.of(tempDir));
+        assertThat(manager.count()).isEqualTo(1);
+
+        manager.clearAll();
+        assertThat(manager.count()).isZero();
+        assertThat(manager.getAll()).isEmpty();
+        assertThat(manager.getAllInOrder()).isEmpty();
+    }
+
+    @Test
+    void testGetAllInOrder(@TempDir Path tempDir) throws IOException {
         Path skillBDir = tempDir.resolve("b_skill");
         Files.createDirectories(skillBDir);
         Files.writeString(skillBDir.resolve("SKILL.md"), "---\ndescription: B\n---");
@@ -130,7 +148,7 @@ class SkillManagerIncrementalTest {
     }
 
     @Test
-    void testFindSkillByDirectory() throws IOException {
+    void testFindSkillByDirectory(@TempDir Path tempDir) throws IOException {
         Path skillDir = tempDir.resolve("find_skill");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Find\n---");
@@ -141,32 +159,6 @@ class SkillManagerIncrementalTest {
         Skill found = manager.findSkillByDirectory(absPath);
         assertThat(found).isNotNull();
         assertThat(found.getName()).isEqualTo("find_skill");
-        assertThat(found.getUpdateAt()).isGreaterThan(0);
-    }
-
-    @Test
-    void testClearClearsCaches() throws IOException {
-        Path skillDir = tempDir.resolve("clear_skill");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Clear\n---");
-
-        manager.refreshIncrementally(List.of(tempDir));
-        assertThat(manager.count()).isEqualTo(1);
-
-        manager.clear();
-        assertThat(manager.count()).isZero();
-        assertThat(manager.getAll()).isEmpty();
-        assertThat(manager.getAllInOrder()).isEmpty();
-    }
-
-    @Test
-    void testRegisterStillWorks() throws IOException {
-        Path skillDir = tempDir.resolve("legacy_skill");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Legacy\n---");
-
-        manager.register(List.of(skillDir), true);
-        assertThat(manager.has("legacy_skill")).isTrue();
     }
 
     private void forceMtimeChange(Path file) throws IOException {

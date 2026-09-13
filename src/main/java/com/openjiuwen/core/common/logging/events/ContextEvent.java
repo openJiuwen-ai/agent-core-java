@@ -12,9 +12,8 @@ import java.util.Map;
 
 /**
  * Context operation related event.
- *
- * <p>Mirrors Python's {@code ContextEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -26,11 +25,22 @@ public class ContextEvent extends BaseLogEvent {
     private Integer contextSize;
     private Integer maxContextSize;
 
+    /**
+     * ContextEvent.
+     * 
+     * @since 0.1.7
+     */
     public ContextEvent() {
         super();
         setModuleType(ModuleType.CONTEXT);
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "message_type", messageType);
@@ -40,5 +50,3 @@ public class ContextEvent extends BaseLogEvent {
         putIfNotNull(map, "max_context_size", maxContextSize);
     }
 }
-
-

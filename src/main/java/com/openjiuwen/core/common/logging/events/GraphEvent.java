@@ -12,9 +12,8 @@ import java.util.Map;
 
 /**
  * Graph execution related event.
- *
- * <p>Mirrors Python's {@code GraphEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -27,10 +26,21 @@ public class GraphEvent extends BaseLogEvent {
     private Object outputs;
     private Object chunk;
 
+    /**
+     * GraphEvent.
+     * 
+     * @since 0.1.7
+     */
     public GraphEvent() {
         super();
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "graph_id", graphId);
@@ -41,5 +51,3 @@ public class GraphEvent extends BaseLogEvent {
         putIfNotNull(map, "chunk", chunk);
     }
 }
-
-

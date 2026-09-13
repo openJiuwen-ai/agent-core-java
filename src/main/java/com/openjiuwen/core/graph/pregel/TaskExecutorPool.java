@@ -3,125 +3,245 @@
  */
 
 package com.openjiuwen.core.graph.pregel;
-import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.store.PendingNode;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Runs Pregel node tasks and collects success/failure state.
- *
- * <p>Mirrors Python's {@code TaskExecutorPool} in
- * {@code openjiuwen/core/graph/pregel/task.py}.</p>
+ * Pool for executing Pregel node tasks concurrently using virtual threads.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.pregel.task.TaskExecutorPool}.
+ * 
+ * @since 0.1.7
  */
 public class TaskExecutorPool {
+    private static final LoggerProtocol logger = Loggers.GRAPH;
+    private static final long CANCEL_GRACE_TIMEOUT_MS = 5000L;
 
     private final PregelConfig config;
-    private final ExecutorService executorService;
-    private final List<Message> succeedMessages = new ArrayList<>();
-    private final Map<String, PendingNode> failed = new LinkedHashMap<>();
-    private final Map<CompletableFuture<Object>, PregelNode> runningTasks = new ConcurrentHashMap<>();
+    private final ExecutorService executor;
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private final List<Message> succeedMessages = new ArrayList<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private final Map<String, PendingNode> failed = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private final Map<CompletableFuture<Object>, RunningTask> runningTasks = new ConcurrentHashMap<>();
+
+    /**
+     * TaskExecutorPool.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     public TaskExecutorPool(PregelConfig config) {
         this.config = config;
-        this.executorService = OpenJiuwenExecutors.newBoundedModulePool("pregel-task", false);
+        this.executor = OpenJiuwenExecutors.newBoundedModulePool("pregel-task", false);
     }
 
     /**
-     * Submit a node for asynchronous execution.
-     *
-     * @param node node to execute
-     * @param version node version
+     * Submit a node for execution.
+     * 
+     * @param node node
+     * @param version version
+     * @since 0.1.7
      */
     public void submit(PregelNode node, int version) {
-        CompletableFuture<Object> task = CompletableFuture.supplyAsync(() -> {
-            try {
-                return new NodeTask(node, config, version).run();
-            } catch (Exception error) {
-                throw new CompletionException(error);
+        CompletableFuture<Object> future = new CompletableFuture<>();
+        RunningTask runningTask = new RunningTask(node);
+        TaskFuture execution = new TaskFuture(() -> {
+            if (!runningTask.tryStart()) {
+                throw new CancellationException("Pregel node task cancelled before execution");
             }
-        }, executorService);
-        runningTasks.put(task, node);
+            try {
+                return new NodeTask(node, config, version).call();
+            } finally {
+                runningTask.complete();
+            }
+        }, future);
+        runningTask.attach(execution);
+        runningTasks.put(future, runningTask);
+        executor.execute(execution);
     }
 
     /**
-     * Wait for all tasks, cancelling remaining tasks after the first non-interrupt error.
-     *
-     * @throws Exception first normal error or graph interrupt
+     * waitAll.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public void waitAll() throws Exception {
         if (runningTasks.isEmpty()) {
             return;
         }
 
-        Exception firstError = null;
-        GraphInterrupt interrupt = null;
-        while (!runningTasks.isEmpty()) {
-            CompletableFuture<?> any = CompletableFuture.anyOf(runningTasks.keySet().toArray(CompletableFuture[]::new));
-            try {
-                any.join();
-            } catch (CompletionException | CancellationException ignored) {
-                // Process the completed exceptional futures below.
-            }
+        List<CompletableFuture<Object>> futures = new ArrayList<>(runningTasks.keySet());
+        Exception firstErrExc = null;
+        GraphInterrupt interruptExc = null;
 
-            List<CompletableFuture<Object>> completed = new ArrayList<>();
-            for (CompletableFuture<Object> task : runningTasks.keySet()) {
-                if (task.isDone() || task.isCancelled()) {
-                    completed.add(task);
+        // Signal that fires when the first task completes exceptionally
+        CompletableFuture<Void> firstFailure = new CompletableFuture<>();
+        for (CompletableFuture<Object> future : futures) {
+            future.whenComplete((result, throwable) -> {
+                if (throwable != null) {
+                    firstFailure.complete(null);
+                }
+            });
+        }
+
+        // Wait for either all-done or first-exception (FIRST_EXCEPTION semantics)
+        CompletableFuture<Void> allDone = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        try {
+            CompletableFuture.anyOf(allDone, firstFailure).get();
+        } catch (InterruptedException e) {
+            cancelPendingFutures(futures);
+            awaitActualCompletion(futures);
+            throw new CancellationException("Pregel task execution cancelled");
+        } catch (ExecutionException | CancellationException ignored) {
+            // Individual errors will be handled below
+        }
+
+        List<CompletableFuture<Object>> pendingFutures = new ArrayList<>();
+        for (CompletableFuture<Object> future : futures) {
+            if (!future.isDone()) {
+                pendingFutures.add(future);
+            }
+        }
+        if (!pendingFutures.isEmpty() && !allDone.isDone()) {
+            cancelPendingFutures(pendingFutures);
+            awaitActualCompletion(pendingFutures);
+        }
+
+        // Check if the first failure is only a GraphInterrupt (not a real exception).
+        // If so, allow remaining tasks to finish rather than cancelling them immediately.
+        boolean onlyInterrupts = true;
+        for (CompletableFuture<Object> future : futures) {
+            if (future.isDone() && !future.isCancelled() && future.isCompletedExceptionally()) {
+                try {
+                    future.join();
+                } catch (Exception e) {
+                    Throwable cause = unwrapException(e);
+                    if (!(cause instanceof GraphInterrupt)) {
+                        onlyInterrupts = false;
+                        break;
+                    }
                 }
             }
-            for (CompletableFuture<Object> task : completed) {
-                PregelNode node = runningTasks.remove(task);
-                TaskOutcome outcome = readOutcome(task);
-                if (outcome.error() != null) {
-                    commitFailure(node, outcome.error());
-                    if (firstError == null) {
-                        firstError = outcome.error();
-                    }
-                } else if (outcome.result() instanceof GraphInterrupt graphInterrupt) {
-                    commitFailure(node, graphInterrupt);
-                    if (interrupt == null) {
-                        interrupt = graphInterrupt;
-                    } else {
-                        interrupt = mergeInterrupts(interrupt, graphInterrupt);
+        }
+        if (onlyInterrupts && !allDone.isDone()) {
+            cancelPendingFutures(pendingFutures);
+            awaitActualCompletion(pendingFutures);
+        }
+
+        // Process completed futures and cancel pending ones
+        for (CompletableFuture<Object> future : futures) {
+            RunningTask runningTask = runningTasks.remove(future);
+            if (runningTask == null) {
+                continue;
+            }
+            PregelNode node = runningTask.node();
+
+            if (future.isDone() && !future.isCancelled()) {
+                if (future.isCompletedExceptionally()) {
+                    try {
+                        future.join();
+                    } catch (Exception e) {
+                        Throwable cause = unwrapException(e);
+                        if (cause instanceof GraphInterrupt gi) {
+                            commitFailure(node, gi);
+                            if (interruptExc == null) {
+                                interruptExc = gi;
+                            }
+                        } else if (isCancellation(cause)) {
+                            commitFailure(node, new CancellationException());
+                        } else {
+                            Exception exc = cause instanceof Exception ex ? ex : new RuntimeException(cause);
+                            commitFailure(node, exc);
+                            if (firstErrExc == null) {
+                                firstErrExc = exc;
+                            }
+                        }
                     }
                 } else {
-                    @SuppressWarnings("unchecked")
-                    List<Message> messages = (List<Message>) outcome.result();
-                    if (messages != null) {
-                        succeedMessages.addAll(messages);
+                    Object result = future.join();
+                    if (result instanceof GraphInterrupt gi) {
+                        commitFailure(node, gi);
+                        if (interruptExc == null) {
+                            interruptExc = gi;
+                        }
+                    } else if (result instanceof List<?> msgs) {
+                        succeedMessages.addAll((List<Message>) msgs);
+                    } else {
+                        // no-op
                     }
                 }
-            }
-
-            if (firstError != null) {
-                cancelRemaining();
-                throw firstError;
+            } else {
+                // Cancel pending task
+                cancelFuture(future);
+                commitFailure(node, new CancellationException());
             }
         }
-        if (interrupt != null) {
-            throw interrupt;
+
+        // Priority: normal exception > interrupt exception
+        if (firstErrExc != null) {
+            throw firstErrExc;
+        } else if (interruptExc != null) {
+            throw interruptExc;
+        } else {
+            // no-op
         }
     }
 
     /**
-     * Cancel all still-running tasks.
+     * Cancel all running tasks.
+     * 
+     * @since 0.1.7
      */
     public void cancelAll() {
-        cancelRemaining();
+        List<CompletableFuture<Object>> futures = new ArrayList<>(runningTasks.keySet());
+        cancelPendingFutures(futures);
+        awaitActualCompletion(futures);
+        for (Map.Entry<CompletableFuture<Object>, RunningTask> entry : runningTasks.entrySet()) {
+            commitFailure(entry.getValue().node(), new CancellationException());
+        }
+        runningTasks.clear();
     }
 
     /**
-     * Clear success, failure, and running task state.
+     * Clear all result collections.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         succeedMessages.clear();
@@ -130,75 +250,234 @@ public class TaskExecutorPool {
     }
 
     /**
-     * Shuts down the underlying worker executor (issue #70).
+     * Shuts down the underlying worker executor.
+     *
+     * @since 0.1.14
      */
     public void shutdown() {
-        executorService.shutdownNow();
+        executor.shutdownNow();
     }
 
+    /**
+     * getSucceedMessages.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public List<Message> getSucceedMessages() {
-        return new ArrayList<>(succeedMessages);
+        return succeedMessages;
     }
 
+    /**
+     * getFailed.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, PendingNode> getFailed() {
-        return new LinkedHashMap<>(failed);
+        return failed;
     }
 
-    public Map<CompletableFuture<Object>, PregelNode> getRunningTasks() {
-        return new LinkedHashMap<>(runningTasks);
-    }
-
-    private void cancelRemaining() {
-        for (Map.Entry<CompletableFuture<Object>, PregelNode> entry : new ArrayList<>(runningTasks.entrySet())) {
-            CompletableFuture<Object> task = entry.getKey();
-            PregelNode node = entry.getValue();
-            if (!task.isDone() && !task.isCancelled()) {
-                task.cancel(true);
-                commitFailure(node, new CancellationException());
-            }
-            runningTasks.remove(task);
-        }
-    }
-
-    private void commitFailure(PregelNode node, Exception error) {
-        failed.computeIfAbsent(node.getName(), name -> {
-            String status = error instanceof GraphInterrupt
+    /**
+     * commitFailure.
+     * 
+     * @param node node
+     * @param exc exc
+     * @since 0.1.7
+     */
+    private void commitFailure(PregelNode node, Exception exc) {
+        String name = node.getName();
+        if (!failed.containsKey(name)) {
+            String status = (exc instanceof GraphInterrupt)
                     ? PregelConstants.TASK_STATUS_INTERRUPT
                     : PregelConstants.TASK_STATUS_ERROR;
-            return new PendingNode(name, status, List.of(error));
-        });
+            failed.put(name, new PendingNode(name, status, List.of(exc)));
+        }
     }
 
-    private TaskOutcome readOutcome(CompletableFuture<Object> task) {
-        if (task.isCancelled()) {
-            return new TaskOutcome(null, new CancellationException());
+    /**
+     * unwrapException.
+     * 
+     * @param t t
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Throwable unwrapException(Throwable t) {
+        while (t instanceof RuntimeException && t.getCause() != null && t != t.getCause()) {
+            t = t.getCause();
+        }
+        if (t instanceof java.util.concurrent.CompletionException && t.getCause() != null) {
+            return t.getCause();
+        }
+        return t;
+    }
+
+    /**
+     * cancelPendingFutures.
+     * 
+     * @param pendingFutures pendingFutures
+     * @since 0.1.7
+     */
+    private void cancelPendingFutures(List<CompletableFuture<Object>> pendingFutures) {
+        for (CompletableFuture<Object> future : pendingFutures) {
+            if (!future.isDone()) {
+                cancelFuture(future);
+            }
+        }
+    }
+
+    /**
+     * Request cancellation of an executor-managed task.
+     *
+     * @param future task future
+     * @since 0.1.7
+     */
+    private void cancelFuture(CompletableFuture<Object> future) {
+        RunningTask runningTask = runningTasks.get(future);
+        if (runningTask == null) {
+            future.cancel(false);
+            return;
+        }
+        runningTask.cancel();
+    }
+
+    /**
+     * awaitActualCompletion.
+     * 
+     * @param pendingFutures pendingFutures
+     * @since 0.1.7
+     */
+    private void awaitActualCompletion(List<CompletableFuture<Object>> pendingFutures) {
+        if (pendingFutures.isEmpty()) {
+            return;
+        }
+        List<CompletableFuture<Void>> completions = new ArrayList<>();
+        for (CompletableFuture<Object> future : pendingFutures) {
+            RunningTask runningTask = runningTasks.get(future);
+            if (runningTask != null) {
+                completions.add(runningTask.completion());
+            }
+        }
+        if (completions.isEmpty()) {
+            return;
         }
         try {
-            return new TaskOutcome(task.join(), null);
-        } catch (CompletionException error) {
-            Throwable cause = error.getCause() != null ? error.getCause() : error;
-            if (cause instanceof Exception exception) {
-                return new TaskOutcome(null, exception);
+            CompletableFuture.allOf(completions.toArray(new CompletableFuture[0])).get(CANCEL_GRACE_TIMEOUT_MS,
+                    TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            logger.warning("Timed out waiting for cancelled graph tasks to stop");
+        } catch (InterruptedException | ExecutionException e) {
+            logger.warning("Cancelled graph task finished with cleanup error", e);
+        }
+    }
+
+    /**
+     * isCancellation.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
+    private static boolean isCancellation(Throwable throwable) {
+        return throwable instanceof CancellationException || throwable instanceof InterruptedException;
+    }
+
+    /**
+     * RunningTask.
+     * 
+     * @since 0.1.7
+     */
+    private static final class RunningTask {
+        private final PregelNode node;
+        private final CompletableFuture<Void> completion = new CompletableFuture<>();
+        private final ReentrantLock lifecycleLock = new ReentrantLock();
+
+        private FutureTask<Object> execution;
+        private boolean hasStarted;
+        private boolean isCancellationRequested;
+
+        private RunningTask(PregelNode node) {
+            this.node = node;
+        }
+
+        private void attach(FutureTask<Object> taskExecution) {
+            lifecycleLock.lock();
+            try {
+                execution = taskExecution;
+                if (isCancellationRequested) {
+                    execution.cancel(true);
+                }
+            } finally {
+                lifecycleLock.unlock();
             }
-            return new TaskOutcome(null, new RuntimeException(cause));
+        }
+
+        private boolean tryStart() {
+            lifecycleLock.lock();
+            try {
+                if (isCancellationRequested) {
+                    return false;
+                }
+                hasStarted = true;
+                return true;
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private void cancel() {
+            lifecycleLock.lock();
+            try {
+                isCancellationRequested = true;
+                if (execution != null && execution.cancel(true) && !hasStarted) {
+                    completion.complete(null);
+                }
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private PregelNode node() {
+            return node;
+        }
+
+        private CompletableFuture<Void> completion() {
+            return completion;
+        }
+
+        private void complete() {
+            completion.complete(null);
         }
     }
 
-    private GraphInterrupt mergeInterrupts(GraphInterrupt left, GraphInterrupt right) {
-        List<Object> merged = new ArrayList<>();
-        appendInterruptValue(merged, left.getValue());
-        appendInterruptValue(merged, right.getValue());
-        return new GraphInterrupt(merged);
-    }
+    /**
+     * Bridges an executor-managed task to the result future used by the Pregel pool.
+     *
+     * @since 0.1.7
+     */
+    private static final class TaskFuture extends FutureTask<Object> {
+        private final CompletableFuture<Object> result;
 
-    private void appendInterruptValue(List<Object> target, Object value) {
-        if (value instanceof List<?> list) {
-            target.addAll(list);
-        } else if (value != null) {
-            target.add(value);
+        private TaskFuture(Callable<Object> callable, CompletableFuture<Object> result) {
+            super(callable);
+            this.result = result;
         }
-    }
 
-    private record TaskOutcome(Object result, Exception error) {
+        @Override
+        protected void done() {
+            try {
+                result.complete(get());
+            } catch (CancellationException exception) {
+                result.cancel(false);
+            } catch (InterruptedException exception) {
+                result.completeExceptionally(exception);
+            } catch (ExecutionException exception) {
+                Throwable failure = exception.getCause();
+                if (failure == null) {
+                    failure = exception;
+                }
+                result.completeExceptionally(failure);
+            }
+        }
     }
 }

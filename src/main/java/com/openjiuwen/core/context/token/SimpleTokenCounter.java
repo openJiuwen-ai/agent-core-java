@@ -29,7 +29,7 @@ import java.util.Map;
  * 
  * @since 0.1.7
  */
-public class SimpleTokenCounter implements TokenCounter {
+public class SimpleTokenCounter extends TokenCounter {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Approximate chars per token — tuned towards cl100k_base behaviour. */
@@ -71,7 +71,7 @@ public class SimpleTokenCounter implements TokenCounter {
      * @since 0.1.7
      */
     @Override
-    public int count(String text, String model, Map<String, Object> kwargs) {
+    public int count(String text, String model) {
         if (text == null || text.isEmpty()) {
             return 0;
         }
@@ -91,15 +91,14 @@ public class SimpleTokenCounter implements TokenCounter {
 
     /**
      * countMessages.
-     *
+     * 
      * @param messages messages
      * @param model model
-     * @param kwargs kwargs
      * @return the result
      * @since 0.1.7
      */
     @Override
-    public int countMessages(List<BaseMessage> messages, String model, Map<String, Object> kwargs) {
+    public int countMessages(List<BaseMessage> messages, String model) {
         if (messages == null || messages.isEmpty()) {
             return 0;
         }
@@ -126,15 +125,14 @@ public class SimpleTokenCounter implements TokenCounter {
 
     /**
      * countTools.
-     *
+     * 
      * @param tools tools
      * @param model model
-     * @param kwargs kwargs
      * @return the result
      * @since 0.1.7
      */
     @Override
-    public int countTools(List<ToolInfo> tools, String model, Map<String, Object> kwargs) {
+    public int countTools(List<ToolInfo> tools, String model) {
         if (tools == null || tools.isEmpty()) {
             return 0;
         }

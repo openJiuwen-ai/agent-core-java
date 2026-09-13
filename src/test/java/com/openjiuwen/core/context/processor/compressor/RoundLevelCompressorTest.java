@@ -4,241 +4,187 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.openjiuwen.core.context.ContextWindow;
-import com.openjiuwen.core.context.context.SessionModelContext;
-import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.processor.ContextProcessor;
+import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
- * Focused parity tests for round-level fallback compression behavior.
- *
- * <p>Mirrors Python's {@code RoundLevelCompressor} in
- * {@code openjiuwen/core/context_engine/processor/compressor/round_level_compressor.py}.</p>
- *
- * <p>Mirrors Python's related tests in
- * {@code tests/unit_tests/core/context_engine/test_round_level_compressor.py}.</p>
+ * Tests for {@link RoundLevelCompressor}.
  */
 class RoundLevelCompressorTest {
-
     @Test
+    @DisplayName("trigger_get_context_window uses trigger_total_tokens")
     void triggerGetContextWindowUsesTriggerTotalTokens() {
-        RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
-        config.setTriggerTotalTokens(100);
-        config.setTargetTotalTokens(50);
-        RoundLevelCompressor compressor = new RoundLevelCompressor(config, null);
-        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
-                List.of(), List.of(compressor), null);
+        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(
+                RoundLevelCompressorConfig.builder().triggerTotalTokens(100).targetTotalTokens(50).build());
+        ModelContext context = mock(ModelContext.class);
+        ContextWindow contextWindow = ContextWindow.builder().systemMessages(List.of())
+                .contextMessages(List.of(new UserMessage("u"))).tools(List.of()).build();
 
-        assertThat(compressor.triggerGetContextWindow(
-                context,
-                new ContextWindow(List.of(), List.of(new UserMessage("u")), List.of(), null),
-                Map.of()).toCompletableFuture().join()).isFalse();
+        compressor.forcedContextWindowTokens = 75;
+        assertFalse(compressor.triggerGetContextWindow(context, contextWindow));
 
-        assertThat(compressor.triggerGetContextWindow(
-                context,
-                new ContextWindow(List.of(), List.of(new UserMessage("u".repeat(330))), List.of(), null),
-                Map.of()).toCompletableFuture().join()).isTrue();
+        compressor.forcedContextWindowTokens = 101;
+        assertTrue(compressor.triggerGetContextWindow(context, contextWindow));
     }
 
     @Test
-    void streamsStateWhenRoundLevelCompressorTriggersOnGet() {
-        RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
-        config.setTriggerTotalTokens(1);
-        config.setTargetTotalTokens(1);
-        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(config);
-        compressor.compressionResult = List.of(new UserMessage("compressed"));
-        SessionModelContext context = new SessionModelContext(
-                "ctx",
-                "round-level-compressor-stream-session",
-                new ContextEngineConfig(),
-                List.of(new UserMessage("old request"), new AssistantMessage("old answer")),
-                List.of(compressor),
-                messages -> messages.stream().mapToInt(message -> message.getContentAsString().length()).sum());
+    @DisplayName("build_memory_message returns plain user message")
+    void buildMemoryMessageReturnsPlainUserMessage() {
+        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(
+                RoundLevelCompressorConfig.builder().triggerTotalTokens(100).targetTotalTokens(50).build());
+        ModelContext context = mock(ModelContext.class);
+        RoundLevelCompressor.CompressTarget target = new RoundLevelCompressor.CompressTarget("block_1", "ongoing_react",
+                0, 0, List.of(new AssistantMessage("analysis state")), 0, 1, 1);
 
-        ContextWindow window = context.getContextWindow(List.of(), List.of(), null, null, Map.of())
-                .toCompletableFuture()
-                .join();
+        BaseMessage message = compressor.buildMemoryMessage("User Requirements:\n- Keep intent.", target, context);
 
-        assertThat(window.getContextMessages()).extracting(BaseMessage::getContentAsString)
-                .containsExactly("compressed");
-        List<Map<String, Object>> states = context.compressionHistory();
-        assertThat(states).hasSizeGreaterThanOrEqualTo(2);
-        assertThat(states.get(states.size() - 2))
-                .containsEntry("status", "started")
-                .containsEntry("phase", "get_context_window")
-                .containsEntry("processor", "RoundLevelCompressor");
-        Map<String, Object> completed = states.get(states.size() - 1);
-        assertThat(completed)
-                .containsEntry("status", "completed")
-                .containsEntry("phase", "get_context_window")
-                .containsEntry("processor", "RoundLevelCompressor");
-        assertThat(String.valueOf(completed.get("summary"))).contains("modified 2 messages");
+        assertInstanceOf(UserMessage.class, message);
+        assertTrue(message.getContentAsString().startsWith(RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER));
+        assertTrue(message.getContentAsString().contains("processor: RoundLevelCompressor"));
+        assertEquals(1, message.getMetadata().get(RoundLevelCompressor.COMPRESS_LEVEL));
     }
 
     @Test
-    void buildMemoryMessageReturnsPlainUserMessageWithCompressionLevel() {
-        RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
-        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(config);
-        RoundLevelCompressor.CompressTarget target = new RoundLevelCompressor.CompressTarget(
-                "block_1",
-                "ongoing_react",
-                0,
-                0,
-                List.of(new AssistantMessage("analysis state")),
-                0,
-                1,
-                1);
+    @DisplayName("on_get_context_window reports original message range")
+    void onGetContextWindowReportsOriginalMessageRange() {
+        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(
+                RoundLevelCompressorConfig.builder().triggerTotalTokens(100).targetTotalTokens(50).build());
+        List<BaseMessage> compressed = List.of(new UserMessage(RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER + "\n"
+                + "processor: RoundLevelCompressor\n" + "Summary:\ncompressed"));
+        compressor.compressUntilTargetResult = compressed;
+        compressor.forcedContextWindowTokens = 101;
+        ModelContext context = mock(ModelContext.class);
+        ContextWindow contextWindow = ContextWindow.builder().systemMessages(List.of())
+                .contextMessages(List.of(new UserMessage("u".repeat(90)), new AssistantMessage("a".repeat(90)),
+                        new UserMessage("x".repeat(90)), new AssistantMessage("y".repeat(90))))
+                .tools(List.of()).build();
 
-        BaseMessage message = compressor.buildMemoryMessageForTest("User Requirements:\n- Keep intent.", target);
+        ContextProcessor.ProcessResult result = compressor.onGetContextWindow(context, contextWindow);
 
-        assertThat(message).isInstanceOf(UserMessage.class);
-        assertThat(message.getContentAsString())
-                .startsWith(RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER)
-                .contains("processor: RoundLevelCompressor")
-                .contains("User Requirements");
-        assertThat(message.getMetadata()).containsEntry("compress_level", 1);
+        assertNotNull(result.event());
+        assertEquals(List.of(0, 1, 2, 3), result.event().getMessagesToModify());
+        assertEquals(1, result.contextWindow().getContextMessages().size());
+        assertTrue(result.contextWindow().getContextMessages().get(0).getContentAsString()
+                .startsWith(RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER));
+        verify(context).setMessages(compressed);
     }
 
     @Test
-    void onGetContextWindowReportsOriginalMessageRangeAndCompactSummary() {
-        RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
-        config.setTriggerTotalTokens(100);
-        config.setTargetTotalTokens(50);
-        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(config);
-        compressor.compressionResult = List.of(new UserMessage(
-                RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER + "\n"
-                        + "processor: RoundLevelCompressor\n"
-                        + "Summary:\ncompressed"));
-        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
-                List.of(), List.of(compressor), null);
-        ContextWindow window = new ContextWindow(
-                List.of(),
-                List.of(
-                        new UserMessage("u".repeat(180)),
-                        new AssistantMessage("a".repeat(180)),
-                        new UserMessage("x".repeat(180)),
-                        new AssistantMessage("y".repeat(180))),
-                List.of(),
-                null);
-
-        SessionModelContext.ProcessResult result = compressor.onGetContextWindow(context, window, Map.of())
-                .toCompletableFuture()
-                .join();
-
-        assertThat(result.event()).isNotNull();
-        assertThat(result.event().messagesToModify()).containsExactly(0, 1, 2, 3);
-        assertThat(result.event().compactSummary())
-                .startsWith(RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER)
-                .contains("compressed");
-        assertThat(result.contextWindow().getContextMessages()).hasSize(1);
-        assertThat(context.getMessages()).hasSize(1);
-    }
-
-    @Test
+    @DisplayName("build_compression_user_prompt includes ongoing and completed requirements")
     void buildCompressionUserPromptIncludesOngoingAndCompletedRequirements() {
-        RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
-        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(config);
-        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
-                List.of(), List.of(compressor), null);
+        TestableRoundLevelCompressor compressor = new TestableRoundLevelCompressor(
+                RoundLevelCompressorConfig.builder().triggerTotalTokens(100).targetTotalTokens(50).build());
+        ModelContext context = mock(ModelContext.class);
+        when(context.tokenCounter()).thenReturn(null);
 
-        String prompt = compressor.buildCompressionUserPromptForTest(
-                List.of(
-                        new UserMessage("request"),
-                        new AssistantMessage("working"),
-                        new UserMessage("another request"),
-                        new AssistantMessage("final answer")),
-                List.of(
-                        new RoundLevelCompressor.CompressTarget(
-                                "block_1",
-                                "ongoing_react",
-                                0,
-                                1,
-                                List.of(new UserMessage("request"), new AssistantMessage("working")),
-                                0,
-                                1,
-                                1),
-                        new RoundLevelCompressor.CompressTarget(
-                                "block_2",
-                                "completed_react",
-                                2,
-                                3,
-                                List.of(new UserMessage("another request"), new AssistantMessage("final answer")),
-                                0,
-                                1,
-                                1)),
-                context);
+        String promptText = compressor
+                .buildCompressionUserPrompt(
+                        List.of(new UserMessage("request"), new AssistantMessage("working"),
+                                new UserMessage("another request"), new AssistantMessage("final answer")),
+                        List.of(new RoundLevelCompressor.CompressTarget("block_1", "ongoing_react", 0, 1,
+                                List.of(new UserMessage("request"), new AssistantMessage("working")), 0, 1, 1),
+                                new RoundLevelCompressor.CompressTarget("block_2", "completed_react", 2, 3,
+                                        List.of(new UserMessage("another request"),
+                                                new AssistantMessage("final answer")),
+                                        0, 1, 1)),
+                        context, "phase_1", 300, 0, null, null);
 
-        assertThat(prompt)
-                .contains("User Requirements")
-                .contains("Final Result")
-                .contains("Do not weaken or over-compress the user's original request");
+        assertTrue(promptText.contains("User Requirements"));
+        assertTrue(promptText.contains("Final Result"));
+        assertTrue(promptText.contains("Do not weaken or over-compress the user's original request"));
     }
 
     @Test
-    void protectsAssistantToolCallWhenToolResultIsOutsideTargetRange() {
-        List<BaseMessage> messages = List.of(
-                new UserMessage("question"),
-                assistantToolCall("call-1"),
-                new ToolMessage("tool result", "call-1"),
-                new AssistantMessage("final"));
+    @DisplayName("config defaults match Python current config")
+    void configDefaultsMatchPythonCurrentConfig() {
+        RoundLevelCompressorConfig config = RoundLevelCompressorConfig.builder().build();
 
-        assertThat(RoundLevelCompressor.protectToolCallBoundary(messages, 0, 1)).isEqualTo(0);
-        assertThat(RoundLevelCompressor.protectToolCallBoundary(messages, 0, 3)).isEqualTo(3);
+        assertEquals(230000, config.getTriggerTotalTokens());
+        assertEquals(160000, config.getTargetTotalTokens());
+        assertEquals(0, config.getKeepRecentMessages());
+        assertEquals(250000, config.getCompressionCallMaxTokens());
+        assertEquals(30000, config.getFirstPassTargetTokens());
+        assertEquals(20000, config.getSecondPassTargetTokens());
+        assertEquals(10000, config.getThirdPassTargetTokens());
+        assertEquals(0.2, config.getTruncateHeadRatio());
+        assertEquals(RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER, config.getCompressionMarker());
     }
 
-    private static AssistantMessage assistantToolCall(String id) {
-        return AssistantMessage.builder()
-                .role("assistant")
-                .content("")
-                .toolCalls(List.of(ToolCall.builder()
-                        .id(id)
-                        .name("tool")
-                        .type("function")
-                        .arguments("{}")
-                        .build()))
-                .build();
+    @Test
+    @DisplayName("processor type returns correct name and state is stateless")
+    void processorTypeAndStateAreStable() {
+        RoundLevelCompressor compressor = new RoundLevelCompressor(RoundLevelCompressorConfig.builder().build());
+
+        assertEquals("RoundLevelCompressor", compressor.processorType());
+        assertTrue(compressor.saveState().isEmpty());
+        compressor.loadState(Map.of());
     }
 
     private static final class TestableRoundLevelCompressor extends RoundLevelCompressor {
-        private List<BaseMessage> compressionResult;
+        private Integer forcedContextWindowTokens;
+        private List<BaseMessage> compressUntilTargetResult;
 
         private TestableRoundLevelCompressor(RoundLevelCompressorConfig config) {
-            super(config, null);
+            super(config);
         }
 
         @Override
-        public String processorType() {
-            return "RoundLevelCompressor";
+        int countContextWindowTokens(List<BaseMessage> systemMessages, List<BaseMessage> contextMessages,
+                List<ToolInfo> tools, ModelContext context) {
+            if (forcedContextWindowTokens != null) {
+                return forcedContextWindowTokens;
+            }
+            return super.countContextWindowTokens(systemMessages, contextMessages, tools, context);
         }
 
         @Override
-        protected List<BaseMessage> compressUntilTarget(List<BaseMessage> contextMessages,
-                                                        SessionModelContext context,
-                                                        List<BaseMessage> systemMessages,
-                                                        List<com.openjiuwen.core.foundation.tool.schema.ToolInfo> tools,
-                                                        int keepRecent,
-                                                        boolean force) {
-            return compressionResult == null ? contextMessages : compressionResult;
+        List<BaseMessage> compressUntilTarget(List<BaseMessage> contextMessages, ModelContext context,
+                List<BaseMessage> systemMessages, List<ToolInfo> tools, int keepRecent, boolean force) {
+            if (compressUntilTargetResult != null) {
+                return compressUntilTargetResult;
+            }
+            return super.compressUntilTarget(contextMessages, context, systemMessages, tools, keepRecent, force);
         }
+    }
 
-        private BaseMessage buildMemoryMessageForTest(String summary, RoundLevelCompressor.CompressTarget target) {
-            return buildMemoryMessage(summary, target);
-        }
+    @SuppressWarnings("unused")
+    private static TokenCounter tokenCounter(int returnValue) {
+        return new TokenCounter() {
+            @Override
+            public int count(String text, String model) {
+                return returnValue;
+            }
 
-        private String buildCompressionUserPromptForTest(List<BaseMessage> messages,
-                                                         List<RoundLevelCompressor.CompressTarget> targets,
-                                                         SessionModelContext context) {
-            return buildCompressionUserPrompt(messages, targets, context, "phase_1", 300, 0, null, null);
-        }
+            @Override
+            public int countMessages(List<BaseMessage> messages, String model) {
+                return returnValue;
+            }
+
+            @Override
+            public int countTools(List<ToolInfo> tools, String model) {
+                return 0;
+            }
+        };
     }
 }

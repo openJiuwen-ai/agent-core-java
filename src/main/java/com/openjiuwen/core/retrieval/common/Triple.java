@@ -4,70 +4,110 @@
 
 package com.openjiuwen.core.retrieval.common;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code Triple} in
- * {@code openjiuwen/core/retrieval/common/triple.py}.
+ * Knowledge triple.
+ * 
+ * @since 0.1.7
  */
+@Getter
+@Setter
 public class Triple {
-
     private String subject;
     private String predicate;
     private String object;
+    private Double confidence;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
+    /**
+     * Triple.
+     * 
+     * @since 0.1.7
+     */
     public Triple() {
     }
 
+    /**
+     * Triple.
+     * 
+     * @param subject subject
+     * @param predicate predicate
+     * @param object object
+     * @since 0.1.7
+     */
     public Triple(String subject, String predicate, String object) {
-        this(subject, predicate, object, null);
+        this(subject, predicate, object, null, null);
     }
 
-    public Triple(String subject, String predicate, String object, Map<String, Object> metadata) {
-        this.subject = requireText(subject, "subject");
-        this.predicate = requireText(predicate, "predicate");
-        this.object = requireText(object, "object");
+    /**
+     * Triple.
+     * 
+     * @param subject subject
+     * @param predicate predicate
+     * @param object object
+     * @param confidence confidence
+     * @param metadata metadata
+     * @since 0.1.7
+     */
+    public Triple(String subject, String predicate, String object, Double confidence, Map<String, Object> metadata) {
+        setSubject(subject);
+        setPredicate(predicate);
+        setObject(object);
+        setConfidence(confidence);
         setMetadata(metadata);
     }
 
-    public String getSubject() {
-        return subject;
-    }
-
+    /**
+     * setSubject.
+     * 
+     * @param subject subject
+     * @since 0.1.7
+     */
     public void setSubject(String subject) {
+        RetrievalValidation.requireNonNull(subject, "Triple.subject");
         this.subject = subject;
     }
 
-    public String getPredicate() {
-        return predicate;
-    }
-
+    /**
+     * setPredicate.
+     * 
+     * @param predicate predicate
+     * @since 0.1.7
+     */
     public void setPredicate(String predicate) {
+        RetrievalValidation.requireNonNull(predicate, "Triple.predicate");
         this.predicate = predicate;
     }
 
-    public String getObject() {
-        return object;
-    }
-
+    /**
+     * setObject.
+     * 
+     * @param object object
+     * @since 0.1.7
+     */
     public void setObject(String object) {
+        RetrievalValidation.requireNonNull(object, "Triple.object");
         this.object = object;
     }
 
-    public Map<String, Object> getMetadata() {
-        return metadata;
-    }
-
+    /**
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
+     */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
-    }
-
-    private static String requireText(String value, String fieldName) {
-        if (value == null) {
-            throw RetrievalExceptions.validation(fieldName + " is required");
-        }
-        return value;
     }
 }

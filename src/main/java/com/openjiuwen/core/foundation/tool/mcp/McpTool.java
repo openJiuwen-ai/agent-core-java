@@ -6,200 +6,118 @@ package com.openjiuwen.core.foundation.tool.mcp;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.ValidationError;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.runner.callback.ToolCallEvents;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
 
 /**
- * MCP tool wrapper.
- *
- * <p>Mirrors Python's {@code MCPTool} in
- * {@code openjiuwen/core/foundation/tool/mcp/base.py}.</p>
+ * MCP Tool that wraps MCP server tools for LLM function calling.
+ * <p>
+ * Mirrors Python's {@code MCPTool} class.
+ * 
+ * @since 0.1.7
  */
 public class McpTool extends Tool {
+    private final McpClient mcpClient;
 
-    private final Object mcpClient;
-    private final float operationTimeout;
-
-    public McpTool(McpClient mcpClient, McpToolCard toolInfo) {
-        this((Object) mcpClient, toolInfo, McpBase.NO_TIMEOUT);
-    }
-
-    public McpTool(Object mcpClient, McpToolCard toolInfo) {
-        this(mcpClient, toolInfo, McpBase.NO_TIMEOUT);
-    }
-
-    public McpTool(Object mcpClient, McpToolCard toolInfo, float operationTimeout) {
-        super(toolInfo);
+    /**
+     * Create an MCP tool.
+     * 
+     * @param mcpClient the MCP client instance
+     * @param card the MCP tool card
+     * @since 0.1.7
+     */
+    public McpTool(McpClient mcpClient, McpToolCard card) {
+        super(card);
         if (mcpClient == null) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_MCP_CLIENT_NOT_SUPPORTED,
-                    "card", String.valueOf(getCard()));
+            throw ErrorHelper.buildError(StatusCode.TOOL_MCP_CLIENT_NOT_SUPPORTED, "card", card.toString());
         }
         this.mcpClient = mcpClient;
-        this.operationTimeout = operationTimeout;
     }
 
-    public Object getMcpClient() {
-        return mcpClient;
-    }
-
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
-    protected Iterator<Object> streamInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", String.valueOf(getCard()));
-    }
-
-    @Override
-    protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+    public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         try {
-            Map<String, Object> arguments = inputs != null ? new LinkedHashMap<>(inputs) : new LinkedHashMap<>();
-            Map<String, Object> inputParams = getCard().getInputParams();
-            if (inputParams != null) {
-                triggerCallback(ToolCallEvents.TOOL_PARSE_STARTED, parseStartedKwargs(inputs, inputParams));
-                boolean skipNoneValue = !kwargsContains(kwargs, "skip_none_value")
-                        || Boolean.TRUE.equals(kwargs.get("skip_none_value"));
-                boolean skipValidate = Boolean.TRUE.equals(kwargs != null ? kwargs.get("skip_inputs_validate") : null);
-                arguments = SchemaUtils.formatWithSchema(arguments, inputParams, false, skipValidate);
-                if (skipNoneValue) {
-                    Map<String, Object> cleaned = SchemaUtils.removeNoneValues(arguments);
-                    arguments = cleaned != null ? cleaned : new LinkedHashMap<>();
-                }
-                triggerCallback(ToolCallEvents.TOOL_PARSE_FINISHED, parseFinishedKwargs(arguments));
+            Map<String, Object> arguments = inputs != null ? inputs : Map.of();
+            // Schema validation: format inputs against inputParams if defined
+            Map<String, Object> inputParams = card.getInputParams();
+            if (inputParams != null && !inputParams.isEmpty()) {
+                arguments = formatArguments(arguments, inputParams);
             }
-            Object result = awaitIfNeeded(callTool(arguments, operationTimeout(kwargs)));
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("result", result);
-            return payload;
-        } catch (Exception error) {
-            Map<String, Object> params = new LinkedHashMap<>();
-            params.put("reason", error.getMessage());
-            params.put("method", "invoke");
-            params.put("card", String.valueOf(getCard()));
-            throw ErrorHelper.buildError(StatusCode.TOOL_MCP_EXECUTION_ERROR, null, null, error, params);
+            Object result = mcpClient.callTool(card.getName(), arguments);
+            return Map.of("result", result);
+        } catch (Exception e) {
+            String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            throw ErrorHelper.buildError(StatusCode.TOOL_MCP_EXECUTION_ERROR, null, null, e,
+                    Map.of("reason", reason, "method", "invoke", "card", card.toString()));
         }
     }
 
-    private Object callTool(Map<String, Object> arguments, float timeout) throws Exception {
-        String toolName = getCard().getName();
-        Method twoArgumentMethod = null;
-        for (Method method : mcpClient.getClass().getMethods()) {
-            if (!("callTool".equals(method.getName()) || "call_tool".equals(method.getName()))) {
-                continue;
-            }
-            if (method.getParameterCount() == 3) {
-                return invokeCallToolMethod(method, toolName, arguments, timeoutArgument(method, timeout));
-            }
-            if (method.getParameterCount() == 2) {
-                twoArgumentMethod = method;
-            }
-        }
-        if (twoArgumentMethod != null) {
-            return invokeCallToolMethod(twoArgumentMethod, toolName, arguments);
-        }
-        throw new NoSuchMethodException("callTool(String, Map) or call_tool(String, Map)");
-    }
-
-    private Object invokeCallToolMethod(Method method, String toolName, Map<String, Object> arguments,
-                                        Object... extraArguments) throws Exception {
-        Object[] args = new Object[2 + extraArguments.length];
-        args[0] = toolName;
-        args[1] = arguments;
-        System.arraycopy(extraArguments, 0, args, 2, extraArguments.length);
+    /**
+     * Formats MCP arguments while preserving Python's formatting-stage error for undeclared extra fields.
+     *
+     * @param arguments raw MCP arguments
+     * @param inputParams MCP input schema
+     * @return formatted MCP arguments
+     * @since 0.1.14
+     */
+    private static Map<String, Object> formatArguments(Map<String, Object> arguments,
+            Map<String, Object> inputParams) {
         try {
-            method.setAccessible(true);
-            return method.invoke(mcpClient, args);
-        } catch (InvocationTargetException error) {
+            return SchemaUtils.formatWithSchema(arguments, inputParams);
+        } catch (ValidationError error) {
+            if (!isImplicitAdditionalPropertyError(error, inputParams)) {
+                throw error;
+            }
             Throwable cause = error.getCause();
-            if (cause instanceof Exception exception) {
-                throw exception;
-            }
-            throw new RuntimeException(Objects.requireNonNullElse(cause, error));
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID, null, null, error,
+                    Map.of("reason", cause.getMessage(), "data", String.valueOf(arguments)));
         }
     }
 
-    private float operationTimeout(Map<String, Object> kwargs) {
-        Object value = first(kwargs, "operation_timeout", "operationTimeout", "timeout");
-        if (value == null) {
-            return operationTimeout;
+    /**
+     * Checks whether validation rejected an extra field under an implicit additional-property policy.
+     *
+     * @param error schema validation error
+     * @param inputParams MCP input schema
+     * @return true when Python reports the failure during formatting
+     * @since 0.1.14
+     */
+    private static boolean isImplicitAdditionalPropertyError(ValidationError error,
+            Map<String, Object> inputParams) {
+        if (inputParams.containsKey("additionalProperties")) {
+            return false;
         }
-        if (value instanceof Number number) {
-            return number.floatValue();
-        }
-        if (value instanceof String text && !text.isBlank()) {
-            try {
-                return Float.parseFloat(text.trim());
-            } catch (NumberFormatException ignored) {
-                return operationTimeout;
-            }
-        }
-        return operationTimeout;
+        Throwable cause = error.getCause();
+        return error.getCode() == StatusCode.SCHEMA_VALIDATE_INVALID.getCode()
+                && cause instanceof IllegalArgumentException
+                && cause.getMessage() != null
+                && cause.getMessage().startsWith("Unexpected keyword argument:");
     }
 
-    private static Object first(Map<String, Object> values, String... keys) {
-        if (values == null || values.isEmpty()) {
-            return null;
-        }
-        for (String key : keys) {
-            if (values.containsKey(key)) {
-                return values.get(key);
-            }
-        }
-        return null;
-    }
-
-    private static Object timeoutArgument(Method method, float timeout) {
-        Class<?> type = method.getParameterTypes()[2];
-        if (type == double.class || type == Double.class) {
-            return (double) timeout;
-        }
-        return timeout;
-    }
-
-    private Map<String, Object> parseStartedKwargs(Map<String, Object> inputs, Map<String, Object> inputParams) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put("tool_name", getCard().getName());
-        values.put("tool_id", getCard().getId());
-        values.put("raw_inputs", inputs);
-        values.put("schema", inputParams);
-        return values;
-    }
-
-    private Map<String, Object> parseFinishedKwargs(Map<String, Object> arguments) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put("tool_name", getCard().getName());
-        values.put("tool_id", getCard().getId());
-        values.put("formatted_inputs", arguments);
-        return values;
-    }
-
-    private static boolean kwargsContains(Map<String, Object> kwargs, String key) {
-        return kwargs != null && kwargs.containsKey(key);
-    }
-
-    private static Object awaitIfNeeded(Object value) throws Exception {
-        if (!(value instanceof CompletionStage<?> stage)) {
-            return value;
-        }
-        try {
-            return stage.toCompletableFuture().get();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw interrupted;
-        } catch (ExecutionException | CompletionException executionError) {
-            Throwable cause = executionError.getCause();
-            if (cause instanceof Exception exception) {
-                throw exception;
-            }
-            throw new RuntimeException(Objects.requireNonNullElse(cause, executionError));
-        }
+    /**
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    @Override
+    public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
+        throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", card.toString());
     }
 }

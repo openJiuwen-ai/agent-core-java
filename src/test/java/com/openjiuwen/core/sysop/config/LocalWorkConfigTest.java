@@ -1,21 +1,20 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.config;
 
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import static org.junit.jupiter.api.Assertions.*;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for LocalWorkConfig.
  */
 class LocalWorkConfigTest {
-
     @Test
     @DisplayName("default shell allowlist is populated")
     void testDefaultAllowlist() {
@@ -28,22 +27,17 @@ class LocalWorkConfigTest {
     }
 
     @Test
-    @DisplayName("builder sets shellAllowlist correctly")
-    void testBuilderShellAllowlist() {
-        List<String> custom = List.of("echo", "ping");
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .shellAllowlist(custom)
-                .build();
-        assertEquals(2, config.getShellAllowlist().size());
-        assertTrue(config.getShellAllowlist().contains("echo"));
+    @DisplayName("builder sets workDir correctly")
+    void testBuilderWorkDir() {
+        LocalWorkConfig config = LocalWorkConfig.builder().workDir("/workspace").build();
+        assertEquals("/workspace", config.getWorkDir());
     }
 
     @Test
-    @DisplayName("constructor with full arguments")
-    void testConstructorCustomAllowlist() {
+    @DisplayName("builder with custom allowlist")
+    void testBuilderCustomAllowlist() {
         List<String> custom = List.of("echo", "ping");
-        LocalWorkConfig config = new LocalWorkConfig(
-                custom, null, false, null);
+        LocalWorkConfig config = LocalWorkConfig.builder().shellAllowlist(custom).build();
         assertEquals(2, config.getShellAllowlist().size());
         assertTrue(config.getShellAllowlist().contains("echo"));
     }

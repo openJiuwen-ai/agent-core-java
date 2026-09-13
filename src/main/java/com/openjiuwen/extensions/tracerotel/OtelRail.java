@@ -5,10 +5,9 @@
 package com.openjiuwen.extensions.tracerotel;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.session.AgentGroupSession;
-import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.session.tracer.TracerHandlerName;
@@ -56,14 +55,14 @@ public class OtelRail extends AgentRail {
     /** Rate-limit flag for tracer retrieval failure logging. */
     private static volatile boolean hasTracerFailureLogged = false;
 
-    /** Extra-map key for storing the in-flight root agent span per context. */
-    private static final String OTEL_ROOT_SPAN_KEY = "_otel_root_span";
-
     /** Extra-map key for storing the in-flight LLM child span per context. */
     private static final String OTEL_LLM_SPAN_KEY = "_otel_llm_span";
 
     /** Extra-map key for storing the in-flight tool child span per context. */
     private static final String OTEL_TOOL_SPAN_KEY = "_otel_tool_span";
+
+    /** Root agent span created in beforeInvoke, finalized in afterInvoke. */
+    private TraceAgentSpan rootSpan;
 
     /**
      * Construct an OtelRail with lowest priority.
@@ -83,8 +82,7 @@ public class OtelRail extends AgentRail {
             return;
         }
         Tracer tracer = tracerOpt.get();
-        TraceAgentSpan rootSpan = tracer.getTracerAgentSpanManager().createAgentSpan(null);
-        ctx.getExtra().put(OTEL_ROOT_SPAN_KEY, rootSpan);
+        rootSpan = tracer.getTracerAgentSpanManager().createAgentSpan(null);
         Map<String, Object> instanceInfo = new HashMap<>();
         instanceInfo.put("class_name", getAgentName(ctx));
         instanceInfo.put("type", "agent");
@@ -103,12 +101,8 @@ public class OtelRail extends AgentRail {
 
     @Override
     public void afterInvoke(AgentCallbackContext ctx) {
-        Object rootObj = ctx.getExtra().remove(OTEL_ROOT_SPAN_KEY);
-        if (!(rootObj instanceof TraceAgentSpan rootSpan)) {
-            return;
-        }
         Optional<Tracer> tracerOpt = getTracer(ctx);
-        if (tracerOpt.isEmpty()) {
+        if (tracerOpt.isEmpty() || rootSpan == null) {
             return;
         }
         Tracer tracer = tracerOpt.get();
@@ -127,6 +121,7 @@ public class OtelRail extends AgentRail {
             kwargs.put("outputs", Map.of("outputs", result != null ? result : ""));
             tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_chain_end", kwargs);
         }
+        rootSpan = null;
     }
 
     // ------------------------------------------------------------------
@@ -140,7 +135,6 @@ public class OtelRail extends AgentRail {
             return;
         }
         Tracer tracer = tracerOpt.get();
-        TraceAgentSpan rootSpan = rootSpanFrom(ctx);
         TraceAgentSpan llmSpan = tracer.getTracerAgentSpanManager().createAgentSpan(rootSpan);
         ctx.getExtra().put(OTEL_LLM_SPAN_KEY, llmSpan);
 
@@ -228,7 +222,6 @@ public class OtelRail extends AgentRail {
             return;
         }
         Tracer tracer = tracerOpt.get();
-        TraceAgentSpan rootSpan = rootSpanFrom(ctx);
         TraceAgentSpan toolSpan = tracer.getTracerAgentSpanManager().createAgentSpan(rootSpan);
         ctx.getExtra().put(OTEL_TOOL_SPAN_KEY, toolSpan);
 
@@ -302,19 +295,14 @@ public class OtelRail extends AgentRail {
     // Tracer and name resolution helpers
     // ------------------------------------------------------------------
 
-    private static TraceAgentSpan rootSpanFrom(AgentCallbackContext ctx) {
-        Object rootObj = ctx.getExtra().get(OTEL_ROOT_SPAN_KEY);
-        return rootObj instanceof TraceAgentSpan rootSpan ? rootSpan : null;
-    }
-
     /**
      * Resolve the {@link Tracer} from the callback context's session.
      *
-     * <p>First attempts direct {@code session.tracer()}. If the session is a
-     * public {@code AgentSession} facade (which does not expose {@code tracer()}),
-     * unwraps via {@code getInner()} and retries on the runtime kernel.
-     * All failures are logged once (rate-limited) to avoid spamming the log
-     * on every callback.</p>
+     * <p>First attempts direct {@code session.tracer()}. If the session is an
+     * {@code AgentSessionApi} wrapper (which does not expose {@code tracer()}),
+     * unwraps via {@code getInner()} and retries on the internal
+     * {@code AgentSession}. All failures are logged once (rate-limited) to
+     * avoid spamming the log on every callback.</p>
      *
      * @param ctx the agent callback context providing access to the session
      * @return an {@link Optional} containing the resolved {@link Tracer},
@@ -334,7 +322,7 @@ public class OtelRail extends AgentRail {
             return direct;
         }
 
-        // Attempt 2: unwrap public AgentSession.getInner()
+        // Attempt 2: unwrap AgentSessionApi.getInner() and retry
         Optional<Tracer> unwrapped = tryUnwrapAndGetTracer(session);
         if (unwrapped.isPresent()) {
             return unwrapped;
@@ -345,7 +333,7 @@ public class OtelRail extends AgentRail {
             hasTracerFailureLogged = true;
             LOG.warn(
                     "otel rail: unable to retrieve Tracer from session (type={}). "
-                            + "AgentSession facades require getInner().tracer() unwrapping. "
+                            + "AgentSessionApi wrappers require getInner().tracer() unwrapping. "
                             + "This message will not repeat.",
                     session.getClass().getName());
         }
@@ -367,26 +355,22 @@ public class OtelRail extends AgentRail {
     }
 
     /**
-     * Unwrap public {@link AgentSession} facades via {@code getInner()} and
+     * Unwrap {@code AgentSessionApi}-like wrappers via {@code getInner()} and
      * retrieve the Tracer from the underlying internal session.
      *
      * @param session the potentially-wrapped session
      * @return an {@link Optional} containing the {@link Tracer}, or empty
      */
     private static Optional<Tracer> tryUnwrapAndGetTracer(Object session) {
-        BaseSession inner = null;
-        if (session instanceof AgentSession agentSession) {
-            inner = agentSession.getInner();
-        } else if (session instanceof AgentTeamSession teamSession) {
-            inner = teamSession.getInner();
-        } else if (session instanceof AgentGroupSession groupSession) {
-            inner = groupSession.getInner();
+        if (session instanceof AgentSessionApi api) {
+            AgentSession innerSession = api.getInner();
+            if (innerSession == null) {
+                return Optional.empty();
+            }
+            Object result = innerSession.tracer();
+            return result instanceof Tracer ? Optional.of((Tracer) result) : Optional.empty();
         }
-        if (inner == null) {
-            return Optional.empty();
-        }
-        Object result = inner.tracer();
-        return result instanceof Tracer ? Optional.of((Tracer) result) : Optional.empty();
+        return Optional.empty();
     }
 
     /**

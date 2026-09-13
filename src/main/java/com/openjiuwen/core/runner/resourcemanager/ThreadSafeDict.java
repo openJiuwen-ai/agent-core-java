@@ -4,39 +4,51 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
-import java.util.AbstractMap;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 /**
- * Mirrors Python's {@code ThreadSafeDict} in
- * {@code openjiuwen/core/runner/resources_manager/thread_safe_dict.py}.
- *
- * @param <K> key type
- * @param <V> value type
+ * Generic thread-safe dictionary wrapper.
+ * <p>
+ * Mirrors Python's {@code ThreadSafeDict} in {@code resources_manager/thread_safe_dict.py}.
+ * All operations are protected by a reentrant lock.
+ * 
+ * @since 0.1.7
  */
-public final class ThreadSafeDict<K, V> implements Iterable<K> {
-
+public class ThreadSafeDict<K, V> {
     private final ReentrantLock lock = new ReentrantLock();
     private final Map<K, V> data;
 
+    /**
+     * ThreadSafeDict.
+     * 
+     * @since 0.1.7
+     */
     public ThreadSafeDict() {
-        this(null);
+        this.data = new HashMap<>();
     }
 
+    /**
+     * ThreadSafeDict.
+     * 
+     * @param initialData initialData
+     * @since 0.1.7
+     */
     public ThreadSafeDict(Map<K, V> initialData) {
-        this.data = initialData != null ? initialData : new LinkedHashMap<>();
+        this.data = initialData != null ? new HashMap<>(initialData) : new HashMap<>();
     }
 
+    /**
+     * get.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     public V get(K key) {
         lock.lock();
         try {
@@ -46,37 +58,64 @@ public final class ThreadSafeDict<K, V> implements Iterable<K> {
         }
     }
 
-    public V get(K key, V defaultValue) {
+    /**
+     * getOrDefault.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
+    public V getOrDefault(K key, V defaultValue) {
         lock.lock();
         try {
-            return data.containsKey(key) ? data.get(key) : defaultValue;
+            return data.getOrDefault(key, defaultValue);
         } finally {
             lock.unlock();
         }
     }
 
-    public void put(K key, V value) {
+    /**
+     * put.
+     * 
+     * @param key key
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
+    public V put(K key, V value) {
         lock.lock();
         try {
-            data.put(key, value);
+            return data.put(key, value);
         } finally {
             lock.unlock();
         }
     }
 
-    public void delete(K key) {
+    /**
+     * remove.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
+    public V remove(K key) {
         lock.lock();
         try {
-            if (!data.containsKey(key)) {
-                throw new NoSuchElementException("Key not found: " + key);
-            }
-            data.remove(key);
+            return data.remove(key);
         } finally {
             lock.unlock();
         }
     }
 
-    public boolean containsKey(Object key) {
+    /**
+     * containsKey.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean containsKey(K key) {
         lock.lock();
         try {
             return data.containsKey(key);
@@ -85,6 +124,12 @@ public final class ThreadSafeDict<K, V> implements Iterable<K> {
         }
     }
 
+    /**
+     * size.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int size() {
         lock.lock();
         try {
@@ -94,6 +139,11 @@ public final class ThreadSafeDict<K, V> implements Iterable<K> {
         }
     }
 
+    /**
+     * clear.
+     * 
+     * @since 0.1.7
+     */
     public void clear() {
         lock.lock();
         try {
@@ -103,61 +153,182 @@ public final class ThreadSafeDict<K, V> implements Iterable<K> {
         }
     }
 
+    /**
+     * Atomically get or set: if key is absent, put the default value and return it.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     public V getOrSet(K key, V defaultValue) {
         lock.lock();
         try {
-            V value = data.get(key);
-            if (value == null) {
-                if (!data.containsKey(key)) {
-                    data.put(key, defaultValue);
-                }
+            V val = data.get(key);
+            if (val == null) {
+                data.putIfAbsent(key, defaultValue);
                 return data.get(key);
             }
-            return value;
+            return val;
         } finally {
             lock.unlock();
         }
     }
 
+    /**
+     * Atomically get or create: if key is absent, invoke creator and store the result.
+     * 
+     * @param key key
+     * @param creator creator
+     * @return the result
+     * @since 0.1.7
+     */
+    public V getOrCreate(K key, Supplier<V> creator) {
+        lock.lock();
+        try {
+            V val = data.get(key);
+            if (val == null) {
+                val = creator.get();
+                data.put(key, val);
+            }
+            return val;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * putAll.
+     * 
+     * @param m m
+     * @since 0.1.7
+     */
+    public void putAll(Map<K, V> m) {
+        lock.lock();
+        try {
+            data.putAll(m);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Returns a snapshot of the keys.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Set<K> keys() {
+        lock.lock();
+        try {
+            return Set.copyOf(data.keySet());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Returns a snapshot of the values.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Collection<V> values() {
+        lock.lock();
+        try {
+            return java.util.List.copyOf(data.values());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Returns a snapshot of the entries.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Map<K, V> snapshot() {
+        lock.lock();
+        try {
+            return new HashMap<>(data);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Returns a snapshot of all key-value pairs as a Set of Map.Entry (mirrors Python {@code dict.items()}).
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Set<Map.Entry<K, V>> items() {
+        lock.lock();
+        try {
+            return new HashMap<>(data).entrySet();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * If key is absent or mapped to null, sets it to defaultValue and returns it;
+     * otherwise returns the current value (mirrors Python {@code dict.setdefault()}).
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     public V setdefault(K key, V defaultValue) {
         lock.lock();
         try {
-            if (!data.containsKey(key)) {
+            V val = data.get(key);
+            if (val == null && !data.containsKey(key)) {
                 data.put(key, defaultValue);
                 return defaultValue;
             }
-            return data.get(key);
+            return val;
         } finally {
             lock.unlock();
         }
     }
 
-    public V getOrCreate(K key, Supplier<? extends V> creator) {
-        lock.lock();
-        try {
-            if (!data.containsKey(key)) {
-                data.put(key, creator.get());
-            }
-            return data.get(key);
-        } finally {
-            lock.unlock();
-        }
-    }
-
+    /**
+     * Removes and returns the value for key, or defaultValue if not present
+     * (mirrors Python {@code dict.pop()}).
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     public V pop(K key, V defaultValue) {
         lock.lock();
         try {
-            return data.containsKey(key) ? data.remove(key) : defaultValue;
+            if (data.containsKey(key)) {
+                return data.remove(key);
+            }
+            return defaultValue;
         } finally {
             lock.unlock();
         }
     }
 
+    /**
+     * Removes and returns the value for key. Throws if key is absent
+     * (mirrors Python {@code dict.pop(key)} without default).
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     public V pop(K key) {
         lock.lock();
         try {
             if (!data.containsKey(key)) {
-                throw new NoSuchElementException("Key not found: " + key);
+                throw new java.util.NoSuchElementException("Key not found: " + key);
             }
             return data.remove(key);
         } finally {
@@ -165,81 +336,23 @@ public final class ThreadSafeDict<K, V> implements Iterable<K> {
         }
     }
 
-    public void update(Map<? extends K, ? extends V> mapping) {
-        lock.lock();
-        try {
-            if (mapping != null) {
-                data.putAll(mapping);
-            }
-        } finally {
-            lock.unlock();
-        }
+    /**
+     * Bulk update from another map (mirrors Python {@code dict.update()}).
+     * Alias for {@link #putAll(Map)}.
+     * 
+     * @param m m
+     * @since 0.1.7
+     */
+    public void update(Map<K, V> m) {
+        putAll(m);
     }
 
-    public void update(Iterable<? extends Map.Entry<? extends K, ? extends V>> entries) {
-        lock.lock();
-        try {
-            if (entries == null) {
-                return;
-            }
-            for (Map.Entry<? extends K, ? extends V> entry : entries) {
-                data.put(entry.getKey(), entry.getValue());
-            }
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public Set<K> keys() {
-        lock.lock();
-        try {
-            return new LinkedHashSet<>(data.keySet());
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public Collection<V> values() {
-        lock.lock();
-        try {
-            return new ArrayList<>(data.values());
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public Set<Map.Entry<K, V>> items() {
-        lock.lock();
-        try {
-            LinkedHashSet<Map.Entry<K, V>> snapshot = new LinkedHashSet<>();
-            for (Map.Entry<K, V> entry : data.entrySet()) {
-                snapshot.add(new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), entry.getValue()));
-            }
-            return snapshot;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public Map<K, V> snapshot() {
-        lock.lock();
-        try {
-            return new LinkedHashMap<>(data);
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    @Override
-    public Iterator<K> iterator() {
-        lock.lock();
-        try {
-            return List.copyOf(data.keySet()).iterator();
-        } finally {
-            lock.unlock();
-        }
-    }
-
+    /**
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String toString() {
         lock.lock();

@@ -10,16 +10,20 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Mirrors Python's {@code WriteFileData} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ * Data structure for write file operation.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class WriteFileData {
-
     private String path;
+
+    /** File content size in bytes. */
     private int size;
+
+    /** File write mode: "text" or "bytes". */
     private String mode;
 }

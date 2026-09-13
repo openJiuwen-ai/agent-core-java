@@ -4,19 +4,22 @@
 
 package com.openjiuwen.core.memory.manage.update;
 
-import java.util.Objects;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
- * Memory item paired with an add/delete action.
- *
- * <p>Mirrors Python's {@code MemoryActionItem} in
- * {@code openjiuwen/core/memory/manage/update/mem_update_checker.py}.</p>
+ * Represents a memory with its action status.
+ * 
+ * @since 0.1.7
  */
-public record MemoryActionItem(String id, String content, MemoryStatus status) {
-
-    public MemoryActionItem {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(content, "content");
-        Objects.requireNonNull(status, "status");
-    }
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class MemoryActionItem {
+    private String id;
+    private String content;
+    private MemoryStatus status;
 }

@@ -10,19 +10,29 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Mirrors Python's {@code FileSystemItem} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ * Base model for file/directory common properties.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class FileSystemItem {
-
     private String name;
+
+    /** Full absolute path of the file/directory. */
     private String path;
-    private int size;
+
+    /** Size in bytes. */
+    private long size;
+
+    /** Last modification time (ISO format). */
     private String modifiedTime;
-    private boolean isDirectory;
+
+    /** Whether the item is a directory. */
+    private boolean directory;
+
+    /** File extension (only for files). */
     private String type;
 }

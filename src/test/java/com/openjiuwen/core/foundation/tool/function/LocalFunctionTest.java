@@ -4,262 +4,242 @@
 
 package com.openjiuwen.core.foundation.tool.function;
 
-import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.runner.callback.CallbackInfo;
-import com.openjiuwen.core.runner.callback.DecoratorFramework;
-import com.openjiuwen.core.runner.callback.EventFilter;
-import com.openjiuwen.core.runner.callback.ToolCallEvents;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import org.junit.jupiter.api.AfterEach;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's {@code LocalFunction} behavior in
- * {@code openjiuwen/core/foundation/tool/function/function.py}.
+ * Tests for LocalFunction.
+ * Ported from Python: tests/unit_tests/core/foundation/tool/test_tool_decorator.py
  */
 class LocalFunctionTest {
+    // ============================== Construction tests ==============================
+    @Nested
+    @DisplayName("LocalFunction construction")
+    class ConstructionTests {
+        @Test
+        @DisplayName("Create LocalFunction with valid card and function")
+        void testValidConstruction() {
+            ToolCard card = ToolCard.builder().name("add").description("Add two numbers")
+                    .inputParams(Map.of("type", "object", "properties",
+                            Map.of("a", Map.of("type", "integer", "description", "first arg"), "b",
+                                    Map.of("type", "integer", "description", "second arg")),
+                            "required", new String[]{"a", "b"}))
+                    .build();
 
-    @AfterEach
-    void clearFramework() {
-        LocalFunction.clearCallbackFramework();
-    }
+            LocalFunction tool = new LocalFunction(card, inputs -> {
+                int a = ((Number) inputs.get("a")).intValue();
+                int b = ((Number) inputs.get("b")).intValue();
+                return a + b;
+            });
 
-    @Test
-    void constructorRejectsNullFunction() {
-        ToolCard card = ToolCard.builder()
-                .id("null_func")
-                .name("null_func")
-                .description("null func")
-                .build();
-
-        assertThrows(Throwable.class, () -> new LocalFunction(card, (java.util.function.Function<Map<String, Object>, Object>) null));
-    }
-
-    @Test
-    void getFuncReturnsWrappedFunction() {
-        ToolCard card = basicCard("echo");
-        java.util.function.Function<Map<String, Object>, Object> func = inputs -> inputs.get("value");
-        LocalFunction tool = new LocalFunction(card, func);
-
-        assertSame(func, tool.getFunc());
-    }
-
-    @Test
-    void invokeFormatsInputsWithSchemaDefaults() throws Exception {
-        ToolCard card = ToolCard.builder()
-                .id("with_default")
-                .name("with_default")
-                .description("with default")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "path", Map.of("type", "string"),
-                                "mode", Map.of("type", "string", "default", "text")
-                        ),
-                        "required", List.of("path")
-                ))
-                .build();
-        LocalFunction tool = new LocalFunction(card,
-                inputs -> inputs.get("path") + ":" + inputs.get("mode"));
-
-        assertEquals("readme.md:text", tool.invoke(Map.of("path", "readme.md")));
-    }
-
-    @Test
-    void invokeEmitsParseCallbacksAroundSchemaFormatting() throws Exception {
-        RecordingFramework framework = new RecordingFramework();
-        LocalFunction.setCallbackFramework(framework);
-        Map<String, Object> schema = schemaWithDefaultMode();
-        ToolCard card = ToolCard.builder()
-                .id("parse_invoke")
-                .name("parse_invoke")
-                .description("parse invoke")
-                .inputParams(schema)
-                .build();
-        LocalFunction tool = new LocalFunction(card,
-                inputs -> inputs.get("path") + ":" + inputs.get("mode"));
-
-        Object result = tool.invoke(Map.of("path", "readme.md"));
-
-        assertEquals("readme.md:text", result);
-        RecordedCall started = framework.triggered(ToolCallEvents.TOOL_PARSE_STARTED);
-        assertEquals("parse_invoke", started.kwargs().get("tool_name"));
-        assertEquals("parse_invoke", started.kwargs().get("tool_id"));
-        assertEquals(Map.of("path", "readme.md"), started.kwargs().get("raw_inputs"));
-        assertEquals(schema, started.kwargs().get("schema"));
-        RecordedCall finished = framework.triggered(ToolCallEvents.TOOL_PARSE_FINISHED);
-        assertEquals(Map.of("path", "readme.md", "mode", "text"), finished.kwargs().get("formatted_inputs"));
-    }
-
-    @Test
-    void invokeAwaitsCompletionStageLikePythonCoroutine() throws Exception {
-        LocalFunction tool = new LocalFunction(basicCard("async_like"),
-                inputs -> CompletableFuture.completedFuture("done:" + inputs.get("value")));
-
-        assertEquals("done:ok", tool.invoke(Map.of("value", "ok")));
-    }
-
-    @Test
-    void invokeRejectsGeneratorLikeIteratorResult() {
-        LocalFunction tool = new LocalFunction(basicCard("iterator"),
-                inputs -> List.of("a", "b").iterator());
-
-        Throwable thrown = assertThrows(Throwable.class, () -> tool.invoke(Map.of()));
-        assertTrue(thrown.getMessage().contains("func can not be generator"));
-    }
-
-    @Test
-    void streamYieldsIteratorResults() throws Exception {
-        LocalFunction tool = new LocalFunction(basicCard("stream"),
-                inputs -> List.of(inputs.get("a"), inputs.get("b")).iterator());
-
-        Iterator<Object> iterator = tool.stream(Map.of("a", 1, "b", 2));
-        List<Object> results = new ArrayList<>();
-        while (iterator.hasNext()) {
-            results.add(iterator.next());
+            assertNotNull(tool);
+            assertEquals("add", tool.getCard().getName());
+            assertEquals("Add two numbers", tool.getCard().getDescription());
         }
 
-        assertEquals(List.of(1, 2), results);
-    }
+        @Test
+        @DisplayName("Constructor with null func throws exception")
+        void testNullFuncThrows() {
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
 
-    @Test
-    void streamEmitsParseCallbacksBeforeReturningIterator() throws Exception {
-        RecordingFramework framework = new RecordingFramework();
-        LocalFunction.setCallbackFramework(framework);
-        ToolCard card = ToolCard.builder()
-                .id("parse_stream")
-                .name("parse_stream")
-                .description("parse stream")
-                .inputParams(schemaWithDefaultMode())
-                .build();
-        LocalFunction tool = new LocalFunction(card,
-                inputs -> List.of(inputs.get("path"), inputs.get("mode")).iterator());
-
-        Iterator<Object> iterator = tool.stream(Map.of("path", "readme.md"));
-        List<Object> results = new ArrayList<>();
-        while (iterator.hasNext()) {
-            results.add(iterator.next());
+            assertThrows(Throwable.class,
+                    () -> new LocalFunction(card, (java.util.function.Function<Map<String, Object>, Object>) null));
         }
 
-        assertEquals(List.of("readme.md", "text"), results);
-        assertEquals("parse_stream", framework.triggered(ToolCallEvents.TOOL_PARSE_STARTED).kwargs().get("tool_id"));
-        assertEquals(
-                Map.of("path", "readme.md", "mode", "text"),
-                framework.triggered(ToolCallEvents.TOOL_PARSE_FINISHED).kwargs().get("formatted_inputs")
-        );
-    }
-
-    @Test
-    void streamEmitsSingleChunkForNonGeneratorFunction() throws Exception {
-        AtomicInteger callCount = new AtomicInteger();
-        LocalFunction tool = new LocalFunction(basicCard("single"), inputs -> {
-            callCount.incrementAndGet();
-            return "result";
-        });
-
-        Iterator<Object> stream = tool.stream(Map.of());
-        assertTrue(stream.hasNext());
-        assertEquals("result", stream.next());
-        assertFalse(stream.hasNext());
-        assertEquals(1, callCount.get());
-    }
-
-    @Test
-    void streamEmitsSingleNullChunkForNullResult() throws Exception {
-        AtomicInteger callCount = new AtomicInteger();
-        LocalFunction tool = new LocalFunction(basicCard("null"), inputs -> {
-            callCount.incrementAndGet();
-            return null;
-        });
-
-        Iterator<Object> stream = tool.stream(Map.of());
-        List<Object> collected = new ArrayList<>();
-        while (stream.hasNext()) {
-            collected.add(stream.next());
-        }
-        assertEquals(1, collected.size());
-        assertEquals(null, collected.get(0));
-        assertEquals(1, callCount.get());
-    }
-
-    private static ToolCard basicCard(String name) {
-        return ToolCard.builder()
-                .id(name)
-                .name(name)
-                .description(name)
-                .build();
-    }
-
-    private static Map<String, Object> schemaWithDefaultMode() {
-        return Map.of(
-                "type", "object",
-                "properties", Map.of(
-                        "path", Map.of("type", "string"),
-                        "mode", Map.of("type", "string", "default", "text")
-                ),
-                "required", List.of("path")
-        );
-    }
-
-    /**
-     * Mirrors Python callback framework trigger observation for
-     * {@code openjiuwen/core/foundation/tool/function/function.py}.
-     */
-    private record RecordedCall(String event, Object[] args, Map<String, Object> kwargs) {
-    }
-
-    /**
-     * Mirrors Python's {@code trigger()} collaborator in
-     * {@code openjiuwen/core/foundation/tool/function/function.py}.
-     */
-    private static final class RecordingFramework implements DecoratorFramework {
-        private final List<RecordedCall> calls = new ArrayList<>();
-
-        @Override
-        public CallbackInfo registerSync(String event, Function<Map<String, Object>, Object> callback, int priority,
-                                         boolean once, String namespace, Set<String> tags, List<EventFilter> filters,
-                                         Function<Map<String, Object>, Object> rollbackHandler,
-                                         Function<Map<String, Object>, Object> errorHandler, int maxRetries,
-                                         double retryDelay, Double timeout, String callbackType) {
-            return null;
+        @Test
+        @DisplayName("Constructor with null card throws exception")
+        void testNullCardThrows() {
+            assertThrows(Throwable.class, () -> new LocalFunction(null, inputs -> "result"));
         }
 
-        @Override
-        public void trigger(String event, Object[] args, Map<String, Object> kwargs) {
-            calls.add(new RecordedCall(event, args, new LinkedHashMap<>(kwargs)));
+        @Test
+        @DisplayName("getFunc returns wrapped function")
+        void testGetFunc() {
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
+
+            java.util.function.Function<Map<String, Object>, Object> func = inputs -> "hello";
+            LocalFunction tool = new LocalFunction(card, func);
+            assertSame(func, tool.getFunc());
+        }
+    }
+
+    // ============================== Invoke tests ==============================
+
+    @Nested
+    @DisplayName("Invoke tests")
+    class InvokeTests {
+        @Test
+        @DisplayName("Invoke subtraction function returns correct result")
+        void testInvokeSubtraction() throws Exception {
+            ToolCard card = ToolCard.builder().name("local_sub").description("local function for sub")
+                    .inputParams(Map.of("type", "object", "properties",
+                            Map.of("a", Map.of("description", "first arg", "type", "integer"), "b",
+                                    Map.of("description", "second arg", "type", "integer")),
+                            "required", new String[]{"a", "b"}))
+                    .build();
+
+            LocalFunction sub = new LocalFunction(card, inputs -> {
+                int a = ((Number) inputs.get("a")).intValue();
+                int b = ((Number) inputs.get("b")).intValue();
+                return a - b;
+            });
+
+            Object result = sub.invoke(Map.of("a", 5, "b", 1));
+
+            assertEquals("local_sub", sub.getCard().getName());
+            assertEquals("local function for sub", sub.getCard().getDescription());
+            assertEquals(4, result);
         }
 
-        @Override
-        public Object triggerTransform(String event, Object[] args, Map<String, Object> kwargs) {
-            return null;
+        @Test
+        @DisplayName("Invoke addition function returns correct result")
+        void testInvokeAddition() throws Exception {
+            ToolCard card = ToolCard.builder().name("add").description("Add two numbers").build();
+
+            LocalFunction add = new LocalFunction(card, inputs -> {
+                int a = ((Number) inputs.get("a")).intValue();
+                int b = ((Number) inputs.get("b")).intValue();
+                return a + b;
+            });
+
+            Object result = add.invoke(Map.of("a", 3, "b", 7));
+            assertEquals(10, result);
         }
 
-        @Override
-        public Map<String, List<CallbackInfo>> getCallbacks() {
-            return Map.of();
+        @Test
+        @DisplayName("Invoke with complex input returns correct result")
+        void testInvokeComplexInput() throws Exception {
+            ToolCard card = ToolCard.builder().name("summarize").description("汇总商品信息").build();
+
+            LocalFunction summarize = new LocalFunction(card, inputs -> {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> products = (List<Map<String, Object>>) inputs.get("products");
+                double total = 0;
+                for (Map<String, Object> p : products) {
+                    total += ((Number) p.get("price")).doubleValue() * ((Number) p.get("sales")).intValue();
+                }
+                return total;
+            });
+
+            Map<String, Object> input =
+                Map.of("title", "水果信息汇总", "products", List.of(Map.of("name", "苹果", "sales", 2, "price", 1.5),
+                        Map.of("name", "香蕉", "sales", 4, "price", 1.0)));
+
+            Object result = summarize.invoke(input);
+            assertEquals(7.0, result);
         }
 
-        private RecordedCall triggered(String event) {
-            return calls.stream()
-                    .filter(call -> call.event().equals(event))
-                    .findFirst()
-                    .orElseThrow();
+        @Test
+        @DisplayName("toolInfo returns correct ToolInfo from card")
+        void testToolInfo() {
+            Map<String, Object> inputParams = Map.of("type", "object", "properties",
+                    Map.of("a", Map.of("description", "first arg", "type", "integer"), "b",
+                            Map.of("description", "second arg", "type", "integer")),
+                    "required", new String[]{"a", "b"});
+
+            ToolCard card = ToolCard.builder().name("local_sub").description("local function for sub")
+                    .inputParams(inputParams).build();
+
+            LocalFunction sub = new LocalFunction(card, inputs -> 0);
+
+            ToolInfo toolInfo = sub.getCard().toolInfo();
+            assertEquals("local_sub", toolInfo.getName());
+            assertEquals("local function for sub", toolInfo.getDescription());
+            assertEquals(inputParams, toolInfo.getParameters());
+        }
+    }
+
+    // ============================== Stream tests ==============================
+
+    @Nested
+    @DisplayName("Stream tests")
+    class StreamTests {
+        @Test
+        @DisplayName("Stream wraps a non-generator result in one chunk and runs the function once")
+        void testStreamSingleResult() throws Exception {
+            // 回归 issue #124：普通返回值不再抛异常，否则调用方会降级到 invoke() 造成二次执行
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
+            AtomicInteger callCount = new AtomicInteger();
+
+            LocalFunction tool = new LocalFunction(card, inputs -> {
+                callCount.incrementAndGet();
+                return "single result";
+            });
+
+            Iterator<Object> iter = tool.stream(Map.of());
+            List<Object> collected = new ArrayList<>();
+            while (iter.hasNext()) {
+                collected.add(iter.next());
+            }
+
+            assertEquals(List.of("single result"), collected);
+            assertEquals(1, callCount.get());
+        }
+
+        @Test
+        @DisplayName("Stream emits one null chunk when the function returns null")
+        void testStreamNullResult() throws Exception {
+            // null 是合法的工具返回值，必须原样成为唯一分片，不能被吞掉或抛异常
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
+
+            LocalFunction tool = new LocalFunction(card, inputs -> null);
+
+            Iterator<Object> iter = tool.stream(Map.of());
+            List<Object> collected = new ArrayList<>();
+            while (iter.hasNext()) {
+                collected.add(iter.next());
+            }
+
+            assertEquals(1, collected.size());
+            assertNull(collected.get(0));
+        }
+
+        @Test
+        @DisplayName("Stream returns Iterator directly if function returns Iterator")
+        void testStreamReturnsIteratorDirectly() throws Exception {
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
+
+            List<Object> items = List.of("a", "b", "c");
+            LocalFunction tool = new LocalFunction(card, inputs -> items.iterator());
+
+            Iterator<Object> iter = tool.stream(Map.of());
+            List<Object> collected = new ArrayList<>();
+            while (iter.hasNext()) {
+                collected.add(iter.next());
+            }
+            assertEquals(items, collected);
+        }
+
+        @Test
+        @DisplayName("Stream converts Iterable to iterator")
+        void testStreamConvertsIterable() throws Exception {
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
+
+            List<Object> items = List.of(1, 2, 3);
+            LocalFunction tool = new LocalFunction(card, inputs -> items);
+
+            Iterator<Object> iter = tool.stream(Map.of());
+            List<Object> collected = new ArrayList<>();
+            while (iter.hasNext()) {
+                collected.add(iter.next());
+            }
+            assertEquals(items, collected);
         }
     }
 }

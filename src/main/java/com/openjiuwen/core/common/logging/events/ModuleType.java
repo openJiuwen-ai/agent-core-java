@@ -6,9 +6,8 @@ package com.openjiuwen.core.common.logging.events;
 
 /**
  * Module type enumeration.
- *
- * <p>Mirrors Python's {@code ModuleType} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 public enum ModuleType {
     AGENT("agent"),
@@ -31,9 +30,13 @@ public enum ModuleType {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 }
-
-

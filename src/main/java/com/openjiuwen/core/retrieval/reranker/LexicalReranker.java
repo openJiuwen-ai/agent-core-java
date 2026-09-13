@@ -8,47 +8,27 @@ import com.openjiuwen.core.retrieval.common.RetrievalResult;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Local lexical reranker based on token overlap.
+ * 
+ * @since 0.1.7
  */
-public class LexicalReranker extends Reranker {
-
-    @Override
-    public CompletableFuture<Map<String, Double>> rerank(
-            String query, List<Object> doc, Object instruct, Map<String, Object> kwargs) {
-        return CompletableFuture.completedFuture(rerankSync(query, doc, instruct, kwargs));
-    }
-
-    @Override
-    public Map<String, Double> rerankSync(
-            String query, List<Object> doc, Object instruct, Map<String, Object> kwargs) {
-        int topK = kwargs != null && kwargs.get("top_k") instanceof Number n ? n.intValue() : 10;
-        Map<String, Double> scores = new LinkedHashMap<>();
-        Set<String> queryTokens = tokens(query);
-        for (Object item : doc) {
-            String text = item instanceof String s ? s : String.valueOf(item);
-            double overlap = score(queryTokens, tokens(text));
-            scores.put(text, overlap);
-        }
-        return scores;
-    }
-
+public class LexicalReranker implements Reranker {
     /**
-     * Rerank retrieval results by lexical overlap.
-     *
-     * @param query query string
-     * @param candidates retrieval result candidates
-     * @param topK number of top results to return
-     * @return reranked results
+     * rerank.
+     * 
+     * @param query query
+     * @param candidates candidates
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<RetrievalResult> rerank(String query, List<RetrievalResult> candidates, int topK) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
@@ -63,6 +43,14 @@ public class LexicalReranker extends Reranker {
         return results.size() <= topK ? results : new ArrayList<>(results.subList(0, topK));
     }
 
+    /**
+     * score.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static double score(Set<String> left, Set<String> right) {
         if (left.isEmpty() || right.isEmpty()) {
             return 0.0;
@@ -76,6 +64,13 @@ public class LexicalReranker extends Reranker {
         return overlap / Math.sqrt((double) left.size() * right.size());
     }
 
+    /**
+     * tokens.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private static Set<String> tokens(String text) {
         Set<String> tokens = new LinkedHashSet<>();
         if (text == null) {

@@ -5,10 +5,13 @@
 package com.openjiuwen.core.workflow.component;
 
 /**
- * Intent-detection component with branch-router access.
- *
- * <p>Mirrors Python's {@code IntentDetectionComponent} in
- * {@code openjiuwen/core/workflow/components/llm/intent_detection_comp.py}.</p>
+ * Intent detection component that routes based on detected intent.
+ * Extends {@link BranchComponent} since intent detection also provides
+ * routing functionality.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.workflow.IntentDetectionComponent}.
+ * 
+ * @since 0.1.7
  */
-public class IntentDetectionComponent extends BranchComponent {
+public abstract class IntentDetectionComponent extends BranchComponent {
 }

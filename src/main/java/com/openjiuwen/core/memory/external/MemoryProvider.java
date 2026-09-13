@@ -6,118 +6,115 @@ package com.openjiuwen.core.memory.external;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Memory provider interface.
- *
- * <p>Mirrors Python's {@code MemoryProvider} in {@code openjiuwen/core/memory/external/provider.py}.</p>
+ * External memory provider interface.
+ * 
+ * @since 0.1.7
  */
-public abstract class MemoryProvider {
+public interface MemoryProvider {
+    /**
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    String getName();
 
     /**
-     * Provider name.
-     *
-     * @return provider name
+     * isAvailable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public abstract String getName();
+    boolean isAvailable();
 
     /**
-     * Check if configured and ready without network calls.
-     *
-     * @return true when the provider is available
+     * initialize.
+     * 
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract boolean isAvailable();
+    void initialize(Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Initialize the provider.
-     *
-     * @param kwargs initialization kwargs
-     * @return completion future
+     * getToolSchemas.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public abstract CompletableFuture<Void> initialize(Map<String, Object> kwargs);
+    List<Map<String, Object>> getToolSchemas();
 
     /**
-     * Provider tool schemas.
-     *
-     * @return tool schema list
+     * handleToolCall.
+     * 
+     * @param toolName toolName
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract List<Map<String, Object>> getToolSchemas();
+    String handleToolCall(String toolName, Map<String, Object> args) throws Exception;
 
     /**
-     * Handle one tool call.
-     *
-     * @param toolName tool name
-     * @param args call arguments
-     * @return tool output text
+     * prefetch.
+     * 
+     * @param query query
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract CompletableFuture<String> handleToolCall(String toolName, Map<String, Object> args);
+    String prefetch(String query, Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Prefetch memory content.
-     *
-     * @param query search query
-     * @param kwargs prefetch kwargs
-     * @return rendered memory block
+     * syncTurn.
+     * 
+     * @param userMsg userMsg
+     * @param assistantMsg assistantMsg
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract CompletableFuture<String> prefetch(String query, Map<String, Object> kwargs);
+    void syncTurn(String userMsg, String assistantMsg, Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Sync one conversation turn.
-     *
-     * @param userMsg user message
-     * @param assistantMsg assistant message
-     * @param kwargs sync kwargs
-     * @return completion future
+     * systemPromptBlock.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public abstract CompletableFuture<Void> syncTurn(String userMsg, String assistantMsg, Map<String, Object> kwargs);
-
-    public CompletableFuture<Void> initialize() {
-        return initialize(Map.of());
-    }
-
-    public CompletableFuture<String> prefetch(String query) {
-        return prefetch(query, Map.of());
-    }
-
-    public CompletableFuture<Void> syncTurn(String userMsg, String assistantMsg) {
-        return syncTurn(userMsg, assistantMsg, Map.of());
-    }
-
-    /**
-     * Return each provider's system prompt guide.
-     *
-     * @return system prompt block
-     */
-    public String systemPromptBlock() {
+    default String systemPromptBlock() {
         return "";
     }
 
     /**
-     * Shut the provider down.
-     *
-     * @return completion future
+     * shutdown.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public CompletableFuture<Void> shutdown() {
-        return CompletableFuture.completedFuture(null);
+    default void shutdown() throws Exception {
     }
 
     /**
-     * Session-end hook.
-     *
-     * @param messages session messages
-     * @return completion future
+     * onSessionEnd.
+     * 
+     * @param messages messages
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public CompletableFuture<Void> onSessionEnd(List<Map<String, Object>> messages) {
-        return CompletableFuture.completedFuture(null);
+    default void onSessionEnd(List<Map<String, Object>> messages) throws Exception {
     }
 
     /**
-     * Whether initialize has completed.
-     *
-     * @return initialization state
+     * isInitialized.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isInitialized() {
+    default boolean isInitialized() {
         return false;
     }
 }

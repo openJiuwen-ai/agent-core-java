@@ -6,13 +6,11 @@ package com.openjiuwen.core.workflow.component.llm;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.ComponentExecutable;
 
@@ -21,7 +19,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,28 +27,59 @@ import java.util.regex.Pattern;
  * and routes to the appropriate branch.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.intent_detection_comp.IntentDetectionExecutable}.
-  * Python file: {@code openjiuwen/core/workflow/components/llm/intent_detection_comp.py}.
+ * 
+ * @since 0.1.7
  */
 public class IntentDetectionExecutable extends ComponentExecutable {
-
     private static final String CLASS_KEY = "class";
     private static final String REASON_KEY = "reason";
     private static final String CLASSIFICATION_ID = "classificationId";
     private static final String CLASSIFICATION_NAME = "name";
     private static final int CLASSIFICATION_DEFAULT_ID = 0;
 
-    private static final Map<String, String> ROLE_MAP_ZH = Map.of(
-            "user", "用户", "assistant", "助手", "system", "系统", "tool", "工具");
-    private static final Map<String, String> ROLE_MAP_EN = Map.of(
-            "user", "User", "assistant", "Assistant", "system", "System", "tool", "Tool");
+    /**
+     * Map.of.
+     * 
+     * @since 0.1.7
+     */
+    private static final Map<String, String> ROLE_MAP_ZH =
+        Map.of("user", "用户", "assistant", "助手", "system", "系统", "tool", "工具");
 
-    private BaseSession session;
+    /**
+     * Map.of.
+     * 
+     * @since 0.1.7
+     */
+    private static final Map<String, String> ROLE_MAP_EN =
+        Map.of("user", "User", "assistant", "Assistant", "system", "System", "tool", "Tool");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern DIGIT_PATTERN = Pattern.compile("\\d+");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern JSON_OBJECT_PATTERN = Pattern.compile("\\{.*}", Pattern.DOTALL);
+
+    private NodeSessionApi session;
     private Model llm;
     private boolean initialized = false;
     private final IntentDetectionCompConfig config;
     private final IntentDetectionDefaultConfig defaultConfig;
     private BranchRouter router;
 
+    /**
+     * IntentDetectionExecutable.
+     * 
+     * @param componentConfig componentConfig
+     * @since 0.1.7
+     */
     public IntentDetectionExecutable(IntentDetectionCompConfig componentConfig) {
         super();
         this.config = componentConfig;
@@ -61,9 +89,18 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         appendDefaultCategory();
     }
 
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    public Object invoke(Object inputs, BaseSession session, ModelContext context) {
+    public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         this.session = session;
         if (router != null) {
             router.setSession(session);
@@ -74,19 +111,27 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         Map<String, Object> inputsMap = inputs instanceof Map ? (Map<String, Object>) inputs : Map.of();
         Map<String, Object> currentInputs = prepareDetectionInputs(inputsMap, chatHistory);
         String llmOutput = invokeLLMAndGetResult(currentInputs);
-        writeUserMessageToContext(inputsMap, context);
-        writeAssistantMessageToContext(llmOutput, context);
         return parseDetectionResult(llmOutput);
     }
 
     /**
      * Set the branch router.
+     * 
+     * @param router router
+     * @return the result
+     * @since 0.1.7
      */
     public IntentDetectionExecutable setRouter(BranchRouter router) {
         this.router = router;
         return this;
     }
 
+    /**
+     * postCommit.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public boolean postCommit() {
         return true;
@@ -94,50 +139,68 @@ public class IntentDetectionExecutable extends ComponentExecutable {
 
     // ==================== Private Methods ====================
 
+    /**
+     * initializeIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void initializeIfNeeded() {
         if (!initialized) {
             try {
                 llm = createLLMInstance();
                 initialized = true;
             } catch (Exception e) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_LLM_INIT_FAILED,
-                        "error_msg", "failed to initialize llm: " + e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_LLM_INIT_FAILED, "error_msg",
+                        "failed to initialize llm: " + e.getMessage());
             }
         }
     }
 
+    /**
+     * createLLMInstance.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Model createLLMInstance() {
         if (config.getModelId() != null) {
             if (config.getModelClientConfig() == null || config.getModelConfig() == null) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED,
-                        "error_msg", "failed to create llm instance");
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED, "error_msg",
+                        "failed to create llm instance");
             }
             return new Model(config.getModelClientConfig(), config.getModelConfig());
         }
         if (config.getModelClientConfig() == null || config.getModelConfig() == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED,
-                    "error_msg", "failed to create llm instance");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED, "error_msg",
+                    "failed to create llm instance");
         }
         return new Model(config.getModelClientConfig(), config.getModelConfig());
     }
 
+    /**
+     * getChatHistoryFromContext.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> getChatHistoryFromContext(ModelContext context) {
         List<BaseMessage> chatHistory = new ArrayList<>();
         if (config.isEnableHistory() && context != null) {
-            ContextWindow contextWindow = context.getContextWindow(
-                    null,
-                    null,
-                    null,
-                    config.getChatHistoryMaxTurn(),
-                    Map.of()
-            ).toCompletableFuture().join();
-            if (contextWindow != null) {
-                chatHistory.addAll(contextWindow.getMessages());
+            List<BaseMessage> messages = context.getMessages();
+            if (messages != null) {
+                chatHistory.addAll(messages);
             }
         }
         return chatHistory;
     }
 
+    /**
+     * getCategoryInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String getCategoryInfo() {
         StringBuilder sb = new StringBuilder();
         List<String> categoryList = defaultConfig.getCategoryList();
@@ -151,6 +214,14 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         return sb.toString();
     }
 
+    /**
+     * prepareDetectionInputs.
+     * 
+     * @param inputs inputs
+     * @param chatHistory chatHistory
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> prepareDetectionInputs(Map<String, Object> inputs, List<BaseMessage> chatHistory) {
         Map<String, Object> currentInputs = new LinkedHashMap<>();
         currentInputs.put("user_prompt", config.getUserPrompt());
@@ -174,6 +245,13 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         return currentInputs;
     }
 
+    /**
+     * formatChatHistory.
+     * 
+     * @param chatHistory chatHistory
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatChatHistory(List<BaseMessage> chatHistory) {
         Map<String, String> roleMap = "en".equals(config.getAcceptLanguage()) ? ROLE_MAP_EN : ROLE_MAP_ZH;
         StringBuilder sb = new StringBuilder();
@@ -184,72 +262,68 @@ public class IntentDetectionExecutable extends ComponentExecutable {
             String role = msg.getRole();
             if (roleMap.containsKey(role)) {
                 sb.append(roleMap.get(role)).append(": ")
-                        .append(msg.getContent() != null ? msg.getContent().toString() : "")
-                        .append("\n");
+                        .append(msg.getContent() != null ? msg.getContent().toString() : "").append("\n");
             }
         }
         return sb.toString();
     }
 
+    /**
+     * invokeLLMAndGetResult.
+     * 
+     * @param currentInputs currentInputs
+     * @return the result
+     * @since 0.1.7
+     */
     private String invokeLLMAndGetResult(Map<String, Object> currentInputs) {
-        List<BaseMessage> llmInputs = defaultConfig.getIntentDetectionTemplate()
-                .format(currentInputs).toMessages();
+        List<BaseMessage> llmInputs = defaultConfig.getIntentDetectionTemplate().format(currentInputs).toMessages();
 
         try {
-            AssistantMessage llmOutput = llm.invoke(llmInputs).toCompletableFuture().join();
+            AssistantMessage llmOutput = llm.invoke(llmInputs, null, null, null, null, null, null, null, null, null);
             return llmOutput.getContent() != null ? llmOutput.getContent().toString() : "";
         } catch (Exception e) {
-            Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;
-            throw ErrorHelper.buildError(
-                    StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED,
-                    null,
-                    null,
-                    cause,
-                    Map.of("error_msg", "failed to invoke llm and get result")
-            );
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED, "error_msg",
+                    "failed to invoke llm: " + e.getMessage());
         }
     }
 
-    private void writeUserMessageToContext(Map<String, Object> inputs, ModelContext context) {
-        if (!config.isEnableHistory() || context == null) {
-            return;
-        }
-        String query = IntentDetectionInput.fromMap(inputs).getQuery();
-        if (query != null && !query.isEmpty()) {
-            context.addMessages(List.of(new UserMessage(query))).toCompletableFuture().join();
-        }
-    }
-
-    private void writeAssistantMessageToContext(String content, ModelContext context) {
-        if (!config.isEnableHistory() || context == null || content == null || content.isEmpty()) {
-            return;
-        }
-        context.addMessages(List.of(new AssistantMessage(content))).toCompletableFuture().join();
-    }
-
+    /**
+     * parseDetectionResult.
+     * 
+     * @param llmOutput llmOutput
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> parseDetectionResult(String llmOutput) {
         String[] classAndReason = postProcessIntentDetection(llmOutput);
         String intentClass = classAndReason[0];
         String reason = classAndReason[1];
         Map<String, Object> intentIdAndName = getIntentIdAndName(intentClass);
-        return new IntentDetectionOutput(
-                (int) intentIdAndName.getOrDefault(CLASSIFICATION_ID, -1),
-                reason,
-                (String) intentIdAndName.getOrDefault(CLASSIFICATION_NAME, "")
-        ).toMap();
+        return new IntentDetectionOutput((int) intentIdAndName.getOrDefault(CLASSIFICATION_ID, -1), reason,
+                (String) intentIdAndName.getOrDefault(CLASSIFICATION_NAME, "")).toMap();
     }
 
+    /**
+     * postProcessIntentDetection.
+     * 
+     * @param result result
+     * @return the result
+     * @since 0.1.7
+     */
     private String[] postProcessIntentDetection(String result) {
         String lang = config.getAcceptLanguage();
         boolean isEn = "en".equals(lang);
         String jsonFailReason = isEn
-                ? "The intent detection output '%s' does not conform to valid JSON format, parsing failed, therefore default category is returned."
+                ? "The intent detection output '%s' does not conform to valid JSON format, parsing failed, "
+                        + "therefore default category is returned."
                 : "当前意图识别的输出:'%s'格式不符合有效的JSON规范，导致解析失败，因此返回默认分类。";
         String classMissingReason = isEn
-                ? "The intent detection output '%s' is missing the required 'class' classification field, therefore default category is returned."
+                ? "The intent detection output '%s' is missing the required 'class' classification field, "
+                        + "therefore default category is returned."
                 : "当前意图识别的输出 '%s' 缺少必要的输出'class'分类信息，因此返回默认分类。";
         String validationFailReason = isEn
-                ? "The intent detection output class '%s' is not in the predefined category list: '%s', therefore default category is returned."
+                ? "The intent detection output class '%s' is not in the predefined category list: '%s', "
+                        + "therefore default category is returned."
                 : "当前意图识别的输出类别 '%s' 不在预定义的分类列表: '%s'中，因此系统返回默认分类。";
         String categoryPattern = isEn ? "Category\\d+" : "分类\\d+";
 
@@ -272,15 +346,14 @@ public class IntentDetectionExecutable extends ComponentExecutable {
             return new String[]{defaultConfig.getDefaultClass(), String.format(classMissingReason, parsedDict)};
         }
 
-        String intentClass = classValue.toString()
-                .replace("\n", "").replace(" ", "")
-                .replace("\"", "").replace("'", "");
+        String intentClass =
+            classValue.toString().replace("\n", "").replace(" ", "").replace("\"", "").replace("'", "");
 
         Matcher matcher = Pattern.compile(categoryPattern, Pattern.CASE_INSENSITIVE).matcher(intentClass);
         if (matcher.find()) {
             String matched = matcher.group(0);
             if (isEn) {
-                Matcher digitMatcher = Pattern.compile("\\d+").matcher(matched);
+                Matcher digitMatcher = DIGIT_PATTERN.matcher(matched);
                 if (digitMatcher.find()) {
                     matched = "Category" + digitMatcher.group(0);
                 }
@@ -297,8 +370,15 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         return new String[]{intentClass, reason};
     }
 
+    /**
+     * refixLlmOutput.
+     * 
+     * @param inputStr inputStr
+     * @return the result
+     * @since 0.1.7
+     */
     private static String refixLlmOutput(String inputStr) {
-        Matcher matcher = Pattern.compile("\\{.*}", Pattern.DOTALL).matcher(inputStr);
+        Matcher matcher = JSON_OBJECT_PATTERN.matcher(inputStr);
         if (matcher.find()) {
             String res = matcher.group(0);
             res = res.replace("false", "False").replace("true", "True").replace("null", "None");
@@ -309,6 +389,13 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         return inputStr;
     }
 
+    /**
+     * getIntentIdAndName.
+     * 
+     * @param intentClass intentClass
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> getIntentIdAndName(String intentClass) {
         String defaultName = "en".equals(config.getAcceptLanguage()) ? "Default intent" : "默认意图";
         Map<String, Object> intentRes = new HashMap<>();
@@ -329,6 +416,12 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         return intentRes;
     }
 
+    /**
+     * initDefaultConfigCategoryList.
+     * 
+     * @param componentConfig componentConfig
+     * @since 0.1.7
+     */
     private void initDefaultConfigCategoryList(IntentDetectionCompConfig componentConfig) {
         String lang = componentConfig.getAcceptLanguage() != null ? componentConfig.getAcceptLanguage() : "zh";
         String categoryPrefix = "en".equals(lang) ? "Category" : "分类";
@@ -337,6 +430,11 @@ public class IntentDetectionExecutable extends ComponentExecutable {
         }
     }
 
+    /**
+     * appendDefaultCategory.
+     * 
+     * @since 0.1.7
+     */
     private void appendDefaultCategory() {
         String defaultName = "en".equals(config.getAcceptLanguage()) ? "Default intent" : "默认意图";
         List<String> newCategoryList = new ArrayList<>();

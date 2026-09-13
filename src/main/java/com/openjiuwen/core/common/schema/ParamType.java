@@ -1,11 +1,13 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.common.schema;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
-
 /**
- * Mirrors Python's {@code ParamType} in
- * {@code openjiuwen/core/common/schema/param.py}.
+ * Parameter type enumeration.
+ * 
+ * @since 0.1.7
  */
 public enum ParamType {
     STRING("string"),
@@ -21,16 +23,27 @@ public enum ParamType {
         this.value = value;
     }
 
-    @JsonValue
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
-    @JsonCreator
+    /**
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static ParamType fromValue(String value) {
-        for (ParamType type : values()) {
-            if (type.value.equalsIgnoreCase(value)) {
-                return type;
+        for (ParamType t : values()) {
+            if (t.value.equalsIgnoreCase(value)) {
+                return t;
             }
         }
         throw new IllegalArgumentException("Unknown ParamType: " + value);

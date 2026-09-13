@@ -9,7 +9,7 @@ import com.openjiuwen.core.workflow.WorkflowChunk;
 import com.openjiuwen.core.workflow.WorkflowSessions;
 import com.openjiuwen.core.workflow.component.End;
 import com.openjiuwen.core.workflow.component.Start;
-import com.openjiuwen.core.session.WorkflowSession;
+import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.tracer.TracerHandlerRegistry;
@@ -106,7 +106,7 @@ public final class OtelWorkflowIntegrationDemo {
 
             // Use stream() with TRACE mode to create the Tracer (consistent with framework semantics).
             // invoke() passes [OUTPUT] without TRACE, so no Tracer is created.
-            WorkflowSession session = WorkflowSessions.createWorkflowSession(sessionId);
+            WorkflowSessionApi session = WorkflowSessions.createWorkflowSession(sessionId);
             Iterator<WorkflowChunk> chunkIterator = flow.stream(
                     Map.of("cmd", "hello"), session, null,
                     List.of(StreamMode.TRACE, StreamMode.OUTPUT));

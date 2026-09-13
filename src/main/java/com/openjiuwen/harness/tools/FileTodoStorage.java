@@ -4,7 +4,6 @@
 
 package com.openjiuwen.harness.tools;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.core.multitenant.TenantContext;
@@ -25,8 +24,6 @@ import java.util.stream.Stream;
  * @since 0.1.7
  */
 public class FileTodoStorage implements TodoStorage {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private final Path workspace;
     private final TenantWorkspaceResolver workspaceResolver;
 
@@ -59,16 +56,15 @@ public class FileTodoStorage implements TodoStorage {
         if (json.isBlank()) {
             return new ArrayList<>();
         }
-        TodoItem[] items = MAPPER.readValue(json, TodoItem[].class);
-        return items == null ? new ArrayList<>() : new ArrayList<>(List.of(items));
+        TodoItem[] items = JsonUtils.safeJsonLoads(json, TodoItem[].class, new TodoItem[0]);
+        return new ArrayList<>(List.of(items));
     }
 
     @Override
     public void save(String sessionId, List<TodoItem> todos) throws IOException {
         Path file = resolveWorkspace().resolve(sessionId).resolve("todo.json");
         Files.createDirectories(file.getParent());
-        Object dumped = JsonUtils.safeJsonDumps(todos, "[]");
-        Files.writeString(file, dumped == null ? "[]" : String.valueOf(dumped));
+        Files.writeString(file, JsonUtils.safeJsonDumps(todos, "[]"));
     }
 
     @Override

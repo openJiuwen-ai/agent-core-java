@@ -7,100 +7,234 @@ package com.openjiuwen.core.session.checkpointer;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
-import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
+import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
 
 /**
- * Base checkpointer for agent, team, workflow, and graph state.
- *
- * <p>Mirrors Python's {@code Checkpointer} in
- * {@code openjiuwen/core/session/checkpointer/base.py}.</p>
+ * Abstract checkpointer for managing session state persistence across workflow/agent executions.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.checkpointer.base.Checkpointer}.
+ * 
+ * @since 0.1.7
  */
-public abstract class Checkpointer {
-
+public abstract class Checkpointer implements AutoCloseable {
+    /**
+     * SESSION_NAMESPACE_AGENT.
+     * 
+     * @since 0.1.7
+     */
     public static final String SESSION_NAMESPACE_AGENT = "agent";
-    public static final String SESSION_NAMESPACE_AGENT_TEAM = "agent-team";
+
+    /**
+     * SESSION_NAMESPACE_WORKFLOW.
+     * 
+     * @since 0.1.7
+     */
     public static final String SESSION_NAMESPACE_WORKFLOW = "workflow";
+
+    /**
+     * WORKFLOW_NAMESPACE_GRAPH.
+     * 
+     * @since 0.1.7
+     */
     public static final String WORKFLOW_NAMESPACE_GRAPH = "workflow-graph";
 
+    private TenantNamespaceFactory namespaceFactory = TenantNamespaceFactories.KV_STORE_DEFAULT;
+
+    public void setNamespaceFactory(TenantNamespaceFactory namespaceFactory) {
+        this.namespaceFactory = namespaceFactory != null ? namespaceFactory : TenantNamespaceFactories.KV_STORE_DEFAULT;
+    }
+
+    public TenantNamespaceFactory getNamespaceFactory() {
+        return namespaceFactory;
+    }
+
+    /**
+     * Get the thread ID for a session (session_id:workflow_id).
+     * 
+     * @param session the session
+     * @return the thread ID string
+     * @since 0.1.7
+     */
     public static String getThreadId(BaseSession session) {
-        return String.join(":", session.sessionId(), workflowId(session));
+        return session.sessionId() + ":" + getWorkflowId(session);
     }
 
-    public static String workflowId(BaseSession session) {
-        return stringIdentity(session, "workflowId");
+    /**
+     * Pre-workflow execution hook.
+     * 
+     * @param session the session
+     * @param inputs the interactive input, or null for fresh execution
+     * @since 0.1.7
+     */
+    public abstract void preWorkflowExecute(BaseSession session, InteractiveInput inputs);
+
+    /**
+     * Post-workflow execution hook.
+     * 
+     * @param session the session
+     * @param result the execution result
+     * @param exception any exception that occurred
+     * @since 0.1.7
+     */
+    public abstract void postWorkflowExecute(BaseSession session, Object result, Exception exception);
+
+    /**
+     * Pre-agent execution hook.
+     * 
+     * @param session the session
+     * @param inputs the input data
+     * @since 0.1.7
+     */
+    public abstract void preAgentExecute(BaseSession session, Object inputs);
+
+    /**
+     * Interrupt agent execution for interaction.
+     * 
+     * @param session the session
+     * @since 0.1.7
+     */
+    public abstract void interruptAgentExecute(BaseSession session);
+
+    /**
+     * Post-agent execution hook.
+     * 
+     * @param session the session
+     * @since 0.1.7
+     */
+    public abstract void postAgentExecute(BaseSession session);
+
+    /**
+     * Check whether a session exists.
+     * 
+     * @param sessionId the session ID
+     * @return true if the session isExists
+     * @since 0.1.7
+     */
+    public abstract boolean sessionExists(String sessionId);
+
+    /**
+     * Release (clear) all checkpoints for a session.
+     * 
+     * @param sessionId the session ID
+     * @since 0.1.7
+     */
+    public abstract void release(String sessionId);
+
+    /**
+     * Get the graph store used by this checkpointer.
+     * 
+     * @return the graph store for workflow graph checkpoints
+     * @since 0.1.7
+     */
+    public abstract Store graphStore();
+
+    /**
+     * Close resources owned by this checkpointer.
+     *
+     * <p>In-memory implementations do not need to override this method.
+     *
+     * @since 0.1.14
+     */
+    @Override
+    public void close() {
+        // Default no-op for checkpointers without external resources.
     }
 
-    public static String agentId(BaseSession session) {
-        return stringIdentity(session, "agentId");
-    }
+    // ---- Utility ----
 
-    public static String teamId(BaseSession session) {
-        return stringIdentity(session, "teamId");
-    }
-
-    public static BaseSession parent(BaseSession session) {
-        Object value = invokeIdentity(session, "parent");
-        return value instanceof BaseSession parent ? parent : null;
-    }
-
-    private static String stringIdentity(BaseSession session, String methodName) {
-        Object value = invokeIdentity(session, methodName);
-        return value == null ? "" : String.valueOf(value);
-    }
-
-    private static Object invokeIdentity(BaseSession session, String methodName) {
-        if (session == null) {
-            return null;
+    /**
+     * getWorkflowId.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
+    protected static String getWorkflowId(BaseSession session) {
+        if (session instanceof WorkflowSession ws) {
+            return ws.workflowId();
+        } else if (session instanceof NodeSession ns) {
+            return ns.workflowId();
         }
-        try {
-            return session.getClass().getMethod(methodName).invoke(session);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        return session.sessionId();
     }
 
+    /**
+     * Build a key by joining parts with ':'.
+     * 
+     * @param parts the key parts
+     * @return joined key
+     * @since 0.1.7
+     */
     public static String buildKey(String... parts) {
-        for (String part : parts) {
-            if (part == null) {
-                throw new NullPointerException("key part");
-            }
-        }
         return String.join(":", parts);
     }
 
+    /**
+     * Build a key with namespace structure: session:namespace:entity_id:suffixes.
+     * 
+     * @param sessionId the session ID
+     * @param namespace the namespace
+     * @param entityId the entity ID
+     * @param suffixes additional key suffixes
+     * @return the built key
+     * @since 0.1.7
+     */
     public static String buildKeyWithNamespace(String sessionId, String namespace, String entityId,
-                                               String... suffixes) {
-        String[] parts = new String[3 + suffixes.length];
-        parts[0] = sessionId;
-        parts[1] = namespace;
-        parts[2] = entityId;
-        System.arraycopy(suffixes, 0, parts, 3, suffixes.length);
-        return buildKey(parts);
+            String... suffixes) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(sessionId).append(':').append(namespace).append(':').append(entityId);
+        for (String suffix : suffixes) {
+            sb.append(':').append(suffix);
+        }
+        return sb.toString();
     }
 
     /**
      * Build a namespaced key and resolve it against the current tenant context.
+     * Convenience wrapper around {@link #buildKeyWithNamespace} and
+     * {@link TenantKVStoreKeyResolver#resolveKey(String)}.
+     *
+     * @param sessionId sessionId
+     * @param namespace namespace
+     * @param entityId entityId
+     * @param suffixes suffixes
+     * @return the tenant-resolved key
+     * @since 0.1.7
      */
     public static String resolveNsKey(String sessionId, String namespace, String entityId,
             String... suffixes) {
         return TenantKVStoreKeyResolver.resolveKey(
-                buildKeyWithNamespace(sessionId, namespace, entityId, suffixes));
+            buildKeyWithNamespace(sessionId, namespace, entityId, suffixes));
     }
 
     /**
      * Build a namespaced prefix and resolve it against the current tenant context.
+     *
+     * @param sessionId sessionId
+     * @param namespace namespace
+     * @param entityId entityId
+     * @param suffixes suffixes
+     * @return the tenant-resolved prefix
+     * @since 0.1.7
      */
     public static String resolveNsPrefix(String sessionId, String namespace, String entityId,
             String... suffixes) {
         return TenantKVStoreKeyResolver.resolvePrefix(
-                buildKeyWithNamespace(sessionId, namespace, entityId, suffixes));
+            buildKeyWithNamespace(sessionId, namespace, entityId, suffixes));
     }
 
     /**
      * Build a tenant-namespaced key from parts using the default namespace factory.
+     * 
+     * @param ctx the tenant context
+     * @param parts the key parts
+     * @return the tenant-namespaced key
+     * @since 0.1.7
      */
     public static String buildKeyWithTenant(TenantContext ctx, String... parts) {
         return buildKeyWithTenant(TenantNamespaceFactories.KV_STORE_DEFAULT, ctx, parts);
@@ -108,6 +242,12 @@ public abstract class Checkpointer {
 
     /**
      * Build a tenant-namespaced key from parts using the given namespace factory.
+     * 
+     * @param factory the namespace factory, or null to use the default
+     * @param ctx the tenant context
+     * @param parts the key parts
+     * @return the tenant-namespaced key
+     * @since 0.1.7
      */
     public static String buildKeyWithTenant(TenantNamespaceFactory factory, TenantContext ctx, String... parts) {
         TenantNamespaceFactory nsFactory = factory != null ? factory : TenantNamespaceFactories.KV_STORE_DEFAULT;
@@ -115,39 +255,16 @@ public abstract class Checkpointer {
         return nsFactory.namespace(ctx, rawKey);
     }
 
-    public void preAgentExecute(BaseSession session, Object inputs) {
-    }
-
-    public void interruptAgentExecute(BaseSession session) {
-    }
-
-    public void postAgentExecute(BaseSession session) {
-    }
-
-    public void preAgentTeamExecute(BaseSession session, Object inputs) {
-    }
-
-    public void postAgentTeamExecute(BaseSession session) {
-    }
-
-    public void preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
-    }
-
-    public void preWorkflowExecute(BaseSession session, Object inputs) {
-        preWorkflowExecute(session, inputs instanceof InteractiveInput interactiveInput ? interactiveInput : null);
-    }
-
-    public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
-    }
-
-    public boolean sessionExists(String sessionId) {
-        return false;
-    }
-
-    public void release(String sessionId) {
-    }
-
-    public Store graphStore() {
-        return null;
+    /**
+     * Build a tenant-namespaced key from parts using this instance's namespace factory.
+     * 
+     * @param ctx the tenant context
+     * @param parts the key parts
+     * @return the tenant-namespaced key
+     * @since 0.1.7
+     */
+    public String buildKeyWithTenantInstance(TenantContext ctx, String... parts) {
+        String rawKey = buildKey(parts);
+        return namespaceFactory.namespace(ctx, rawKey);
     }
 }

@@ -4,124 +4,115 @@
 
 package com.openjiuwen.extensions.context_evolver.core.file_connector;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.json.JsonWriteFeature;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.logging.Loggers;
+import com.fasterxml.jackson.databind.ObjectWriter;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
+import java.nio.file.Paths;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code JSONFileConnector} in
- * {@code openjiuwen/extensions/context_evolver/core/file_connector/json_file_connector.py}.
+ * Mirrors Python's
+ * {@code openjiuwen.extensions.context_evolver.core.file_connector.json_file_connector.JSONFileConnector}.
+ * Generic connector for saving and loading JSON data to/from files.
+ * 
+ * @since 0.1.7
  */
 public class JSONFileConnector {
+    private static final Logger log = LoggerFactory.getLogger(JSONFileConnector.class);
 
-    private static final LoggerProtocol LOGGER = Loggers.CONTEXT_ENGINE;
-    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() { };
-
-    private final ObjectMapper mapper;
+    private final ObjectMapper objectMapper;
+    private final int indent;
+    private final boolean shouldEnsureAscii;
     private final Path allowedRoot;
 
+    /**
+     * JSONFileConnector using the current working directory as the allowed root.
+     * 
+     * @since 0.1.7
+     */
     public JSONFileConnector() {
-        this(Path.of("").toAbsolutePath().normalize(), 2, false);
+        this(Path.of(""), 2, false);
     }
 
-    public JSONFileConnector(int indent, boolean ensureAscii) {
-        this(Path.of("").toAbsolutePath().normalize(), indent, ensureAscii);
+    /**
+     * JSONFileConnector using the current working directory as the allowed root.
+     * 
+     * @param indent indent
+     * @param shouldEnsureAscii shouldEnsureAscii
+     * @since 0.1.7
+     */
+    public JSONFileConnector(int indent, boolean shouldEnsureAscii) {
+        this(Path.of(""), indent, shouldEnsureAscii);
     }
 
+    /**
+     * JSONFileConnector.
+     *
+     * @param allowedRoot allowed root directory for JSON file writes
+     * @since 0.1.13
+     */
     public JSONFileConnector(Path allowedRoot) {
         this(allowedRoot, 2, false);
     }
 
-    public JSONFileConnector(Path allowedRoot, int indent, boolean ensureAscii) {
+    /**
+     * JSONFileConnector.
+     *
+     * @param allowedRoot allowed root directory for JSON file writes
+     * @param indent indent
+     * @param shouldEnsureAscii shouldEnsureAscii
+     * @since 0.1.13
+     */
+    public JSONFileConnector(Path allowedRoot, int indent, boolean shouldEnsureAscii) {
         if (allowedRoot == null) {
             throw new IllegalArgumentException("Allowed root must not be null.");
         }
         this.allowedRoot = allowedRoot.toAbsolutePath().normalize();
-        this.mapper = new ObjectMapper();
-        if (indent > 0) {
-            this.mapper.writerWithDefaultPrettyPrinter();
-        }
-        if (ensureAscii) {
-            this.mapper.getFactory().configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+        this.indent = indent;
+        this.shouldEnsureAscii = shouldEnsureAscii;
+        this.objectMapper = new ObjectMapper();
+        if (shouldEnsureAscii) {
+            this.objectMapper.getFactory().configure(JsonWriteFeature.ESCAPE_NON_ASCII.mappedFeature(), true);
         }
     }
 
+    /**
+     * Save dictionary data to a JSON file.
+     * 
+     * @param filePath path to save the JSON file
+     * @param data dictionary data to save
+     * @throws SecurityException if the target path is outside the allowed root
+     * @since 0.1.7
+     */
     public void saveToFile(String filePath, Map<String, Object> data) {
         try {
             Path path = resolveSafeWritePath(filePath);
-            mapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), data);
-            LOGGER.info("Saved data to %s (%s top-level keys)", filePath, data.size());
-        } catch (SecurityException exception) {
-            throw exception;
-        } catch (IOException exception) {
-            LOGGER.error("Failed to save data to %s: %s", filePath, exception.getMessage());
-            throw new RuntimeException(exception);
-        }
-    }
 
-    public Map<String, Object> loadFromFile(String filePath) {
-        try {
-            Path path = resolveSafeReadPath(filePath);
-            Map<String, Object> data = mapper.readValue(path.toFile(), MAP_TYPE);
-            LOGGER.info("Loaded data from %s (%s top-level keys)", filePath, data.size());
-            return data;
-        } catch (SecurityException exception) {
-            throw exception;
-        } catch (IOException exception) {
-            LOGGER.error("Failed to load data from %s: %s", filePath, exception.getMessage());
-            throw new RuntimeException(exception);
-        }
-    }
+            String json = buildWriter().writeValueAsString(data);
+            Files.writeString(path, json, StandardCharsets.UTF_8);
 
-    public boolean exists(String filePath) {
-        try {
-            return Files.isRegularFile(resolveSafeReadPath(filePath));
-        } catch (java.nio.file.NoSuchFileException exception) {
-            return false;
-        } catch (IOException exception) {
-            return Files.exists(allowedRoot.resolve(filePath));
-        }
-    }
-
-    public boolean existsWithinRoot(String filePath) {
-        try {
-            return Files.isRegularFile(resolveSafeReadPath(filePath));
-        } catch (java.nio.file.NoSuchFileException exception) {
-            return false;
-        } catch (IOException exception) {
-            throw new UncheckedIOException("Failed to resolve file " + filePath, exception);
-        }
-    }
-
-    public boolean delete(String filePath) {
-        try {
-            Path path = resolveSafeReadPath(filePath);
-            Files.delete(path);
-            LOGGER.info("Deleted file: %s", filePath);
-            return true;
-        } catch (java.nio.file.NoSuchFileException exception) {
-            return false;
-        } catch (SecurityException exception) {
-            throw exception;
-        } catch (IOException exception) {
-            LOGGER.error("Failed to delete %s: %s", filePath, exception.getMessage());
-            throw new RuntimeException(exception);
+            log.info("Saved data to {} ({} top-level keys)", filePath, data.size());
+        } catch (IOException e) {
+            log.error("Failed to save data to {}: {}", filePath, e.getMessage());
+            throw new RuntimeException("Failed to save data to " + filePath, e);
         }
     }
 
     private Path resolveSafeWritePath(String filePath) throws IOException {
         Files.createDirectories(allowedRoot);
-        Path requestedPath = Path.of(filePath);
+        Path requestedPath = Paths.get(filePath);
         Path targetPath = requestedPath.isAbsolute()
                 ? requestedPath.toAbsolutePath().normalize()
                 : allowedRoot.resolve(requestedPath).normalize();
@@ -161,9 +152,32 @@ public class JSONFileConnector {
         return safeTarget;
     }
 
+    /**
+     * loadFromFile.
+     * 
+     * @param filePath filePath
+     * @return the result
+     * @throws SecurityException if the source path is outside the allowed root
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> loadFromFile(String filePath) {
+        try {
+            Path path = resolveSafeReadPath(filePath);
+            String json = Files.readString(path, StandardCharsets.UTF_8);
+            Map<String, Object> data = objectMapper.readValue(json, Map.class);
+
+            log.info("Loaded data from {} ({} top-level keys)", filePath, data.size());
+            return data;
+        } catch (IOException e) {
+            log.error("Failed to load data from {}: {}", filePath, e.getMessage());
+            throw new RuntimeException("Failed to load data from " + filePath, e);
+        }
+    }
+
     private Path resolveSafeReadPath(String filePath) throws IOException {
         Files.createDirectories(allowedRoot);
-        Path requestedPath = Path.of(filePath);
+        Path requestedPath = Paths.get(filePath);
         Path targetPath = requestedPath.isAbsolute()
                 ? requestedPath.toAbsolutePath().normalize()
                 : allowedRoot.resolve(requestedPath).normalize();
@@ -179,24 +193,82 @@ public class JSONFileConnector {
         return realTarget;
     }
 
-    @SuppressWarnings("unchecked")
-    public static Map<String, Object> safeModelDump(Object obj) {
-        for (String methodName : new String[]{"modelDump", "toDict", "dict"}) {
-            try {
-                Method method = obj.getClass().getMethod(methodName);
-                Object result = method.invoke(obj);
-                if (result instanceof Map<?, ?> map) {
-                    return new LinkedHashMap<>((Map<String, Object>) map);
-                }
-            } catch (NoSuchMethodException ignored) {
-                // Try the next Python-compatible serialization method.
-            } catch (IllegalAccessException | InvocationTargetException exception) {
-                LOGGER.debug("%s() failed, trying fallback methods: %s", methodName, exception.getMessage());
-            }
+    /**
+     * Check whether a file exists within the allowed root.
+     *
+     * @param filePath relative or absolute file path
+     * @return true when the real file exists within the allowed root
+     * @since 0.1.13
+     */
+    public boolean existsWithinRoot(String filePath) {
+        try {
+            return Files.isRegularFile(resolveSafeReadPath(filePath));
+        } catch (java.nio.file.NoSuchFileException e) {
+            return false;
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to resolve file " + filePath, e);
         }
-        throw new IllegalArgumentException(
-                "Object of type " + obj.getClass().getSimpleName()
-                        + " has no serialization method (modelDump, toDict, or dict)"
-        );
+    }
+
+    /**
+     * Check if a file exists.
+     * 
+     * @param filePath filePath
+     * @return the result
+     * @since 0.1.7
+     */
+    public static boolean isExists(String filePath) {
+        return Files.exists(Paths.get(filePath));
+    }
+
+    /**
+     * exists.
+     * 
+     * @param filePath filePath
+     * @return the result
+     * @since 0.1.7
+     */
+    public static boolean exists(String filePath) {
+        return isExists(filePath);
+    }
+
+    /**
+     * Delete a file if it exists.
+     * 
+     * @param filePath filePath
+     * @return true if file was deleted, false if it didn't exist
+     * @since 0.1.7
+     */
+    public static boolean delete(String filePath) {
+        try {
+            Path path = Paths.get(filePath);
+            if (Files.deleteIfExists(path)) {
+                log.info("Deleted file: {}", filePath);
+                return true;
+            }
+            return false;
+        } catch (IOException e) {
+            log.error("Failed to delete {}: {}", filePath, e.getMessage());
+            throw new RuntimeException("Failed to delete " + filePath, e);
+        }
+    }
+
+    /**
+     * buildWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    private ObjectWriter buildWriter() {
+        if (indent <= 0) {
+            return objectMapper.writer();
+        }
+
+        String indentValue = " ".repeat(indent);
+        DefaultIndenter indenter = new DefaultIndenter(indentValue, System.lineSeparator());
+        DefaultPrettyPrinter prettyPrinter = new DefaultPrettyPrinter();
+        prettyPrinter.indentObjectsWith(indenter);
+        prettyPrinter.indentArraysWith(indenter);
+        return objectMapper.writer(prettyPrinter);
     }
 }

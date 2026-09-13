@@ -4,38 +4,48 @@
 
 package com.openjiuwen.core.common.security;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
 /**
- * Mirrors Python's {@code ExceptionUtils} in
- * {@code openjiuwen/core/common/security/exception_utils.py}.
+ * Exception formatting utilities.
+ * 
+ * @since 0.1.7
  */
 public final class ExceptionUtils {
-
+    /**
+     * ExceptionUtils.
+     * 
+     * @since 0.1.7
+     */
     private ExceptionUtils() {
     }
 
-    public static String formatValidationError(List<? extends Map<String, ?>> errors) {
-        if (errors == null || errors.isEmpty()) {
+    /**
+     * Format a validation exception's errors into a human-readable multi-line string.
+     * <p>
+     * Generic replacement for Python's Pydantic ValidationError formatting.
+     * 
+     * @param t the exception
+     * @return formatted string
+     * @since 0.1.7
+     */
+    public static String formatValidationError(Throwable t) {
+        if (t == null) {
             return "";
         }
-        return errors.stream()
-                .map(ExceptionUtils::formatOneError)
-                .collect(Collectors.joining("\n"));
+        return t.getClass().getSimpleName() + ": " + t.getMessage();
     }
 
-    private static String formatOneError(Map<String, ?> error) {
-        Object locObject = error.get("loc");
-        List<String> locSegments = new ArrayList<>();
-        if (locObject instanceof Iterable<?> iterable) {
-            for (Object segment : iterable) {
-                locSegments.add(String.valueOf(segment));
-            }
+    /**
+     * Get the root cause of an exception chain.
+     * 
+     * @param t t
+     * @return the result
+     * @since 0.1.7
+     */
+    public static Throwable getRootCause(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
         }
-        Object message = error.get("msg");
-        return String.join(".", locSegments) + ": " + (message == null ? "Unknown error" : String.valueOf(message));
+        return cause;
     }
 }

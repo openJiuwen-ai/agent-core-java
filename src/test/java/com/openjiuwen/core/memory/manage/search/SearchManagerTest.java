@@ -1,38 +1,32 @@
+
 package com.openjiuwen.core.memory.manage.search;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.foundation.store.BaseMemoryIndex;
-import com.openjiuwen.core.foundation.store.BaseKVStore;
-import com.openjiuwen.core.foundation.store.MemoryDoc;
-import com.openjiuwen.core.foundation.store.StorageCodec;
-import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.memory.manage.index.BaseMemoryManager;
 import com.openjiuwen.core.memory.manage.index.FragmentMemoryManager;
 import com.openjiuwen.core.memory.manage.index.SummaryManager;
 import com.openjiuwen.core.memory.manage.index.VariableManager;
-import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.DataIdManager;
 import com.openjiuwen.core.memory.manage.mem_model.FragmentMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
 import com.openjiuwen.core.memory.manage.mem_model.UserMemStore;
 import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
-import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.memory.support.TestInMemoryKVStore;
+
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SearchManagerTest {
-
     private static final byte[] CRYPTO_KEY = "1234567890abcdef1234567890123456".getBytes();
 
     private SearchManager searchManager;
@@ -40,70 +34,66 @@ class SearchManagerTest {
     private FragmentMemoryManager fragmentMemoryManager;
     private SummaryManager summaryManager;
     private UserMemStore userMemStore;
-    private BaseMemoryIndex memoryIndex;
 
     @BeforeEach
     void setUp() {
-        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
         variableManager = new VariableManager(kvStore, CRYPTO_KEY);
         userMemStore = new UserMemStore(kvStore);
-        memoryIndex = new TestMemoryIndex(kvStore);
-        fragmentMemoryManager = new FragmentMemoryManager(memoryIndex, CRYPTO_KEY);
-        summaryManager = new SummaryManager(memoryIndex, CRYPTO_KEY);
+        fragmentMemoryManager = new FragmentMemoryManager(userMemStore, new DataIdManager(), CRYPTO_KEY);
+        summaryManager = new SummaryManager(userMemStore, CRYPTO_KEY);
         Map<String, BaseMemoryManager> managers = new LinkedHashMap<>();
         managers.put(MemoryType.USER_PROFILE.getValue(), fragmentMemoryManager);
         managers.put(MemoryType.SEMANTIC_MEMORY.getValue(), fragmentMemoryManager);
         managers.put(MemoryType.EPISODIC_MEMORY.getValue(), fragmentMemoryManager);
         managers.put(MemoryType.VARIABLE.getValue(), variableManager);
         managers.put(MemoryType.SUMMARY.getValue(), summaryManager);
-        searchManager = new SearchManager(managers, CRYPTO_KEY, memoryIndex);
+        searchManager = new SearchManager(managers, userMemStore, CRYPTO_KEY);
     }
 
     @Test
     void getUserVariableReturnsNullForEmptyName() {
-        assertNull(searchManager.getUserVariable("user", "scope", "").toCompletableFuture().join());
+        assertNull(searchManager.getUserVariable("user", "scope", ""));
     }
 
     @Test
     void getUserVariableReturnsNullForWhitespaceName() {
-        assertNull(searchManager.getUserVariable("user", "scope", "   ").toCompletableFuture().join());
+        assertNull(searchManager.getUserVariable("user", "scope", "   "));
     }
 
     @Test
     void getUserVariableReturnsStoredValue() {
-        VariableUnit variableUnit = new VariableUnit("test_variable", "test_value");
+        VariableUnit variableUnit =
+            VariableUnit.builder().variableName("test_variable").variableMem("test_value").build();
 
-        Map<String, List<BaseMemoryUnit>> memories = Map.of(
-                MemoryType.VARIABLE.getValue(), List.of(variableUnit)
-        );
-        variableManager.addMemories("user", "scope", memories, null, Map.of()).toCompletableFuture().join();
+        variableManager.addMemories("user", "scope", List.of(variableUnit), null, Map.of());
 
-        assertEquals("test_value", searchManager.getUserVariable("user", "scope", "test_variable").toCompletableFuture().join());
+        assertEquals("test_value", searchManager.getUserVariable("user", "scope", "test_variable"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void listUserProfileAggregatesTypedFragmentMemories() {
-        Map<String, List<BaseMemoryUnit>> memories = Map.of(
-                MemoryType.USER_PROFILE.getValue(), List.of(
-                        new FragmentMemoryUnit(MemoryType.USER_PROFILE, "1", "profile", null, "", null),
-                        new FragmentMemoryUnit(MemoryType.SEMANTIC_MEMORY, "2", "semantic", null, "", null),
-                        new FragmentMemoryUnit(MemoryType.EPISODIC_MEMORY, "3", "episodic", null, "", null)
-                )
-        );
-        fragmentMemoryManager.addMemories("user", "scope", memories, null, Map.of()).toCompletableFuture().join();
+        fragmentMemoryManager.addMemories("user", "scope", List.of(
+                FragmentMemoryUnit.builder().memId("1").memType(MemoryType.USER_PROFILE).content("profile").build(),
+                FragmentMemoryUnit.builder().memId("2").memType(MemoryType.SEMANTIC_MEMORY).content("semantic").build(),
+                FragmentMemoryUnit.builder().memId("3").memType(MemoryType.EPISODIC_MEMORY).content("episodic")
+                        .build()),
+                null,
+                Map.of("semantic_store",
+                        new com.openjiuwen.core.memory.manage.mem_model.SemanticStore(
+                                new com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore(
+                                        "search_manager_test"),
+                                new com.openjiuwen.core.retrieval.embedding.HashEmbedding())));
 
-        List<Map<String, Object>> result = searchManager.listUserProfile("user", "scope").toCompletableFuture().join();
+        List<Map<String, Object>> result = searchManager.listUserProfile("user", "scope");
 
         assertEquals(3, result.size());
     }
 
     @Test
     void searchWithoutTypeTraversesAllUniqueManagersAndAppliesSortThresholdLimit() {
-        RecordingManager fragment = new RecordingManager(List.of(
-                result("fragment-low", 0.4),
-                result("fragment-high", 0.9)
-        ));
+        RecordingManager fragment =
+            new RecordingManager(List.of(result("fragment-low", 0.4), result("fragment-high", 0.9)));
         RecordingManager summary = new RecordingManager(List.of(result("summary", 0.8)));
         RecordingManager variable = new RecordingManager(null);
         Map<String, BaseMemoryManager> managers = new LinkedHashMap<>();
@@ -112,72 +102,61 @@ class SearchManagerTest {
         managers.put(MemoryType.EPISODIC_MEMORY.getValue(), fragment);
         managers.put(MemoryType.SUMMARY.getValue(), summary);
         managers.put(MemoryType.VARIABLE.getValue(), variable);
-        SearchManager manager = new SearchManager(managers, CRYPTO_KEY, null);
+        SearchManager manager = new SearchManager(managers, userMemStore, CRYPTO_KEY);
 
-        List<Map<String, Object>> results = manager.search(SearchParams.builder()
-                .userId("user")
-                .scopeId("scope")
-                .query("query")
-                .topK(2)
-                .threshold(0.5)
-                .build()).toCompletableFuture().join();
+        List<Map<String, Object>> results = manager.search(
+                SearchParams.builder().userId("user").scopeId("scope").query("query").topK(2).threshold(0.5).build(),
+                null);
 
-        assertEquals(List.of("fragment-high", "summary"), results.stream()
-                .map(item -> String.valueOf(item.get("id")))
-                .toList());
+        assertEquals(List.of("fragment-high", "summary"),
+                results.stream().map(item -> String.valueOf(item.get("id"))).toList());
         assertEquals(1, fragment.calls);
         assertEquals(1, summary.calls);
         assertEquals(1, variable.calls);
     }
 
     @Test
+    void searchWithBlankQueryReturnsEmptyWithoutCallingManagers() {
+        RecordingManager manager = new RecordingManager(List.of(result("unexpected", 1.0)));
+        SearchManager search = new SearchManager(Map.of(MemoryType.SUMMARY.getValue(), manager), userMemStore,
+                CRYPTO_KEY);
+
+        List<Map<String, Object>> results = search.search(SearchParams.builder().userId("user").scopeId("scope")
+                .query("   ").searchType(MemoryType.SUMMARY.getValue()).build(), null);
+
+        assertEquals(List.of(), results);
+        assertEquals(0, manager.calls);
+    }
+
+    @Test
     void searchRejectsInvalidSearchType() {
-        assertThrows(BaseError.class, () -> searchManager.search(SearchParams.builder()
-                .userId("user")
-                .scopeId("scope")
-                .query("query")
-                .searchType(List.of("invalid"))
-                .build()).toCompletableFuture().join());
+        assertThrows(BaseError.class, () -> searchManager.search(
+                SearchParams.builder().userId("user").scopeId("scope").query("query").searchType("invalid").build(),
+                null));
     }
 
     @Test
     void searchRejectsKnownTypeWhenManagerNotInitialized() {
-        SearchManager manager = new SearchManager(Map.of(), CRYPTO_KEY, null);
+        SearchManager manager = new SearchManager(Map.of(), userMemStore, CRYPTO_KEY);
 
-        assertThrows(BaseError.class, () -> manager.search(SearchParams.builder()
-                .userId("user")
-                .scopeId("scope")
-                .query("query")
-                .searchType(List.of(MemoryType.SUMMARY.getValue()))
-                .build()).toCompletableFuture().join());
+        assertThrows(BaseError.class, () -> manager.search(SearchParams.builder().userId("user").scopeId("scope")
+                .query("query").searchType(MemoryType.SUMMARY.getValue()).build(), null));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void listUserSummaryDelegatesToSummaryManager() {
-        InMemoryKVStore kvStore = new InMemoryKVStore();
+        TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
         UserMemStore store = new UserMemStore(kvStore);
-        BaseMemoryIndex idx = new TestMemoryIndex(kvStore);
-        SummaryManager summary = new SummaryManager(idx, new byte[0]);
-        SearchManager manager = new SearchManager(Map.of(MemoryType.SUMMARY.getValue(), summary), new byte[0], idx);
-        store.write("user", "scope", "000000000000000000000011", Map.of(
-                "id", "000000000000000000000011",
-                "mem_type", MemoryType.SUMMARY.getValue(),
-                "mem", "alpha",
-                "timestamp", "2026-05-11T01:00:00Z"
-        )).join();
-        store.write("user", "scope", "000000000000000000000012", Map.of(
-                "id", "000000000000000000000012",
-                "mem_type", MemoryType.SUMMARY.getValue(),
-                "mem", "zulu",
-                "timestamp", "2026-05-11T02:00:00Z"
-        )).join();
+        SummaryManager summary = new SummaryManager(store, new byte[0]);
+        SearchManager manager = new SearchManager(Map.of(MemoryType.SUMMARY.getValue(), summary), store, new byte[0]);
+        store.write("user", "scope", "000000000000000000000011", Map.of("id", "000000000000000000000011", "mem_type",
+                MemoryType.SUMMARY.getValue(), "mem", "alpha", "timestamp", "2026-05-11T01:00:00Z"));
+        store.write("user", "scope", "000000000000000000000012", Map.of("id", "000000000000000000000012", "mem_type",
+                MemoryType.SUMMARY.getValue(), "mem", "zulu", "timestamp", "2026-05-11T02:00:00Z"));
 
-        List<Map<String, Object>> result = manager.listUserSummary("user", "scope").toCompletableFuture().join();
+        List<Map<String, Object>> result = manager.listUserSummary("user", "scope");
 
-        assertEquals(List.of("zulu", "alpha"), result.stream()
-                .map(item -> String.valueOf(item.get("mem")))
-                .toList());
+        assertEquals(List.of("zulu", "alpha"), result.stream().map(item -> String.valueOf(item.get("mem"))).toList());
     }
 
     private static Map<String, Object> result(String id, double score) {
@@ -196,103 +175,35 @@ class SearchManagerTest {
         }
 
         @Override
-        public CompletionStage<List<BaseMemoryUnit>> addMemories(String userId, String scopeId,
-                                                                  Map<String, List<BaseMemoryUnit>> memories,
-                                                                  Model llm, Map<String, Object> kwargs) {
-            return CompletableFuture.completedFuture(List.of());
+        public void addMemories(String userId, String scopeId,
+                List<? extends com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit> memories,
+                Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
         }
 
         @Override
-        public CompletionStage<Boolean> update(String userId, String scopeId, String memId, String newMemory,
-                                               Map<String, Object> kwargs) {
-            return CompletableFuture.completedFuture(false);
+        public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs) {
         }
 
         @Override
-        public CompletionStage<Boolean> delete(String userId, String scopeId, String memId,
-                                               Map<String, Object> kwargs) {
-            return CompletableFuture.completedFuture(false);
+        public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs) {
+            return false;
         }
 
         @Override
-        public CompletionStage<Boolean> deleteByUserId(String userId, String scopeId,
-                                                       Map<String, Object> kwargs) {
-            return CompletableFuture.completedFuture(false);
+        public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs) {
+            return false;
         }
 
         @Override
-        public CompletionStage<Map<String, Object>> get(String userId, String scopeId, String memId) {
-            return CompletableFuture.completedFuture(null);
+        public Map<String, Object> get(String userId, String scopeId, String memId) {
+            return null;
         }
 
         @Override
-        public CompletionStage<List<Map<String, Object>>> search(String userId, String scopeId, String query,
-                                                                 int topK, Map<String, Object> kwargs) {
+        public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK,
+                Map<String, Object> kwargs) {
             calls++;
-            return CompletableFuture.completedFuture(results == null ? null : new ArrayList<>(results));
+            return results == null ? null : new ArrayList<>(results);
         }
     }
-
-    private static final class TestMemoryIndex extends BaseMemoryIndex {
-        private final BaseKVStore kvStore;
-
-        TestMemoryIndex(BaseKVStore kvStore) {
-            this.kvStore = kvStore;
-        }
-
-        @Override
-        public void setStorageCodec(StorageCodec codec) {}
-
-        @Override
-        public CompletableFuture<Void> addMemories(String userId, String scopeId, List<MemoryDoc> memories) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<Void> updateMemories(String userId, String scopeId, List<MemoryDoc> memories) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<Void> deleteMemories(String userId, String scopeId, List<String> ids) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<Void> deleteByUser(String userId) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<Void> deleteByScope(String scopeId) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<Void> deleteByUserAndScope(String userId, String scopeId) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<List<MemorySearchResult>> search(String userId, String scopeId, String query,
-                                                                   List<String> memTypes, int topK) {
-            return CompletableFuture.completedFuture(List.of());
-        }
-
-        @Override
-        public CompletableFuture<MemoryDoc> getById(String userId, String scopeId, String memId) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<Void> cleanupBackup(String backupId) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<List<UserScopeKey>> listUserScopes() {
-            return CompletableFuture.completedFuture(List.of());
-        }
-    }
-
 }

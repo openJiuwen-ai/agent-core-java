@@ -4,219 +4,241 @@
 
 package com.openjiuwen.core.session.stream;
 
-import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.logging.events.LogEventType;
+
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Blocking queue analogue for Python's async stream queue helper.
+ * Thread-safe blocking stream queue for producer-consumer pattern.
  * <p>
- * Mirrors Python's {@code AsyncStreamQueue} in
- * {@code openjiuwen/core/session/stream/emitter.py}.
+ * Java equivalent of Python's {@code AsyncStreamQueue} using {@link BlockingQueue}.
+ * 
+ * @since 0.1.7
  */
 public class AsyncStreamQueue {
-
-    public static final long DEFAULT_SEND_ATTEMPT_TIMEOUT_MS = 200L;
-    public static final int DEFAULT_MAX_SEND_RETRIES = 5;
-    public static final int DEFAULT_MAX_SIZE = 1024;
+    /**
+     * DEFAULT_SEND_ATTEMPT_TIMEOUT_MS.
+     * 
+     * @since 0.1.7
+     */
+    public static final long DEFAULT_SEND_ATTEMPT_TIMEOUT_MS = 200;
 
     /**
-     * Non-positive caller values no longer mean "block forever": {@link #receive(long)}
-     * always falls back to this timeout. Defaults to {@link TimeoutConstants#BLOCKING_QUEUE_MS}
-     * and can be overridden via {@code -Dopenjiuwen.timeout.blocking-queue-ms=...}.
+     * DEFAULT_MAX_SEND_RETRIES.
+     * 
+     * @since 0.1.7
      */
-    public static final long DEFAULT_RECEIVE_TIMEOUT_MS = TimeoutConstants.BLOCKING_QUEUE_MS;
-    public static final long DEFAULT_CLOSE_TIMEOUT_MS = 5000L;
+    public static final int DEFAULT_MAX_SEND_RETRIES = 5;
 
-    private static final LoggerProtocol SESSION_LOGGER = Loggers.SESSION;
+    /**
+     * DEFAULT_RECEIVE_TIMEOUT_MS.
+     * 
+     * @since 0.1.7
+     */
+    public static final long DEFAULT_RECEIVE_TIMEOUT_MS = -1;
+
+    /**
+     * DEFAULT_CLOSE_TIMEOUT_MS.
+     * 
+     * @since 0.1.7
+     */
+    public static final long DEFAULT_CLOSE_TIMEOUT_MS = 5000;
+
+    /**
+     * Default bounded capacity used when no explicit size is provided.
+     * Prevents unbounded memory growth when a consumer disconnects or slows down.
+     * 
+     * @since 0.1.7
+     */
+    public static final int DEFAULT_MAX_SIZE = 1024;
 
     private final BlockingQueue<Object> streamQueue;
-    private final AtomicBoolean closed = new AtomicBoolean(false);
-    private final AtomicInteger unfinishedTasks = new AtomicInteger(0);
-    private final Object taskMonitor = new Object();
 
-    public AsyncStreamQueue() {
-        this(DEFAULT_MAX_SIZE);
-    }
+    /**
+     * AtomicBoolean.
+     * 
+     * @since 0.1.7
+     */
+    private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
+    /**
+     * Create a stream queue with the specified capacity.
+     * 
+     * @param maxSize the max capacity; 0 means unbounded
+     * @since 0.1.7
+     */
     public AsyncStreamQueue(int maxSize) {
         if (maxSize < 0) {
-            throw new IllegalArgumentException("maxsize must be >= 0");
+            throw new IllegalArgumentException("maxSize must be >= 0");
         }
         this.streamQueue = maxSize > 0 ? new LinkedBlockingQueue<>(maxSize) : new LinkedBlockingQueue<>();
     }
 
-    public boolean isClosed() {
-        return closed.get();
+    /**
+     * Create a bounded stream queue with the default capacity.
+     * 
+     * @since 0.1.7
+     */
+    public AsyncStreamQueue() {
+        this(DEFAULT_MAX_SIZE);
     }
 
+    /**
+     * isClosed.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean isClosed() {
+        return isClosed.get();
+    }
+
+    /**
+     * Send data to the queue with retry logic.
+     * 
+     * @param data the data to send
+     * @param attemptTimeout timeout per attempt in milliseconds
+     * @param maxRetries maximum number of retries
+     * @since 0.1.7
+     */
+    public void send(Object data, long attemptTimeout, int maxRetries) {
+        if (isClosed.get()) {
+            throw new IllegalStateException("StreamQueue is already isClosed");
+        }
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                boolean offered = streamQueue.offer(data, attemptTimeout, TimeUnit.MILLISECONDS);
+                if (offered) {
+                    Loggers.SESSION.debug("Stream data sent successfully, attempt={}", attempt);
+                    return;
+                }
+                Loggers.SESSION.warning("Stream data send timeout, attempt={}", attempt);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Loggers.SESSION.error("Stream data send interrupted, attempt={}", attempt);
+                return;
+            }
+        }
+
+        Loggers.SESSION.error("Failed to send stream data after {} retries", maxRetries);
+    }
+
+    /**
+     * Send data with default timeout and retries.
+     * 
+     * @param data the data to send
+     * @since 0.1.7
+     */
     public void send(Object data) {
         send(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, DEFAULT_MAX_SEND_RETRIES);
     }
 
-    public void send(Object data, long attemptTimeoutMs, int maxRetries) {
-        if (closed.get()) {
-            throw new RuntimeException("StreamQueue is already closed");
+    /**
+     * Send a critical frame that must never be silently dropped (e.g. the
+     * END_FRAME sentinel). Blocks until the frame is accepted or the queue is
+     * closed. A silently dropped END_FRAME would leave consumers blocked
+     * forever on {@link #receive()}, so critical frames get unbounded wait
+     * (backpressure) instead of the bounded-retry-and-drop behavior of
+     * {@link #send(Object)}.
+     * 
+     * @param data the critical frame to send
+     * @since 0.1.7
+     */
+    public void sendCritical(Object data) {
+        if (isClosed.get()) {
+            throw new IllegalStateException("StreamQueue is already isClosed");
         }
-
-        for (int attempt = 0; attempt < maxRetries; attempt++) {
+        while (!isClosed.get()) {
             try {
-                boolean offered = streamQueue.offer(data, attemptTimeoutMs, TimeUnit.MILLISECONDS);
-                if (offered) {
-                    unfinishedTasks.incrementAndGet();
-                    SESSION_LOGGER.debug(
-                            "Stream data sent successfully, eventType={}, timeoutMs={}, attempt={}",
-                            LogEventType.SESSION_STREAM_CHUNK.getValue(),
-                            attemptTimeoutMs,
-                            attempt + 1
-                    );
+                if (streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                    Loggers.SESSION.debug("Critical stream data sent");
                     return;
                 }
-                SESSION_LOGGER.error(
-                        "Stream data send timeout, eventType={}, timeoutMs={}, attempt={}",
-                        LogEventType.SESSION_STREAM_ERROR.getValue(),
-                        attemptTimeoutMs,
-                        attempt + 1
-                );
-            } catch (InterruptedException error) {
+            } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                SESSION_LOGGER.error(
-                        "Stream data send interrupted, eventType={}, timeoutMs={}, attempt={}",
-                        LogEventType.SESSION_STREAM_ERROR.getValue(),
-                        attemptTimeoutMs,
-                        attempt + 1
-                );
+                Loggers.SESSION.error("Critical stream data send interrupted");
                 return;
             }
         }
-
-        SESSION_LOGGER.error(
-                "Failed to send stream data after max retries, eventType={}, maxRetries={}, timeoutMs={}",
-                LogEventType.SESSION_STREAM_ERROR.getValue(),
-                maxRetries,
-                attemptTimeoutMs
-        );
+        throw new IllegalStateException("StreamQueue is already isClosed");
     }
 
     /**
-     * Offer a critical frame (for example END_FRAME) until the queue accepts it or closes.
-     * Regular {@link #send} may drop after retries; dropping END_FRAME leaves consumers blocked.
+     * Receive data from the queue.
+     * 
+     * @param timeoutMs timeout in milliseconds, -1 for no timeout
+     * @return the received data, or null if no data available within timeout
+     * @since 0.1.7
      */
-    public void sendCritical(Object data) {
-        if (closed.get()) {
-            throw new IllegalStateException("StreamQueue is already closed");
-        }
-        while (!closed.get()) {
-            try {
-                if (streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                    unfinishedTasks.incrementAndGet();
-                    return;
-                }
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-        }
-        throw new IllegalStateException("StreamQueue is already closed");
-    }
-
-    public Object receive() {
-        return receive(DEFAULT_RECEIVE_TIMEOUT_MS);
-    }
-
     public Object receive(long timeoutMs) {
-        if (closed.get()) {
-            throw new RuntimeException("StreamQueue is already closed");
+        if (isClosed.get()) {
+            throw new IllegalStateException("StreamQueue is already isClosed");
         }
 
-        long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_RECEIVE_TIMEOUT_MS;
         try {
-            Object item = streamQueue.poll(effectiveTimeoutMs, TimeUnit.MILLISECONDS);
-            if (item != null) {
-                taskDone();
-                SESSION_LOGGER.debug(
-                        "Stream data received successfully, eventType={}, streamItemType={}",
-                        LogEventType.SESSION_STREAM_CHUNK.getValue(),
-                        item.getClass().getSimpleName()
-                );
+            if (timeoutMs <= 0) {
+                // No timeout - block until data available
+                return streamQueue.take();
+            } else {
+                return streamQueue.poll(timeoutMs, TimeUnit.MILLISECONDS);
             }
-            return item;
-        } catch (InterruptedException error) {
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            Loggers.SESSION.error("Stream data receive interrupted");
             return null;
         }
     }
 
-    public void close() {
-        close(DEFAULT_CLOSE_TIMEOUT_MS);
+    /**
+     * Receive data with default timeout.
+     * 
+     * @return the received data
+     * @since 0.1.7
+     */
+    public Object receive() {
+        return receive(DEFAULT_RECEIVE_TIMEOUT_MS);
     }
 
+    /**
+     * Close the queue and drain remaining items.
+     * 
+     * @param timeoutMs timeout for close operation in milliseconds
+     * @since 0.1.7
+     */
     public void close(long timeoutMs) {
-        if (!closed.compareAndSet(false, true)) {
-            return;
-        }
-        if (!awaitDrain(timeoutMs)) {
-            SESSION_LOGGER.error(
-                    "StreamQueue close timeout, force clearing queue, eventType={}, timeoutMs={}",
-                    LogEventType.SESSION_STREAM_ERROR.getValue(),
-                    timeoutMs
-            );
+        if (isClosed.compareAndSet(false, true)) {
             forceClear();
         }
     }
 
-    private boolean awaitDrain(long timeoutMs) {
-        long deadline = timeoutMs > 0 ? System.currentTimeMillis() + timeoutMs : Long.MAX_VALUE;
-        synchronized (taskMonitor) {
-            while (unfinishedTasks.get() > 0) {
-                long waitMs = timeoutMs > 0 ? deadline - System.currentTimeMillis() : 0L;
-                if (timeoutMs > 0 && waitMs <= 0) {
-                    return false;
-                }
-                try {
-                    taskMonitor.wait(timeoutMs > 0 ? waitMs : 0L);
-                } catch (InterruptedException error) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-        }
-        return true;
+    /**
+     * Close with default timeout.
+     * 
+     * @since 0.1.7
+     */
+    public void close() {
+        close(DEFAULT_CLOSE_TIMEOUT_MS);
     }
 
-    private void taskDone() {
-        int remaining = unfinishedTasks.updateAndGet(current -> Math.max(0, current - 1));
-        if (remaining == 0) {
-            synchronized (taskMonitor) {
-                taskMonitor.notifyAll();
-            }
-        }
-    }
-
+    /**
+     * forceClear.
+     * 
+     * @since 0.1.7
+     */
     private void forceClear() {
         int clearedItems = 0;
         while (!streamQueue.isEmpty()) {
             Object item = streamQueue.poll();
             if (item != null) {
                 clearedItems++;
-                taskDone();
             }
         }
-
-        while (unfinishedTasks.get() > 0) {
-            taskDone();
+        if (clearedItems > 0) {
+            Loggers.SESSION.info("StreamQueue force cleared, clearedItems={}", clearedItems);
         }
-
-        SESSION_LOGGER.info(
-                "StreamQueue force cleared, eventType={}, clearedItems={}",
-                LogEventType.SESSION_STREAM_CHUNK.getValue(),
-                clearedItems
-        );
     }
 }

@@ -4,57 +4,60 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.common.exception.BaseError;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-/**
- * Mirrors Python's {@code CharChunker} behavior in
- * {@code openjiuwen/core/retrieval/indexing/processor/chunker/char_chunker.py}.
- *
- * <p>Mirrors Python's {@code TestCharChunker} in
- * {@code tests/unit_tests/core/retrieval/indexing/processor/chunker/test_char_chunker.py}.</p>
- */
 class CharChunkerTest {
-
     @Test
-    void defaultsMatchPythonConstructor() {
-        CharChunker chunker = new CharChunker();
-
-        assertThat(chunker.getChunkSize()).isEqualTo(512);
-        assertThat(chunker.getChunkOverlap()).isEqualTo(50);
+    void fixedSizeChunking() {
+        CharChunker chunker = new CharChunker(10, 0);
+        List<String> chunks = chunker.chunkText("abcdefghijklmnopqrstuvwxyz");
+        assertEquals(3, chunks.size());
+        assertEquals("abcdefghij", chunks.get(0));
+        assertEquals("klmnopqrst", chunks.get(1));
+        assertEquals("uvwxyz", chunks.get(2));
     }
 
     @Test
-    void customConstructorStoresChunkSizeAndOverlap() {
-        CharChunker chunker = new CharChunker(256, 25);
-
-        assertThat(chunker.getChunkSize()).isEqualTo(256);
-        assertThat(chunker.getChunkOverlap()).isEqualTo(25);
+    void overlapFeature() {
+        CharChunker chunker = new CharChunker(10, 3);
+        List<String> chunks = chunker.chunkText("abcdefghijklmnop");
+        assertEquals(2, chunks.size());
+        assertEquals("abcdefghij", chunks.get(0));
+        assertTrue(chunks.get(1).startsWith("hijklmnop"));
     }
 
     @Test
-    void chunkTextSuccessUsesConfiguredCharSplitter() {
-        CharChunker chunker = new CharChunker(5, 1);
-
-        List<String> chunks = chunker.chunkText("abcdefghijk");
-
-        assertThat(chunks).containsExactly("abcde", "efghi", "ijk");
+    void emptyAndNullInput() {
+        CharChunker chunker = new CharChunker(10, 0);
+        assertTrue(chunker.chunkText("").isEmpty());
+        assertTrue(chunker.chunkText(null).isEmpty());
     }
 
     @Test
-    void emptyTextReturnsNoChunks() {
-        CharChunker chunker = new CharChunker();
-
-        assertThat(chunker.chunkText("")).isEmpty();
+    void shortTextReturnsSingleChunk() {
+        CharChunker chunker = new CharChunker(100, 0);
+        List<String> chunks = chunker.chunkText("hello");
+        assertEquals(1, chunks.size());
+        assertEquals("hello", chunks.get(0));
     }
 
     @Test
-    void nullTextReturnsNoChunks() {
-        CharChunker chunker = new CharChunker();
+    void constructorRejectsInvalidChunkSize() {
+        assertThrows(BaseError.class, () -> new CharChunker(0, 0));
+        assertThrows(BaseError.class, () -> new CharChunker(-1, 0));
+    }
 
-        assertThat(chunker.chunkText(null)).isEmpty();
+    @Test
+    void constructorRejectsOverlapGreaterOrEqualChunkSize() {
+        assertThrows(BaseError.class, () -> new CharChunker(10, 10));
+        assertThrows(BaseError.class, () -> new CharChunker(5, 6));
     }
 }

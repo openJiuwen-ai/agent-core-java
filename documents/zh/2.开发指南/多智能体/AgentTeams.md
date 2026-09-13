@@ -57,7 +57,7 @@ import com.openjiuwen.core.multi_agent.MultiAgentSessions;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.multi_agent.schema.GroupCard;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSessionApiApi;
 import com.openjiuwen.core.single_agent.BaseAgent;
 
 import java.util.Iterator;

@@ -4,238 +4,347 @@
 
 package com.openjiuwen.core.common.security;
 
-import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLParameters;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
-import java.io.ByteArrayInputStream;
+import okhttp3.OkHttpClient;
+
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.util.List;
 import java.util.Locale;
-import java.util.function.Function;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 
 /**
- * Mirrors Python's {@code SslUtils} in
- * {@code openjiuwen/core/common/security/ssl_utils.py}.
+ * SSL utilities — creates strict SSL contexts for secure HTTPS communication.
+ * <p>
+ * Enforces TLS 1.2+ with strong cipher suites, mirroring the Python implementation.
+ * 
+ * @since 0.1.7
  */
 public final class SslUtils {
+    private static final String[] TLS_12_PLUS_PROTOCOLS = {"TLSv1.3", "TLSv1.2"};
 
-    private static final long MAX_CERT_SIZE = 1024L * 1024L;
-    private static volatile Function<String, String> envReader = SslUtils::defaultConfigValue;
-
+    /**
+     * SslUtils.
+     * 
+     * @since 0.1.7
+     */
     private SslUtils() {
     }
 
+    /**
+     * Create a strict {@link SSLContext} optionally loading a CA certificate.
+     * 
+     * @param sslCertPath path to the CA cert file (PEM), or null
+     * @return configured SSLContext
+     * @since 0.1.7
+     */
     public static SSLContext createStrictSslContext(String sslCertPath) {
         try {
-            SSLContext context = SSLContext.getInstance("TLSv1.2");
-            X509TrustManager trustManager = createStrictTrustManager(sslCertPath);
-            context.init(null, trustManager != null ? new TrustManager[]{trustManager} : null, null);
-            return context;
-        } catch (BaseError error) {
-            throw error;
-        } catch (Exception error) {
-            throw ErrorHelper.buildError(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "error_msg",
-                    "failed to create SSL context"
-            );
+            SSLContext ctx = SSLContext.getInstance("TLSv1.2");
+            if (sslCertPath != null) {
+                ctx.init(null, createCustomTrustManagers(sslCertPath), null);
+            } else {
+                ctx.init(null, null, null);
+            }
+            return ctx;
+        } catch (com.openjiuwen.core.common.exception.BaseError e) {
+            throw e;
+        } catch (java.security.GeneralSecurityException e) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                    "failed to create SSL context: " + e.getMessage(), null, e, null);
         }
     }
 
-    public static X509TrustManager createStrictTrustManager(String sslCertPath) {
+    /**
+     * Loads a CA certificate from {@code sslCertPath} (must stay under {@code SAFE_CERT_DIR})
+     * and builds trust managers that trust that CA.
+     *
+     * @param sslCertPath absolute or relative path to a PEM/X.509 certificate file
+     * @return trust managers initialized with the custom CA
+     * @throws com.openjiuwen.core.common.exception.BaseError when the path is unsafe, the file is invalid,
+     *         or trust manager initialization fails
+     * @since 0.1.14
+     */
+    private static TrustManager[] createCustomTrustManagers(String sslCertPath) {
         try {
-            if (sslCertPath == null || sslCertPath.isBlank()) {
-                return null;
-            }
-            Path certPath = Path.of(sslCertPath);
-            if (!Files.isRegularFile(certPath, LinkOption.NOFOLLOW_LINKS)) {
-                return null;
-            }
-            Path realCertPath = certPath.toRealPath();
-            String safeCertDir = envReader.apply("SAFE_CERT_DIR");
+            String safeCertDir = System.getenv("SAFE_CERT_DIR");
             if (safeCertDir == null || safeCertDir.isBlank()) {
-                throw ErrorHelper.buildError(
-                        StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                        "error_msg",
-                        "SAFE_CERT_DIR is not set"
-                );
+                throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED, "SAFE_CERT_DIR is not set",
+                        null, null, null);
             }
+
+            Path certPath = Path.of(sslCertPath).toRealPath();
             Path safePrefix = Path.of(safeCertDir).toRealPath();
-            if (!realCertPath.startsWith(safePrefix)) {
-                throw ErrorHelper.buildError(
-                        StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                        "error_msg",
-                        "certificate path is outside the allowed directory"
-                );
+            if (!certPath.startsWith(safePrefix)) {
+                throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                        "certificate path is outside the allowed directory", null, null, null);
             }
-            return secureLoadTrustManager(realCertPath);
-        } catch (BaseError error) {
-            throw error;
-        } catch (Exception error) {
-            throw ErrorHelper.buildError(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "error_msg",
-                    "failed to create SSL trust manager"
-            );
+
+            long size = Files.size(certPath);
+            if (size == 0 || size > 1024 * 1024) {
+                throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED, "file size is invalid",
+                        null, null, null);
+            }
+
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            X509Certificate caCert;
+            try (InputStream is = Files.newInputStream(certPath)) {
+                Certificate certificate = cf.generateCertificate(is);
+                if (!(certificate instanceof X509Certificate x509Certificate)) {
+                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                            "certificate is not X.509", null, null, null);
+                }
+                caCert = x509Certificate;
+            }
+
+            KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
+            ks.load(null, null);
+            ks.setCertificateEntry("ca", caCert);
+
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(ks);
+            return tmf.getTrustManagers();
+        } catch (com.openjiuwen.core.common.exception.BaseError e) {
+            throw e;
+        } catch (java.security.GeneralSecurityException | java.io.IOException e) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                    "failed to load custom trust managers: " + e.getMessage(), null, e, null);
         }
     }
 
+    /**
+     * Create an insecure SSL context that trusts every certificate.
+     * Intended only for explicit verify=false scenarios to mirror Python behaviour.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static SSLContext createInsecureSslContext() {
         try {
-            TrustManager[] trustAllManagers = new TrustManager[]{
-                    new X509TrustManager() {
-                        @Override
-                        public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                        }
+            TrustManager[] trustAllManagers = new TrustManager[]{new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                }
 
-                        @Override
-                        public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                        }
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                }
 
-                        @Override
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return new X509Certificate[0];
-                        }
-                    }
-            };
-            SSLContext context = SSLContext.getInstance("TLSv1.2");
-            context.init(null, trustAllManagers, new SecureRandom());
-            return context;
-        } catch (Exception error) {
-            throw ErrorHelper.buildError(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "error_msg",
-                    "failed to create insecure SSL context"
-            );
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+            }};
+            SSLContext ctx = SSLContext.getInstance("TLSv1.2");
+            ctx.init(null, trustAllManagers, new SecureRandom());
+            return ctx;
+        } catch (Exception e) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                    "failed to create insecure SSL context: " + e.getMessage(), null, e, null);
         }
     }
 
-    public static void configureHttpClientSsl(HttpClient.Builder builder,
-                                              String targetUrl,
-                                              boolean verifySsl,
-                                              String sslCertPath) {
+    /**
+     * Configure SSL behavior for an {@link HttpClient.Builder} targeting the given URL.
+     * 
+     * @param builder client builder to configure
+     * @param targetUrl request target URL
+     * @param verifySsl whether to verify the remote certificate chain
+     * @param sslCertPath optional CA certificate path
+     * @since 0.1.7
+     */
+    public static void configureHttpClientSsl(HttpClient.Builder builder, String targetUrl, boolean verifySsl,
+            String sslCertPath) {
         if (builder == null || targetUrl == null || targetUrl.isBlank()) {
             return;
         }
+
         URI targetUri = URI.create(targetUrl);
         if (!"https".equalsIgnoreCase(targetUri.getScheme())) {
             return;
         }
+
         if (!verifySsl) {
             builder.sslContext(createInsecureSslContext());
-            SSLParameters sslParameters = new SSLParameters();
+            SSLParameters sslParameters = tls12PlusParameters();
             sslParameters.setEndpointIdentificationAlgorithm("");
             builder.sslParameters(sslParameters);
             return;
         }
-        builder.sslContext(createStrictSslContext(sslCertPath));
+
+        if (sslCertPath != null && !sslCertPath.isBlank()) {
+            builder.sslContext(createStrictSslContext(sslCertPath));
+            builder.sslParameters(tls12PlusParameters());
+        }
     }
 
-    public static Object[] getSslConfig(String verifySwitchEnv,
-                                        String sslCertEnv,
-                                        List<String> triggerValues,
-                                        boolean urlIsHttps) {
+    /**
+     * Configure SSL behavior for an {@link OkHttpClient.Builder} targeting the given URL.
+     *
+     * @param builder OkHttp client builder to configure
+     * @param targetUrl request target URL
+     * @param shouldVerifySsl whether to verify the remote certificate chain
+     * @param sslCertPath optional CA certificate path
+     * @since 0.1.14
+     */
+    public static void configureOkHttpClientSsl(OkHttpClient.Builder builder, String targetUrl,
+            boolean shouldVerifySsl, String sslCertPath) {
+        if (builder == null || targetUrl == null || targetUrl.isBlank()) {
+            return;
+        }
+
+        URI targetUri = URI.create(targetUrl);
+        if (!"https".equalsIgnoreCase(targetUri.getScheme())) {
+            return;
+        }
+
+        if (!shouldVerifySsl) {
+            X509TrustManager trustManager = insecureTrustManager();
+            try {
+                SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
+                sslContext.init(null, new TrustManager[]{trustManager}, new SecureRandom());
+                builder.sslSocketFactory(sslContext.getSocketFactory(), trustManager);
+            } catch (java.security.GeneralSecurityException e) {
+                throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                        "failed to configure insecure OkHttp SSL: " + e.getMessage(), null, e, null);
+            }
+            builder.hostnameVerifier((hostname, session) -> true);
+            return;
+        }
+
+        if (sslCertPath != null && !sslCertPath.isBlank()) {
+            try {
+                TrustManager[] trustManagers = createCustomTrustManagers(sslCertPath);
+                X509TrustManager trustManager = requireX509TrustManager(trustManagers);
+                SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
+                sslContext.init(null, trustManagers, null);
+                SSLSocketFactory socketFactory = sslContext.getSocketFactory();
+                builder.sslSocketFactory(socketFactory, trustManager);
+            } catch (com.openjiuwen.core.common.exception.BaseError e) {
+                throw e;
+            } catch (java.security.GeneralSecurityException e) {
+                throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                        "failed to configure OkHttp SSL with custom certificate: " + e.getMessage(), null, e, null);
+            }
+        }
+    }
+
+    /**
+     * Returns a trust manager that accepts every certificate chain (verifySsl=false only).
+     *
+     * @return an X509 trust manager that performs no validation
+     * @since 0.1.7
+     */
+    private static X509TrustManager insecureTrustManager() {
+        return new X509TrustManager() {
+            @Override
+            public void checkClientTrusted(X509Certificate[] chain, String authType) {
+            }
+
+            @Override
+            public void checkServerTrusted(X509Certificate[] chain, String authType) {
+            }
+
+            @Override
+            public X509Certificate[] getAcceptedIssuers() {
+                return new X509Certificate[0];
+            }
+        };
+    }
+
+    /**
+     * Picks the first {@link X509TrustManager} from the array, or fails if none is present.
+     *
+     * @param trustManagers trust managers produced by a {@link TrustManagerFactory}
+     * @return the first X509 trust manager
+     * @throws RuntimeException when no X509 trust manager is available
+     * @since 0.1.7
+     */
+    private static X509TrustManager requireX509TrustManager(TrustManager[] trustManagers) {
+        if (trustManagers != null) {
+            for (TrustManager tm : trustManagers) {
+                if (tm instanceof X509TrustManager x509) {
+                    return x509;
+                }
+            }
+        }
+        throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                "no X509TrustManager available for OkHttp SSL configuration", null, null, null);
+    }
+
+    /**
+     * tls12PlusParameters.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    private static SSLParameters tls12PlusParameters() {
+        SSLParameters sslParameters = new SSLParameters();
+        sslParameters.setProtocols(TLS_12_PLUS_PROTOCOLS);
+        return sslParameters;
+    }
+
+    /**
+     * Get SSL config based on environment variables.
+     * 
+     * @param verifySwitchEnv env var name for verify switch
+     * @param sslCertEnv env var name for cert path
+     * @param triggerValues values that disable SSL verification
+     * @param urlIsHttps whether the target URL uses HTTPS
+     * @return three-element array: [sslVerify, sslCertPath, explicitlyEnabled] (Boolean, String, Boolean).
+     *         When the verify switch is not explicitly set, returns {true, null, false}
+     *         to indicate "use default SSL context" (trust system CAs).
+     *         When explicitly set to a trigger value (e.g. "false"), returns {false, null, false}.
+     *         When explicitly set to a truthy value, returns {true, sslCertPath, true}.
+     * @since 0.1.7
+     */
+    public static Object[] getSslConfig(String verifySwitchEnv, String sslCertEnv, java.util.List<String> triggerValues,
+            boolean urlIsHttps) {
         if (!urlIsHttps) {
-            return new Object[]{false, false};
+            return new Object[]{false, null, false};
         }
-
-        if (boolEnv(verifySwitchEnv, triggerValues)) {
-            return new Object[]{false, false};
+        String envValue = readEnvOrProperty(verifySwitchEnv);
+        boolean isOff = envValue != null && triggerValues.contains(envValue.trim().toLowerCase(Locale.ROOT));
+        if (isOff) {
+            return new Object[]{false, null, false};
         }
-
-        String sslCert = envReader.apply(sslCertEnv);
-        if (sslCert == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.COMMON_SSL_CERT_INVALID,
-                    "error_msg",
-                    "when " + verifySwitchEnv + "=true, must provide ssl cert " + sslCertEnv
-            );
+        // If verify switch is not explicitly set, use default SSL context (trust system CAs)
+        if (envValue == null || envValue.isBlank()) {
+            return new Object[]{true, null, false};
         }
-        return new Object[]{true, sslCert};
+        // Verify switch is explicitly set to a truthy value — require explicit cert
+        String sslCert = readEnvOrProperty(sslCertEnv);
+        return new Object[]{true, sslCert, true};
     }
 
-    private static boolean boolEnv(String name, List<String> triggerValues) {
-        String value = envReader.apply(name);
-        if (value == null) {
-            return false;
+    /**
+     * readEnvOrProperty.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String readEnvOrProperty(String key) {
+        String envValue = System.getenv(key);
+        if (envValue != null && !envValue.isBlank()) {
+            return envValue;
         }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        for (String triggerValue : triggerValues) {
-            if (normalized.equals(String.valueOf(triggerValue).toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    static void setEnvReaderForTests(Function<String, String> reader) {
-        envReader = reader != null ? reader : System::getenv;
-    }
-
-    static void resetEnvReaderForTests() {
-        envReader = SslUtils::defaultConfigValue;
-    }
-
-    private static String defaultConfigValue(String key) {
         String propertyValue = System.getProperty(key);
-        return propertyValue != null ? propertyValue : System.getenv(key);
-    }
-
-    private static X509TrustManager secureLoadTrustManager(Path certPath) throws Exception {
-        long size = Files.size(certPath);
-        if (size == 0 || size > MAX_CERT_SIZE) {
-            throw ErrorHelper.buildError(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "error_msg",
-                    "file size is invalid"
-            );
-        }
-
-        byte[] certBytes = Files.readAllBytes(certPath);
-        if (certBytes.length == 0) {
-            throw ErrorHelper.buildError(
-                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                    "error_msg",
-                    "file content is empty"
-            );
-        }
-
-        CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
-        X509Certificate certificate = (X509Certificate) certificateFactory.generateCertificate(
-                new ByteArrayInputStream(certBytes)
-        );
-
-        KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        keyStore.load(null, null);
-        keyStore.setCertificateEntry("ca", certificate);
-
-        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(
-                TrustManagerFactory.getDefaultAlgorithm()
-        );
-        trustManagerFactory.init(keyStore);
-        for (TrustManager trustManager : trustManagerFactory.getTrustManagers()) {
-            if (trustManager instanceof X509TrustManager x509TrustManager) {
-                return x509TrustManager;
-            }
-        }
-        throw ErrorHelper.buildError(
-                StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                "error_msg",
-                "x509 trust manager is unavailable"
-        );
+        return propertyValue != null && !propertyValue.isBlank() ? propertyValue : null;
     }
 }

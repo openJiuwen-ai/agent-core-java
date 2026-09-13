@@ -30,14 +30,14 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.session.WorkflowSession;
+import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.CustomSchema;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.TraceSchema;
+import com.openjiuwen.core.session.tracer.TracerDecorator;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
@@ -48,25 +48,43 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Workflow Controller - Implements workflow-specific execution logic.
- *
- * <p>Core responsibilities:
+ * <p>
+ * Core responsibilities:
  * <ol>
- *   <li>Intent detection: Select workflow + Check interruption state</li>
- *   <li>Task execution: Execute workflow (new/resume)</li>
- *   <li>Interruption handling: Save interruption state to session.state</li>
+ * <li>Intent detection: Select workflow + Check interruption state</li>
+ * <li>Task execution: Execute workflow (new/resume)</li>
+ * <li>Interruption handling: Save interruption state to session.state</li>
  * </ol>
- *
- * <p>Mirrors Python's {@code WorkflowController} in
- * {@code openjiuwen.core.application.workflow_agent}.</p>
+ * <p>
+ * Mirrors Python's {@code WorkflowController} in
+ * {@code openjiuwen.core.application.workflow_agent}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class WorkflowEventHandler extends EventHandler {
-
     private static final String INTERACTION = "__interaction__";
     private static final String STATE_KEY = "workflow_controller";
     private static final String CALL_MODE_STATE_KEY = "__workflow_agent_call_mode";
+    private static final long CANCEL_GRACE_TIMEOUT_SECONDS = 5L;
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String DEFAULT_INTENT_CLASS = "分类0";
     private static final String INTENT_SYSTEM_PROMPT = """
@@ -77,7 +95,7 @@ public class WorkflowEventHandler extends EventHandler {
             {{example_content}}
             请根据上述要求判断用户输入意图分类，输出要求如下：
             直接以JSON格式输出分类ID，不进行任何解释。JSON格式如下：
-             {"result": int}""";
+            {"result": int}""";
     private static final String INTENT_USER_PROMPT = """
             用户与助手的对话历史：
             {{chat_history}}
@@ -86,9 +104,16 @@ public class WorkflowEventHandler extends EventHandler {
 
     private final WorkflowAgentConfig agentConfig;
     private final ContextEngine appContextEngine;
+    private final Map<String, RunningWorkflow> runningWorkflows = new ConcurrentHashMap<>();
+    private final Map<String, Long> requestVersions = new ConcurrentHashMap<>();
+    private final Object requestLock = new Object();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowEventHandler.
+     * 
+     * @param agentConfig agentConfig
+     * @param contextEngine contextEngine
+     * @since 0.1.7
      */
     public WorkflowEventHandler(WorkflowAgentConfig agentConfig, ContextEngine contextEngine) {
         this.agentConfig = agentConfig;
@@ -97,10 +122,14 @@ public class WorkflowEventHandler extends EventHandler {
 
     // ==================== EventHandler Implementation ====================
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * handleInput.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> handleInput(EventHandlerInput inputs) {
         Event event = inputs.getEvent();
         AgentSessionApi session = inputs.getSession();
@@ -115,35 +144,44 @@ public class WorkflowEventHandler extends EventHandler {
                 throw nested;
             }
             Loggers.CONTROLLER.error("Error in workflow handling: {}", e.getMessage());
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", e.getMessage()
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", e.getMessage());
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * handleTaskInteraction.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
         Loggers.CONTROLLER.info("Workflow task interaction received");
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * handleTaskCompletion.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
         Loggers.CONTROLLER.info("Workflow task completion received");
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * handleTaskFailed.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
         Loggers.CONTROLLER.info("Workflow task failed received");
         return null;
@@ -153,10 +191,20 @@ public class WorkflowEventHandler extends EventHandler {
 
     /**
      * Handle user input: detect intent, select workflow, execute or resume.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     private Map<String, Object> handleUserInput(Event event, AgentSessionApi session) {
+        String conversationId = session.getSessionId();
+        long requestVersion = beginRequest(conversationId);
         InteractiveInput interactiveInput = extractInteractiveInput(event);
         WorkflowIntent intent = intentDetection(event, session);
+        if (!isCurrentRequest(conversationId, requestVersion)) {
+            return writeSupersededRequestResult(session);
+        }
         if (intent == null) {
             return Map.of("output", "", "result_type", "answer");
         }
@@ -187,12 +235,12 @@ public class WorkflowEventHandler extends EventHandler {
                 Loggers.CONTROLLER.info("Resuming interrupted task for workflow {}", workflow.getName());
                 setTaskArguments(task, buildResumeArguments(interactiveInput, task, event, session));
                 task.setStatus(TaskStatus.INPUT_REQUIRED);
-                yield execTask(event, task, session, workflow);
+                yield execTask(event, task, session, workflow, requestVersion);
             }
             case EXEC_NEW_TASK -> {
                 Loggers.CONTROLLER.info("No interrupted task for workflow {}, creating new task",
                         intent.workflow().getName());
-                yield execTask(event, intent.task(), session, intent.workflow());
+                yield execTask(event, intent.task(), session, intent.workflow(), requestVersion);
             }
         };
     }
@@ -210,12 +258,8 @@ public class WorkflowEventHandler extends EventHandler {
             if (resumeResult != null) {
                 Loggers.CONTROLLER.info("InteractiveInput detected, directly resuming workflow: {}",
                         resumeResult.workflow.getName());
-                return new WorkflowIntent(
-                        WorkflowIntent.Type.RESUME_TASK,
-                        resumeResult.task,
-                        resumeResult.workflow,
-                        Map.of()
-                );
+                return new WorkflowIntent(WorkflowIntent.Type.RESUME_TASK, resumeResult.task, resumeResult.workflow,
+                        Map.of());
             }
         }
 
@@ -229,12 +273,8 @@ public class WorkflowEventHandler extends EventHandler {
                 DefaultResponse defaultResponse = agentConfig.getDefaultResponse();
                 if (defaultResponse != null && defaultResponse.getText() != null
                         && !defaultResponse.getText().isEmpty()) {
-                    return new WorkflowIntent(
-                            WorkflowIntent.Type.DEFAULT_RESPONSE,
-                            null,
-                            null,
-                            Map.of("default_response_text", defaultResponse.getText())
-                    );
+                    return new WorkflowIntent(WorkflowIntent.Type.DEFAULT_RESPONSE, null, null,
+                            Map.of("default_response_text", defaultResponse.getText()));
                 }
                 detectedWorkflow = workflows.get(0);
             }
@@ -245,165 +285,407 @@ public class WorkflowEventHandler extends EventHandler {
         if (interruptedTask != null) {
             boolean shouldResume = shouldResumeInterruptedTask(interruptedTask, event, session);
             if (shouldResume) {
-                return new WorkflowIntent(
-                        WorkflowIntent.Type.RESUME_TASK,
-                        interruptedTask,
-                        detectedWorkflow,
-                        Map.of()
-                );
+                return new WorkflowIntent(WorkflowIntent.Type.RESUME_TASK, interruptedTask, detectedWorkflow, Map.of());
             }
-            return new WorkflowIntent(
-                    WorkflowIntent.Type.RESUME_TASK,
-                    interruptedTask,
-                    detectedWorkflow,
-                    Map.of("return_interruption", true)
-            );
+            return new WorkflowIntent(WorkflowIntent.Type.RESUME_TASK, interruptedTask, detectedWorkflow,
+                    Map.of("return_interruption", true));
         }
 
         Task newTask = createNewTask(event, detectedWorkflow, session);
-        return new WorkflowIntent(
-                WorkflowIntent.Type.EXEC_NEW_TASK,
-                newTask,
-                detectedWorkflow,
-                Map.of()
-        );
+        return new WorkflowIntent(WorkflowIntent.Type.EXEC_NEW_TASK, newTask, detectedWorkflow, Map.of());
     }
 
     // ==================== Task Execution ====================
 
     /**
      * Execute workflow task.
+     *
+     * @param event Event
+     * @param task Task
+     * @param session AgentSessionApi
+     * @param workflowSchema WorkflowSchema
+     * @return Map<String, Object>
      */
-    Map<String, Object> execTask(Event event, Task task,
-                                 AgentSessionApi session, WorkflowSchema workflowSchema) {
+    Map<String, Object> execTask(Event event, Task task, AgentSessionApi session, WorkflowSchema workflowSchema) {
+        long requestVersion = beginRequest(session.getSessionId());
+        return execTask(event, task, session, workflowSchema, requestVersion);
+    }
+
+    private Map<String, Object> execTask(Event event, Task task, AgentSessionApi session,
+            WorkflowSchema workflowSchema, long requestVersion) {
         String workflowId = workflowSchema.getId() + "_" + workflowSchema.getVersion();
-        boolean isResume = task.getStatus() == TaskStatus.INPUT_REQUIRED;
-
-        try {
-            if (agentConfig.getId() == null || agentConfig.getId().isBlank()) {
-                throw new IllegalStateException("Workflow not found: " + workflowId);
-            }
-            task.setStatus(TaskStatus.WORKING);
-
-            // Get workflow object
-            Object workflow = Runner.resourceMgr().getWorkflow(workflowId, (Object) null)
-                    .toCompletableFuture().join();
-            if (workflow == null) {
-                throw new IllegalStateException("Workflow not found: " + workflowId);
-            }
-
-            // Create workflow session
-            WorkflowSession workflowSession;
-            if (session instanceof com.openjiuwen.core.session.AgentSession agentSession) {
-                workflowSession = agentSession.createWorkflowSession();
-            } else {
-                throw new ClassCastException("session is not AgentSession");
-            }
-
-            // Prepare inputs
-            Object inputs = getTaskArguments(task);
-            if (isResume) {
-                Loggers.CONTROLLER.info("Resuming workflow: {}", workflowId);
-            } else {
-                Loggers.CONTROLLER.info("Starting workflow: {}", workflowId);
-            }
-
-            // Execute workflow with streaming
-            ModelContext context = appContextEngine.createContext(workflowId, agentSession.getInner());
-            addUserMessageToWorkflowContext(context, getDisplayContent(event));
-            Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(
-                    workflow, inputs, workflowSession, context, resolveWorkflowStreamModes(session), null)
-                    .toCompletableFuture().join();
-
-            List<Object> chunks = new ArrayList<>();
-            boolean hasInteraction = false;
-            Object finalResult = null;
-
-            while (workflowStream.hasNext()) {
-                WorkflowChunk chunk = workflowStream.next();
-                Object payload = chunk.getPayload();
-                if (chunk instanceof OutputSchema os) {
-                    if (INTERACTION.equals(os.getType())) {
-                        hasInteraction = true;
-                    } else if ("workflow_final".equals(os.getType())) {
-                        finalResult = os.getPayload();
-                        session.writeStream(os);
-                    } else {
-                        session.writeStream(os);
-                    }
-                } else if (payload instanceof CustomSchema customSchema) {
-                    session.writeStream(customSchema.getProperties());
-                } else if (payload instanceof TraceSchema traceSchema) {
-                    session.writeStream(traceSchema);
-                } else {
-                    session.writeStream(chunk);
-                }
-                chunks.add(chunk);
-            }
-
-            addAssistantMessageToAgentContext(session, buildAssistantContent(chunks));
-            addAssistantMessageToWorkflowContext(
-                    context,
-                    buildWorkflowAssistantContent(chunks, finalResult, hasInteraction)
-            );
-
-            // Process result
-            if (hasInteraction) {
-                // Workflow interrupted
-                Loggers.CONTROLLER.info("Workflow interrupted: {}", workflowId);
-                task.setStatus(TaskStatus.INPUT_REQUIRED);
-
-                interruptTask(task, session, chunks);
-
-                // Return only first interrupt for streaming
-                List<Object> interruptChunks = getInteractionChunks(chunks);
-                List<Object> firstInterrupt = getFirstInterrupt(chunks);
-                Loggers.CONTROLLER.info("Workflow has {} interrupts, returning first for streaming",
-                        countInteractions(chunks));
-
-                List<Object> streamedInterrupts = isInvokeCall(session) ? interruptChunks : firstInterrupt;
-                for (Object item : streamedInterrupts) {
-                    if (item instanceof OutputSchema os && INTERACTION.equals(os.getType())) {
-                        session.writeStream(os);
-                    }
-                }
-
-                Map<String, Object> result = new HashMap<>();
-                result.put("interaction", interruptChunks);
-                return result;
-            } else {
-                // Workflow completed
-                Loggers.CONTROLLER.info("Workflow completed: {}", workflowId);
-                task.setStatus(TaskStatus.COMPLETED);
-                clearInterruptedState(task, session, workflowId);
-
-                Map<String, Object> result = new HashMap<>();
-                result.put("output", new WorkflowOutput(finalResult != null ? finalResult : "",
-                        WorkflowExecutionState.COMPLETED));
-                result.put("result_type", "answer");
-                return result;
-            }
-
-        } catch (Exception e) {
-            Loggers.CONTROLLER.error("Workflow execution failed: {}, error: {}", workflowId, e.getMessage());
-            task.setStatus(TaskStatus.FAILED);
-            if (e instanceof BaseError be) {
-                throw be;
-            }
-            BaseError nested = findNestedBaseError(e);
-            if (nested != null) {
-                throw nested;
-            }
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", e.getMessage());
+        String conversationId = session.getSessionId();
+        FutureTask<Map<String, Object>> execution =
+                new FutureTask<>(() -> executeWorkflowTask(task, session, workflowId));
+        Optional<RunningWorkflow> runningWorkflow = registerWorkflow(conversationId, requestVersion, execution);
+        if (runningWorkflow.isEmpty()) {
+            return writeSupersededRequestResult(session);
         }
+        return executeRegisteredTask(task, session, workflowId, conversationId, runningWorkflow.get());
+    }
+
+    /**
+     * Execute a workflow after registering it as the active request for its conversation.
+     *
+     * @param task workflow task
+     * @param session agent session
+     * @param workflowId workflow ID
+     * @param conversationId conversation ID
+     * @param runningWorkflow registered execution
+     * @return workflow result
+     * @since 0.1.7
+     */
+    private Map<String, Object> executeRegisteredTask(Task task, AgentSessionApi session, String workflowId,
+            String conversationId, RunningWorkflow runningWorkflow) {
+        try {
+            runningWorkflow.run();
+            return runningWorkflow.get();
+        } catch (CancellationException exception) {
+            return handleWorkflowCancellation(task, session, workflowId);
+        } catch (InterruptedException exception) {
+            throw buildWorkflowFailure(task, workflowId, exception);
+        } catch (ExecutionException exception) {
+            throw buildWorkflowFailure(task, workflowId, exception.getCause());
+        } finally {
+            runningWorkflow.complete();
+            runningWorkflows.remove(conversationId, runningWorkflow);
+        }
+    }
+
+    /**
+     * Execute the workflow and convert its stream to the controller result.
+     *
+     * @param task workflow task
+     * @param session agent session
+     * @param workflowId workflow ID
+     * @return workflow result
+     * @since 0.1.7
+     */
+    private Map<String, Object> executeWorkflowTask(Task task, AgentSessionApi session, String workflowId) {
+        Object workflow = resolveWorkflow(workflowId);
+        boolean isResume = task.getStatus() == TaskStatus.INPUT_REQUIRED;
+        Loggers.CONTROLLER.info("{} workflow: {}", isResume ? "Resuming" : "Starting", workflowId);
+        task.setStatus(TaskStatus.WORKING);
+
+        WorkflowSessionApi workflowSession = session.createWorkflowSession();
+        Object inputs = getTaskArguments(task);
+        ModelContext context = appContextEngine.createContext(workflowId, session.getInner());
+        Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(workflow, inputs, workflowSession,
+                context, resolveWorkflowStreamModes(session));
+        WorkflowTaskResult executionResult = collectWorkflowResult(workflowStream, session);
+        addAssistantMessageToAgentContext(session, buildAssistantContent(executionResult.chunks()));
+
+        if (executionResult.hasInteraction()) {
+            return buildInteractionResult(task, session, workflowId, executionResult.chunks());
+        }
+        return buildCompletionResult(task, session, workflowId, executionResult.finalResult());
+    }
+
+    /**
+     * Resolve and validate the configured workflow.
+     *
+     * @param workflowId workflow ID
+     * @return workflow resource
+     * @since 0.1.7
+     */
+    private Object resolveWorkflow(String workflowId) {
+        if (agentConfig.getId() == null || agentConfig.getId().isBlank()) {
+            throw new IllegalStateException("Workflow not found: " + workflowId);
+        }
+        Object workflow = Runner.resourceMgr().getWorkflow(workflowId);
+        if (workflow == null) {
+            throw new IllegalStateException("Workflow not found: " + workflowId);
+        }
+        return workflow;
+    }
+
+    /**
+     * Collect workflow chunks and forward stream output to the agent session.
+     *
+     * @param workflowStream workflow stream
+     * @param session agent session
+     * @return collected workflow result
+     * @since 0.1.7
+     */
+    private WorkflowTaskResult collectWorkflowResult(Iterator<WorkflowChunk> workflowStream, AgentSessionApi session) {
+        List<Object> chunks = new ArrayList<>();
+        boolean hasInteraction = false;
+        Object finalResult = null;
+        while (workflowStream.hasNext()) {
+            WorkflowChunk chunk = workflowStream.next();
+            chunks.add(chunk);
+            if (chunk instanceof OutputSchema output) {
+                if (INTERACTION.equals(output.getType())) {
+                    hasInteraction = true;
+                    continue;
+                }
+                if ("workflow_final".equals(output.getType())) {
+                    finalResult = output.getPayload();
+                }
+                session.writeStream(output);
+            } else if (chunk instanceof CustomSchema customSchema) {
+                session.writeCustomStream(customSchema.getProperties());
+            } else if (chunk instanceof TraceSchema traceSchema) {
+                session.writeTraceStream(traceSchema);
+            } else {
+                session.writeStream(chunk);
+            }
+        }
+        return new WorkflowTaskResult(chunks, hasInteraction, finalResult);
+    }
+
+    /**
+     * Build the controller result for an interrupted workflow.
+     *
+     * @param task workflow task
+     * @param session agent session
+     * @param workflowId workflow ID
+     * @param chunks collected workflow chunks
+     * @return interaction result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildInteractionResult(Task task, AgentSessionApi session, String workflowId,
+            List<Object> chunks) {
+        Loggers.CONTROLLER.info("Workflow interrupted: {}", workflowId);
+        task.setStatus(TaskStatus.INPUT_REQUIRED);
+        interruptTask(task, session, chunks);
+
+        List<Object> interruptChunks = getInteractionChunks(chunks);
+        List<Object> firstInterrupt = getFirstInterrupt(chunks);
+        Loggers.CONTROLLER.info("Workflow has {} interrupts, returning first for streaming",
+                countInteractions(chunks));
+        List<Object> streamedInterrupts = isInvokeCall(session) ? interruptChunks : firstInterrupt;
+        for (Object item : streamedInterrupts) {
+            if (item instanceof OutputSchema output && INTERACTION.equals(output.getType())) {
+                session.writeStream(output);
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("interaction", interruptChunks);
+        return result;
+    }
+
+    /**
+     * Build the controller result for a completed workflow.
+     *
+     * @param task workflow task
+     * @param session agent session
+     * @param workflowId workflow ID
+     * @param finalResult final workflow payload
+     * @return completion result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildCompletionResult(Task task, AgentSessionApi session, String workflowId,
+            Object finalResult) {
+        Loggers.CONTROLLER.info("Workflow completed: {}", workflowId);
+        task.setStatus(TaskStatus.COMPLETED);
+        clearInterruptedState(task, session, workflowId);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("output",
+                new WorkflowOutput(finalResult != null ? finalResult : "", WorkflowExecutionState.COMPLETED));
+        result.put("result_type", "answer");
+        return result;
+    }
+
+    /**
+     * Handle cooperative cancellation of a superseded workflow.
+     *
+     * @param task workflow task
+     * @param session agent session
+     * @param workflowId workflow ID
+     * @return cancellation result
+     * @since 0.1.7
+     */
+    private static Map<String, Object> handleWorkflowCancellation(Task task, AgentSessionApi session,
+            String workflowId) {
+        Thread.interrupted();
+        task.setStatus(TaskStatus.CANCELED);
+        return writeCancellationResult(session, task, workflowId);
+    }
+
+    /**
+     * Convert a workflow execution failure to the controller error contract.
+     *
+     * @param task workflow task
+     * @param workflowId workflow ID
+     * @param failure workflow failure
+     * @return controller error
+     * @since 0.1.7
+     */
+    private BaseError buildWorkflowFailure(Task task, String workflowId, Throwable failure) {
+        if (failure instanceof Error error) {
+            throw error;
+        }
+        Loggers.CONTROLLER.error("Workflow execution failed: {}, error: {}", workflowId, failure.getMessage());
+        task.setStatus(TaskStatus.FAILED);
+        if (failure instanceof BaseError baseError) {
+            return baseError;
+        }
+        BaseError nested = findNestedBaseError(failure);
+        if (nested != null) {
+            return nested;
+        }
+        return ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", failure.getMessage());
+    }
+
+    /**
+     * Start a request generation and cancel the workflow serving the preceding request.
+     *
+     * @param conversationId conversation ID
+     * @return request generation
+     * @since 0.1.14
+     */
+    private long beginRequest(String conversationId) {
+        RunningWorkflow previous;
+        long requestVersion;
+        synchronized (requestLock) {
+            requestVersion = requestVersions.merge(conversationId, 1L, Long::sum);
+            previous = runningWorkflows.get(conversationId);
+        }
+        if (previous != null) {
+            previous.cancelAndAwait();
+        }
+        return requestVersion;
+    }
+
+    /**
+     * Check whether a request remains the newest request for its conversation.
+     *
+     * @param conversationId conversation ID
+     * @param requestVersion request generation
+     * @return {@code true} when the request is current
+     * @since 0.1.14
+     */
+    private boolean isCurrentRequest(String conversationId, long requestVersion) {
+        synchronized (requestLock) {
+            return requestVersions.getOrDefault(conversationId, 0L) == requestVersion;
+        }
+    }
+
+    /**
+     * Register a workflow only when its request remains current.
+     *
+     * @param conversationId conversation ID
+     * @param requestVersion request generation
+     * @param execution workflow execution
+     * @return registered workflow execution, or empty when superseded
+     * @since 0.1.14
+     */
+    private Optional<RunningWorkflow> registerWorkflow(String conversationId, long requestVersion,
+            FutureTask<Map<String, Object>> execution) {
+        RunningWorkflow current = new RunningWorkflow(Thread.currentThread(), execution);
+        RunningWorkflow previous;
+        synchronized (requestLock) {
+            if (requestVersions.getOrDefault(conversationId, 0L) != requestVersion) {
+                return Optional.empty();
+            }
+            previous = runningWorkflows.put(conversationId, current);
+        }
+        if (previous != null) {
+            previous.cancelAndAwait();
+        }
+        return Optional.of(current);
+    }
+
+    /**
+     * Write the terminal marker expected when a workflow is superseded by a new request.
+     *
+     * @param session agent session
+     * @param task cancelled task
+     * @param workflowId workflow ID
+     * @return cancellation result
+     * @since 0.1.7
+     */
+    private static Map<String, Object> writeCancellationResult(AgentSessionApi session, Task task,
+            String workflowId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "cancelled");
+        result.put("conversation_id", session.getSessionId());
+        result.put("task_id", task.getTaskId());
+        result.put("workflow_id", workflowId);
+        session.writeStream(new OutputSchema("cancelled", 0, result));
+        Loggers.CONTROLLER.info("Workflow cancelled: workflow={}, conversation={}", workflowId,
+                session.getSessionId());
+        return result;
+    }
+
+    /**
+     * Write the terminal marker for a request superseded during intent detection.
+     *
+     * @param session agent session
+     * @return cancellation result
+     * @since 0.1.14
+     */
+    private static Map<String, Object> writeSupersededRequestResult(AgentSessionApi session) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "cancelled");
+        result.put("conversation_id", session.getSessionId());
+        session.writeStream(new OutputSchema("cancelled", 0, result));
+        Loggers.CONTROLLER.info("Superseded request cancelled: conversation={}", session.getSessionId());
+        return result;
+    }
+
+    /**
+     * Tracks one workflow handler serving a conversation.
+     *
+     * @since 0.1.7
+     */
+    private static final class RunningWorkflow {
+        private final Thread owner;
+        private final FutureTask<Map<String, Object>> execution;
+        private final CompletableFuture<Void> completion = new CompletableFuture<>();
+
+        private RunningWorkflow(Thread owner, FutureTask<Map<String, Object>> execution) {
+            this.owner = owner;
+            this.execution = execution;
+        }
+
+        private void run() {
+            execution.run();
+        }
+
+        private Map<String, Object> get() throws InterruptedException, ExecutionException {
+            return execution.get();
+        }
+
+        private void cancelAndAwait() {
+            if (owner == Thread.currentThread()) {
+                return;
+            }
+            execution.cancel(true);
+            try {
+                completion.orTimeout(CANCEL_GRACE_TIMEOUT_SECONDS, TimeUnit.SECONDS).join();
+            } catch (CompletionException exception) {
+                if (exception.getCause() instanceof TimeoutException) {
+                    Loggers.CONTROLLER.warning("Timed out waiting for cancelled workflow handler to stop");
+                } else {
+                    Loggers.CONTROLLER.warning("Cancelled workflow handler finished with cleanup error", exception);
+                }
+            }
+        }
+
+        private void complete() {
+            completion.complete(null);
+        }
+    }
+
+    /**
+     * Collected result of one workflow stream.
+     *
+     * @param chunks collected workflow chunks
+     * @param hasInteraction whether the workflow requested interaction
+     * @param finalResult final workflow payload
+     * @since 0.1.7
+     */
+    private record WorkflowTaskResult(List<Object> chunks, boolean hasInteraction, Object finalResult) {
     }
 
     // ==================== Interruption Handling ====================
 
     void interruptTask(Task task, AgentSessionApi session, List<Object> interactionData) {
-        String workflowId = task.getMetadata() != null
-                ? (String) task.getMetadata().get("workflow_id") : "";
+        String workflowId = task.getMetadata() != null ? (String) task.getMetadata().get("workflow_id") : "";
         if (workflowId == null || workflowId.isEmpty()) {
             workflowId = "unknown";
         }
@@ -417,8 +699,8 @@ public class WorkflowEventHandler extends EventHandler {
         }
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> interruptedTasks = (Map<String, Object>) state.computeIfAbsent(
-                "interrupted_tasks", k -> new HashMap<>());
+        Map<String, Object> interruptedTasks =
+            (Map<String, Object>) state.computeIfAbsent("interrupted_tasks", k -> new HashMap<>());
 
         Object componentId = extractComponentIdFromInteractionData(interactionData);
         Object interactionValue = extractInteractionValueFromInteractionData(interactionData);
@@ -441,11 +723,19 @@ public class WorkflowEventHandler extends EventHandler {
 
         replaceControllerState(session, state);
 
-        Loggers.CONTROLLER.info("Task interrupted: workflow={}, state_key={}, component_id={}",
-                workflowId, stateKey, componentId);
+        Loggers.CONTROLLER.info("Task interrupted: workflow={}, state_key={}, component_id={}", workflowId, stateKey,
+                componentId);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * returnSavedInterruption.
+     * 
+     * @param workflow workflow
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> returnSavedInterruption(WorkflowSchema workflow, AgentSessionApi session) {
         String workflowId = workflow.getId() + "_" + workflow.getVersion();
         Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
@@ -467,14 +757,9 @@ public class WorkflowEventHandler extends EventHandler {
         Object componentIdObj = interrupted.getOrDefault("component_id", "questioner");
         String componentId;
         if (componentIdObj instanceof List<?> list && !list.isEmpty()) {
-            componentId = list.stream()
-                    .map(String::valueOf)
-                    .filter(text -> text != null && !text.isBlank())
-                    .findFirst()
-                    .orElse("questioner");
+            componentId = String.valueOf(list.get(0));
         } else {
-            String text = componentIdObj instanceof String s ? s : String.valueOf(componentIdObj);
-            componentId = text == null || text.isBlank() || "null".equals(text) ? "questioner" : text;
+            componentId = componentIdObj instanceof String s ? s : "questioner";
         }
         Object lastValue = interrupted.get("last_interaction_value");
 
@@ -493,6 +778,14 @@ public class WorkflowEventHandler extends EventHandler {
 
     // ==================== Intent Detection ====================
 
+    /**
+     * detectWorkflowViaLlm.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private WorkflowSchema detectWorkflowViaLlm(Event event, AgentSessionApi session) {
         List<WorkflowSchema> workflows = uniqueWorkflows(agentConfig.getWorkflows());
         if (workflows == null || workflows.isEmpty()) {
@@ -513,18 +806,9 @@ public class WorkflowEventHandler extends EventHandler {
                     (double) modelInfo.getTimeout());
             Loggers.CONTROLLER.info("Intent detection messages: {}", messages);
 
-            AssistantMessage llmOutput = getModel().invoke(
-                    messages,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    modelInfo.getModelName(),
-                    null,
-                    null,
-                    null
-            );
+            Model model = TracerDecorator.decorateModelWithTrace(getModel(), session);
+            AssistantMessage llmOutput = model.invoke(messages, null, null, null, modelInfo.getModelName(), null, null,
+                    null, null, null);
             WorkflowSchema detectedWorkflow = mapWorkflowFromIntentOutput(llmOutput, workflows);
             if (detectedWorkflow != null) {
                 return detectedWorkflow;
@@ -540,6 +824,15 @@ public class WorkflowEventHandler extends EventHandler {
         return workflows.get(0);
     }
 
+    /**
+     * shouldResumeInterruptedTask.
+     * 
+     * @param task task
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean shouldResumeInterruptedTask(Task task, Event event, AgentSessionApi session) {
         // If user provides InteractiveInput, always resume
         InteractiveInput interactiveInput = extractInteractiveInput(event);
@@ -555,8 +848,7 @@ public class WorkflowEventHandler extends EventHandler {
             return true;
         }
 
-        String workflowId = task.getMetadata() != null
-                ? (String) task.getMetadata().get("workflow_id") : "";
+        String workflowId = task.getMetadata() != null ? (String) task.getMetadata().get("workflow_id") : "";
         if (workflowId == null) {
             return true;
         }
@@ -590,8 +882,15 @@ public class WorkflowEventHandler extends EventHandler {
     // ==================== Resumption Helpers ====================
 
     @SuppressWarnings("unchecked")
-    private ResumeByNodeResult findInterruptedTaskByNodeId(InteractiveInput interactiveInput,
-                                                           AgentSessionApi session) {
+    /**
+     * findInterruptedTaskByNodeId.
+     * 
+     * @param interactiveInput interactiveInput
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
+    private ResumeByNodeResult findInterruptedTaskByNodeId(InteractiveInput interactiveInput, AgentSessionApi session) {
         Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
         if (state == null) {
             return null;
@@ -636,6 +935,14 @@ public class WorkflowEventHandler extends EventHandler {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * findInterruptedTask.
+     * 
+     * @param workflow workflow
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Task findInterruptedTask(WorkflowSchema workflow, AgentSessionApi session) {
         Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
         if (state == null) {
@@ -663,6 +970,15 @@ public class WorkflowEventHandler extends EventHandler {
 
     // ==================== Task Creation ====================
 
+    /**
+     * createNewTask.
+     * 
+     * @param event event
+     * @param workflow workflow
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Task createNewTask(Event event, WorkflowSchema workflow, AgentSessionApi session) {
         Map<String, Object> rawInputs = new HashMap<>(extractInputMap(event));
         rawInputs.remove("conversation_id");
@@ -691,10 +1007,7 @@ public class WorkflowEventHandler extends EventHandler {
         String workflowId = workflow.getId() + "_" + workflow.getVersion();
         String taskId = "workflow_" + event.getEventId();
 
-        Task task = new Task(
-                session.getSessionId(),
-                taskId, "workflow"
-        );
+        Task task = new Task(session.getSessionId(), taskId, "workflow");
         task.setDescription(workflow.getName());
         task.setStatus(TaskStatus.SUBMITTED);
 
@@ -708,6 +1021,13 @@ public class WorkflowEventHandler extends EventHandler {
         return task;
     }
 
+    /**
+     * getRequiredInputKey.
+     * 
+     * @param schema schema
+     * @return the result
+     * @since 0.1.7
+     */
     private String getRequiredInputKey(Map<String, Object> schema) {
         if (schema == null || schema.isEmpty()) {
             return null;
@@ -739,24 +1059,28 @@ public class WorkflowEventHandler extends EventHandler {
         return null;
     }
 
+    /**
+     * resolveWorkflowStreamModes.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private List<StreamMode> resolveWorkflowStreamModes(AgentSessionApi session) {
-        if (!(session instanceof com.openjiuwen.core.session.AgentSession agentSession)) {
-            return null;
+        if (session == null || session.getInner() == null || session.getInner().streamWriterManager() == null) {
+            return java.util.Collections.emptyList();
         }
-        com.openjiuwen.core.session.internal.AgentSession inner = agentSession.getInner();
-        if (inner == null || inner.streamWriterManager() == null) {
-            return null;
-        }
-        List<Object> rawModes = inner.streamWriterManager().getEnabledModes();
-        List<StreamMode> streamModes = new ArrayList<>();
-        for (Object mode : rawModes) {
-            if (mode instanceof StreamMode streamMode) {
-                streamModes.add(streamMode);
-            }
-        }
+        List<StreamMode> streamModes = session.getInner().streamWriterManager().getEnabledModes();
         return streamModes.isEmpty() ? null : streamModes;
     }
 
+    /**
+     * findNestedBaseError.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseError findNestedBaseError(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
@@ -768,6 +1092,14 @@ public class WorkflowEventHandler extends EventHandler {
         return null;
     }
 
+    /**
+     * filterWorkflowInputs.
+     * 
+     * @param schema schema
+     * @param userData userData
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> filterWorkflowInputs(Map<String, Object> schema, Map<String, Object> userData) {
         Map<String, Object> filtered = new HashMap<>();
 
@@ -784,6 +1116,13 @@ public class WorkflowEventHandler extends EventHandler {
 
     // ==================== Utility Methods ====================
 
+    /**
+     * getDisplayContent.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
     private String getDisplayContent(Event event) {
         Map<String, Object> inputMap = extractInputMap(event);
         if (!inputMap.isEmpty()) {
@@ -820,6 +1159,13 @@ public class WorkflowEventHandler extends EventHandler {
         return "";
     }
 
+    /**
+     * extractInteractiveInput.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
     private InteractiveInput extractInteractiveInput(Event event) {
         Map<String, Object> inputMap = extractInputMap(event);
         Object directInteractiveInput = inputMap.get("interactive_input");
@@ -839,6 +1185,14 @@ public class WorkflowEventHandler extends EventHandler {
         return null;
     }
 
+    /**
+     * clearInterruptedState.
+     * 
+     * @param task task
+     * @param session session
+     * @param workflowId workflowId
+     * @since 0.1.7
+     */
     private void clearInterruptedState(Task task, AgentSessionApi session, String workflowId) {
         @SuppressWarnings("unchecked")
         Map<String, Object> state = (Map<String, Object>) session.getState(STATE_KEY);
@@ -857,6 +1211,13 @@ public class WorkflowEventHandler extends EventHandler {
         }
     }
 
+    /**
+     * replaceControllerState.
+     * 
+     * @param session session
+     * @param state state
+     * @since 0.1.7
+     */
     private void replaceControllerState(AgentSessionApi session, Map<String, Object> state) {
         Map<String, Object> clearState = new HashMap<>();
         clearState.put(STATE_KEY, null);
@@ -867,6 +1228,13 @@ public class WorkflowEventHandler extends EventHandler {
         session.updateState(updatedState);
     }
 
+    /**
+     * extractComponentIdFromInteractionData.
+     * 
+     * @param interactionData interactionData
+     * @return the result
+     * @since 0.1.7
+     */
     private Object extractComponentIdFromInteractionData(List<Object> interactionData) {
         if (interactionData == null || interactionData.isEmpty()) {
             return "questioner";
@@ -888,6 +1256,13 @@ public class WorkflowEventHandler extends EventHandler {
         return componentIds.size() == 1 ? componentIds.get(0) : componentIds;
     }
 
+    /**
+     * extractInteractionValueFromInteractionData.
+     * 
+     * @param interactionData interactionData
+     * @return the result
+     * @since 0.1.7
+     */
     private Object extractInteractionValueFromInteractionData(List<Object> interactionData) {
         if (interactionData == null || interactionData.isEmpty()) {
             return null;
@@ -904,6 +1279,13 @@ public class WorkflowEventHandler extends EventHandler {
         return null;
     }
 
+    /**
+     * getFirstInterrupt.
+     * 
+     * @param interactionData interactionData
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> getFirstInterrupt(List<Object> interactionData) {
         if (interactionData == null || interactionData.isEmpty()) {
             return List.of();
@@ -919,6 +1301,13 @@ public class WorkflowEventHandler extends EventHandler {
         return result;
     }
 
+    /**
+     * getInteractionChunks.
+     * 
+     * @param interactionData interactionData
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> getInteractionChunks(List<Object> interactionData) {
         if (interactionData == null || interactionData.isEmpty()) {
             return List.of();
@@ -932,6 +1321,13 @@ public class WorkflowEventHandler extends EventHandler {
         return result;
     }
 
+    /**
+     * countInteractions.
+     * 
+     * @param interactionData interactionData
+     * @return the result
+     * @since 0.1.7
+     */
     private int countInteractions(List<Object> interactionData) {
         if (interactionData == null) {
             return 0;
@@ -945,6 +1341,13 @@ public class WorkflowEventHandler extends EventHandler {
         return count;
     }
 
+    /**
+     * isWorkflowInterrupted.
+     * 
+     * @param result result
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isWorkflowInterrupted(Object result) {
         if (result instanceof WorkflowOutput wo) {
             return wo.getState() == WorkflowExecutionState.INPUT_REQUIRED;
@@ -952,40 +1355,48 @@ public class WorkflowEventHandler extends EventHandler {
         return false;
     }
 
+    /**
+     * hasDefaultResponseText.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean hasDefaultResponseText() {
         DefaultResponse defaultResponse = agentConfig.getDefaultResponse();
         return defaultResponse != null && defaultResponse.getText() != null && !defaultResponse.getText().isEmpty();
     }
 
+    /**
+     * isInvokeCall.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isInvokeCall(AgentSessionApi session) {
         Object callMode = session.getState(CALL_MODE_STATE_KEY);
         return "invoke".equals(callMode);
     }
 
+    /**
+     * getModel.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Model getModel() {
         if (agentConfig.getModel() == null || agentConfig.getModel().modelInfo() == null) {
             throw new IllegalStateException("Model configuration is required");
         }
 
         var modelInfo = agentConfig.getModel().modelInfo();
-        boolean verifySsl = modelInfo.getExtraFields() != null
-                && Boolean.TRUE.equals(modelInfo.getExtraFields().get("verify_ssl"));
-        String sslCert = modelInfo.getExtraFields() != null
-                ? (String) modelInfo.getExtraFields().get("ssl_cert") : null;
         ModelClientConfig clientConfig = ModelClientConfig.builder()
-                .clientProvider(agentConfig.getModel().modelProvider())
-                .apiKey(modelInfo.getApiKey())
-                .apiBase(modelInfo.getApiBase())
-                .timeout((double) modelInfo.getTimeout())
-                .verifySsl(verifySsl)
-                .sslCert(sslCert)
-                .headers(modelInfo.getHeaders())
-                .build();
+                .clientProvider(agentConfig.getModel().modelProvider()).apiKey(modelInfo.getApiKey())
+                .apiBase(modelInfo.getApiBase()).timeout(modelInfo.getTimeout()).verifySsl(modelInfo.isVerifySsl())
+                .sslCert(modelInfo.getSslCert()).headers(modelInfo.getHeaders()).build();
 
-        ModelRequestConfig requestConfig = ModelRequestConfig.builder()
-                .modelName(modelInfo.getModelName())
-                .temperature(modelInfo.getTemperature())
-                .topP(modelInfo.getTopP())
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName(modelInfo.getModelName())
+                .temperature(modelInfo.getTemperature()).topP(modelInfo.getTopP())
                 .extraFields(modelInfo.getExtraFields() != null
                         ? new java.util.LinkedHashMap<>(modelInfo.getExtraFields())
                         : new java.util.LinkedHashMap<>())
@@ -994,29 +1405,37 @@ public class WorkflowEventHandler extends EventHandler {
         return new Model(clientConfig, requestConfig);
     }
 
-    private List<BaseMessage> buildIntentDetectionMessages(
-            List<WorkflowSchema> workflows,
-            String currentInput,
-            AgentSessionApi session
-    ) {
+    /**
+     * buildIntentDetectionMessages.
+     * 
+     * @param workflows workflows
+     * @param currentInput currentInput
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<BaseMessage> buildIntentDetectionMessages(List<WorkflowSchema> workflows, String currentInput,
+            AgentSessionApi session) {
         String categoryList = buildIntentCategoryList(workflows);
         String chatHistory = buildIntentChatHistory(session, 100);
         String exampleContent = "";
 
-        String systemPrompt = INTENT_SYSTEM_PROMPT
-                .replace("{{default_class}}", DEFAULT_INTENT_CLASS)
-                .replace("{{category_list}}", categoryList)
-                .replace("{{example_content}}", exampleContent);
-        String userPrompt = INTENT_USER_PROMPT
-                .replace("{{chat_history}}", chatHistory)
-                .replace("{{input}}", currentInput != null ? currentInput : "");
+        String systemPrompt = INTENT_SYSTEM_PROMPT.replace("{{default_class}}", DEFAULT_INTENT_CLASS)
+                .replace("{{category_list}}", categoryList).replace("{{example_content}}", exampleContent);
+        String userPrompt = INTENT_USER_PROMPT.replace("{{chat_history}}", chatHistory).replace("{{input}}",
+                currentInput != null ? currentInput : "");
 
-        return List.of(
-                BaseMessage.builder().role("system").content(systemPrompt).build(),
-                BaseMessage.builder().role("user").content(userPrompt).build()
-        );
+        return List.of(BaseMessage.builder().role("system").content(systemPrompt).build(),
+                BaseMessage.builder().role("user").content(userPrompt).build());
     }
 
+    /**
+     * buildIntentCategoryList.
+     * 
+     * @param workflows workflows
+     * @return the result
+     * @since 0.1.7
+     */
     private String buildIntentCategoryList(List<WorkflowSchema> workflows) {
         StringBuilder builder = new StringBuilder();
         builder.append(DEFAULT_INTENT_CLASS).append("：意图不明");
@@ -1030,6 +1449,14 @@ public class WorkflowEventHandler extends EventHandler {
         return builder.toString();
     }
 
+    /**
+     * buildIntentChatHistory.
+     * 
+     * @param session session
+     * @param maxRounds maxRounds
+     * @return the result
+     * @since 0.1.7
+     */
     private String buildIntentChatHistory(AgentSessionApi session, int maxRounds) {
         ModelContext agentContext = getOrCreateAgentContext(session);
         List<BaseMessage> messages = agentContext.getMessages();
@@ -1045,6 +1472,14 @@ public class WorkflowEventHandler extends EventHandler {
         return builder.toString();
     }
 
+    /**
+     * mapWorkflowFromIntentOutput.
+     * 
+     * @param llmOutput llmOutput
+     * @param workflows workflows
+     * @return the result
+     * @since 0.1.7
+     */
     private WorkflowSchema mapWorkflowFromIntentOutput(AssistantMessage llmOutput, List<WorkflowSchema> workflows) {
         Integer categoryIndex = parseIntentCategoryIndex(llmOutput != null ? llmOutput.getContentAsString() : "");
         if (categoryIndex == null || categoryIndex <= 0 || categoryIndex > workflows.size()) {
@@ -1065,13 +1500,18 @@ public class WorkflowEventHandler extends EventHandler {
         return null;
     }
 
+    /**
+     * parseIntentCategoryIndex.
+     * 
+     * @param llmOutput llmOutput
+     * @return the result
+     * @since 0.1.7
+     */
     private Integer parseIntentCategoryIndex(String llmOutput) {
         if (llmOutput == null || llmOutput.isBlank()) {
             return null;
         }
-        String cleaned = llmOutput.strip()
-                .replaceAll("(?is)^```json\\s*", "")
-                .replaceAll("(?is)^```\\s*", "")
+        String cleaned = llmOutput.strip().replaceAll("(?is)^```json\\s*", "").replaceAll("(?is)^```\\s*", "")
                 .replaceAll("(?is)```\\s*$", "");
         try {
             JsonNode root = OBJECT_MAPPER.readTree(cleaned);
@@ -1081,14 +1521,20 @@ public class WorkflowEventHandler extends EventHandler {
         } catch (Exception ignored) {
             // Fallback to a lightweight number search below.
         }
-        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\"result\"\\s*:\\s*(\\d+)")
-                .matcher(cleaned);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\"result\"\\s*:\\s*(\\d+)").matcher(cleaned);
         if (matcher.find()) {
             return Integer.parseInt(matcher.group(1));
         }
         return null;
     }
 
+    /**
+     * buildAssistantContent.
+     * 
+     * @param chunks chunks
+     * @return the result
+     * @since 0.1.7
+     */
     private String buildAssistantContent(List<Object> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             return "";
@@ -1105,28 +1551,20 @@ public class WorkflowEventHandler extends EventHandler {
                 }
             } else if (os.getPayload() instanceof InteractionOutput io && io.getValue() != null) {
                 contentParts.append(io.getValue());
+            } else {
+                // no-op
             }
         }
         return contentParts.toString();
     }
 
-    private String buildWorkflowAssistantContent(List<Object> chunks, Object finalResult, boolean hasInteraction) {
-        if (hasInteraction) {
-            return buildAssistantContent(chunks);
-        }
-        if (finalResult == null) {
-            return buildAssistantContent(chunks);
-        }
-        if (finalResult instanceof String text) {
-            return text;
-        }
-        try {
-            return OBJECT_MAPPER.writeValueAsString(finalResult);
-        } catch (Exception ignored) {
-            return String.valueOf(finalResult);
-        }
-    }
-
+    /**
+     * uniqueWorkflows.
+     * 
+     * @param workflows workflows
+     * @return the result
+     * @since 0.1.7
+     */
     private List<WorkflowSchema> uniqueWorkflows(List<WorkflowSchema> workflows) {
         if (workflows == null || workflows.isEmpty()) {
             return List.of();
@@ -1142,6 +1580,13 @@ public class WorkflowEventHandler extends EventHandler {
         return new ArrayList<>(unique.values());
     }
 
+    /**
+     * addUserMessageToAgentContext.
+     * 
+     * @param session session
+     * @param content content
+     * @since 0.1.7
+     */
     private void addUserMessageToAgentContext(AgentSessionApi session, String content) {
         if (content == null || content.isBlank()) {
             return;
@@ -1149,6 +1594,13 @@ public class WorkflowEventHandler extends EventHandler {
         addMessageToContext(getOrCreateAgentContext(session), new UserMessage(content), true);
     }
 
+    /**
+     * addAssistantMessageToAgentContext.
+     * 
+     * @param session session
+     * @param content content
+     * @since 0.1.7
+     */
     private void addAssistantMessageToAgentContext(AgentSessionApi session, String content) {
         if (content == null) {
             return;
@@ -1156,29 +1608,29 @@ public class WorkflowEventHandler extends EventHandler {
         addMessageToContext(getOrCreateAgentContext(session), new AssistantMessage(content), true);
     }
 
-    private void addUserMessageToWorkflowContext(ModelContext workflowContext, String content) {
-        if (content == null || content.isBlank()) {
-            return;
-        }
-        addMessageToContext(workflowContext, new UserMessage(content), true);
-    }
-
-    private void addAssistantMessageToWorkflowContext(ModelContext workflowContext, String content) {
-        if (content == null) {
-            return;
-        }
-        addMessageToContext(workflowContext, new AssistantMessage(content), true);
-    }
-
+    /**
+     * getOrCreateAgentContext.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private ModelContext getOrCreateAgentContext(AgentSessionApi session) {
         ModelContext context = appContextEngine.getContext(null, session.getSessionId());
         if (context != null) {
             return context;
         }
-        return appContextEngine.createContext(null,
-                session instanceof AgentSession agentSession ? agentSession.getInner() : null);
+        return appContextEngine.createContext(null, session.getInner());
     }
 
+    /**
+     * addMessageToContext.
+     * 
+     * @param context context
+     * @param message message
+     * @param deduplicate deduplicate
+     * @since 0.1.7
+     */
     private void addMessageToContext(ModelContext context, BaseMessage message, boolean deduplicate) {
         if (context == null || message == null) {
             return;
@@ -1196,6 +1648,13 @@ public class WorkflowEventHandler extends EventHandler {
         context.addMessages(message);
     }
 
+    /**
+     * deserializeTask.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
     private Task deserializeTask(Map<String, Object> data) {
         if (data == null) {
             return new Task();
@@ -1211,15 +1670,7 @@ public class WorkflowEventHandler extends EventHandler {
         }
         @SuppressWarnings("unchecked")
         List<Object> inputs = (List<Object>) data.get("inputs");
-        if (inputs != null) {
-            List<Event> eventInputs = new ArrayList<>();
-            for (Object item : inputs) {
-                if (item instanceof Event event) {
-                    eventInputs.add(event);
-                }
-            }
-            task.setInputs(eventInputs);
-        }
+        task.setInputs(inputs);
         @SuppressWarnings("unchecked")
         Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
         task.setMetadata(metadata);
@@ -1229,6 +1680,13 @@ public class WorkflowEventHandler extends EventHandler {
         return task;
     }
 
+    /**
+     * extractInputMap.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> extractInputMap(Event event) {
         if (!(event instanceof InputEvent inputEvent)) {
             return Map.of();
@@ -1242,6 +1700,13 @@ public class WorkflowEventHandler extends EventHandler {
         return Map.of();
     }
 
+    /**
+     * extractPrimaryInput.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
     private Object extractPrimaryInput(InputEvent event) {
         if (event == null || event.getInputData() == null || event.getInputData().isEmpty()) {
             return null;
@@ -1256,6 +1721,13 @@ public class WorkflowEventHandler extends EventHandler {
         return firstInput;
     }
 
+    /**
+     * setTaskArguments.
+     * 
+     * @param task task
+     * @param arguments arguments
+     * @since 0.1.7
+     */
     private void setTaskArguments(Task task, Object arguments) {
         if (task.getMetadata() == null) {
             task.setMetadata(new HashMap<>());
@@ -1263,6 +1735,13 @@ public class WorkflowEventHandler extends EventHandler {
         task.getMetadata().put("arguments", arguments);
     }
 
+    /**
+     * getTaskArguments.
+     * 
+     * @param task task
+     * @return the result
+     * @since 0.1.7
+     */
     private Object getTaskArguments(Task task) {
         if (task.getMetadata() != null && task.getMetadata().containsKey("arguments")) {
             return task.getMetadata().get("arguments");
@@ -1276,12 +1755,18 @@ public class WorkflowEventHandler extends EventHandler {
         return task.getInputs();
     }
 
-    private Object buildResumeArguments(
-            InteractiveInput interactiveInput,
-            Task task,
-            Event event,
-            AgentSessionApi session
-    ) {
+    /**
+     * buildResumeArguments.
+     * 
+     * @param interactiveInput interactiveInput
+     * @param task task
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
+    private Object buildResumeArguments(InteractiveInput interactiveInput, Task task, Event event,
+            AgentSessionApi session) {
         if (interactiveInput != null) {
             return interactiveInput;
         }
@@ -1323,6 +1808,13 @@ public class WorkflowEventHandler extends EventHandler {
 
     // ==================== Inner Records ====================
 
+    /**
+     * ResumeByNodeResult.
+     * 
+     * @param workflow workflow
+     * @param task task
+     * @since 0.1.7
+     */
     private record ResumeByNodeResult(WorkflowSchema workflow, Task task) {
     }
 }

@@ -11,20 +11,44 @@ import java.util.Map;
  * Input model for IntentDetection component.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.intent_detection_comp.IntentDetectionInput}.
-  * Python file: {@code openjiuwen/core/workflow/components/llm/intent_detection_comp.py}.
+ * 
+ * @since 0.1.7
  */
 public class IntentDetectionInput {
-
     private String query = "";
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Object> extraFields = new LinkedHashMap<>();
 
+    /**
+     * IntentDetectionInput.
+     * 
+     * @since 0.1.7
+     */
     public IntentDetectionInput() {
     }
 
+    /**
+     * IntentDetectionInput.
+     * 
+     * @param query query
+     * @since 0.1.7
+     */
     public IntentDetectionInput(String query) {
         this.query = query != null ? query : "";
     }
 
+    /**
+     * fromMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
+     */
     public static IntentDetectionInput fromMap(Map<String, Object> map) {
         IntentDetectionInput input = new IntentDetectionInput();
         if (map == null) {
@@ -42,14 +66,32 @@ public class IntentDetectionInput {
         return input;
     }
 
+    /**
+     * getQuery.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getQuery() {
         return query;
     }
 
+    /**
+     * setQuery.
+     * 
+     * @param query query
+     * @since 0.1.7
+     */
     public void setQuery(String query) {
         this.query = query;
     }
 
+    /**
+     * getExtraFields.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getExtraFields() {
         return extraFields;
     }

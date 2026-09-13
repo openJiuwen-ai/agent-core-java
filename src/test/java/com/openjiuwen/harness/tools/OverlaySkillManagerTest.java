@@ -5,9 +5,6 @@ import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.core.singleagent.skills.SkillManager;
-import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
-import com.openjiuwen.core.sysop.local.LocalFsOperation;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,9 +39,8 @@ class OverlaySkillManagerTest {
         workspaceResolver.initializeTenantSpace(tenantA);
         overlayDir = workspaceResolver.resolveTenantRoot(tenantA).resolve(".overlay");
         Files.createDirectories(overlayDir);
-        LocalFsOperation fs = new LocalFsOperation("overlay-test", OperationMode.LOCAL, "", new LocalWorkConfig());
-        tenantSkillManager = new SkillManager("test-tenant", id -> fs);
-        publicSkillManager = new SkillManager("test-public", id -> fs);
+        tenantSkillManager = new SkillManager("test-tenant");
+        publicSkillManager = new SkillManager("test-public");
         overlaySkillManager = new OverlaySkillManager(tenantSkillManager, publicSkillManager, overlayDir, workspaceResolver);
     }
 
@@ -66,7 +62,7 @@ class OverlaySkillManagerTest {
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         Path result = overlaySkillManager.resolveSkillFile("skillA", null);
         assertThat(result).isNotNull();
@@ -86,7 +82,7 @@ class OverlaySkillManagerTest {
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
         overlaySkillManager.overrideSkill("skillA");
 
         Path result = overlaySkillManager.resolveSkillFile("skillA", null);
@@ -100,7 +96,7 @@ class OverlaySkillManagerTest {
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillP1");
         createSkillDir(publicSkillRoot, "skillP2");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         List<String> result = overlaySkillManager.getAllVisibleSkillNames();
         assertThat(result).containsExactlyInAnyOrder("skillP1", "skillP2");
@@ -111,12 +107,12 @@ class OverlaySkillManagerTest {
         Path publicSkillRoot = baseDir.resolve("public-skills");
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillP1");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillT1");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         List<String> result = overlaySkillManager.getAllVisibleSkillNames();
         assertThat(result).containsExactlyInAnyOrder("skillP1", "skillT1");
@@ -128,12 +124,12 @@ class OverlaySkillManagerTest {
         Path publicSkillRoot = baseDir.resolve("public-skills");
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillA");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
         overlaySkillManager.overrideSkill("skillA");
 
         List<String> result = overlaySkillManager.getAllVisibleSkillNames();
@@ -177,12 +173,12 @@ class OverlaySkillManagerTest {
         Path publicSkillRoot = baseDir.resolve("public-skills");
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillA");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         assertThat(overlaySkillManager.isOverridden("skillA")).isFalse();
 
@@ -204,12 +200,12 @@ class OverlaySkillManagerTest {
         Path publicSkillRoot = baseDir.resolve("public-skills");
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillA");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         overlaySkillManager.overrideSkill("skillA");
         assertThat(overlaySkillManager.isOverridden("skillA")).isTrue();
@@ -225,12 +221,12 @@ class OverlaySkillManagerTest {
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillP1");
         createSkillDir(publicSkillRoot, "skillP2");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillT1");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         overlaySkillManager.migrateImplicitOverrides();
 
@@ -245,7 +241,7 @@ class OverlaySkillManagerTest {
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillP1");
         createSkillDir(publicSkillRoot, "skillP2");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         List<Skill> result = overlaySkillManager.getAllVisibleSkills();
         assertThat(result).hasSize(2);
@@ -258,12 +254,12 @@ class OverlaySkillManagerTest {
         Path publicSkillRoot = baseDir.resolve("public-skills");
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillP1");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillT1");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         List<Skill> result = overlaySkillManager.getAllVisibleSkills();
         assertThat(result).hasSize(2);
@@ -276,12 +272,12 @@ class OverlaySkillManagerTest {
         Path publicSkillRoot = baseDir.resolve("public-skills");
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillA");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
         overlaySkillManager.overrideSkill("skillA");
 
         List<Skill> result = overlaySkillManager.getAllVisibleSkills();
@@ -295,12 +291,12 @@ class OverlaySkillManagerTest {
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillP1");
         createSkillDir(publicSkillRoot, "skillP2");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillT1");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         List<Skill> result = overlaySkillManager.getAllVisibleSkills();
         assertThat(result).hasSize(3);
@@ -355,7 +351,7 @@ class OverlaySkillManagerTest {
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
         Files.writeString(tenantSkillRoot.resolve("skillA").resolve("extra.md"), "extra content");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         Path result = overlaySkillManager.resolveSkillFile("skillA", "extra.md");
         assertThat(result).isNotNull();
@@ -367,7 +363,7 @@ class OverlaySkillManagerTest {
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
 
         Path result = overlaySkillManager.resolveSkillFile("skillA", "");
         assertThat(result).isNotNull();
@@ -379,7 +375,7 @@ class OverlaySkillManagerTest {
         Path publicSkillRoot = baseDir.resolve("public-skills");
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillP1");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.clearCurrentTenant();
         List<String> result = overlaySkillManager.getAllVisibleSkillNames();
@@ -392,12 +388,12 @@ class OverlaySkillManagerTest {
         Files.createDirectories(publicSkillRoot);
         createSkillDir(publicSkillRoot, "skillA");
         createSkillDir(publicSkillRoot, "skillP2");
-        publicSkillManager.register(publicSkillRoot);
+        publicSkillManager.register(publicSkillRoot.toString());
 
         TenantContextHolder.setCurrentTenant(tenantA);
         Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantA);
         createSkillDir(tenantSkillRoot, "skillA");
-        tenantSkillManager.register(tenantSkillRoot);
+        tenantSkillManager.register(tenantSkillRoot.toString());
         overlaySkillManager.overrideSkill("skillA");
 
         List<String> names = overlaySkillManager.getAllVisibleSkillNames();

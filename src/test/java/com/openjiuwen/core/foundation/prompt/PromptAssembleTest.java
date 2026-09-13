@@ -18,7 +18,6 @@ import com.openjiuwen.core.foundation.prompt.assemble.variables.TextableVariable
 import com.openjiuwen.core.foundation.prompt.assemble.variables.Variable;
 
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -141,7 +140,6 @@ class PromptAssembleTest {
             assertEquals("", var.getValue());
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("Variable with null inputKeys uses empty list")
         void testVariableNullInputKeys() {
@@ -182,8 +180,8 @@ class PromptAssembleTest {
             }
 
             @Override
-            public Object update(Map<String, Object> kwargs) {
-                return null;
+            public void update(Map<String, Object> kwargs) {
+                // No-op
             }
         }
 
@@ -196,9 +194,8 @@ class PromptAssembleTest {
             }
 
             @Override
-            public Object update(Map<String, Object> kwargs) {
+            public void update(Map<String, Object> kwargs) {
                 this.recordedInputs = new LinkedHashMap<>(kwargs);
-                return null;
             }
 
             public Map<String, Object> getRecordedInputs() {
@@ -213,11 +210,10 @@ class PromptAssembleTest {
             }
 
             @Override
-            public Object update(Map<String, Object> kwargs) {
+            public void update(Map<String, Object> kwargs) {
                 String k1 = kwargs.getOrDefault("key1", "").toString();
                 String k2 = kwargs.getOrDefault("key2", "").toString();
                 this.value = k1 + k2;
-                return this.value;
             }
         }
     }
@@ -308,7 +304,6 @@ class PromptAssembleTest {
             assertEquals(Map.of("info", "Author is Bob"), var.getValue());
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("Non-string values converted via toString")
         @SuppressWarnings("unchecked")

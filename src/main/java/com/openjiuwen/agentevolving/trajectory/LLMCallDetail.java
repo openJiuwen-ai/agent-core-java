@@ -4,94 +4,185 @@
 
 package com.openjiuwen.agentevolving.trajectory;
 
-import java.util.ArrayList;
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code LLMCallDetail} in
- * {@code openjiuwen/agent_evolving/trajectory/types.py}.
- * Complete LLM call execution data.
+ * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.LLMCallDetail.
+ * 
+ * @since 0.1.7
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class LLMCallDetail {
-
     private String model;
-    private List<Object> messages;
-    private Object response;
-    private List<Map<String, Object>> tools;
-    private Map<String, Object> usage;
-    private Map<String, Object> meta;
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private List<Object> messages = new ArrayList<>();
+    private Object response;
+    private List<Object> tools;
+    private Map<String, Object> usage;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private Map<String, Object> meta = new LinkedHashMap<>();
+
+    /**
+     * LLMCallDetail.
+     * 
+     * @since 0.1.7
+     */
     public LLMCallDetail() {
-        this.messages = new ArrayList<>();
-        this.meta = new LinkedHashMap<>();
     }
 
-    public LLMCallDetail(String model, List<Object> messages,
-                         Object response, List<Map<String, Object>> tools,
-                         Map<String, Object> usage, Map<String, Object> meta) {
+    /**
+     * LLMCallDetail.
+     * 
+     * @param model model
+     * @param messages messages
+     * @param response response
+     * @param tools tools
+     * @param usage usage
+     * @param meta meta
+     * @since 0.1.7
+     */
+    public LLMCallDetail(String model, List<Object> messages, Object response, List<Object> tools,
+            Map<String, Object> usage, Map<String, Object> meta) {
         this.model = model;
         this.messages = messages != null ? new ArrayList<>(messages) : new ArrayList<>();
         this.response = response;
-        this.tools = tools;
-        this.usage = usage;
+        this.tools = tools != null ? new ArrayList<>(tools) : null;
+        this.usage = usage != null ? new LinkedHashMap<>(usage) : null;
         this.meta = meta != null ? new LinkedHashMap<>(meta) : new LinkedHashMap<>();
     }
 
-    public static Builder builder() { return new Builder(); }
+    /**
+     * getModel.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public String getModel() {
+        return model;
+    }
 
-    public String getModel() { return model; }
-    public void setModel(String model) { this.model = model; }
+    /**
+     * setModel.
+     * 
+     * @param model model
+     * @since 0.1.7
+     */
+    public void setModel(String model) {
+        this.model = model;
+    }
 
-    public List<Object> getMessages() { return messages; }
+    /**
+     * getMessages.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<Object> getMessages() {
+        return messages;
+    }
+
+    /**
+     * setMessages.
+     * 
+     * @param messages messages
+     * @since 0.1.7
+     */
     public void setMessages(List<Object> messages) {
         this.messages = messages != null ? new ArrayList<>(messages) : new ArrayList<>();
     }
 
-    public Object getResponse() { return response; }
-    public void setResponse(Object response) { this.response = response; }
-
-    public List<Map<String, Object>> getTools() { return tools; }
-    public void setTools(List<Map<String, Object>> tools) { this.tools = tools; }
-
-    public Map<String, Object> getUsage() { return usage; }
-    public void setUsage(Map<String, Object> usage) { this.usage = usage; }
-
-    public Map<String, Object> getMeta() { return meta; }
-    public void setMeta(Map<String, Object> meta) {
-        this.meta = meta != null ? new LinkedHashMap<>(meta) : new LinkedHashMap<>();
+    /**
+     * getResponse.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Object getResponse() {
+        return response;
     }
 
-    public static final class Builder {
-        private String model;
-        private List<Object> messages;
-        private Object response;
-        private List<Map<String, Object>> tools;
-        private Map<String, Object> usage;
-        private Map<String, Object> meta;
+    /**
+     * setResponse.
+     * 
+     * @param response response
+     * @since 0.1.7
+     */
+    public void setResponse(Object response) {
+        this.response = response;
+    }
 
-        private Builder() {
-            this.messages = new ArrayList<>();
-            this.meta = new LinkedHashMap<>();
-        }
+    /**
+     * getTools.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<Object> getTools() {
+        return tools;
+    }
 
-        public Builder model(String model) { this.model = model; return this; }
-        public Builder messages(List<Object> messages) {
-            this.messages = messages != null ? new ArrayList<>(messages) : new ArrayList<>();
-            return this;
-        }
-        public Builder response(Object response) { this.response = response; return this; }
-        public Builder tools(List<Map<String, Object>> tools) { this.tools = tools; return this; }
-        public Builder usage(Map<String, Object> usage) { this.usage = usage; return this; }
-        public Builder meta(Map<String, Object> meta) {
-            this.meta = meta != null ? new LinkedHashMap<>(meta) : new LinkedHashMap<>();
-            return this;
-        }
+    /**
+     * setTools.
+     * 
+     * @param tools tools
+     * @since 0.1.7
+     */
+    public void setTools(List<Object> tools) {
+        this.tools = tools != null ? new ArrayList<>(tools) : null;
+    }
 
-        public LLMCallDetail build() {
-            return new LLMCallDetail(model, messages, response, tools, usage, meta);
-        }
+    /**
+     * getUsage.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Map<String, Object> getUsage() {
+        return usage;
+    }
+
+    /**
+     * setUsage.
+     * 
+     * @param usage usage
+     * @since 0.1.7
+     */
+    public void setUsage(Map<String, Object> usage) {
+        this.usage = usage != null ? new LinkedHashMap<>(usage) : null;
+    }
+
+    /**
+     * getMeta.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Map<String, Object> getMeta() {
+        return meta;
+    }
+
+    /**
+     * setMeta.
+     * 
+     * @param meta meta
+     * @since 0.1.7
+     */
+    public void setMeta(Map<String, Object> meta) {
+        this.meta = meta != null ? new LinkedHashMap<>(meta) : new LinkedHashMap<>();
     }
 }

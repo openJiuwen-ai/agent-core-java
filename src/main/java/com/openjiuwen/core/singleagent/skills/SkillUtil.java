@@ -4,157 +4,188 @@
 
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.foundation.prompt.PromptTemplate;
+import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 
 import java.io.IOException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
- * High-level utility for local and remote skill management.
- *
- * <p>Mirrors Python's {@code SkillUtil} in
- * {@code openjiuwen/core/single_agent/skills/skill_util.py}.</p>
+ * High-level utility for managing and working with skills.
+ * <p>
+ * Combines SkillManager and RemoteSkillUtil functionalities,
+ * providing skill registration, tool management, and prompt generation.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class SkillUtil {
-    public static final String SKILL_PROMPT_CONTENT = """
-            To help you better complete tasks, the following skill knowledge is equipped:
-            {{skills}}
-            You can use the read_file tool to read the corresponding SKILL.md file to obtain the relevant skill.
-            """;
+    private static final String SKILL_PROMPT_CONTENT =
+        "\nTo help you better complete tasks, the following skill knowledge is equipped:\n" + "%s\n"
+                + "You can use the readFile tool to read the corresponding SKILL.md file "
+                + "to obtain the relevant skill.\n";
 
     private final SkillManager skillManager;
     private final RemoteSkillUtil remoteSkillUtil;
 
+    /**
+     * SkillUtil.
+     * 
+     * @param sysOperationId sysOperationId
+     * @since 0.1.7
+     */
     public SkillUtil(String sysOperationId) {
         this.skillManager = new SkillManager(sysOperationId);
         this.remoteSkillUtil = new RemoteSkillUtil(sysOperationId);
     }
 
-    SkillUtil(SkillManager skillManager, RemoteSkillUtil remoteSkillUtil) {
-        this.skillManager = Objects.requireNonNull(skillManager, "skillManager");
-        this.remoteSkillUtil = Objects.requireNonNull(remoteSkillUtil, "remoteSkillUtil");
-    }
-
+    /**
+     * setSysOperationId.
+     * 
+     * @param sysOperationId sysOperationId
+     * @since 0.1.7
+     */
     public void setSysOperationId(String sysOperationId) {
-        skillManager.setSysOperationId(sysOperationId);
-        remoteSkillUtil.setSysOperationId(sysOperationId);
+        this.skillManager.setSysOperationId(sysOperationId);
+        this.remoteSkillUtil.setSysOperationId(sysOperationId);
     }
 
-    public void set_sys_operation_id(String sysOperationId) {
-        setSysOperationId(sysOperationId);
+    /**
+     * getSkillManager.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public SkillManager getSkillManager() {
+        return skillManager;
     }
 
-    public boolean registerSkills(String skillPath, Object agent, String sessionId) throws IOException {
-        return registerSkills(List.of(skillPath), agent, sessionId);
+    /**
+     * getRemoteSkillUtil.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public RemoteSkillUtil getRemoteSkillUtil() {
+        return remoteSkillUtil;
     }
 
-    public boolean registerSkills(String skillPath, Object agent, String sessionId, boolean useMetadataName)
-            throws IOException {
-        return registerSkills(List.of(skillPath), agent, sessionId, useMetadataName);
-    }
-
-    public boolean registerSkills(List<String> skillPaths, Object agent, String sessionId) throws IOException {
-        return registerSkills(skillPaths, agent, sessionId, false);
-    }
-
-    public boolean registerSkills(List<String> skillPaths, Object agent, String sessionId, boolean useMetadataName)
-            throws IOException {
-        List<Path> paths = skillPaths == null ? List.of() : skillPaths.stream().map(Path::of).toList();
-        skillManager.register(paths, false, useMetadataName);
-        return true;
-    }
-
-    public boolean register_skills(List<String> skillPaths, Object agent, String sessionId) throws IOException {
-        return registerSkills(skillPaths, agent, sessionId);
+    /**
+     * Register skills from a path.
+     * 
+     * @param skillPath the path to the skill directory
+     * @param agent the agent instance (for compatibility)
+     * @since 0.1.7
+     */
+    public void registerSkills(Object skillPath, BaseAgent agent) {
+        if (skillPath instanceof String path) {
+            skillManager.register(path);
+        } else if (skillPath instanceof List<?> list) {
+            for (Object p : list) {
+                if (p instanceof String s) {
+                    skillManager.register(s);
+                }
+            }
+        } else {
+            // no-op
+        }
     }
 
     /**
      * Register skills after checking each real path against a trusted root.
      *
-     * <p>Absolute paths are accepted when they canonicalize inside {@code skillsRoot}.</p>
+     * @param skillPath path or list of paths to register
+     * @param skillsRoot trusted root containing loadable skills
+     * @param agent agent instance (for compatibility)
+     * @since 0.1.13
      */
-    public boolean registerSkills(List<String> skillPaths, Path skillsRoot, Object agent, String sessionId,
-                                  boolean useMetadataName) throws IOException {
-        if (skillPaths == null) {
-            return true;
+    public void registerSkills(Object skillPath, Path skillsRoot, BaseAgent agent) {
+        if (skillPath instanceof String path) {
+            skillManager.register(path, skillsRoot, null, false);
+        } else if (skillPath instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof String path) {
+                    skillManager.register(path, skillsRoot, null, false);
+                }
+            }
+        } else {
+            // no-op
         }
-        List<Path> paths = new ArrayList<>();
-        for (String skillPath : skillPaths) {
-            paths.add(SkillManager.resolveSafeSkillPath(skillPath, skillsRoot));
-        }
-        skillManager.register(paths, false, useMetadataName);
-        return true;
     }
 
-    public boolean registerSkills(List<String> skillPaths, Path skillsRoot, Object agent, String sessionId)
-            throws IOException {
-        return registerSkills(skillPaths, skillsRoot, agent, sessionId, false);
+    /**
+     * Register remote skills from GitHub.
+     * 
+     * @param skillsDir local skills directory
+     * @param githubTree the GitHub tree reference
+     * @param token GitHub API token (optional)
+     * @since 0.1.7
+     */
+    public void registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token) {
+        remoteSkillUtil.uploadSkillFromGitHub(githubTree, skillsDir, token);
     }
 
-    public boolean registerSkills(String skillPath, Path skillsRoot, Object agent, String sessionId)
-            throws IOException {
-        return registerSkills(List.of(skillPath), skillsRoot, agent, sessionId);
-    }
-
-    public List<Path> registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token) {
-        return remoteSkillUtil.uploadSkillFromGithub(githubTree, skillsDir, token);
-    }
-
-    public List<Path> register_remote_skills(String skillsDir, GitHubTree githubTree, String token) {
-        return registerRemoteSkills(skillsDir, githubTree, token);
-    }
-
+    /**
+     * Check if any skills are registered.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public boolean hasSkill() {
         return skillManager.count() > 0;
     }
 
-    public boolean has_skill() {
-        return hasSkill();
-    }
-
+    /**
+     * Generate a formatted prompt string with information about all registered skills.
+     * <p>
+     * SKILL.md paths are only emitted when the skill directory lies inside the LOCAL FS
+     * bases (workspace / cwd / projectRoot). Paths outside those roots are omitted so the
+     * model is not steered to invent relative paths or copy long absolute temp paths.
+     * </p>
+     *
+     * @return system + skills prompt text for the agent
+     * @since 0.1.7
+     */
     public String getSkillPrompt() {
-        String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
-                + "Before attempting any task, read the relevant skill document (SKILL.md) "
-                + "using read_file and follow its workflow.\n";
-        List<String> skillsInfo = new ArrayList<>();
         List<Skill> skills = skillManager.getAll();
+        StringBuilder skillsInfo = new StringBuilder();
         for (int i = 0; i < skills.size(); i++) {
             Skill skill = skills.get(i);
-            StringBuilder line = new StringBuilder()
-                    .append(i).append(".Skill name: ").append(skill.getName())
-                    .append("; Skill description: ").append(skill.getDescription());
-            // Only emit SKILL.md paths inside workspace/cwd/projectRoot (issue #50).
+            skillsInfo.append(i).append(".Skill name: ").append(skill.getName()).append("; Skill description: ")
+                    .append(skill.getDescription());
             String skillMdPath = resolveSkillMdPathForPrompt(skill.getDirectory());
             if (skillMdPath != null) {
-                line.append("; Skill directory: ").append(skillMdPath);
+                skillsInfo.append("; Skill directory: ").append(skillMdPath);
             }
-            skillsInfo.add(line.toString());
+            skillsInfo.append("\n");
         }
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put("skills", skillsInfo.stream().collect(Collectors.joining("\n")));
-        PromptTemplate template = PromptTemplate.builder().content(SKILL_PROMPT_CONTENT).build();
-        return systemPrompt + "\n" + template.format(values).getContent();
+
+        String skillText = String.format(SKILL_PROMPT_CONTENT, skillsInfo.toString());
+        String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
+                + "Before attempting any task, read the relevant skill document (SKILL.md) "
+                + "using readFile and follow its workflow.\n";
+        return systemPrompt + "\n" + skillText;
     }
 
     /**
      * Resolves a relative {@code SKILL.md} path for prompts when the skill lies under LOCAL FS bases.
+     * <p>
      * Skills outside workspace / cwd / projectRoot return {@code null} so no absolute temp path is emitted.
+     *
+     * @param directory skill directory absolute or relative path
+     * @return POSIX-style relative path to {@code SKILL.md}, or {@code null} when outside allowed bases
+     * @since 0.1.14
      */
-    static String resolveSkillMdPathForPrompt(Path directory) {
-        if (directory == null) {
+    static String resolveSkillMdPathForPrompt(String directory) {
+        if (directory == null || directory.isBlank()) {
             return null;
         }
         Path skillDir;
         try {
-            skillDir = toNormalizedAbsolute(directory);
+            skillDir = toNormalizedAbsolute(Path.of(directory));
         } catch (InvalidPathException e) {
             return null;
         }
@@ -168,6 +199,12 @@ public class SkillUtil {
         return null;
     }
 
+    /**
+     * Collects normalized LOCAL FS roots used to decide whether a skill path is prompt-safe.
+     *
+     * @return ordered unique absolute bases from workspace, cwd, and projectRoot
+     * @since 0.1.7
+     */
     private static List<Path> localFsBases() {
         List<Path> bases = new ArrayList<>();
         addBase(bases, CwdContext.getWorkspace());
@@ -176,6 +213,13 @@ public class SkillUtil {
         return bases;
     }
 
+    /**
+     * Appends a usable absolute root to {@code bases} when {@code root} is non-blank and parseable.
+     *
+     * @param bases accumulator of absolute base paths
+     * @param root candidate root string; blank or unusable values are skipped
+     * @since 0.1.7
+     */
     private static void addBase(List<Path> bases, String root) {
         if (root == null || root.isBlank()) {
             return;
@@ -190,6 +234,14 @@ public class SkillUtil {
         }
     }
 
+    /**
+     * Absolute + normalize, preferring {@link Path#toRealPath()} so Linux {@code /tmp} symlinks
+     * match skill directories that already resolved through the real path.
+     *
+     * @param path input path
+     * @return normalized absolute path (realpath when available)
+     * @since 0.1.14
+     */
     private static Path toNormalizedAbsolute(Path path) {
         Path absolute = path.toAbsolutePath().normalize();
         try {
@@ -199,30 +251,18 @@ public class SkillUtil {
         }
     }
 
+    /**
+     * Returns whether {@code candidate} is the same as or nested under {@code base}.
+     *
+     * @param base allowed root; {@code null} yields {@code false}
+     * @param candidate path to test; {@code null} yields {@code false}
+     * @return {@code true} when candidate is within base
+     * @since 0.1.7
+     */
     private static boolean isWithinBase(Path base, Path candidate) {
         if (base == null || candidate == null) {
             return false;
         }
         return candidate.startsWith(base);
-    }
-
-    public String get_skill_prompt() {
-        return getSkillPrompt();
-    }
-
-    public SkillManager getSkillManager() {
-        return skillManager;
-    }
-
-    public SkillManager get_skill_manager() {
-        return skillManager;
-    }
-
-    public RemoteSkillUtil getRemoteSkillUtil() {
-        return remoteSkillUtil;
-    }
-
-    public RemoteSkillUtil get_remote_skill_util() {
-        return remoteSkillUtil;
     }
 }

@@ -10,71 +10,158 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code Entity} in
- * {@code openjiuwen/core/foundation/store/graph/graph_object.py}.
+ * Node / Entity representing entity nodes in graph.
+ * 
+ * @since 0.1.7
  */
 public class Entity extends NamedGraphObject {
+    private List<Float> nameEmbedding;
 
-    private List<Double> nameEmbedding;
-    private final List<Object> relations = new ArrayList<>();
-    private final List<String> episodes = new ArrayList<>();
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private List<Object> relations = new ArrayList<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private List<String> episodes = new ArrayList<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> attributes = new LinkedHashMap<>();
 
+    /**
+     * Entity.
+     * 
+     * @since 0.1.7
+     */
     public Entity() {
         setObjType("Entity");
     }
 
-    @Override
-    public List<EmbeddingTask> fetchEmbedTask() {
-        return List.of(
-                new EmbeddingTask(this, "content_embedding", getContent()),
-                new EmbeddingTask(this, "name_embedding", getName())
-        );
+    /**
+     * getNameEmbedding.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<Float> getNameEmbedding() {
+        return nameEmbedding;
     }
 
-    public List<String> serializeRelations() {
-        return serializeGraphObjectList(relations);
+    /**
+     * setNameEmbedding.
+     * 
+     * @param nameEmbedding nameEmbedding
+     * @since 0.1.7
+     */
+    public void setNameEmbedding(List<Float> nameEmbedding) {
+        this.nameEmbedding = nameEmbedding;
     }
 
-    public List<String> serializeEpisodes() {
-        return serializeGraphObjectList(episodes);
-    }
-
-    public List<Double> getNameEmbedding() {
-        return nameEmbedding == null ? null : new ArrayList<>(nameEmbedding);
-    }
-
-    public void setNameEmbedding(List<Double> nameEmbedding) {
-        this.nameEmbedding = copyDoubles(nameEmbedding);
-    }
-
+    /**
+     * getRelations.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public List<Object> getRelations() {
         return relations;
     }
 
-    public void setRelations(List<?> values) {
-        relations.clear();
-        if (values != null) {
-            relations.addAll(values);
-        }
+    /**
+     * setRelations.
+     * 
+     * @param relations relations
+     * @since 0.1.7
+     */
+    public void setRelations(List<Object> relations) {
+        this.relations = relations;
     }
 
+    /**
+     * getEpisodes.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public List<String> getEpisodes() {
         return episodes;
     }
 
-    public void setEpisodes(List<String> values) {
-        episodes.clear();
-        if (values != null) {
-            episodes.addAll(values);
-        }
+    /**
+     * setEpisodes.
+     * 
+     * @param episodes episodes
+     * @since 0.1.7
+     */
+    public void setEpisodes(List<String> episodes) {
+        this.episodes = episodes;
     }
 
+    /**
+     * getAttributes.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getAttributes() {
-        return new LinkedHashMap<>(attributes);
+        return attributes;
     }
 
+    /**
+     * setAttributes.
+     * 
+     * @param attributes attributes
+     * @since 0.1.7
+     */
     public void setAttributes(Map<String, Object> attributes) {
-        this.attributes = copyMetadata(attributes);
+        this.attributes = attributes;
+    }
+
+    /**
+     * fetchEmbedTask.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public List<GraphUtils.EmbedTask> fetchEmbedTask() {
+        return List.of(new GraphUtils.EmbedTask(this, "contentEmbedding", getContent()),
+                new GraphUtils.EmbedTask(this, "nameEmbedding", getName()));
+    }
+
+    /**
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public Map<String, Object> toMap() {
+        Map<String, Object> result = super.toMap();
+        List<String> relationIds = new ArrayList<>();
+        for (Object relation : relations) {
+            if (relation instanceof String relationId) {
+                relationIds.add(relationId);
+            } else if (relation instanceof BaseGraphObject graphObject) {
+                relationIds.add(graphObject.getUuid());
+            } else {
+                throw new IllegalArgumentException("relation must be a String or BaseGraphObject");
+            }
+        }
+        result.put("name_embedding", nameEmbedding);
+        result.put("relations", relationIds.stream().distinct().sorted().toList());
+        result.put("episodes", episodes.stream().distinct().sorted().toList());
+        result.put("attributes", attributes);
+        return result;
     }
 }

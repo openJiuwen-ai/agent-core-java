@@ -13,7 +13,7 @@ import com.openjiuwen.core.graph.visualization.DrawableEdge;
 import com.openjiuwen.core.graph.visualization.DrawableGraph;
 import com.openjiuwen.core.graph.visualization.DrawableNode;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.WorkflowSession;
+import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
@@ -71,8 +71,8 @@ class WorkflowAdvancedSystemTest {
         }
     }
 
-    private static WorkflowSession newSession() {
-        return new WorkflowSession(null, UUID.randomUUID().toString(), Map.of());
+    private static WorkflowSessionApi newSession() {
+        return new WorkflowSessionApi(null, UUID.randomUUID().toString(), Map.of());
     }
 
     @Nested
@@ -178,7 +178,7 @@ class WorkflowAdvancedSystemTest {
         @Test
         @DisplayName("Empty DrawableGraph")
         void testEmptyDrawableGraph() {
-            DrawableGraph graph = new DrawableGraph(Map.of(), List.of(), List.of(), List.of(), List.of());
+            DrawableGraph graph = new DrawableGraph();
             assertNotNull(graph);
         }
     }

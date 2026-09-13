@@ -11,10 +11,9 @@ import lombok.experimental.SuperBuilder;
 import java.util.Map;
 
 /**
- * Stream related event - base class for all streaming events.
- *
- * <p>Mirrors Python's {@code StreamEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * Stream related event — base class for all streaming events.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -25,10 +24,21 @@ public class StreamEvent extends BaseLogEvent {
     private Integer frameCount;
     private String streamId;
 
+    /**
+     * StreamEvent.
+     * 
+     * @since 0.1.7
+     */
     public StreamEvent() {
         super();
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "stream_type", streamType);
@@ -37,5 +47,3 @@ public class StreamEvent extends BaseLogEvent {
         putIfNotNull(map, "stream_id", streamId);
     }
 }
-
-

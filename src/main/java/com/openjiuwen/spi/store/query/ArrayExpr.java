@@ -1,30 +1,28 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.spi.store.query;
 
 /**
- * Array index filter expression.
- * <p>
- * Mirrors Python's {@code ArrayExpr} in
- * {@code openjiuwen/core/foundation/store/query/base.py}.
- * </p>
+ * Expression for array field operations.
+ * 
+ * @since 0.1.7
  */
-public final class ArrayExpr extends QueryExpr {
-
+public class ArrayExpr extends QueryExpr {
     private final String field;
     private final Integer index;
     private final String operator;
     private final Object value;
 
     /**
-     * Create an array index filter expression.
-     *
-     * @param field    field name
-     * @param index    array index
-     * @param operator comparison operator
-     * @param value    comparison value
+     * ArrayExpr.
+     * 
+     * @param field field
+     * @param index index
+     * @param operator operator
+     * @param value value
+     * @since 0.1.7
      */
     public ArrayExpr(String field, Integer index, String operator, Object value) {
         this.field = field;
@@ -33,22 +31,53 @@ public final class ArrayExpr extends QueryExpr {
         this.value = value;
     }
 
+    /**
+     * getField.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getField() {
         return field;
     }
 
+    /**
+     * May be {@code null} when not filtering by index.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Integer getIndex() {
         return index;
     }
 
+    /**
+     * getOperator.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getOperator() {
         return operator;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Object getValue() {
         return value;
     }
 
+    /**
+     * toExpr.
+     * 
+     * @param database database
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object toExpr(String database) {
         return QueryLanguageRegistry.get(database).applyArray(this);

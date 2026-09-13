@@ -14,12 +14,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TenantCheckpointerIsolationTest {
 
     @BeforeEach
-    void clearContext() {
-        TenantContextHolder.clearCurrentTenant();
-    }
-
     @AfterEach
-    void restoreContext() {
+    void clearContext() {
         TenantContextHolder.clearCurrentTenant();
     }
 

@@ -4,231 +4,360 @@
 
 package com.openjiuwen.core.sysop;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.logging.events.SysOperationEvent;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.foundation.tool.utils.CallableSchemaExtractor;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
+import java.lang.reflect.Parameter;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Consumer;
 
 /**
- * Base operation for file, code, shell and custom sys operations.
- *
- * <p>Mirrors Python's {@code BaseOperation} in
- * {@code openjiuwen/core/sys_operation/base.py}.</p>
+ * Base class for all system operations (file, code, shell, etc.).
+ * <p>
+ * Mirrors Python's {@code BaseOperation} in {@code sys_operation/base.py}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseOperation {
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    /**
+     * logger.
+     * 
+     * @since 0.1.7
+     */
+    protected static final LoggerProtocol logger = Loggers.SYS_OPERATION;
 
     private final String name;
     private final OperationMode mode;
     private final String description;
     private final Object runConfig;
 
+    /**
+     * Create a base operation.
+     * 
+     * @param name operation name
+     * @param mode operation mode (LOCAL or SANDBOX)
+     * @param description human-readable description
+     * @param runConfig runtime configuration (LocalWorkConfig or SandboxGatewayConfig)
+     * @since 0.1.7
+     */
     protected BaseOperation(String name, OperationMode mode, String description, Object runConfig) {
         this.name = name;
-        this.mode = mode != null ? mode : OperationMode.LOCAL;
-        this.description = description != null ? description : "";
+        this.mode = mode;
+        this.description = description;
         this.runConfig = runConfig;
     }
 
+    /**
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getName() {
         return name;
     }
 
+    /**
+     * getMode.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public OperationMode getMode() {
         return mode;
     }
 
+    /**
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getDescription() {
         return description;
     }
 
-    public Object getRunConfig() {
+    /**
+     * Get the run configuration as LocalWorkConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    protected LocalWorkConfig getLocalConfig() {
+        return (LocalWorkConfig) runConfig;
+    }
+
+    /**
+     * Get the run configuration as SandboxGatewayConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    protected SandboxGatewayConfig getSandboxConfig() {
+        return (SandboxGatewayConfig) runConfig;
+    }
+
+    /**
+     * getRunConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    protected Object getRunConfig() {
         return runConfig;
     }
 
-    public List<ToolCard> listTools() {
-        return null;
-    }
+    /**
+     * Retrieve a list of tool cards describing available operations.
+     * 
+     * @return list of ToolCard objects
+     * @since 0.1.7
+     */
+    public abstract List<ToolCard> listTools();
 
-    public static Map<String, Object> safeModelDump(Object obj) {
-        return safeModelDump(obj, Map.of("error", "model_dump failed"));
-    }
-
-    @SuppressWarnings("unchecked")
-    public static Map<String, Object> safeModelDump(Object obj, Map<String, Object> defaultValue) {
-        Map<String, Object> fallback = defaultValue != null
-                ? new LinkedHashMap<>(defaultValue)
-                : Map.of("error", "model_dump failed");
-        if (obj == null) {
-            return fallback;
-        }
-        try {
-            if (obj instanceof Map<?, ?> rawMap) {
-                Map<String, Object> values = new LinkedHashMap<>();
-                rawMap.forEach((key, value) -> values.put(String.valueOf(key), value));
-                return values;
-            }
-            return OBJECT_MAPPER.convertValue(obj, new TypeReference<Map<String, Object>>() {
-            });
-        } catch (RuntimeException exception) {
-            return fallback;
-        }
-    }
-
-    protected SysOperationEvent createSysOperationEvent(LogEventType eventType,
-                                                        String methodName,
-                                                        Map<String, Object> methodParams,
-                                                        Map<String, Object> methodResult,
-                                                        Double methodExecTimeMs,
-                                                        Map<String, Object> kwargs) {
-        if (!isSysOperationEventType(eventType)) {
-            return null;
-        }
-        SysOperationEvent event = new SysOperationEvent();
-        event.setEventType(eventType);
-        setCommonEventFields(event, methodName, methodParams, methodResult, methodExecTimeMs, kwargs);
-        return event;
-    }
-
-    protected SysOperationEvent createSysOperationEvent(String eventType,
-                                                        String methodName,
-                                                        Map<String, Object> methodParams,
-                                                        Map<String, Object> methodResult,
-                                                        Double methodExecTimeMs,
-                                                        Map<String, Object> kwargs) {
-        return null;
-    }
-
-    private void setCommonEventFields(SysOperationEvent event,
-                                      String methodName,
-                                      Map<String, Object> methodParams,
-                                      Map<String, Object> methodResult,
-                                      Double methodExecTimeMs,
-                                      Map<String, Object> kwargs) {
-        event.setOperationName(name);
-        event.setOperationMode(mode.value());
-        event.setOperationDesc(description);
-        event.setMethodName(methodName);
-        event.setMethodParams(methodParams);
-        event.setMethodResult(methodResult);
-        event.setMethodExecTimeMs(methodExecTimeMs);
-        Map<String, Object> extra = kwargs != null ? new LinkedHashMap<>(kwargs) : new LinkedHashMap<>();
-        Object moduleId = extra.containsKey("module_id") ? extra.remove("module_id") : "sys_operation";
-        Object moduleName = extra.containsKey("module_name") ? extra.remove("module_name") : "sys_operation";
-        if (moduleId != null) {
-            event.setModuleId(String.valueOf(moduleId));
-        }
-        if (moduleName != null) {
-            event.setModuleName(String.valueOf(moduleName));
-        }
-        applyString(extra, "session_id", event::setSessionId);
-        applyString(extra, "conversation_id", event::setConversationId);
-        applyString(extra, "trace_id", event::setTraceId);
-        applyString(extra, "correlation_id", event::setCorrelationId);
-        applyString(extra, "parent_event_id", event::setParentEventId);
-        applyString(extra, "error_code", event::setErrorCode);
-        applyString(extra, "error_message", event::setErrorMessage);
-        applyString(extra, "message", event::setMessage);
-        applyString(extra, "stacktrace", event::setStacktrace);
-        applyString(extra, "exception", event::setExceptionDetail);
-        Object metadata = extra.remove("metadata");
-        if (metadata instanceof Map<?, ?> rawMetadata) {
-            Map<String, Object> values = new LinkedHashMap<>();
-            rawMetadata.forEach((key, value) -> values.put(String.valueOf(key), value));
-            event.setMetadata(values);
-        }
-    }
-
-    private static boolean isSysOperationEventType(LogEventType eventType) {
-        return eventType == LogEventType.SYS_OP_START
-                || eventType == LogEventType.SYS_OP_END
-                || eventType == LogEventType.SYS_OP_ERROR
-                || eventType == LogEventType.SYS_OP_STREAM;
-    }
-
-    private static void applyString(Map<String, Object> values, String key, Consumer<String> setter) {
-        Object value = values.remove(key);
-        if (value != null) {
-            setter.accept(String.valueOf(value));
-        }
-    }
-
+    /**
+     * Generate tool cards for the specified method names using reflection.
+     * 
+     * @param methodNames list of public method names to expose as tools
+     * @return list of ToolCard objects
+     * @since 0.1.7
+     */
     protected List<ToolCard> generateToolCards(List<String> methodNames) {
-        if (methodNames == null || methodNames.isEmpty()) {
-            return List.of();
-        }
-        List<ToolCard> toolCards = new ArrayList<>();
-        for (String methodName : methodNames) {
-            Method method = resolveMethod(methodName);
-            if (method == null) {
-                continue;
-            }
-            Map<String, Object> inputParams = CallableSchemaExtractor.generateSchema(method);
-            List<String> required = pythonRequiredParameters(methodName);
-            if (required != null) {
-                inputParams.put("required", required);
-            }
-            toolCards.add(ToolCard.builder()
-                    .id(methodName)
-                    .name(methodName)
-                    .description(CallableSchemaExtractor.extractFunctionDescription(method))
-                    .inputParams(inputParams)
-                    .build());
-        }
-        return toolCards;
+        return methodNames.stream().map(this::findMethod).filter(method -> method != null)
+                .map(method -> (ToolCard) ToolCard.builder().name(method.getName())
+                        .description(humanize(method.getName())).inputParams(buildInputSchema(method)).build())
+                .toList();
     }
 
-    Method resolveMethod(String methodName) {
-        String javaName = snakeToCamel(methodName);
+    /**
+     * findMethod.
+     * 
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
+    private Method findMethod(String methodName) {
         for (Method method : getClass().getMethods()) {
-            if (method.getName().equals(javaName) || method.getName().equals(methodName)) {
+            if (method.getName().equals(methodName) && method.getDeclaringClass() != Object.class) {
                 return method;
             }
         }
         return null;
     }
 
-    private List<String> pythonRequiredParameters(String methodName) {
-        return switch (methodName) {
-            case "read_file", "read_file_stream", "list_files", "list_directories" -> List.of("path");
-            case "write_file" -> List.of("path", "content");
-            case "upload_file" -> List.of("localPath", "targetPath");
-            case "upload_file_stream" -> List.of("localPath", "targetPath");
-            case "download_file" -> List.of("sourcePath", "localPath");
-            case "download_file_stream" -> List.of("sourcePath", "localPath");
-            case "search_files" -> List.of("path", "pattern");
-            case "execute_cmd", "execute_cmd_stream", "execute_cmd_background" -> List.of("command");
-            case "execute_code", "execute_code_stream" -> List.of("code", "language");
-            default -> null;
-        };
+    /**
+     * buildInputSchema.
+     * 
+     * @param method method
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildInputSchema(Method method) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        Map<String, Object> properties = new LinkedHashMap<>();
+        for (Parameter parameter : method.getParameters()) {
+            properties.put(parameter.getName(), buildParameterSchema(parameter));
+        }
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        return schema;
     }
 
-    static String snakeToCamel(String name) {
-        if (name == null || name.isBlank()) {
+    /**
+     * buildParameterSchema.
+     * 
+     * @param parameter parameter
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildParameterSchema(Parameter parameter) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        Class<?> parameterType = parameter.getType();
+        schema.put("description", humanize(parameter.getName()));
+
+        if (parameterType == String.class || parameterType == char.class || parameterType == Character.class) {
+            schema.put("type", "string");
+        } else if (parameterType == boolean.class || parameterType == Boolean.class) {
+            schema.put("type", "boolean");
+        } else if (parameterType == int.class || parameterType == Integer.class || parameterType == long.class
+                || parameterType == Long.class || parameterType == short.class || parameterType == Short.class
+                || parameterType == byte.class || parameterType == Byte.class) {
+            schema.put("type", "integer");
+        } else if (parameterType == float.class || parameterType == Float.class || parameterType == double.class
+                || parameterType == Double.class) {
+            schema.put("type", "number");
+        } else if (parameterType.isEnum()) {
+            schema.put("type", "string");
+            Object[] constants = parameterType.getEnumConstants();
+            if (constants != null) {
+                schema.put("enum", java.util.Arrays.stream(constants).map(String::valueOf).toList());
+            }
+        } else if (parameterType.isArray() || List.class.isAssignableFrom(parameterType)) {
+            schema.put("type", "array");
+            schema.put("items", buildArrayItemSchema(parameterType, parameter.getParameterizedType()));
+        } else if (Map.class.isAssignableFrom(parameterType)) {
+            schema.put("type", "object");
+        } else {
+            schema.put("type", "object");
+        }
+
+        return schema;
+    }
+
+    /**
+     * buildArrayItemSchema.
+     * 
+     * @param parameterType parameterType
+     * @param genericType genericType
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildArrayItemSchema(Class<?> parameterType, Type genericType) {
+        Map<String, Object> items = new LinkedHashMap<>();
+        Class<?> itemType = Object.class;
+        if (parameterType.isArray()) {
+            itemType = parameterType.getComponentType();
+        } else if (genericType instanceof ParameterizedType parameterizedType
+                && parameterizedType.getActualTypeArguments().length > 0
+                && parameterizedType.getActualTypeArguments()[0] instanceof Class<?> typeClass) {
+            itemType = typeClass;
+        }
+
+        if (itemType == String.class || itemType == char.class || itemType == Character.class) {
+            items.put("type", "string");
+        } else if (itemType == int.class || itemType == Integer.class || itemType == long.class
+                || itemType == Long.class || itemType == short.class || itemType == Short.class
+                || itemType == byte.class || itemType == Byte.class) {
+            items.put("type", "integer");
+        } else if (itemType == float.class || itemType == Float.class || itemType == double.class
+                || itemType == Double.class) {
+            items.put("type", "number");
+        } else if (itemType == boolean.class || itemType == Boolean.class) {
+            items.put("type", "boolean");
+        } else {
+            items.put("type", "object");
+        }
+        return items;
+    }
+
+    /**
+     * humanize.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
+    private String humanize(String value) {
+        if (value == null || value.isBlank()) {
             return "";
         }
-        String[] parts = name.toLowerCase(Locale.ROOT).split("_");
-        StringBuilder builder = new StringBuilder(parts[0]);
-        for (int index = 1; index < parts.length; index += 1) {
-            if (parts[index].isEmpty()) {
-                continue;
+        String normalized = value.replaceAll("([a-z])([A-Z])", "$1 $2").replace('_', ' ');
+        return normalized.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * safeModelDump.
+     * 
+     * @param obj obj
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    protected static Map<String, Object> safeModelDump(Object obj, Map<String, Object> defaultValue) {
+        if (defaultValue == null) {
+            defaultValue = Map.of("error", "model_dump failed");
+        }
+        if (obj == null) {
+            return defaultValue;
+        }
+        try {
+            if (obj instanceof Map) {
+                return (Map<String, Object>) obj;
             }
-            builder.append(Character.toUpperCase(parts[index].charAt(0)));
-            if (parts[index].length() > 1) {
-                builder.append(parts[index].substring(1));
+            // Use Jackson ObjectMapper if available, otherwise use reflection-based approach
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (java.lang.reflect.Method method : obj.getClass().getMethods()) {
+                String methodName = method.getName();
+                if (method.getParameterCount() == 0 && method.getDeclaringClass() != Object.class
+                        && (methodName.startsWith("get") || methodName.startsWith("is"))) {
+                    String fieldName;
+                    if (methodName.startsWith("get") && methodName.length() > 3) {
+                        fieldName = Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4);
+                    } else if (methodName.startsWith("is") && methodName.length() > 2) {
+                        fieldName = Character.toLowerCase(methodName.charAt(2)) + methodName.substring(3);
+                    } else {
+                        continue;
+                    }
+                    Object value = method.invoke(obj);
+                    result.put(fieldName, value);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Create a SysOperationEvent for logging.
+     * 
+     * @param eventType type of the system operation event
+     * @param methodName name of the method being logged
+     * @param methodParams parameters isPassed to the method
+     * @param methodResult results returned by the method
+     * @param methodExecTimeMs execution time in milliseconds
+     * @return created SysOperationEvent, or null
+     * @since 0.1.7
+     */
+    protected SysOperationEvent createSysOperationEvent(LogEventType eventType, String methodName,
+            Map<String, Object> methodParams, Map<String, Object> methodResult, Double methodExecTimeMs) {
+        return createSysOperationEvent(eventType, methodName, methodParams, methodResult, methodExecTimeMs, null);
+    }
+
+    /**
+     * Create a SysOperationEvent for logging with additional metadata.
+     * <p>
+     * Mirrors Python's {@code _create_sys_operation_event(..., **kwargs)}.
+     * The {@code extras} map carries additional arbitrary parameters similar to Python's kwargs.
+     * 
+     * @param eventType type of the system operation event
+     * @param methodName name of the method being logged
+     * @param methodParams parameters isPassed to the method
+     * @param methodResult results returned by the method
+     * @param methodExecTimeMs execution time in milliseconds
+     * @param extras additional key-value pairs (mirrors Python's **kwargs)
+     * @return created SysOperationEvent, or null
+     * @since 0.1.7
+     */
+    protected SysOperationEvent createSysOperationEvent(LogEventType eventType, String methodName,
+            Map<String, Object> methodParams, Map<String, Object> methodResult, Double methodExecTimeMs,
+            Map<String, Object> extras) {
+        String moduleId = "sys_operation";
+        String moduleName = "sys_operation";
+
+        if (extras != null) {
+            if (extras.containsKey("module_id")) {
+                moduleId = String.valueOf(extras.get("module_id"));
+            }
+            if (extras.containsKey("module_name")) {
+                moduleName = String.valueOf(extras.get("module_name"));
             }
         }
-        return builder.toString();
+
+        return SysOperationEvent.builder().eventType(eventType).moduleId(moduleId).moduleName(moduleName)
+                .operationName(name).operationMode(mode != null ? mode.getValue() : null).operationDesc(description)
+                .methodName(methodName).methodParams(methodParams).methodResult(methodResult)
+                .methodExecTimeMs(methodExecTimeMs).build();
     }
 }

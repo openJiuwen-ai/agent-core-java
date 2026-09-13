@@ -4,29 +4,45 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
+import java.util.function.Supplier;
+
 /**
- * 0.1.12-compatible agent-group manager alias.
- *
- * <p>Mirrors Python's {@code AgentGroupMgr} in
- * {@code openjiuwen/core/runner/resources_manager/agent_group_manager.py}.</p>
- *
- * @param <T> agent group type retained for source compatibility
+ * Manager for AgentGroup resource providers.
+ * Mirrors Python's {@code AgentGroupMgr} in {@code resources_manager/agent_group_manager.py}.
+ * 
+ * @since 0.1.7
  */
-public class AgentGroupMgr<T> extends AgentTeamManager {
-
-    public String kind() {
-        return "agent_team";
+public class AgentGroupMgr<T> extends AbstractManager<T> {
+    /**
+     * addAgentGroup.
+     * 
+     * @param agentGroupId agentGroupId
+     * @param agentGroup agentGroup
+     * @since 0.1.7
+     */
+    public void addAgentGroup(String agentGroupId, Supplier<? extends T> agentGroup) {
+        registerResourceProvider(agentGroupId, agentGroup);
     }
 
-    public void addAgentGroup(String agentGroupId, java.util.function.Supplier<?> agentGroup) {
-        addAgentTeam(agentGroupId, agentGroup);
+    /**
+     * removeAgentGroup.
+     * 
+     * @param agentGroupId agentGroupId
+     * @return the result
+     * @since 0.1.7
+     */
+    public Supplier<? extends T> removeAgentGroup(String agentGroupId) {
+        return unregisterResourceProvider(agentGroupId);
     }
 
-    public java.util.function.Supplier<?> removeAgentGroup(String agentGroupId) {
-        return removeAgentTeam(agentGroupId);
-    }
-
-    public java.util.concurrent.CompletionStage<Object> getAgentGroup(String agentGroupId) {
-        return getAgentTeam(agentGroupId);
+    /**
+     * getAgentGroup.
+     * 
+     * @param agentGroupId agentGroupId
+     * @return the result
+     * @since 0.1.7
+     */
+    public T getAgentGroup(String agentGroupId) {
+        return getResource(agentGroupId);
     }
 }

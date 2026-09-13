@@ -4,165 +4,188 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
-import com.openjiuwen.core.session.AgentTeamSession;
-import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.AgentGroupSessionApi;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Logger;
 
 /**
- * Per-session coordinator that tracks handoff state and routing decisions.
- *
- * <p>Mirrors Python's {@code HandoffOrchestrator} in
- * {@code openjiuwen/core/multi_agent/teams/handoff/handoff_orchestrator.py}.</p>
+ * Public class HandoffOrchestrator used by the Java parity implementation.
+ * 
+ * @since 0.1.7
  */
 public class HandoffOrchestrator {
-
+    /**
+     * COORDINATOR_STATE_KEY.
+     * 
+     * @since 0.1.7
+     */
     public static final String COORDINATOR_STATE_KEY = "__handoff_coordinator__";
+
+    /**
+     * HANDOFF_HISTORY_KEY.
+     * 
+     * @since 0.1.7
+     */
     public static final String HANDOFF_HISTORY_KEY = "__handoff_history__";
 
-    private static final Logger LOGGER = Logger.getLogger(HandoffOrchestrator.class.getName());
-
     private final int maxHandoffs;
-    private final HandoffTerminationCondition terminationCondition;
+    private final java.util.function.Predicate<HandoffOrchestrator> terminationCondition;
     private final Map<String, Set<String>> routeGraph;
-    private int handoffCount;
+    private int handoffCount = 0;
     private String currentAgentId;
     private CompletableFuture<Object> doneFuture;
 
+    /**
+     * HandoffOrchestrator.
+     * 
+     * @param startAgentId startAgentId
+     * @param registeredAgents registeredAgents
+     * @param config config
+     * @since 0.1.7
+     */
+    public HandoffOrchestrator(String startAgentId, List<String> registeredAgents, HandoffConfig config) {
+        this.currentAgentId = startAgentId;
+        this.maxHandoffs = config != null ? config.getMaxHandoffs() : 10;
+        this.terminationCondition = config != null ? config.getTerminationCondition() : null;
+        this.routeGraph = buildRouteGraph(registeredAgents, config != null ? config.getRoutes() : List.of());
+    }
+
+    /**
+     * HandoffOrchestrator.
+     * 
+     * @param startAgentId startAgentId
+     * @param registeredAgents registeredAgents
+     * @since 0.1.7
+     */
     public HandoffOrchestrator(String startAgentId, List<String> registeredAgents) {
         this(startAgentId, registeredAgents, null);
     }
 
-    public HandoffOrchestrator(String startAgentId, List<String> registeredAgents, HandoffConfig config) {
-        List<HandoffRoute> routes = config == null ? List.of() : config.getRoutes();
-        this.maxHandoffs = config == null ? 10 : config.getMaxHandoffs();
-        this.terminationCondition = config == null ? null : config.getTerminationCondition();
-        this.currentAgentId = startAgentId;
-        this.routeGraph = buildRouteGraph(registeredAgents, routes == null ? List.of() : routes);
-        LOGGER.fine(() -> "[HandoffOrchestrator] created start=%s max_handoffs=%d"
-                .formatted(startAgentId, maxHandoffs));
-    }
-
+    /**
+     * buildRouteGraph.
+     * 
+     * @param agents agents
+     * @param routes routes
+     * @return the result
+     * @since 0.1.7
+     */
     public static Map<String, Set<String>> buildRouteGraph(List<String> agents, List<HandoffRoute> routes) {
         Map<String, Set<String>> graph = new LinkedHashMap<>();
-        for (String agent : agents == null ? List.<String>of() : agents) {
+        for (String agent : agents) {
             graph.put(agent, new LinkedHashSet<>());
         }
         if (routes != null && !routes.isEmpty()) {
             for (HandoffRoute route : routes) {
-                graph.computeIfAbsent(route.getSource(), ignored -> new LinkedHashSet<>()).add(route.getTarget());
+                graph.computeIfAbsent(route.source(), ignored -> new LinkedHashSet<>()).add(route.target());
             }
             return graph;
         }
-        for (String source : graph.keySet()) {
-            for (String target : graph.keySet()) {
-                if (!source.equals(target)) {
-                    graph.get(source).add(target);
+        for (String src : agents) {
+            for (String dst : agents) {
+                if (!src.equals(dst)) {
+                    graph.get(src).add(dst);
                 }
             }
         }
         return graph;
     }
 
-    public CompletableFuture<Boolean> requestHandoff(String targetId) {
-        return requestHandoff(targetId, null);
-    }
-
-    public CompletableFuture<Boolean> requestHandoff(String targetId, String reason) {
+    /**
+     * requestHandoff.
+     * 
+     * @param targetId targetId
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean requestHandoff(String targetId) {
         if (handoffCount >= maxHandoffs) {
-            LOGGER.fine(() -> "[HandoffOrchestrator] max_handoffs reached, rejecting -> " + targetId);
-            return CompletableFuture.completedFuture(false);
+            return false;
         }
-        if (terminationCondition != null && terminationCondition.shouldTerminate(this)) {
-            LOGGER.fine(() -> "[HandoffOrchestrator] termination_condition=True, rejecting -> " + targetId);
-            return CompletableFuture.completedFuture(false);
+        if (terminationCondition != null && terminationCondition.test(this)) {
+            return false;
         }
-        Set<String> allowed = routeGraph.getOrDefault(currentAgentId, Set.of());
-        if (!allowed.contains(targetId)) {
-            LOGGER.warning("[HandoffOrchestrator] route %s -> %s not allowed".formatted(currentAgentId, targetId));
-            return CompletableFuture.completedFuture(false);
+        if (!routeGraph.getOrDefault(currentAgentId, Set.of()).contains(targetId)) {
+            return false;
         }
         handoffCount += 1;
         currentAgentId = targetId;
-        LOGGER.fine(() -> "[HandoffOrchestrator] handoff approved -> %s count=%d"
-                .formatted(targetId, handoffCount));
-        return CompletableFuture.completedFuture(true);
+        return true;
     }
 
-    public CompletableFuture<Void> complete(Object result) {
+    /**
+     * complete.
+     * 
+     * @param result result
+     * @since 0.1.7
+     */
+    public void complete(Object result) {
         if (!doneFuture().isDone()) {
             doneFuture().complete(result);
         }
-        return CompletableFuture.completedFuture(null);
     }
 
-    public CompletableFuture<Void> error(Throwable exception) {
+    /**
+     * error.
+     * 
+     * @param throwable throwable
+     * @since 0.1.7
+     */
+    public void error(Throwable throwable) {
         if (!doneFuture().isDone()) {
-            doneFuture().completeExceptionally(exception);
+            doneFuture().completeExceptionally(throwable);
         }
-        return CompletableFuture.completedFuture(null);
     }
 
-    public void saveToSession(SessionStatePort session) {
-        session.updateState(Map.of(
-                COORDINATOR_STATE_KEY,
-                Map.of(
-                        "current_agent_id", currentAgentId,
-                        "handoff_count", handoffCount
-                )
-        ));
+    /**
+     * saveToSession.
+     * 
+     * @param session session
+     * @since 0.1.7
+     */
+    public void saveToSession(AgentGroupSessionApi session) {
+        session.updateState(Map.of(COORDINATOR_STATE_KEY,
+                Map.of("current_agent_id", currentAgentId, "handoff_count", handoffCount)));
     }
 
-    public void saveToSession(AgentTeamSession session) {
-        saveToSession(new AgentTeamSessionPort(session));
-    }
-
-    public void saveToSession(BaseSession session) {
-        saveToSession(new BaseSessionPort(session));
-    }
-
-    public static HandoffOrchestrator restoreFromSession(SessionStatePort session,
-                                                         String startAgentId,
-                                                         List<String> registeredAgents,
-                                                         HandoffConfig config) {
-        HandoffOrchestrator coordinator = new HandoffOrchestrator(startAgentId, registeredAgents, config);
-        Object snapshot = session.getState(COORDINATOR_STATE_KEY);
-        if (snapshot instanceof Map<?, ?> map && !map.isEmpty()) {
+    /**
+     * restoreFromSession.
+     * 
+     * @param session session
+     * @param startAgentId startAgentId
+     * @param registeredAgents registeredAgents
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    public static HandoffOrchestrator restoreFromSession(AgentGroupSessionApi session, String startAgentId,
+            List<String> registeredAgents, HandoffConfig config) {
+        HandoffOrchestrator orchestrator = new HandoffOrchestrator(startAgentId, registeredAgents, config);
+        Object state = session != null ? session.getState(COORDINATOR_STATE_KEY) : null;
+        if (state instanceof Map<?, ?> map) {
             Object current = map.get("current_agent_id");
             Object count = map.get("handoff_count");
-            if (current != null) {
-                coordinator.currentAgentId = String.valueOf(current);
+            if (current instanceof String currentId) {
+                orchestrator.currentAgentId = currentId;
             }
-            if (count instanceof Number number) {
-                coordinator.handoffCount = number.intValue();
-            } else if (count != null) {
-                coordinator.handoffCount = Integer.parseInt(String.valueOf(count));
+            if (count instanceof Number n) {
+                orchestrator.handoffCount = n.intValue();
             }
         }
-        return coordinator;
+        return orchestrator;
     }
 
-    public static HandoffOrchestrator restoreFromSession(AgentTeamSession session,
-                                                         String startAgentId,
-                                                         List<String> registeredAgents,
-                                                         HandoffConfig config) {
-        return restoreFromSession(new AgentTeamSessionPort(session), startAgentId, registeredAgents, config);
-    }
-
-    public static HandoffOrchestrator restoreFromSession(BaseSession session,
-                                                         String startAgentId,
-                                                         List<String> registeredAgents,
-                                                         HandoffConfig config) {
-        return restoreFromSession(new BaseSessionPort(session), startAgentId, registeredAgents, config);
-    }
-
+    /**
+     * doneFuture.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public CompletableFuture<Object> doneFuture() {
         if (doneFuture == null) {
             doneFuture = new CompletableFuture<>();
@@ -170,56 +193,23 @@ public class HandoffOrchestrator {
         return doneFuture;
     }
 
+    /**
+     * getHandoffCount.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public int getHandoffCount() {
         return handoffCount;
     }
 
+    /**
+     * getCurrentAgentId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getCurrentAgentId() {
         return currentAgentId;
-    }
-
-    public int getMaxHandoffs() {
-        return maxHandoffs;
-    }
-
-    public Map<String, Set<String>> getRouteGraph() {
-        Map<String, Set<String>> copy = new LinkedHashMap<>();
-        for (Map.Entry<String, Set<String>> entry : routeGraph.entrySet()) {
-            copy.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
-        }
-        return copy;
-    }
-
-    /**
-     * Narrow session-state port matching Python session objects with `get_state` and `update_state`.
-     */
-    public interface SessionStatePort {
-        Object getState(String key);
-
-        void updateState(Map<String, Object> update);
-    }
-
-    private record AgentTeamSessionPort(AgentTeamSession session) implements SessionStatePort {
-        @Override
-        public Object getState(String key) {
-            return session.getState(key);
-        }
-
-        @Override
-        public void updateState(Map<String, Object> update) {
-            session.updateState(update);
-        }
-    }
-
-    private record BaseSessionPort(BaseSession session) implements SessionStatePort {
-        @Override
-        public Object getState(String key) {
-            return session.getState(key);
-        }
-
-        @Override
-        public void updateState(Map<String, Object> update) {
-            session.updateState(update);
-        }
     }
 }

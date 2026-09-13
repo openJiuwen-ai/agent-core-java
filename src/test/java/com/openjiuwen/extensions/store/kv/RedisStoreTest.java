@@ -1,98 +1,120 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
 
 package com.openjiuwen.extensions.store.kv;
-
-import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
-import org.junit.jupiter.api.Test;
-
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-/**
- * Mirrors Python's {@code RedisStore} behavior in
- * {@code openjiuwen/extensions/store/kv/redis_store.py}.
- */
+import com.openjiuwen.spi.store.KVStorePipeline;
+
+import redis.clients.jedis.Connection;
+import redis.clients.jedis.ConnectionPool;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
+import redis.clients.jedis.util.JedisClusterCRC16;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedConstruction;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 class RedisStoreTest {
-
     @Test
     void basicCrudAndPrefixOperationsWork() {
         RedisStore store = new RedisStore(new FakeRedisClient());
 
         byte[] bytes = new byte[]{1, 2, 3};
-        store.set("user:1", "alice").join();
-        store.set("user:2", bytes).join();
-        store.set("other:1", "ignored").join();
+        store.set("user:1", "alice");
+        store.set("user:2", bytes);
+        store.set("other:1", "ignored");
 
-        assertEquals("alice", store.get("user:1").join());
-        assertArrayEquals(bytes, (byte[]) store.get("user:2").join());
-        assertTrue(store.exists("user:1").join());
+        assertEquals("alice", store.get("user:1"));
+        assertArrayEquals(bytes, (byte[]) store.get("user:2"));
+        assertTrue(store.exists("user:1"));
 
-        Map<String, Object> byPrefix = store.getByPrefix("user:").join();
+        Map<String, Object> byPrefix = store.getByPrefix("user:");
         assertEquals(2, byPrefix.size());
         assertEquals("alice", byPrefix.get("user:1"));
         assertArrayEquals(bytes, (byte[]) byPrefix.get("user:2"));
 
-        store.deleteByPrefix("user:", 1).join();
-        assertFalse(store.exists("user:1").join());
-        assertFalse(store.exists("user:2").join());
-        assertTrue(store.exists("other:1").join());
+        store.deleteByPrefix("user:", 1);
+        assertFalse(store.exists("user:1"));
+        assertFalse(store.exists("user:2"));
+        assertTrue(store.exists("other:1"));
+    }
+
+    @Test
+    void batchDeleteHandlesSingleAndVarargsDeleteOverloads() {
+        RedisStore store = new RedisStore(new FakeRedisClient());
+        store.set("key-1", "value-1");
+        store.set("key-2", "value-2");
+
+        assertEquals(2, store.batchDelete(List.of("key-1", "key-2"), null));
+        assertFalse(store.exists("key-1"));
+        assertFalse(store.exists("key-2"));
     }
 
     @Test
     void exclusiveSetMgetAndBatchDeleteFollowRedisSemantics() throws InterruptedException {
         RedisStore store = new RedisStore(new FakeRedisClient());
 
-        assertTrue(store.exclusiveSet("lock", "first", 1).join());
-        assertFalse(store.exclusiveSet("lock", "second", 1).join());
+        assertTrue(store.exclusiveSet("lock", "first", 1));
+        assertFalse(store.exclusiveSet("lock", "second", 1));
 
-        Thread.sleep(1050L);
+        Thread.sleep(1200L);
 
-        assertTrue(store.exclusiveSet("lock", "second", 1).join());
-        store.set("k1", "v1").join();
-        store.set("k2", "v2").join();
+        assertTrue(store.exclusiveSet("lock", "second", 1));
+        store.set("k1", "v1");
+        store.set("k2", "v2");
 
-        assertEquals(Arrays.asList("v1", null, "second"), store.mget(List.of("k1", "missing", "lock")).join());
-        assertEquals(2, store.batchDelete(List.of("k1", "missing", "k2"), 1).join());
-        assertNull(store.get("k1").join());
-        assertNull(store.get("k2").join());
+        assertEquals(Arrays.asList("v1", null, "second"), store.mget(List.of("k1", "missing", "lock")));
+        assertEquals(2, store.batchDelete(List.of("k1", "missing", "k2"), 1));
+        assertNull(store.get("k1"));
+        assertNull(store.get("k2"));
     }
 
     @Test
     void pipelineAndRefreshTtlUseTheStoreContract() throws InterruptedException {
-        RedisStore store = new RedisStore(new FakeRedisClient());
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisStore store = new RedisStore(redisClient);
 
-        BasedKVStorePipeline pipeline = store.pipeline();
-        pipeline.set("pipe:ttl", "value", 1).join();
-        pipeline.set("pipe:stable", "stable", null).join();
-        pipeline.get("pipe:ttl").join();
-        pipeline.exists("pipe:stable").join();
+        KVStorePipeline pipeline = store.pipeline();
+        pipeline.set("pipe:ttl", "value", 1);
+        pipeline.set("pipe:stable", "stable");
+        pipeline.get("pipe:ttl");
+        pipeline.exists("pipe:stable");
 
-        List<Object> results = pipeline.execute().join();
+        List<Object> results = pipeline.execute();
         assertEquals(4, results.size());
         assertEquals("value", results.get(2));
         assertEquals(Boolean.TRUE, results.get(3));
 
-        Thread.sleep(480L);
-        store.refreshTtl(List.of("pipe:ttl"), 2);
         Thread.sleep(600L);
-        assertTrue(store.exists("pipe:ttl").join());
+        store.refreshTtl(List.of("pipe:ttl"), 2);
+        assertTrue(redisClient.lastPipeline.isClosed());
+        Thread.sleep(700L);
+        assertTrue(store.exists("pipe:ttl"));
 
         Thread.sleep(1600L);
-        assertFalse(store.exists("pipe:ttl").join());
+        assertFalse(store.exists("pipe:ttl"));
     }
 
     @Test
@@ -101,7 +123,7 @@ class RedisStoreTest {
         assertFalse(new RedisStore(new FakeRedisClient()).isCluster());
 
         RedisStore failingStore = new RedisStore(new ExplodingRedisClient());
-        failingStore.set("volatile", "value").join();
+        failingStore.set("volatile", "value");
         assertDoesNotThrow(() -> failingStore.refreshTtl(List.of("volatile"), 5));
     }
 
@@ -110,34 +132,78 @@ class RedisStoreTest {
         RedisStore store = new RedisStore(new JedisLikeBinaryClient());
         byte[] serialized = new byte[]{(byte) 0xAC, (byte) 0xED, 0, 5, 0x7B};
 
-        store.set("blob-key", serialized).join();
+        store.set("blob-key", serialized);
 
-        assertArrayEquals(serialized, (byte[]) store.get("blob-key").join());
+        assertArrayEquals(serialized, (byte[]) store.get("blob-key"));
     }
 
     @Test
-    void closeDoesNotReleaseExternalRedisClientByDefault() {
-        CloseableRedisClient redisClient = new CloseableRedisClient();
-        RedisStore store = new RedisStore(redisClient);
+    void clusterScanAggregatesAllNodePagesAndDeduplicatesKeys() {
+        JedisCluster cluster = mock(JedisCluster.class);
+        ConnectionPool firstPool = mock(ConnectionPool.class);
+        ConnectionPool secondPool = mock(ConnectionPool.class);
+        Connection firstConnection = mock(Connection.class);
+        Connection secondConnection = mock(Connection.class);
+        when(firstPool.getResource()).thenReturn(firstConnection);
+        when(secondPool.getResource()).thenReturn(secondConnection);
+        Map<String, ConnectionPool> nodePools = new LinkedHashMap<>();
+        nodePools.put("first", firstPool);
+        nodePools.put("second", secondPool);
+        when(cluster.getClusterNodes()).thenReturn(nodePools);
+        when(cluster.get("session:first")).thenReturn("first-value");
+        when(cluster.get("session:second")).thenReturn("second-value");
+        when(cluster.get("session:third")).thenReturn("third-value");
 
-        store.close();
+        try (MockedConstruction<Jedis> nodes = mockConstruction(Jedis.class, (node, context) -> {
+            Connection connection = (Connection) context.arguments().get(0);
+            if (connection == firstConnection) {
+                when(node.scan(eq("0"), any(ScanParams.class)))
+                        .thenReturn(new ScanResult<>("17", List.of("session:first", "other:key")));
+                when(node.scan(eq("17"), any(ScanParams.class)))
+                        .thenReturn(new ScanResult<>("0", List.of("session:second")));
+            } else {
+                when(node.scan(eq("0"), any(ScanParams.class)))
+                        .thenReturn(new ScanResult<>("0", List.of("session:second", "session:third")));
+            }
+        })) {
+            RedisStore store = new RedisStore(cluster);
 
-        assertEquals(0, redisClient.closeCount());
+            Map<String, Object> result = store.getByPrefix("session:");
+
+            assertEquals(Map.of(
+                    "session:first", "first-value",
+                    "session:second", "second-value",
+                    "session:third", "third-value"), result);
+            assertEquals(2, nodes.constructed().size());
+            nodes.constructed().forEach(node -> verify(node).close());
+        }
     }
 
     @Test
-    void closeReleasesOwnedRedisClient() {
-        CloseableRedisClient redisClient = new CloseableRedisClient();
-        RedisStore store = new RedisStore(redisClient, true);
+    void clusterBatchDeleteGroupsKeysByHashSlot() {
+        JedisCluster cluster = mock(JedisCluster.class);
+        List<List<String>> deleteBatches = new ArrayList<>();
+        when(cluster.del(any(String[].class))).thenAnswer(invocation -> {
+            List<String> batch = Arrays.stream(invocation.getArguments()).map(String.class::cast).toList();
+            deleteBatches.add(batch);
+            return (long) batch.size();
+        });
+        RedisStore store = new RedisStore(cluster);
+        String firstKey = "{slot-a}:first";
+        String secondKey = "{slot-a}:second";
+        String thirdKey = "{slot-b}:third";
+        assertNotEquals(JedisClusterCRC16.getSlot(firstKey), JedisClusterCRC16.getSlot(thirdKey));
 
-        store.close();
+        int deleted = store.batchDelete(List.of(firstKey, secondKey, thirdKey), null);
 
-        assertEquals(1, redisClient.closeCount());
+        assertEquals(3, deleted);
+        assertEquals(List.of(List.of(firstKey, secondKey), List.of(thirdKey)), deleteBatches);
     }
 
     static class FakeRedisClient {
         private final Map<String, Object> values = new ConcurrentHashMap<>();
         private final Map<String, Long> expiryAt = new ConcurrentHashMap<>();
+        private FakeRedisPipeline lastPipeline;
 
         public void set(String key, Object value) {
             cleanup(key);
@@ -190,6 +256,10 @@ class RedisStoreTest {
             return deleted;
         }
 
+        public long delete(String key) {
+            return delete(new String[]{key});
+        }
+
         public List<Object> mget(String... keys) {
             List<Object> valueList = new ArrayList<>(keys.length);
             for (String key : keys) {
@@ -221,7 +291,8 @@ class RedisStoreTest {
         }
 
         public FakeRedisPipeline pipeline() {
-            return new FakeRedisPipeline(this);
+            lastPipeline = new FakeRedisPipeline(this);
+            return lastPipeline;
         }
 
         private void cleanup(String key) {
@@ -236,19 +307,6 @@ class RedisStoreTest {
     static final class FakeRedisClusterClient extends FakeRedisClient {
     }
 
-    static final class CloseableRedisClient extends FakeRedisClient implements AutoCloseable {
-        private final AtomicInteger closeCount = new AtomicInteger();
-
-        @Override
-        public void close() {
-            closeCount.incrementAndGet();
-        }
-
-        int closeCount() {
-            return closeCount.get();
-        }
-    }
-
     static class ExplodingRedisClient extends FakeRedisClient {
         @Override
         public FakeRedisPipeline pipeline() {
@@ -259,6 +317,7 @@ class RedisStoreTest {
     static class FakeRedisPipeline {
         protected final FakeRedisClient client;
         private final List<Runnable> operations = new ArrayList<>();
+        private boolean closed;
 
         FakeRedisPipeline(FakeRedisClient client) {
             this.client = client;
@@ -273,6 +332,14 @@ class RedisStoreTest {
             operations.forEach(Runnable::run);
             operations.clear();
             return List.of();
+        }
+
+        public void close() {
+            closed = true;
+        }
+
+        boolean isClosed() {
+            return closed;
         }
     }
 
@@ -295,12 +362,12 @@ class RedisStoreTest {
         private final Map<String, byte[]> values = new ConcurrentHashMap<>();
 
         public String set(byte[] key, byte[] value) {
-            values.put(new String(key, StandardCharsets.UTF_8), value);
+            values.put(new String(key, java.nio.charset.StandardCharsets.UTF_8), value);
             return "OK";
         }
 
         public byte[] get(byte[] key) {
-            return values.get(new String(key, StandardCharsets.UTF_8));
+            return values.get(new String(key, java.nio.charset.StandardCharsets.UTF_8));
         }
 
         public String get(String key) {
@@ -308,7 +375,7 @@ class RedisStoreTest {
             if (value == null) {
                 return null;
             }
-            return new String(value, StandardCharsets.UTF_8);
+            return new String(value, java.nio.charset.StandardCharsets.UTF_8);
         }
     }
 }

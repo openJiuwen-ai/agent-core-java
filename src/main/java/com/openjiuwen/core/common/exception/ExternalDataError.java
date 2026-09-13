@@ -7,13 +7,44 @@ package com.openjiuwen.core.common.exception;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code ExternalDataError} in
- * {@code openjiuwen/core/common/exception/errors.py}.
+ * Error caused by external data issues.
+ * 
+ * @since 0.1.7
  */
 public class ExternalDataError extends ExecutionError {
-    public ExternalDataError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
+    /**
+     * ExternalDataError.
+     * 
+     * @param status status
+     * @param msg msg
+     * @param details details
+     * @param cause cause
+     * @param params params
+     * @since 0.1.7
+     */
+    public ExternalDataError(StatusCode status, String msg, Object details, Throwable cause,
+            Map<String, Object> params) {
         super(status, msg, details, cause, params);
     }
-    public ExternalDataError(StatusCode status, Map<String, Object> params) { super(status, params); }
-    public ExternalDataError(StatusCode status) { super(status); }
+
+    /**
+     * Creates an ExternalDataError with status and parameters.
+     * 
+     * @param status the status code
+     * @param params template parameters for message rendering
+     * @since 0.1.7
+     */
+    public ExternalDataError(StatusCode status, Map<String, Object> params) {
+        super(status, params);
+    }
+
+    /**
+     * Creates an ExternalDataError with status only.
+     * 
+     * @param status the status code
+     * @since 0.1.7
+     */
+    public ExternalDataError(StatusCode status) {
+        super(status);
+    }
 }

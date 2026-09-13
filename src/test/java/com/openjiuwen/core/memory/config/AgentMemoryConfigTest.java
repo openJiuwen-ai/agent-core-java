@@ -1,12 +1,12 @@
-package com.openjiuwen.core.memory.config;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.core.memory.config;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class AgentMemoryConfigTest {
+import org.junit.jupiter.api.Test;
 
+class AgentMemoryConfigTest {
     @Test
     void defaultsEnableAllPythonFragmentMemoryTypes() {
         AgentMemoryConfig config = AgentMemoryConfig.builder().build();
@@ -14,30 +14,27 @@ class AgentMemoryConfigTest {
         assertTrue(config.isEnableUserProfile());
         assertTrue(config.isEnableSemanticMemory());
         assertTrue(config.isEnableEpisodicMemory());
-        assertTrue(config.isEnableFragmentMemory());
+        assertTrue(config.isMemoryTypeEnabled("user_profile"));
+        assertTrue(config.isMemoryTypeEnabled("semantic_memory"));
+        assertTrue(config.isMemoryTypeEnabled("episodic_memory"));
     }
 
     @Test
     void fragmentTypesCanBeDisabledIndependently() {
-        AgentMemoryConfig config = AgentMemoryConfig.builder()
-                .enableUserProfile(false)
-                .enableSemanticMemory(true)
-                .enableEpisodicMemory(false)
-                .build();
+        AgentMemoryConfig config = AgentMemoryConfig.builder().enableUserProfile(false).enableSemanticMemory(true)
+                .enableEpisodicMemory(false).build();
 
-        assertFalse(config.isEnableUserProfile());
-        assertTrue(config.isEnableSemanticMemory());
-        assertFalse(config.isEnableEpisodicMemory());
+        assertFalse(config.isMemoryTypeEnabled("user_profile"));
+        assertTrue(config.isMemoryTypeEnabled("semantic_memory"));
+        assertFalse(config.isMemoryTypeEnabled("episodic_memory"));
     }
 
     @Test
-    void disablingAllFragmentTypesDisablesFragmentMemory() {
-        AgentMemoryConfig config = AgentMemoryConfig.builder()
-                .enableUserProfile(false)
-                .enableSemanticMemory(false)
-                .enableEpisodicMemory(false)
-                .build();
+    void legacyFragmentSwitchStillDisablesAllFragmentTypes() {
+        AgentMemoryConfig config = AgentMemoryConfig.builder().enableFragmentMemory(false).build();
 
-        assertFalse(config.isEnableFragmentMemory());
+        assertFalse(config.isMemoryTypeEnabled("user_profile"));
+        assertFalse(config.isMemoryTypeEnabled("semantic_memory"));
+        assertFalse(config.isMemoryTypeEnabled("episodic_memory"));
     }
 }

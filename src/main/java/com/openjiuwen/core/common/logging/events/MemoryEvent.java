@@ -13,9 +13,8 @@ import java.util.Map;
 
 /**
  * Memory operation related event.
- *
- * <p>Mirrors Python's {@code MemoryEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -31,11 +30,22 @@ public class MemoryEvent extends BaseLogEvent {
     private String userId;
     private String scopeId;
 
+    /**
+     * MemoryEvent.
+     * 
+     * @since 0.1.7
+     */
     public MemoryEvent() {
         super();
         setModuleType(ModuleType.MEMORY);
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "memory_type", memoryType);
@@ -49,5 +59,3 @@ public class MemoryEvent extends BaseLogEvent {
         putIfNotNull(map, "scope_id", scopeId);
     }
 }
-
-

@@ -1,141 +1,235 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.security;
+
+import com.openjiuwen.harness.security.fileguard.FileGuardChecker;
+import com.openjiuwen.harness.security.tiered.TieredPolicy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.AbstractMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.function.BooleanSupplier;
 
 /**
- * Mirrors Python's {@code PermissionEngine} in
- * {@code openjiuwen/harness/security/core.py}.
+ * Permission engine applying the dual-pipeline strictest merge.
+ *
+ * <p>Mirrors Python {@code openjiuwen.harness.security.core.PermissionEngine}. Each
+ * tool call is evaluated by Pipeline A ({@link TieredPolicy}) and, when the
+ * file-guard layer is enabled, Pipeline B ({@link FileGuardChecker}). The final
+ * level is the strictest of both ({@code DENY < ASK < ALLOW}); a {@code null}
+ * pipeline result does not raise the other. The {@code enabled=false} flag
+ * short-circuits {@link #checkPermission} to ALLOW, while
+ * {@link #evaluateGlobalPolicyDirectly} ignores the flag to expose the raw tiered
+ * decision (aligning with Python {@code evaluate_global_policy_directly}, which
+ * returns {@code None} for the no-config fallback).
+ *
+ * @since 0.1.7
  */
 public class PermissionEngine {
+    private static final Logger logger = LoggerFactory.getLogger(PermissionEngine.class);
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(PermissionEngine.class);
-    private static final String TIERED_POLICY_FALLBACK = "tiered_policy:fallback(no_config)";
+    private static final String DISABLED_RULE = "disabled";
+    private static final String FALLBACK_RULE = "tiered_policy:fallback(no_config)";
+    private static final String FILE_GUARD_RULE = "file_guard";
 
-    /**
-     * Java adaptation of Python's tuple return.
-     */
-    public record PermissionEvaluation(PermissionLevel permission, String matchedRule) {
-    }
-
-    private Map<String, Object> config;
-    private boolean enabled;
-    private BooleanSupplier permissionChecksActive;
-    private Object llm;
-    private String modelName;
+    private final Map<String, Object> config;
     private final Path workspaceRoot;
     private final List<String> trustedDirs;
-    private ExternalDirectoryChecker externalChecker;
-    private FileGuardChecker fileGuard;
-
-    public PermissionEngine() {
-        this((Map<String, Object>) null, null, null, null);
-    }
-
-    public PermissionEngine(Map<String, Object> config) {
-        this(config, null, null, null);
-    }
-
-    public PermissionEngine(PermissionsSection config) {
-        this(config, null, null, null);
-    }
-
-    public PermissionEngine(
-            Map<String, Object> config,
-            Object llm,
-            String modelName,
-            Path workspaceRoot
-    ) {
-        this(config, llm, modelName, workspaceRoot, null);
-    }
+    private final FileGuardChecker fileGuard;
 
     /**
-     * Build an engine with explicit trusted directories for the file-guard pipeline.
+     * Build an engine with explicit workspace root and trusted directories.
      *
      * <p>The file-guard checker is compiled once at construction time via
      * {@link FileGuardChecker#build}; when the layer is disabled or absent the
      * reference is {@code null} and Pipeline B is skipped.
      *
      * @param config        permissions config map
-     * @param llm           llm
-     * @param modelName     model name
      * @param workspaceRoot runtime workspace root (may be {@code null})
      * @param trustedDirs   trusted directories projected to allow-prefix rules
+     * @since 0.1.15
      */
-    public PermissionEngine(
-            Map<String, Object> config,
-            Object llm,
-            String modelName,
-            Path workspaceRoot,
-            List<String> trustedDirs
-    ) {
-        this.config = normalizeConfig(config);
-        this.enabled = boolOrDefault(this.config.get("enabled"), true);
-        this.llm = llm;
-        this.modelName = modelName;
+    public PermissionEngine(Map<String, Object> config, Path workspaceRoot, List<String> trustedDirs) {
+        this.config = config != null ? config : new LinkedHashMap<>();
         this.workspaceRoot = workspaceRoot;
-        this.trustedDirs = trustedDirs == null ? List.of() : List.copyOf(trustedDirs);
-        this.externalChecker = new ExternalDirectoryChecker(this.config, this.workspaceRoot);
-        this.fileGuard = FileGuardChecker.build(this.config, this.workspaceRoot, this.trustedDirs);
+        this.trustedDirs = trustedDirs != null ? trustedDirs : List.of();
+        this.fileGuard = FileGuardChecker.build(this.config, workspaceRoot, this.trustedDirs);
     }
 
-    public PermissionEngine(
-            PermissionsSection config,
-            Object llm,
-            String modelName,
-            Path workspaceRoot
-    ) {
-        this(toConfigMap(config), llm, modelName, workspaceRoot);
+    /**
+     * Backwards-compatible two-argument constructor delegating to
+     * {@link #PermissionEngine(Map, Path, List)} with no trusted directories.
+     *
+     * @param config        config
+     * @param workspaceRoot workspaceRoot
+     * @since 0.1.7
+     */
+    public PermissionEngine(Map<String, Object> config, Path workspaceRoot) {
+        this(config, workspaceRoot, List.of());
     }
 
-    public void updateConfig(Map<String, Object> config) {
-        this.config = normalizeConfig(config);
-        this.enabled = boolOrDefault(this.config.get("enabled"), true);
-        this.externalChecker = new ExternalDirectoryChecker(this.config, this.workspaceRoot);
-        this.fileGuard = FileGuardChecker.build(this.config, this.workspaceRoot, this.trustedDirs);
+    /**
+     * Evaluate the raw global policy ignoring the {@code enabled} flag.
+     *
+     * <p>Aligns with Python {@code evaluate_global_policy_directly}: runs
+     * {@link TieredPolicy#evaluate} and, when file-guard is configured, merges
+     * {@link FileGuardChecker#evaluate}. The no-config fallback yields a
+     * {@code null} level so callers can distinguish "no rule matched" from an
+     * explicit {@code ASK}.
+     *
+     * @param toolName tool name
+     * @param toolArgs tool arguments
+     * @return entry of {@link PermissionLevel} (may be {@code null}) and matched rule (may be {@code null})
+     * @since 0.1.7
+     */
+    public Map.Entry<PermissionLevel, String> evaluateGlobalPolicyDirectly(String toolName,
+            Map<String, Object> toolArgs) {
+        PermissionResult pipelineA = TieredPolicy.evaluate(config, toolName, toolArgs);
+        PermissionLevel level = pipelineA.getPermission();
+        String matchedRule = pipelineA.getMatchedRule();
+        if (FALLBACK_RULE.equals(matchedRule)) {
+            level = null;
+            matchedRule = null;
+        }
+        if (fileGuard != null) {
+            PermissionResult pipelineB = fileGuard.evaluate(toolName, toolArgs);
+            if (pipelineB != null) {
+                String bRule = pipelineB.getMatchedRule() != null ? pipelineB.getMatchedRule() : FILE_GUARD_RULE;
+                if (level == null) {
+                    level = pipelineB.getPermission();
+                    matchedRule = bRule;
+                } else {
+                    level = strictest(level, pipelineB.getPermission());
+                    matchedRule = matchedRule + "|" + bRule;
+                }
+                logger.debug("[PermissionEngine] direct.file_guard.merged tool={} level={} matched_rule={}",
+                        toolName, level, matchedRule);
+            }
+        }
+        return new AbstractMap.SimpleImmutableEntry<>(level, matchedRule);
     }
 
-    public void updateConfig(PermissionsSection config) {
-        updateConfig(toConfigMap(config));
+    /**
+     * Check a tool call permission applying the dual-pipeline strictest merge.
+     *
+     * <p>When the permissions system is disabled ({@code enabled=false}) the call
+     * is allowed without further evaluation. Otherwise Pipeline A
+     * ({@link TieredPolicy}) and Pipeline B ({@link FileGuardChecker}, when
+     * configured) are merged with {@code strictest}; the matched rules are joined
+     * as {@code A.rule|B.rule}. {@code needsApproval} is derived from the final
+     * level being {@link PermissionLevel#ASK}.
+     *
+     * @param toolName tool name
+     * @param toolArgs tool arguments
+     * @return the check result with permission, matched rule and approval flag
+     * @since 0.1.7
+     */
+    public PermissionCheckResult checkPermission(String toolName, Map<String, Object> toolArgs) {
+        if (!isEnabled()) {
+            logger.debug("[PermissionEngine] permission.check.skip reason=system_disabled decision=allow tool={}",
+                    toolName);
+            return PermissionCheckResult.builder()
+                    .permission(PermissionLevel.ALLOW)
+                    .matchedRule(DISABLED_RULE)
+                    .needsApproval(false)
+                    .build();
+        }
+        PermissionResult pipelineA = TieredPolicy.evaluate(config, toolName, toolArgs);
+        PermissionLevel level = pipelineA.getPermission();
+        String matchedRule = pipelineA.getMatchedRule();
+        if (fileGuard != null) {
+            PermissionResult pipelineB = fileGuard.evaluate(toolName, toolArgs);
+            if (pipelineB != null) {
+                String bRule = pipelineB.getMatchedRule() != null ? pipelineB.getMatchedRule() : FILE_GUARD_RULE;
+                level = strictest(level, pipelineB.getPermission());
+                matchedRule = matchedRule + "|" + bRule;
+                logger.debug("[PermissionEngine] permission.file_guard.merged tool={} level={} matched_rule={}",
+                        toolName, level, matchedRule);
+            }
+        }
+        return PermissionCheckResult.builder()
+                .permission(level)
+                .matchedRule(matchedRule)
+                .needsApproval(level == PermissionLevel.ASK)
+                .build();
     }
 
-    public void updateLlm(Object llm, String modelName) {
-        this.llm = llm;
-        this.modelName = modelName;
+    /**
+     * Whether the permissions system is enabled.
+     *
+     * <p>Aligns with Python {@code config.get("enabled", True)}: a missing key
+     * defaults to enabled, while explicit booleans and the {@code "true"}/
+     * {@code "false"} strings produced by YAML loaders are honored.
+     *
+     * @return true when enabled
+     * @since 0.1.15
+     */
+    private boolean isEnabled() {
+        Object raw = config.get("enabled");
+        if (raw instanceof Boolean) {
+            return (Boolean) raw;
+        }
+        if (raw instanceof String s) {
+            return Boolean.parseBoolean(s.trim());
+        }
+        return true;
     }
 
-    public boolean isEnabled() {
-        return enabled;
+    /**
+     * Merge two permission levels with {@code DENY < ASK < ALLOW}; a {@code null}
+     * operand is treated as non-participating and never raises the other.
+     *
+     * @param a first level (may be {@code null})
+     * @param b second level (may be {@code null})
+     * @return the strictest non-null level, or {@code null} when both are {@code null}
+     */
+    private static PermissionLevel strictest(PermissionLevel a, PermissionLevel b) {
+        if (a == PermissionLevel.DENY || b == PermissionLevel.DENY) {
+            return PermissionLevel.DENY;
+        }
+        if (a == PermissionLevel.ASK || b == PermissionLevel.ASK) {
+            return PermissionLevel.ASK;
+        }
+        if (a == null) {
+            return b;
+        }
+        if (b == null) {
+            return a;
+        }
+        return PermissionLevel.ALLOW;
     }
 
-    public Object getLlm() {
-        return llm;
+    /**
+     * getWorkspaceRoot.
+     *
+     * @return the workspace root
+     * @since 0.1.7
+     */
+    public Path getWorkspaceRoot() {
+        return workspaceRoot;
     }
 
-    public String getModelName() {
-        return modelName;
-    }
-
+    /**
+     * getConfig.
+     *
+     * @return the permissions config map
+     * @since 0.1.7
+     */
     public Map<String, Object> getConfig() {
-        return new LinkedHashMap<>(config);
+        return config;
     }
 
     /**
      * getTrustedDirs.
      *
      * @return the trusted directories projected to file-guard allow-prefix rules
+     * @since 0.1.15
      */
     public List<String> getTrustedDirs() {
         return trustedDirs;
@@ -145,244 +239,9 @@ public class PermissionEngine {
      * getFileGuard.
      *
      * @return the compiled file-guard checker, or {@code null} when the layer is disabled
+     * @since 0.1.15
      */
     public FileGuardChecker getFileGuard() {
         return fileGuard;
-    }
-
-    public void setPermissionChecksActive(BooleanSupplier permissionChecksActive) {
-        this.permissionChecksActive = permissionChecksActive;
-    }
-
-    public PermissionEvaluation checkToolPermissionDirectly(String toolName, Map<String, Object> toolArgs) {
-        return evaluateGlobalPolicyDirectly(toolName, toolArgs);
-    }
-
-    public PermissionEvaluation evaluateGlobalPolicyDirectly(String toolName, Map<String, Object> toolArgs) {
-        return evaluateGlobalPolicyDirectly(toolName, toolArgs, true);
-    }
-
-    public PermissionEvaluation evaluateGlobalPolicyDirectly(
-            String toolName,
-            Map<String, Object> toolArgs,
-            boolean includeExternalDirectory
-    ) {
-        Map<String, Object> resolvedArgs = normalizeToolArgs(toolArgs);
-        TieredPolicy.PermissionDecision decision = TieredPolicy.evaluateTieredPolicy(config, toolName, resolvedArgs);
-        PermissionLevel permission = decision.permission();
-        String matchedRule = decision.matchedRule();
-        if (Objects.equals(TIERED_POLICY_FALLBACK, matchedRule)) {
-            permission = null;
-            matchedRule = null;
-        } else if (matchedRule != null && !TieredPolicy.matchedRuleUsesApprovalOverride(matchedRule)) {
-            permission = TieredPolicy.maybeEscalateShellOperators(toolName, resolvedArgs, permission);
-        }
-
-        if (includeExternalDirectory) {
-            PermissionResult externalResult = externalChecker.checkExternalPaths(toolName, resolvedArgs);
-            if (externalResult != null) {
-                if (permission == null) {
-                    permission = externalResult.getPermission();
-                    matchedRule = externalResult.getMatchedRule() != null
-                            ? externalResult.getMatchedRule()
-                            : "external_directory";
-                } else {
-                    permission = TieredPolicy.strictest(permission, externalResult.getPermission());
-                    String externalRule = externalResult.getMatchedRule() != null
-                            ? externalResult.getMatchedRule()
-                            : "external_directory";
-                    matchedRule = matchedRule + "|" + externalRule;
-                }
-            }
-
-            if (fileGuard != null) {
-                PermissionResult guardResult = fileGuard.evaluate(toolName, resolvedArgs);
-                if (guardResult != null) {
-                    String guardRule = guardResult.getMatchedRule() != null
-                            ? guardResult.getMatchedRule()
-                            : "file_guard";
-                    if (permission == null) {
-                        permission = guardResult.getPermission();
-                        matchedRule = guardRule;
-                    } else {
-                        permission = TieredPolicy.strictest(permission, guardResult.getPermission());
-                        matchedRule = matchedRule + "|" + guardRule;
-                    }
-                }
-            }
-        }
-        return new PermissionEvaluation(permission, matchedRule);
-    }
-
-    public PermissionResult checkPermission(String toolName, Map<String, Object> toolArgs) {
-        Map<String, Object> resolvedArgs = normalizeToolArgs(toolArgs);
-        LOGGER.info("permission.check.start tool={} enabled={}", toolName, enabled);
-
-        if (!enabled) {
-            LOGGER.info("permission.check.skip reason=system_disabled decision=allow");
-            return new PermissionResult(
-                    PermissionLevel.ALLOW,
-                    null,
-                    "Permission system is disabled"
-            );
-        }
-
-        if (permissionChecksActive != null && !permissionChecksActive.getAsBoolean()) {
-            LOGGER.info("permission.check.skip reason=permission_checks_inactive decision=allow");
-            return new PermissionResult(
-                    PermissionLevel.ALLOW,
-                    null,
-                    "Tool permission checks are inactive for this context"
-            );
-        }
-
-        PermissionEvaluation policyResult = evaluateGlobalPolicyDirectly(toolName, resolvedArgs, false);
-        PermissionLevel permission = policyResult.permission();
-        String matchedRule = policyResult.matchedRule();
-        if (permission == null) {
-            permission = PermissionLevel.ASK;
-            matchedRule = "default";
-        }
-        LOGGER.info(
-                "permission.policy.result tool={} permission={} matched_rule={}",
-                toolName,
-                permission.value(),
-                matchedRule
-        );
-
-        List<String> externalPaths = null;
-        PermissionResult externalResult = externalChecker.checkExternalPaths(toolName, resolvedArgs);
-        if (externalResult != null) {
-            permission = TieredPolicy.strictest(permission, externalResult.getPermission());
-            matchedRule = matchedRule + "|" + externalResult.getMatchedRule();
-            externalPaths = externalResult.getExternalPaths();
-            LOGGER.info(
-                    "permission.external.result tool={} checked=true permission={} matched_rule={} external_paths={}",
-                    toolName,
-                    externalResult.getPermission().value(),
-                    externalResult.getMatchedRule(),
-                    externalPaths
-            );
-        } else {
-            LOGGER.info("permission.external.result tool={} checked=true permission=none matched_rule=none external_paths=[]",
-                    toolName);
-        }
-
-        if (fileGuard != null) {
-            PermissionResult guardResult = fileGuard.evaluate(toolName, resolvedArgs);
-            if (guardResult != null) {
-                permission = TieredPolicy.strictest(permission, guardResult.getPermission());
-                String guardRule = guardResult.getMatchedRule() != null
-                        ? guardResult.getMatchedRule()
-                        : "file_guard";
-                matchedRule = matchedRule + "|" + guardRule;
-                if (guardResult.getExternalPaths() != null && !guardResult.getExternalPaths().isEmpty()) {
-                    externalPaths = externalPaths == null
-                            ? guardResult.getExternalPaths()
-                            : mergePaths(externalPaths, guardResult.getExternalPaths());
-                }
-                LOGGER.info(
-                        "permission.file_guard.result tool={} permission={} matched_rule={}",
-                        toolName,
-                        guardResult.getPermission().value(),
-                        guardRule
-                );
-            }
-        }
-
-        PermissionResult result = new PermissionResult(
-                permission,
-                matchedRule,
-                getReason(permission, toolName, matchedRule),
-                externalPaths
-        );
-        LOGGER.info(
-                "permission.check.final tool={} permission={} matched_rule={} external_paths={}",
-                toolName,
-                permission.value(),
-                matchedRule,
-                externalPaths == null ? List.of() : externalPaths
-        );
-        return result;
-    }
-
-    private static Map<String, Object> normalizeConfig(Map<String, Object> config) {
-        return config == null ? new LinkedHashMap<>() : new LinkedHashMap<>(config);
-    }
-
-    private static List<String> mergePaths(List<String> first, List<String> second) {
-        List<String> merged = new ArrayList<>(first);
-        for (String path : second) {
-            if (!merged.contains(path)) {
-                merged.add(path);
-            }
-        }
-        return merged;
-    }
-
-    private static Map<String, Object> normalizeToolArgs(Map<String, Object> toolArgs) {
-        return toolArgs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(toolArgs);
-    }
-
-    private static boolean boolOrDefault(Object value, boolean defaultValue) {
-        return value instanceof Boolean flag ? flag : defaultValue;
-    }
-
-    private static String getReason(PermissionLevel permission, String toolName, String matchedRule) {
-        if (permission == PermissionLevel.ALLOW) {
-            return "Allowed by rule: " + matchedRule;
-        }
-        if (permission == PermissionLevel.DENY) {
-            return "Denied by rule: " + matchedRule;
-        }
-        return "Approval required for " + toolName + " (rule: " + matchedRule + ")";
-    }
-
-    private static Map<String, Object> toConfigMap(PermissionsSection config) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        if (config == null) {
-            return result;
-        }
-        if (config.getEnabled() != null) {
-            result.put("enabled", config.getEnabled());
-        }
-        if (config.getSchema() != null) {
-            result.put("schema", config.getSchema());
-        }
-        if (config.getDefaults() != null) {
-            result.put("defaults", new LinkedHashMap<>(config.getDefaults()));
-        }
-        if (config.getTools() != null) {
-            result.put("tools", new LinkedHashMap<>(config.getTools()));
-        }
-        if (config.getRules() != null) {
-            List<Map<String, Object>> rules = new ArrayList<>();
-            for (Map<String, Object> rule : config.getRules()) {
-                rules.add(rule == null ? null : new LinkedHashMap<>(rule));
-            }
-            result.put("rules", rules);
-        }
-        if (config.getApprovalOverrides() != null) {
-            List<Map<String, Object>> overrides = new ArrayList<>();
-            for (ApprovalOverrideEntry entry : config.getApprovalOverrides()) {
-                if (entry == null) {
-                    overrides.add(null);
-                    continue;
-                }
-                Map<String, Object> override = new LinkedHashMap<>();
-                override.put("id", entry.getId());
-                override.put("tools", entry.getTools() == null ? List.of() : new ArrayList<>(entry.getTools()));
-                override.put("match_type", entry.getMatchType());
-                override.put("pattern", entry.getPattern());
-                override.put("action", entry.getAction());
-                overrides.add(override);
-            }
-            result.put("approval_overrides", overrides);
-        }
-        if (config.getExternalDirectory() != null) {
-            result.put("external_directory", new LinkedHashMap<>(config.getExternalDirectory()));
-        }
-        result.putAll(config.getExtensions());
-        return result;
     }
 }

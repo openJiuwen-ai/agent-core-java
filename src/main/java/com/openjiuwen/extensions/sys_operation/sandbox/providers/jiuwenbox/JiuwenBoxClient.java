@@ -80,7 +80,7 @@ public class JiuwenBoxClient {
      *
      * @param baseUrl the jiuwenBox server base URL
      * @param timeoutSeconds the request timeout in seconds
-     * @param injectedClient optional pre-configured OkHttp client (TLS/auth); when null a default is built
+     * @param injectedClient optional pre-configured OkHttp client (TLS/auth)
      * @since 0.1.7
      */
     public JiuwenBoxClient(String baseUrl, int timeoutSeconds, OkHttpClient injectedClient) {
@@ -97,13 +97,6 @@ public class JiuwenBoxClient {
                     .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
                     .writeTimeout(timeoutSeconds, TimeUnit.SECONDS).build();
         }
-    }
-
-    /**
-     * Returns the underlying OkHttp client (for injection verification / tests).
-     */
-    public OkHttpClient httpClient() {
-        return client;
     }
 
     /**

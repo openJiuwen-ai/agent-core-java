@@ -37,9 +37,6 @@ class ToolCardTest {
             assertEquals("local_sub", card.getName());
             assertEquals("local function for sub", card.getDescription());
             assertNotNull(card.getInputParams());
-            assertTrue(card.isParallelSafe());
-            assertFalse(card.isStateless());
-            assertFalse(card.isIdempotent());
         }
 
         @Test

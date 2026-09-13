@@ -4,10 +4,9 @@
 
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.controller.schema.Event;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Intent;
 import com.openjiuwen.core.controller.schema.IntentType;
@@ -32,27 +31,40 @@ import java.util.Map;
  * Extends {@link EventHandler} with LLM-based intent recognition,
  * routing actions by recognized intent type.
  * <p>
- * Mirrors Python's {@code EventHandlerWithIntentRecognition} in
- * {@code openjiuwen/core/controller/modules/intent_recognizer.py}.
+ * Mirrors Python's {@code EventHandlerWithIntentRecognition}.
+ * 
+ * @since 0.1.7
  */
 public class EventHandlerWithIntentRecognition extends EventHandler {
-
     private IntentRecognizer recognizer;
     private IntentRecognizer.ModelProvider modelProvider;
 
+    /**
+     * EventHandlerWithIntentRecognition.
+     * 
+     * @param modelProvider modelProvider
+     * @since 0.1.7
+     */
     public EventHandlerWithIntentRecognition(IntentRecognizer.ModelProvider modelProvider) {
         this.modelProvider = modelProvider;
     }
 
     /**
      * Initialize the recognizer after dependencies are set (config, taskManager, etc.).
+     * 
+     * @since 0.1.7
      */
     public void initRecognizer() {
-        this.recognizer = new IntentRecognizer(
-                config, taskManager, abilityManager, contextEngine, modelProvider
-        );
+        this.recognizer = new IntentRecognizer(config, taskManager, abilityManager, contextEngine, modelProvider);
     }
 
+    /**
+     * handleInput.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Object> handleInput(EventHandlerInput inputs) {
         if (recognizer == null) {
@@ -63,7 +75,7 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         List<Thread> threads = new ArrayList<>();
 
         for (Intent intent : intents) {
-            Thread t = OpenJiuwenExecutors.newThread((() -> {
+            Thread t = new Thread((() -> {
                 switch (intent.getIntentType()) {
                     case CREATE_TASK -> processCreateTaskIntent(intent, inputs.getSession());
                     case PAUSE_TASK -> processPauseTaskIntent(intent, inputs.getSession());
@@ -74,7 +86,9 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
                     case MODIFY_TASK -> processModifyTaskIntent(intent, inputs.getSession());
                     default -> processUnknownTaskIntent(intent, inputs.getSession());
                 }
-            }), "intent-handler-" + intent.getIntentType(), false);
+            }), "intent-handler-" + intent.getIntentType());
+            t.setUncaughtExceptionHandler((thread, e) -> Loggers.CONTROLLER
+                    .error("Uncaught exception in intent handler: " + thread.getName(), e));
             t.start();
             threads.add(t);
         }
@@ -90,11 +104,18 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         return null;
     }
 
+    /**
+     * handleTaskInteraction.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
         if (!(inputs.getEvent() instanceof TaskInteractionEvent)) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Input Event has to be type of TaskInteractionEvent, not "
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                    "Input Event has to be type of TaskInteractionEvent, not "
                             + inputs.getEvent().getClass().getSimpleName());
         }
         TaskInteractionEvent event = (TaskInteractionEvent) inputs.getEvent();
@@ -102,11 +123,18 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         return null;
     }
 
+    /**
+     * handleTaskCompletion.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
         if (!(inputs.getEvent() instanceof TaskCompletionEvent)) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Input Event has to be type of TaskCompletionEvent, not "
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                    "Input Event has to be type of TaskCompletionEvent, not "
                             + inputs.getEvent().getClass().getSimpleName());
         }
         TaskCompletionEvent event = (TaskCompletionEvent) inputs.getEvent();
@@ -114,11 +142,18 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         return null;
     }
 
+    /**
+     * handleTaskFailed.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
         if (!(inputs.getEvent() instanceof TaskFailedEvent)) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Input Event has to be type of TaskFailedEvent, not "
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                    "Input Event has to be type of TaskFailedEvent, not "
                             + inputs.getEvent().getClass().getSimpleName());
         }
         TaskFailedEvent event = (TaskFailedEvent) inputs.getEvent();
@@ -128,6 +163,13 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
 
     // ==================== Intent Processors ====================
 
+    /**
+     * processCreateTaskIntent.
+     * 
+     * @param intent intent
+     * @param session session
+     * @since 0.1.7
+     */
     private void processCreateTaskIntent(Intent intent, AgentSessionApi session) {
         Task task = new Task();
         task.setSessionId(session.getSessionId());
@@ -137,7 +179,7 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         task.setPriority(1);
         task.setContextId(session.getSessionId() + "_" + intent.getTargetTaskId());
         if (intent.getEvent() instanceof InputEvent) {
-            List<Event> inputList = new ArrayList<>();
+            List<Object> inputList = new ArrayList<>();
             inputList.add(intent.getEvent());
             task.setInputs(inputList);
         }
@@ -146,10 +188,24 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         taskManager.addTask(task);
     }
 
+    /**
+     * processPauseTaskIntent.
+     * 
+     * @param intent intent
+     * @param session session
+     * @since 0.1.7
+     */
     private void processPauseTaskIntent(Intent intent, AgentSessionApi session) {
         taskScheduler.pauseTask(intent.getTargetTaskId());
     }
 
+    /**
+     * processResumeTaskIntent.
+     * 
+     * @param intent intent
+     * @param session session
+     * @since 0.1.7
+     */
     private void processResumeTaskIntent(Intent intent, AgentSessionApi session) {
         List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(intent.getTargetTaskId()));
         if (!tasks.isEmpty()) {
@@ -161,14 +217,20 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         }
     }
 
+    /**
+     * processContinueTaskIntent.
+     * 
+     * @param intent intent
+     * @param session session
+     * @since 0.1.7
+     */
     private void processContinueTaskIntent(Intent intent, AgentSessionApi session) {
         if (!(intent.getEvent() instanceof InputEvent inputEvent)) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Input Event has to be type of InputEvent, not "
-                            + intent.getEvent().getClass().getSimpleName());
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                    "Input Event has to be type of InputEvent, not " + intent.getEvent().getClass().getSimpleName());
         }
 
-        List<Event> previousEvents = new ArrayList<>();
+        List<Object> previousEvents = new ArrayList<>();
         List<String> contextIds = new ArrayList<>();
         for (String taskId : intent.getDependTaskId()) {
             List<Task> oldTasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
@@ -186,7 +248,7 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         for (String ctxId : contextIds) {
             ModelContext ctx = contextEngine.getContext(ctxId, session.getSessionId());
             if (ctx != null) {
-                List<BaseMessage> msgs = ctx.getMessages(null, true);
+                List<BaseMessage> msgs = ctx.getMessages();
                 contextData.put(ctxId, msgs);
             }
         }
@@ -207,10 +269,17 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         taskManager.addTask(task);
     }
 
+    /**
+     * processSupplementTaskIntent.
+     * 
+     * @param intent intent
+     * @param session session
+     * @since 0.1.7
+     */
     private void processSupplementTaskIntent(Intent intent, AgentSessionApi session) {
         if (intent.getIntentType() != IntentType.SUPPLEMENT_TASK) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Intent type must be SUPPLEMENT_TASK");
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                    "Intent type must be SUPPLEMENT_TASK");
         }
 
         List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(intent.getTargetTaskId()));
@@ -223,25 +292,39 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         }
     }
 
+    /**
+     * processCancelTaskIntent.
+     * 
+     * @param intent intent
+     * @param session session
+     * @since 0.1.7
+     */
     private void processCancelTaskIntent(Intent intent, AgentSessionApi session) {
         if (intent.getIntentType() != IntentType.CANCEL_TASK) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Intent type must be CANCEL_TASK");
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                    "Intent type must be CANCEL_TASK");
         }
         taskScheduler.cancelTask(intent.getTargetTaskId());
     }
 
+    /**
+     * processModifyTaskIntent.
+     * 
+     * @param intent intent
+     * @param session session
+     * @since 0.1.7
+     */
     private void processModifyTaskIntent(Intent intent, AgentSessionApi session) {
         if (intent.getIntentType() != IntentType.MODIFY_TASK) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Intent type must be MODIFY_TASK");
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                    "Intent type must be MODIFY_TASK");
         }
         taskScheduler.cancelTask(intent.getTargetTaskId());
         List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(intent.getTargetTaskId()));
         if (!tasks.isEmpty()) {
             Task task = tasks.get(0);
             task.setDescription(intent.getTargetTaskDescription());
-            List<Event> inputs = task.getInputs();
+            List<Object> inputs = task.getInputs();
             if (inputs == null) {
                 inputs = new ArrayList<>();
             }
@@ -252,6 +335,13 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         }
     }
 
+    /**
+     * processUnknownTaskIntent.
+     * 
+     * @param intent intent
+     * @param session session
+     * @since 0.1.7
+     */
     private void processUnknownTaskIntent(Intent intent, AgentSessionApi session) {
         if (intent.getIntentType() != IntentType.UNKNOWN_TASK) {
             throw new IllegalArgumentException("Intent type must be UNKNOWN_TASK");

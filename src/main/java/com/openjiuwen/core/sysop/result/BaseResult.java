@@ -4,109 +4,133 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import java.util.LinkedHashMap;
+
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.function.Supplier;
 
 /**
- * Base result envelope for sys-operation responses.
- * <p>
- * Mirrors Python's {@code BaseResult} in
- * {@code openjiuwen/core/sys_operation/result/base_result.py}.
+ * BaseResult.
+ * 
+ * @since 0.1.7
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@Data
+@SuperBuilder
+@NoArgsConstructor
 public abstract class BaseResult<T> {
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Pattern TEMPLATE_PATTERN = Pattern.compile("\\{([^{}]+)\\}");
-
     private int code;
+
+    /** Message details. */
     private String message;
+
+    /** Business data (returned only on success). */
     private T data;
 
-    public BaseResult() {
-    }
-
-    public int getCode() {
-        return code;
-    }
-
-    public void setCode(int code) {
+    /**
+     * Explicit all-args constructor for subclass super() calls.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
+     */
+    protected BaseResult(int code, String message, T data) {
         this.code = code;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
         this.message = message;
-    }
-
-    public T getData() {
-        return data;
-    }
-
-    public void setData(T data) {
         this.data = data;
     }
 
-    @Override
-    public String toString() {
-        return getClass().getSimpleName() + "{code=" + code + ", message=" + message + ", data=" + data + "}";
+    /**
+     * Create a standardized error result object with specified error type and formatted message.
+     * 
+     * @param errorType StatusCode enum type
+     * @param msgFormatKwargs key-value pairs for formatting the error message template
+     * @param resultFactory factory to create the concrete result instance
+     * @param data optional data to carry in the error result
+     * @return instantiated error result
+     * @since 0.1.7
+     */
+    public static <T, R extends BaseResult<T>> R buildOperationErrorResult(StatusCode errorType,
+            Map<String, String> msgFormatKwargs, ResultFactory<R> resultFactory, T data) {
+        String errorMessage = formatErrorMessage(errorType.getErrmsg(), msgFormatKwargs);
+        R result = resultFactory.get();
+        result.setCode(errorType.getCode());
+        result.setMessage(errorMessage);
+        @SuppressWarnings("unchecked")
+        BaseResult<T> baseResult = result;
+        baseResult.setData(data);
+        return result;
     }
 
-    public static <T, R> R buildOperationErrorResult(
-            StatusCode errorType,
-            Map<String, Object> msgFormatKwargs,
-            Class<R> resultClass
-    ) {
-        return buildOperationErrorResult(errorType, msgFormatKwargs, resultClass, null, Map.of());
-    }
+    /**
+     * Convenience overload for simple execution/error_msg formatting.
+     *
+     * @param errorType StatusCode enum type
+     * @param execution the operation name
+     * @param errorMsg the error message detail
+     * @param resultFactory factory to create the concrete result instance
+     * @param data optional data to carry in the error result
+     * @param <T> data type
+     * @param <R> result type
+     * @return instantiated error result
+     */
 
-    public static <T, R> R buildOperationErrorResult(
-            StatusCode errorType,
-            Map<String, Object> msgFormatKwargs,
-            Class<R> resultClass,
-            T data
-    ) {
-        return buildOperationErrorResult(errorType, msgFormatKwargs, resultClass, data, Map.of());
-    }
-
-    public static <T, R> R buildOperationErrorResult(
-            StatusCode errorType,
-            Map<String, Object> msgFormatKwargs,
-            Class<R> resultClass,
-            T data,
-            Map<String, Object> extraFields
-    ) {
-        String errorMessage = formatTemplate(errorType.errmsg(), msgFormatKwargs);
-        Map<String, Object> finalFields = new LinkedHashMap<>();
-        finalFields.put("code", errorType.code());
-        finalFields.put("message", errorMessage);
-        finalFields.put("data", data);
-        if (extraFields != null) {
-            finalFields.putAll(extraFields);
+    /**
+     * buildOperationErrorResult.
+     * 
+     * @param errorType errorType
+     * @param execution execution
+     * @param errorMsg errorMsg
+     * @param resultFactory resultFactory
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    public static <T, R extends BaseResult<?>> R buildOperationErrorResult(StatusCode errorType, String execution,
+            String errorMsg, ResultFactory<R> resultFactory, Object data) {
+        String template = errorType.getErrmsg();
+        String errorMessage = template.replace("{execution}", execution).replace("{error_msg}", errorMsg);
+        R result = resultFactory.get();
+        result.setCode(errorType.getCode());
+        result.setMessage(errorMessage);
+        try {
+            ((BaseResult<Object>) result).setData(data);
+        } catch (ClassCastException ignored) {
+            // data type mismatch, leave as null
         }
-        return OBJECT_MAPPER.convertValue(finalFields, resultClass);
+        return result;
     }
 
-    private static String formatTemplate(String template, Map<String, Object> values) {
-        Matcher matcher = TEMPLATE_PATTERN.matcher(template == null ? "" : template);
-        StringBuffer buffer = new StringBuffer();
-        while (matcher.find()) {
-            String key = matcher.group(1);
-            if (values == null || !values.containsKey(key)) {
-                throw new IllegalArgumentException("Missing message format key: " + key);
-            }
-            Object value = values.get(key);
-            matcher.appendReplacement(buffer, Matcher.quoteReplacement(String.valueOf(value)));
+    /**
+     * Factory interface for creating typed result instances (no-arg supplier).
+     * 
+     * @since 0.1.7
+     */
+    @FunctionalInterface
+    public interface ResultFactory<R> extends Supplier<R> {
+    }
+
+    /**
+     * formatErrorMessage.
+     * 
+     * @param template template
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String formatErrorMessage(String template, Map<String, String> kwargs) {
+        if (kwargs == null) {
+            return template;
         }
-        matcher.appendTail(buffer);
-        return buffer.toString();
+        String result = template;
+        for (Map.Entry<String, String> entry : kwargs.entrySet()) {
+            result = result.replace("{" + entry.getKey() + "}", entry.getValue());
+        }
+        return result;
     }
 }

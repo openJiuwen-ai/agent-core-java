@@ -1,5 +1,9 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
@@ -13,26 +17,35 @@ import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Supplementary tests for {@link AbilityManager} — execute, WorkflowCard, McpServerConfig.
  */
 class AbilityManagerSupplementTest {
-
     private AbilityManager manager;
 
     @BeforeEach
@@ -44,15 +57,12 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testAddAndGetWorkflowCard() {
-        WorkflowCard wc = WorkflowCard.builder()
-                .name("wf-1")
-                .description("test workflow")
-                .inputParams(Map.of("type", "object"))
-                .build();
+        WorkflowCard wc = WorkflowCard.builder().name("wf-1").description("test workflow")
+                .inputParams(Map.of("type", "object")).build();
 
         manager.add(wc);
 
-        Object result = manager.get("wf-1").orElse(null);
+        Object result = manager.get("wf-1");
         assertThat(result).isInstanceOf(WorkflowCard.class);
         assertThat(((WorkflowCard) result).getName()).isEqualTo("wf-1");
     }
@@ -64,16 +74,13 @@ class AbilityManagerSupplementTest {
 
         Object removed = manager.remove("wf-rem");
         assertThat(removed).isNotNull();
-        assertThat(manager.get("wf-rem")).isEmpty();
+        assertThat(manager.get("wf-rem")).isNull();
     }
 
     @Test
     void testListToolInfoWorkflow() {
-        WorkflowCard wc = WorkflowCard.builder()
-                .name("wf-info")
-                .description("workflow desc")
-                .inputParams(Map.of("type", "object"))
-                .build();
+        WorkflowCard wc = WorkflowCard.builder().name("wf-info").description("workflow desc")
+                .inputParams(Map.of("type", "object")).build();
 
         manager.add(wc);
 
@@ -87,23 +94,17 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testAddAndGetMcpServerConfig() {
-        McpServerConfig mcp = McpServerConfig.builder()
-                .serverName("mcp-server-1")
-                .serverId("mcp-id-1")
-                .build();
+        McpServerConfig mcp = McpServerConfig.builder().serverName("mcp-server-1").serverId("mcp-id-1").build();
 
         manager.add(mcp);
 
-        Object result = manager.get("mcp-server-1").orElse(null);
+        Object result = manager.get("mcp-server-1");
         assertThat(result).isInstanceOf(McpServerConfig.class);
     }
 
     @Test
     void testRemoveMcpServerAlsoRemovesAssociatedTools() {
-        McpServerConfig mcp = McpServerConfig.builder()
-                .serverName("mcp-svr")
-                .serverId("mcp-prefix")
-                .build();
+        McpServerConfig mcp = McpServerConfig.builder().serverName("mcp-svr").serverId("mcp-prefix").build();
         manager.add(mcp);
 
         // Add tool cards that belong to this MCP server (id prefixed with serverId)
@@ -119,10 +120,10 @@ class AbilityManagerSupplementTest {
         // Remove MCP server — should also remove tool1 and tool2
         Object removed = manager.remove("mcp-svr");
         assertThat(removed).isNotNull();
-        assertThat(manager.get("mcp-svr")).isEmpty();
-        assertThat(manager.get("tool1")).isEmpty();
-        assertThat(manager.get("tool2")).isEmpty();
-        assertThat(manager.get("tool3")).isPresent(); // Not removed - different prefix
+        assertThat(manager.get("mcp-svr")).isNull();
+        assertThat(manager.get("tool1")).isNull();
+        assertThat(manager.get("tool2")).isNull();
+        assertThat(manager.get("tool3")).isNotNull(); // Not removed - different prefix
     }
 
     // ========== Mixed abilities ==========
@@ -147,15 +148,15 @@ class AbilityManagerSupplementTest {
         // Verify get() searches tools -> workflows -> agents -> mcpServers
         WorkflowCard wc = WorkflowCard.builder().name("unique-wf").build();
         manager.add(wc);
-        assertThat(manager.get("unique-wf")).isPresent();
+        assertThat(manager.get("unique-wf")).isNotNull();
 
         AgentCard ac = AgentCard.builder().name("unique-agent").build();
         manager.add(ac);
-        assertThat(manager.get("unique-agent")).isPresent();
+        assertThat(manager.get("unique-agent")).isNotNull();
 
         McpServerConfig mcp = McpServerConfig.builder().serverName("unique-mcp").build();
         manager.add(mcp);
-        assertThat(manager.get("unique-mcp")).isPresent();
+        assertThat(manager.get("unique-mcp")).isNotNull();
     }
 
     @Test
@@ -204,11 +205,8 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testListToolInfoAgentWithInputParams() {
-        AgentCard ac = AgentCard.builder()
-                .name("agent-params")
-                .description("desc")
-                .inputParams(Map.of("query", Map.of("type", "string")))
-                .build();
+        AgentCard ac = AgentCard.builder().name("agent-params").description("desc")
+                .inputParams(Map.of("query", Map.of("type", "string"))).build();
         manager.add(ac);
 
         List<ToolInfo> infos = manager.listToolInfo();
@@ -222,29 +220,37 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteWithEmptyList() {
-        List<AbilityManager.ExecutionResult> results = manager.execute((ToolCall) null);
+        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
+            com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, List.of(), null, null);
         assertThat(results).isEmpty();
     }
 
     @Test
     void testExecuteWithInvalidToolCallType() {
-        // normalizeToolCalls returns empty list for non-ToolCall objects
-        List<AbilityManager.ExecutionResult> results = manager.normalizeToolCalls("not a tool call")
-                .stream().flatMap(tc -> manager.execute(tc).stream()).toList();
+        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
+            com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+
+        // Passing a string instead of ToolCall — normalizeToolCalls should log warning
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, "not a tool call", null, null);
         assertThat(results).isEmpty();
     }
 
     @Test
     void testExecuteWithNullToolCall() {
-        List<AbilityManager.ExecutionResult> results = manager.execute((ToolCall) null);
+        com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
+            com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, null, null, null);
         assertThat(results).isEmpty();
     }
 
     @Test
-    void executeWithCallbackContextFiresBeforeToolCallAndHonorsSkipTool() {
-        class ProbeAgent extends BaseAgent {
-            ProbeAgent() {
-                super(AgentCard.builder().id("probe-agent").name("probe-agent").build());
+    void testExecutePreservesSkipToolMarkerThroughAfterToolCallThenClearsIt() {
+        class SkippingAgent extends BaseAgent {
+            SkippingAgent() {
+                super(AgentCard.builder().id("skip-agent").name("skip-agent").build());
             }
 
             @Override
@@ -258,142 +264,657 @@ class AbilityManagerSupplementTest {
             }
 
             @Override
-            public Object invoke(Object inputs, com.openjiuwen.core.session.AgentSession session) {
+            public Object invoke(Object inputs, com.openjiuwen.core.session.Session session) {
                 return null;
             }
 
             @Override
-            public java.util.Iterator<Object> stream(Object inputs, com.openjiuwen.core.session.AgentSession session,
+            public java.util.Iterator<Object> stream(Object inputs, com.openjiuwen.core.session.Session session,
                     List<com.openjiuwen.core.session.stream.StreamMode> streamModes) {
                 return List.of().iterator();
             }
         }
 
         class SkipRail extends AgentRail {
-            private Object capturedInputs;
+            private boolean skipVisibleInAfter;
 
             @Override
             public void beforeToolCall(AgentCallbackContext ctx) {
-                capturedInputs = ctx.getInputs();
                 ctx.getExtra().put("_skip_tool", Boolean.TRUE);
-                if (ctx.getInputs() instanceof ToolCallInputs inputs) {
-                    inputs.setToolResult("skipped");
-                    inputs.setToolMsg(new ToolMessage("skipped", "tc-skip", "skip-tool"));
-                }
+            }
+
+            @Override
+            public void afterToolCall(AgentCallbackContext ctx) {
+                skipVisibleInAfter = Boolean.TRUE.equals(ctx.getExtra().get("_skip_tool"));
             }
         }
 
         String toolId = "skip-tool-" + UUID.randomUUID();
-        LocalFunction tool = new LocalFunction(
-                ToolCard.builder().id(toolId).name(toolId).description("skip test").build(),
-                inputs -> {
-                    throw new IllegalStateException("should-not-run");
-                }
-        );
+        LocalFunction tool =
+            new LocalFunction(ToolCard.builder().id(toolId).name(toolId).description("skip test").build(),
+                    inputs -> "should-not-run");
         Runner.resourceMgr().addTool(tool, null);
         try {
-            ProbeAgent agent = new ProbeAgent();
+            SkippingAgent agent = new SkippingAgent();
             SkipRail rail = new SkipRail();
-            agent.registerRail(rail).toCompletableFuture().join();
+            agent.registerRail(rail);
             manager.add(tool.getCard());
-            AgentCallbackContext ctx = new AgentCallbackContext(agent);
+            Map<String, Object> extra = new java.util.LinkedHashMap<>();
+            AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).extra(extra).build();
 
-            List<AbilityManager.ExecutionResult> results = manager.execute(
-                    ctx,
-                    ToolCall.builder().id("tc-skip").name(toolId).arguments("{}").build(),
-                    false,
-                    null
-            );
+            List<AbilityManager.ToolExecutionEntry> results =
+                manager.execute(ctx, ToolCall.builder().id("tc-skip").name(toolId).arguments("{}").build(), null, null);
 
-            assertThat(rail.capturedInputs).isInstanceOf(ToolCallInputs.class);
-            assertThat(((ToolCallInputs) rail.capturedInputs).getToolName())
-                    .isEqualTo(toolId);
             assertThat(results).hasSize(1);
-            assertThat(results.get(0).result()).isEqualTo("skipped");
-            assertThat(results.get(0).toolMessage().getContent()).isEqualTo("skipped");
+            assertThat(results.get(0).result()).isNull();
+            assertThat(rail.skipVisibleInAfter).isTrue();
+            assertThat(extra).doesNotContainKey("_skip_tool");
         } finally {
             Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
         }
     }
 
+    // 验证多个工具调用默认会并行执行，同时结果仍按输入的 ToolCall 顺序返回。
+    @Test
+    void testExecuteRunsMultipleToolCallsInParallelAndKeepsResultOrder() {
+        CountDownLatch bothToolsStarted = new CountDownLatch(2);
+        AtomicInteger invocationOrder = new AtomicInteger();
+        String firstToolId = "parallel-first-" + UUID.randomUUID();
+        String secondToolId = "parallel-second-" + UUID.randomUUID();
+        LocalFunction firstTool = blockingTool(firstToolId, bothToolsStarted, invocationOrder);
+        LocalFunction secondTool = blockingTool(secondToolId, bothToolsStarted, invocationOrder);
+
+        Runner.resourceMgr().addTool(firstTool, null);
+        Runner.resourceMgr().addTool(secondTool, null);
+        manager.add(List.of(firstTool.getCard(), secondTool.getCard()));
+        try {
+            AgentCallbackContext ctx = AgentCallbackContext.builder().build();
+            List<ToolCall> toolCalls = List.of(
+                    ToolCall.builder().id("tc-first").name(firstToolId).arguments("{}").build(),
+                    ToolCall.builder().id("tc-second").name(secondToolId).arguments("{}").build()
+            );
+
+            long start = System.nanoTime();
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, toolCalls, null, null);
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+            assertThat(results).hasSize(2);
+            assertThat(String.valueOf(results.get(0).result())).startsWith(firstToolId + ":parallel=true");
+            assertThat(String.valueOf(results.get(1).result())).startsWith(secondToolId + ":parallel=true");
+            assertThat(elapsedMillis).isLessThan(1500L);
+        } finally {
+            removeTool(firstToolId);
+            removeTool(secondToolId);
+        }
+    }
+
+    // 验证同一轮 tool call 的并行提交数量受默认上限（3）约束。
+    @Test
+    void testExecuteCapsParallelToolCallsToDefaultLimit() {
+        assertCappedParallelExecution(null, 4, 3, false);
+    }
+
+    // 验证 ReActAgentConfig.maxParallelToolCalls 生效。
+    @Test
+    void testExecuteCapsParallelToolCallsUsingAgentConfig() {
+        ReActAgentConfig config = ReActAgentConfig.builder().maxParallelToolCalls(1).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+        assertCappedParallelExecution(ctx, 4, 1, false);
+    }
+
+    // 验证流式并行路径同样遵守 ReActAgentConfig 并行上限。
+    @Test
+    void testExecuteStreamCapsParallelToolCallsToConfiguredLimit() {
+        ReActAgentConfig config = ReActAgentConfig.builder().maxParallelToolCalls(2).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+        assertCappedParallelExecution(ctx, 5, 2, true);
+    }
+
+    // 验证提交循环在等待许可时响应中断：停止后续 submit，已提交的仍会 join。
+    @Test
+    void testExecuteStopsSubmittingRemainingToolsWhenInterrupted() throws Exception {
+        ReActAgentConfig config = ReActAgentConfig.builder().maxParallelToolCalls(1).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+        AtomicInteger startedCount = new AtomicInteger();
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch firstMayFinish = new CountDownLatch(1);
+        List<String> toolIds = new ArrayList<>();
+        List<ToolCall> toolCalls = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            String toolId = "interrupt-gate-" + i + "-" + UUID.randomUUID();
+            toolIds.add(toolId);
+            LocalFunction tool = interruptibleGateTool(toolId, startedCount, firstStarted, firstMayFinish);
+            Runner.resourceMgr().addTool(tool, null);
+            manager.add(tool.getCard());
+            toolCalls.add(ToolCall.builder().id("tc-int-" + i).name(toolId).arguments("{}").build());
+        }
+
+        AtomicReference<List<AbilityManager.ToolExecutionEntry>> resultsRef = new AtomicReference<>();
+        AtomicBoolean isInterruptedAfterExecute = new AtomicBoolean();
+        Thread executeThread = new Thread(() -> {
+            resultsRef.set(manager.execute(ctx, toolCalls, null, null));
+            isInterruptedAfterExecute.set(Thread.currentThread().isInterrupted());
+        }, "gated-submit-interrupt-test");
+        try {
+            executeThread.start();
+            assertThat(firstStarted.await(3, TimeUnit.SECONDS)).isTrue();
+            executeThread.interrupt();
+            firstMayFinish.countDown();
+            executeThread.join(5_000L);
+            assertThat(executeThread.isAlive()).isFalse();
+
+            List<AbilityManager.ToolExecutionEntry> results = resultsRef.get();
+            assertThat(results).isNotNull().hasSize(3);
+            assertThat(startedCount.get()).isEqualTo(1);
+            assertThat(String.valueOf(results.get(0).result())).isEqualTo(toolIds.get(0));
+            assertThat(String.valueOf(results.get(1).toolMessage().getContent())).contains("cancelled");
+            assertThat(String.valueOf(results.get(2).toolMessage().getContent())).contains("cancelled");
+            assertThat(isInterruptedAfterExecute.get()).isTrue();
+        } finally {
+            firstMayFinish.countDown();
+            toolIds.forEach(AbilityManagerSupplementTest::removeTool);
+        }
+    }
+
+    // 验证 tool-call 超时完成 Future 后会释放提交许可，后续 tool 不必等挂起的 worker 结束。
+    @Test
+    void testExecuteTimeoutReleasesGatePermitBeforeWorkerFinishes() throws Exception {
+        System.setProperty("openjiuwen.executor.tool-call.timeout-millis", "200");
+        ReActAgentConfig config = ReActAgentConfig.builder().maxParallelToolCalls(1).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch secondStarted = new CountDownLatch(1);
+        AtomicLong firstFinishedAt = new AtomicLong(-1L);
+        AtomicLong secondStartedAt = new AtomicLong(-1L);
+        String firstId = "timeout-gate-first-" + UUID.randomUUID();
+        String secondId = "timeout-gate-second-" + UUID.randomUUID();
+        LocalFunction firstTool = hangingGateTool(firstId, firstStarted, firstFinishedAt, 2_000L);
+        LocalFunction secondTool = startSignalTool(secondId, secondStarted, secondStartedAt);
+        Runner.resourceMgr().addTool(firstTool, null);
+        Runner.resourceMgr().addTool(secondTool, null);
+        manager.add(List.of(firstTool.getCard(), secondTool.getCard()));
+        try {
+            long start = System.nanoTime();
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    List.of(
+                            ToolCall.builder().id("tc-timeout-1").name(firstId).arguments("{}").build(),
+                            ToolCall.builder().id("tc-timeout-2").name(secondId).arguments("{}").build()
+                    ),
+                    null,
+                    null
+            );
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+            assertThat(results).hasSize(2);
+            assertThat(String.valueOf(results.get(0).toolMessage().getContent())).contains("error");
+            assertThat(results.get(1).result()).isEqualTo(secondId);
+            assertThat(secondStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(elapsedMillis).isLessThan(1_500L);
+            assertThat(secondStartedAt.get()).isPositive();
+            assertThat(firstFinishedAt.get()).isEqualTo(-1L);
+        } finally {
+            System.clearProperty("openjiuwen.executor.tool-call.timeout-millis");
+            removeTool(firstId);
+            removeTool(secondId);
+        }
+    }
+
+    // 验证并发工具调用会接入 OpenJiuwen 统一 tool-call 线程池，而不是默认 common pool。
+    @Test
+    void testParallelExecuteUsesOpenJiuwenToolCallExecutor() {
+        CountDownLatch bothToolsStarted = new CountDownLatch(2);
+        String firstToolId = "executor-first-" + UUID.randomUUID();
+        String secondToolId = "executor-second-" + UUID.randomUUID();
+        LocalFunction firstTool = threadNameTool(firstToolId, bothToolsStarted);
+        LocalFunction secondTool = threadNameTool(secondToolId, bothToolsStarted);
+
+        Runner.resourceMgr().addTool(firstTool, null);
+        Runner.resourceMgr().addTool(secondTool, null);
+        manager.add(List.of(firstTool.getCard(), secondTool.getCard()));
+        try {
+            AgentCallbackContext ctx = AgentCallbackContext.builder().build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    List.of(
+                            ToolCall.builder().id("tc-executor-1").name(firstToolId).arguments("{}").build(),
+                            ToolCall.builder().id("tc-executor-2").name(secondToolId).arguments("{}").build()
+                    ),
+                    null,
+                    null
+            );
+
+            assertThat(results).hasSize(2);
+            assertThat(results).extracting(entry -> String.valueOf(entry.result()))
+                    .anyMatch(threadName -> threadName.startsWith("openjiuwen-tool-call-"))
+                    .noneMatch(threadName -> threadName.startsWith("ForkJoinPool.commonPool-worker"));
+        } finally {
+            removeTool(firstToolId);
+            removeTool(secondToolId);
+        }
+    }
+
+    // 验证某个工具被 rail 标记跳过时，_skip_tool 不会污染其他并发工具调用。
+    @Test
+    void testParallelExecuteDoesNotLetSkipMarkerLeakAcrossTools() {
+        String skipToolId = "skip-me-" + UUID.randomUUID();
+        class SelectiveSkippingAgent extends BaseAgent {
+            SelectiveSkippingAgent() {
+                super(AgentCard.builder().id("selective-skip-agent").name("selective-skip-agent").build());
+            }
+
+            @Override
+            public BaseAgent configure(Object config) {
+                return this;
+            }
+
+            @Override
+            public Object getConfig() {
+                return null;
+            }
+
+            @Override
+            public Object invoke(Object inputs, com.openjiuwen.core.session.Session session) {
+                return null;
+            }
+
+            @Override
+            public java.util.Iterator<Object> stream(Object inputs, com.openjiuwen.core.session.Session session,
+                    List<com.openjiuwen.core.session.stream.StreamMode> streamModes) {
+                return List.of().iterator();
+            }
+        }
+
+        class SelectiveSkipRail extends AgentRail {
+            @Override
+            public void beforeToolCall(AgentCallbackContext ctx) {
+                if (!(ctx.getInputs() instanceof ToolCallInputs inputs)) {
+                    return;
+                }
+                if (!skipToolId.equals(inputs.getToolName())) {
+                    return;
+                }
+                ctx.getExtra().put("_skip_tool", Boolean.TRUE);
+                inputs.setToolResult("skipped");
+                inputs.setToolMsg(ToolMessage.builder()
+                        .content("skipped")
+                        .toolCallId(inputs.getToolCall().getId())
+                        .build());
+            }
+        }
+
+        String runToolId = "run-me-" + UUID.randomUUID();
+        LocalFunction skipTool = new LocalFunction(
+                ToolCard.builder().id(skipToolId).name(skipToolId).description("skip").build(),
+                inputs -> "should-not-run"
+        );
+        LocalFunction runTool = new LocalFunction(
+                ToolCard.builder().id(runToolId).name(runToolId).description("run").build(),
+                inputs -> "ran"
+        );
+
+        Runner.resourceMgr().addTool(skipTool, null);
+        Runner.resourceMgr().addTool(runTool, null);
+        manager.add(List.of(skipTool.getCard(), runTool.getCard()));
+        try {
+            SelectiveSkippingAgent agent = new SelectiveSkippingAgent();
+            agent.registerRail(new SelectiveSkipRail());
+            Map<String, Object> parentExtra = new java.util.LinkedHashMap<>();
+            AgentCallbackContext ctx = AgentCallbackContext.builder()
+                    .agent(agent)
+                    .extra(parentExtra)
+                    .build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    List.of(
+                            ToolCall.builder().id("tc-skip").name(skipToolId).arguments("{}").build(),
+                            ToolCall.builder().id("tc-run").name(runToolId).arguments("{}").build()
+                    ),
+                    null,
+                    null
+            );
+
+            assertThat(results).hasSize(2);
+            assertThat(results.get(0).result()).isEqualTo("skipped");
+            assertThat(results.get(1).result()).isEqualTo("ran");
+            assertThat(parentExtra).doesNotContainKey("_skip_tool");
+        } finally {
+            removeTool(skipToolId);
+            removeTool(runToolId);
+        }
+    }
+
+    // 验证工具在线程池 worker 中执行时，仍能通过 SessionContextHolder 读取当前 session。
+    @Test
+    void testParallelExecuteKeepsSessionContextAvailableInWorkerThreads() {
+        String firstToolId = "session-first-" + UUID.randomUUID();
+        String secondToolId = "session-second-" + UUID.randomUUID();
+        AgentSessionApi session = new AgentSessionApi("session-parallel");
+        LocalFunction firstTool = sessionAwareTool(firstToolId);
+        LocalFunction secondTool = sessionAwareTool(secondToolId);
+
+        Runner.resourceMgr().addTool(firstTool, null);
+        Runner.resourceMgr().addTool(secondTool, null);
+        manager.add(List.of(firstTool.getCard(), secondTool.getCard()));
+        try {
+            AgentCallbackContext ctx = AgentCallbackContext.builder().build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    List.of(
+                            ToolCall.builder().id("tc-session-1").name(firstToolId).arguments("{}").build(),
+                            ToolCall.builder().id("tc-session-2").name(secondToolId).arguments("{}").build()
+                    ),
+                    session,
+                    null
+            );
+
+            assertThat(results).hasSize(2);
+            assertThat(results).extracting(entry -> String.valueOf(entry.result()))
+                    .containsExactly("session-parallel", "session-parallel");
+        } finally {
+            removeTool(firstToolId);
+            removeTool(secondToolId);
+        }
+    }
+
+    // 验证工具执行的嵌套 session 绑定退出后会恢复旧值，且 afterToolCall 仍能读到当前工具 session。
+    @Test
+    void testExecuteRestoresPreviousSessionAndKeepsSessionVisibleInAfterToolCall() {
+        class SessionAwareAgent extends BaseAgent {
+            SessionAwareAgent() {
+                super(AgentCard.builder().id("session-aware-agent").name("session-aware-agent").build());
+            }
+
+            @Override
+            public BaseAgent configure(Object config) {
+                return this;
+            }
+
+            @Override
+            public Object getConfig() {
+                return null;
+            }
+
+            @Override
+            public Object invoke(Object inputs, com.openjiuwen.core.session.Session session) {
+                return null;
+            }
+
+            @Override
+            public java.util.Iterator<Object> stream(Object inputs, com.openjiuwen.core.session.Session session,
+                    List<com.openjiuwen.core.session.stream.StreamMode> streamModes) {
+                return List.of().iterator();
+            }
+        }
+
+        class SessionRail extends AgentRail {
+            private String afterToolSessionId;
+
+            @Override
+            public void afterToolCall(AgentCallbackContext ctx) {
+                com.openjiuwen.core.session.Session currentSession = SessionContextHolder.getCurrentSession();
+                afterToolSessionId = currentSession != null ? currentSession.getSessionId() : null;
+            }
+        }
+
+        String toolId = "restore-session-" + UUID.randomUUID();
+        AgentSessionApi previousSession = new AgentSessionApi("previous-session");
+        AgentSessionApi toolSession = new AgentSessionApi("tool-session");
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("session restore").build(),
+                (LocalFunction.ContextFunction) (inputs, kwargs) -> {
+                    assertThat(SessionContextHolder.getCurrentSession()).isSameAs(toolSession);
+                    return "ok";
+                }
+        );
+
+        Runner.resourceMgr().addTool(tool, null);
+        try {
+            SessionAwareAgent agent = new SessionAwareAgent();
+            SessionRail rail = new SessionRail();
+            agent.registerRail(rail);
+            manager.add(tool.getCard());
+
+            SessionContextHolder.setCurrentSession(previousSession);
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    AgentCallbackContext.builder().agent(agent).build(),
+                    ToolCall.builder().id("tc-session-restore").name(toolId).arguments("{}").build(),
+                    toolSession,
+                    null
+            );
+
+            assertThat(results).hasSize(1);
+            assertThat(results.get(0).result()).isEqualTo("ok");
+            assertThat(rail.afterToolSessionId).isEqualTo("tool-session");
+            assertThat(SessionContextHolder.getCurrentSession()).isSameAs(previousSession);
+        } finally {
+            SessionContextHolder.clearCurrentSession();
+            removeTool(toolId);
+        }
+    }
+
+    // 验证并发工具里的 force_finish 请求会从子工具 context 回传到父 context。
+    @Test
+    void testParallelExecutePropagatesForceFinishFromToolContext() {
+        String finishToolId = "force-finish-" + UUID.randomUUID();
+        class ForceFinishAgent extends BaseAgent {
+            ForceFinishAgent() {
+                super(AgentCard.builder().id("force-finish-agent").name("force-finish-agent").build());
+            }
+
+            @Override
+            public BaseAgent configure(Object config) {
+                return this;
+            }
+
+            @Override
+            public Object getConfig() {
+                return null;
+            }
+
+            @Override
+            public Object invoke(Object inputs, com.openjiuwen.core.session.Session session) {
+                return null;
+            }
+
+            @Override
+            public java.util.Iterator<Object> stream(Object inputs, com.openjiuwen.core.session.Session session,
+                    List<com.openjiuwen.core.session.stream.StreamMode> streamModes) {
+                return List.of().iterator();
+            }
+        }
+
+        class ForceFinishRail extends AgentRail {
+            @Override
+            public void afterToolCall(AgentCallbackContext ctx) {
+                if (ctx.getInputs() instanceof ToolCallInputs inputs && finishToolId.equals(inputs.getToolName())) {
+                    ctx.requestForceFinish(Map.of("reason", "tool-force-finish"));
+                }
+            }
+        }
+
+        String otherToolId = "force-finish-other-" + UUID.randomUUID();
+        LocalFunction finishTool = new LocalFunction(
+                ToolCard.builder().id(finishToolId).name(finishToolId).description("finish").build(),
+                inputs -> "finish"
+        );
+        LocalFunction otherTool = new LocalFunction(
+                ToolCard.builder().id(otherToolId).name(otherToolId).description("other").build(),
+                inputs -> "other"
+        );
+
+        Runner.resourceMgr().addTool(finishTool, null);
+        Runner.resourceMgr().addTool(otherTool, null);
+        manager.add(List.of(finishTool.getCard(), otherTool.getCard()));
+        try {
+            ForceFinishAgent agent = new ForceFinishAgent();
+            agent.registerRail(new ForceFinishRail());
+            AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    List.of(
+                            ToolCall.builder().id("tc-force-finish").name(finishToolId).arguments("{}").build(),
+                            ToolCall.builder().id("tc-force-other").name(otherToolId).arguments("{}").build()
+                    ),
+                    null,
+                    null
+            );
+
+            assertThat(results).hasSize(2);
+            assertThat(ctx.hasForceFinishRequest()).isTrue();
+            assertThat(ctx.consumeForceFinish().getResult()).containsEntry("reason", "tool-force-finish");
+        } finally {
+            removeTool(finishToolId);
+            removeTool(otherToolId);
+        }
+    }
+
+    // 验证并发工具调用中一个工具失败时，其他工具的成功结果仍会被收集返回。
+    @Test
+    void testParallelExecuteCollectsFailureForOneToolAndContinuesOthers() {
+        String failingToolId = "failing-tool-" + UUID.randomUUID();
+        String okToolId = "ok-tool-" + UUID.randomUUID();
+        LocalFunction failingTool = new LocalFunction(
+                ToolCard.builder().id(failingToolId).name(failingToolId).description("fail").build(),
+                inputs -> {
+                    throw new IllegalStateException("boom");
+                }
+        );
+        LocalFunction okTool = new LocalFunction(
+                ToolCard.builder().id(okToolId).name(okToolId).description("ok").build(),
+                inputs -> "ok"
+        );
+
+        Runner.resourceMgr().addTool(failingTool, null);
+        Runner.resourceMgr().addTool(okTool, null);
+        manager.add(List.of(failingTool.getCard(), okTool.getCard()));
+        try {
+            AgentCallbackContext ctx = AgentCallbackContext.builder().build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    List.of(
+                            ToolCall.builder().id("tc-fail").name(failingToolId).arguments("{}").build(),
+                            ToolCall.builder().id("tc-ok").name(okToolId).arguments("{}").build()
+                    ),
+                    null,
+                    null
+            );
+
+            assertThat(results).hasSize(2);
+            assertThat(results.get(0).toolMessage().getContent().toString()).contains("Tool execution error");
+            assertThat(results.get(1).result()).isEqualTo("ok");
+        } finally {
+            removeTool(failingToolId);
+            removeTool(okToolId);
+        }
+    }
+
+    @Test
+    void toolErrorForceFinishesWhenFailTaskOnToolErrorEnabled() {
+        String failingToolId = "fail-task-on-error-" + UUID.randomUUID();
+        LocalFunction failingTool = new LocalFunction(
+                ToolCard.builder().id(failingToolId).name(failingToolId).description("fail").build(),
+                inputs -> {
+                    throw new IllegalStateException("sandbox unavailable");
+                }
+        );
+
+        Runner.resourceMgr().addTool(failingTool, null);
+        manager.add(failingTool.getCard());
+        try {
+            ReActAgentConfig config = ReActAgentConfig.builder().shouldFailTaskOnToolError(true).build();
+            AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    ToolCall.builder().id("tc-fail-task").name(failingToolId).arguments("{}").build(),
+                    null,
+                    null
+            );
+
+            assertThat(results).hasSize(1);
+            assertThat(ctx.hasForceFinishRequest()).isTrue();
+            Map<String, Object> finish = ctx.consumeForceFinish().getResult();
+            assertThat(finish.get("result_type")).isEqualTo("error");
+            assertThat(finish.get("output").toString()).contains("sandbox unavailable");
+            assertThat(finish.get("tool_outcomes")).isInstanceOf(List.class);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> outcomes = (List<Map<String, Object>>) finish.get("tool_outcomes");
+            assertThat(outcomes).hasSize(1);
+            assertThat(outcomes.get(0).get("status")).isEqualTo("failed");
+            assertThat(outcomes.get(0).get("tool_name")).isEqualTo(failingToolId);
+        } finally {
+            removeTool(failingToolId);
+        }
+    }
+
+    // 验证工具任务被取消时，会转换为该工具的失败消息而不会向外抛出异常。
+    @Test
+    void testJoinToolExecutionCollectsCancelledToolFuture() {
+        ToolCall toolCall = ToolCall.builder().id("tc-cancelled").name("cancelled-tool").arguments("{}").build();
+        CompletableFuture<AbilityManager.ToolExecutionEntry> future = new CompletableFuture<>();
+        future.cancel(false);
+
+        AbilityManager.ToolExecutionEntry result = AbilityManager.joinToolExecution(toolCall, future);
+
+        assertThat(result.result()).isNull();
+        assertThat(result.toolMessage().getToolCallId()).isEqualTo("tc-cancelled");
+        assertThat(result.toolMessage().getContent().toString()).isEqualTo("Ability execution cancelled");
+    }
+
     @Test
     void testExecuteSingleToolCallNotFound() {
-        ToolCall tc = ToolCall.builder()
-                .id("tc-1")
-                .name("nonexistent-tool")
-                .arguments("{}")
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-1").name("nonexistent-tool").arguments("{}").build();
 
-        List<AbilityManager.ExecutionResult> results = manager.execute(tc);
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).result()).isNull();
-        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
-                .contains("Ability not found in resource_mgr: nonexistent-tool");
+        // Tool not registered and not in ResourceMgr — should throw
+        assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
+                .isInstanceOf(AbilityExecutionError.class);
     }
 
     @Test
     void testExecuteSingleToolCallNullArguments() {
-        ToolCall tc = ToolCall.builder()
-                .id("tc-2")
-                .name("nonexistent-tool")
-                .arguments(null)
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-2").name("nonexistent-tool").arguments(null).build();
 
-        List<AbilityManager.ExecutionResult> results = manager.execute(tc);
-        assertThat(results).hasSize(1);
-        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
-                .contains("Ability not found in resource_mgr: nonexistent-tool");
+        assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
+                .isInstanceOf(AbilityExecutionError.class);
     }
 
     @Test
     void testExecuteSingleToolCallBlankArguments() {
-        ToolCall tc = ToolCall.builder()
-                .id("tc-3")
-                .name("nonexistent-tool")
-                .arguments("   ")
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-3").name("nonexistent-tool").arguments("   ").build();
 
-        List<AbilityManager.ExecutionResult> results = manager.execute(tc);
-        assertThat(results).isNotEmpty();
+        assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
+                .isInstanceOf(AbilityExecutionError.class);
     }
 
     @Test
     void testExecuteSingleToolCallInvalidJson() {
-        ToolCall tc = ToolCall.builder()
-                .id("tc-4")
-                .name("nonexistent-tool")
-                .arguments("not json")
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-4").name("nonexistent-tool").arguments("not json").build();
 
-        List<AbilityManager.ExecutionResult> results = manager.execute(tc);
-        assertThat(results).hasSize(1);
-        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
-                .contains("Invalid tool arguments JSON:");
+        // Invalid JSON args should be handled gracefully, then fail on tool lookup
+        assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
+                .isInstanceOf(AbilityExecutionError.class);
     }
 
     @Test
     void testExecuteAsToolExecutorWithNonToolCall() {
-        // normalizeToolCalls returns empty for non-ToolCall objects
-        List<ToolCall> calls = manager.normalizeToolCalls("not a ToolCall");
-        assertThat(calls).isEmpty();
+        var result = manager.executeAsToolExecutor("not a ToolCall", null);
+        assertThat(result).isNotNull();
+        assertThat(result.result()).isNull();
     }
 
     @Test
-    void executeUsesGeneratedMcpToolCardIdToResolveResourceManagerInstance() {
+    void testExecuteSingleToolCallResolvesMcpToolByNameWithoutPreListing() throws Exception {
         String serverId = "mcp-server-id-" + UUID.randomUUID();
-        String generatedName = "mcp_demo-server_browser_navigate";
         String toolId = serverId + ".demo-server.browser_navigate";
-        McpServerConfig server = McpServerConfig.builder()
-                .serverName("demo-server")
-                .serverId(serverId)
-                .build();
+
+        McpServerConfig server = McpServerConfig.builder().serverName("demo-server").serverId(serverId).build();
         manager.add(server);
-        manager.add(ToolCard.builder()
-                .id(toolId)
-                .name(generatedName)
-                .description("Navigate browser")
-                .inputParams(Map.of("type", "object"))
-                .build());
 
         McpClient client = new McpClient() {
             @Override
@@ -426,73 +947,34 @@ class AbilityManagerSupplementTest {
                 return "mock://demo-server";
             }
         };
-        Tool tool = new McpTool(client, McpToolCard.builder()
-                .id(toolId)
-                .name("browser_navigate")
-                .description("Navigate browser")
-                .serverId(serverId)
-                .serverName("demo-server")
-                .build());
-        Runner.resourceMgr().addTool(tool, "ut-mcp");
-        try {
-            List<AbilityManager.ExecutionResult> results = manager.execute(ToolCall.builder()
-                    .id("tc-mcp")
-                    .name(generatedName)
-                    .arguments("{\"url\":\"https://example.com\"}")
-                    .build());
 
-            assertThat(results).hasSize(1);
-            assertThat(results.get(0).result()).isNotNull();
-            assertThat(String.valueOf(results.get(0).result())).contains("browser_navigate");
+        McpToolCard card = McpToolCard.builder().id(toolId).name("browser_navigate").description("Navigate browser")
+                .serverId(serverId).serverName("demo-server").build();
+        Tool tool = new McpTool(client, card);
+        Runner.resourceMgr().addTool(tool, "ut-mcp");
+
+        try {
+            ToolCall tc = ToolCall.builder().id("tc-mcp").name("browser_navigate")
+                    .arguments("{\"url\":\"https://example.com\"}").build();
+
+            AbilityManager.ToolExecutionEntry entry = manager.executeSingleToolCall(tc, null, null);
+
+            assertThat(entry.result()).isEqualTo(Map.of("result",
+                    Map.of("tool", "browser_navigate", "arguments", Map.of("url", "https://example.com"))));
+            assertThat(manager.get("browser_navigate")).isInstanceOf(ToolCard.class);
         } finally {
             Runner.resourceMgr().removeTool(toolId, "ut-mcp", TagMatchStrategy.ALL, true);
         }
     }
 
     @Test
-    void mcpAllowlistFiltersListedToolsAndRejectsDisallowedExecution() {
-        McpServerConfig server = McpServerConfig.builder()
-                .serverName("weather")
-                .serverId("mcp-weather")
-                .build();
-        TestableAbilityManager allowlistManager = new TestableAbilityManager(List.of(
-                ToolInfo.builder().name("forecast").description("forecast").parameters(Map.of()).build(),
-                ToolInfo.builder().name("alerts").description("alerts").parameters(Map.of()).build()
-        ));
-        allowlistManager.add(server);
-        allowlistManager.setMcpToolAllowlist(server, List.of("forecast"));
-
-        List<String> names = allowlistManager.listToolInfo().stream().map(ToolInfo::getName).toList();
-        assertThat(names).contains("mcp_weather_forecast");
-        assertThat(names).doesNotContain("mcp_weather_alerts");
-
-        List<AbilityManager.ExecutionResult> results = allowlistManager.execute(ToolCall.builder()
-                .id("tc-alert")
-                .name("mcp_weather_alerts")
-                .arguments("{}")
-                .build());
-        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
-                .contains("MCP tool 'alerts' is not allowed for server 'mcp-weather'");
-    }
-
-    @Test
     void testExecuteSingleToolCallMcpServerNameRaisesExplicitError() {
-        manager.add(McpServerConfig.builder()
-                .serverName("mcp-server")
-                .serverId("mcp-server-id")
-                .build());
+        manager.add(McpServerConfig.builder().serverName("mcp-server").serverId("mcp-server-id").build());
 
-        ToolCall tc = ToolCall.builder()
-                .id("tc-mcp")
-                .name("mcp-server")
-                .arguments("{}")
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-mcp").name("mcp-server").arguments("{}").build();
 
-        List<AbilityManager.ExecutionResult> results = manager.execute(tc);
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).result()).isNull();
-        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
-                .contains("MCP tool execution not yet implemented: mcp-server");
+        assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
+                .isInstanceOf(AbilityExecutionError.class).hasMessageContaining("not directly executable");
     }
 
     // ========== ToolExecutionEntry record ==========
@@ -500,7 +982,7 @@ class AbilityManagerSupplementTest {
     @Test
     void testToolExecutionEntryCreation() {
         ToolMessage msg = ToolMessage.builder().content("result").toolCallId("tc-1").build();
-        AbilityManager.ExecutionResult entry = new AbilityManager.ExecutionResult("data", msg);
+        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry("data", msg);
 
         assertThat(entry.result()).isEqualTo("data");
         assertThat(entry.toolMessage()).isSameAs(msg);
@@ -508,21 +990,174 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testToolExecutionEntryNulls() {
-        AbilityManager.ExecutionResult entry = new AbilityManager.ExecutionResult(null, null);
+        AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(null, null);
         assertThat(entry.result()).isNull();
         assertThat(entry.toolMessage()).isNull();
     }
 
-    private static final class TestableAbilityManager extends AbilityManager {
-        private final List<ToolInfo> mcpToolInfos;
-
-        private TestableAbilityManager(List<ToolInfo> mcpToolInfos) {
-            this.mcpToolInfos = mcpToolInfos;
+    private void assertCappedParallelExecution(
+            AgentCallbackContext ctx,
+            int toolCount,
+            int expectedMaxInFlight,
+            boolean stream
+    ) {
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicInteger maxInFlight = new AtomicInteger();
+        List<String> toolIds = new ArrayList<>();
+        List<ToolCall> toolCalls = new ArrayList<>();
+        for (int i = 0; i < toolCount; i++) {
+            String toolId = "capped-" + expectedMaxInFlight + "-" + i + "-" + UUID.randomUUID();
+            toolIds.add(toolId);
+            LocalFunction tool = cappedConcurrencyTool(toolId, inFlight, maxInFlight);
+            Runner.resourceMgr().addTool(tool, null);
+            manager.add(tool.getCard());
+            toolCalls.add(ToolCall.builder().id("tc-capped-" + i).name(toolId).arguments("{}").build());
         }
 
-        @Override
-        protected List<ToolInfo> loadMcpToolInfos(McpServerConfig mcpServer) {
-            return mcpToolInfos;
+        AgentCallbackContext callbackContext = ctx != null ? ctx : AgentCallbackContext.builder().build();
+        try {
+            List<AbilityManager.ToolExecutionEntry> results = stream
+                    ? manager.executeStream(callbackContext, toolCalls, null, null, null)
+                    : manager.execute(callbackContext, toolCalls, null, null);
+
+            assertThat(results).hasSize(toolCount);
+            for (int i = 0; i < toolCount; i++) {
+                assertThat(String.valueOf(results.get(i).result())).isEqualTo(toolIds.get(i));
+            }
+            assertThat(maxInFlight.get()).isEqualTo(expectedMaxInFlight);
+        } finally {
+            toolIds.forEach(AbilityManagerSupplementTest::removeTool);
         }
+    }
+
+    private static LocalFunction interruptibleGateTool(
+            String toolId,
+            AtomicInteger startedCount,
+            CountDownLatch firstStarted,
+            CountDownLatch firstMayFinish
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("interrupt gate").build(),
+                inputs -> {
+                    int started = startedCount.incrementAndGet();
+                    if (started == 1) {
+                        firstStarted.countDown();
+                        await(firstMayFinish, 5, TimeUnit.SECONDS);
+                    }
+                    return toolId;
+                }
+        );
+    }
+
+    private static LocalFunction hangingGateTool(
+            String toolId,
+            CountDownLatch started,
+            AtomicLong finishedAt,
+            long hangMillis
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("hanging gate").build(),
+                inputs -> {
+                    started.countDown();
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(hangMillis);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        finishedAt.set(System.nanoTime());
+                    }
+                    return toolId;
+                }
+        );
+    }
+
+    private static LocalFunction startSignalTool(
+            String toolId,
+            CountDownLatch started,
+            AtomicLong startedAt
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("start signal").build(),
+                inputs -> {
+                    startedAt.set(System.nanoTime());
+                    started.countDown();
+                    return toolId;
+                }
+        );
+    }
+
+    private static LocalFunction cappedConcurrencyTool(
+            String toolId,
+            AtomicInteger inFlight,
+            AtomicInteger maxInFlight
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("capped parallel").build(),
+                inputs -> {
+                    int current = inFlight.incrementAndGet();
+                    maxInFlight.accumulateAndGet(current, Math::max);
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(80L);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        inFlight.decrementAndGet();
+                    }
+                    return toolId;
+                }
+        );
+    }
+
+    private static LocalFunction blockingTool(
+            String toolId,
+            CountDownLatch bothToolsStarted,
+            AtomicInteger invocationOrder
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("parallel").build(),
+                inputs -> {
+                    int order = invocationOrder.incrementAndGet();
+                    bothToolsStarted.countDown();
+                    // 这里的 2 秒是等待另一个工具启动的最长时间，并行启动后会立即放行。
+                    boolean parallel = await(bothToolsStarted, 2, TimeUnit.SECONDS);
+                    return toolId + ":parallel=" + parallel + ":order=" + order;
+                }
+        );
+    }
+
+    private static LocalFunction sessionAwareTool(String toolId) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("session").build(),
+                (inputs, kwargs) -> {
+                    if (SessionContextHolder.getCurrentSession() == null) {
+                        return "missing";
+                    }
+                    return SessionContextHolder.getCurrentSession().getSessionId();
+                }
+        );
+    }
+
+    private static LocalFunction threadNameTool(String toolId, CountDownLatch bothToolsStarted) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("thread name").build(),
+                inputs -> {
+                    bothToolsStarted.countDown();
+                    await(bothToolsStarted, 2, TimeUnit.SECONDS);
+                    return Thread.currentThread().getName();
+                }
+        );
+    }
+
+    private static boolean await(CountDownLatch latch, long timeout, TimeUnit unit) {
+        try {
+            return latch.await(timeout, unit);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private static void removeTool(String toolId) {
+        Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
     }
 }

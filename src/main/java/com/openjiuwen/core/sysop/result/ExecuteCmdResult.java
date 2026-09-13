@@ -4,18 +4,26 @@
 
 package com.openjiuwen.core.sysop.result;
 
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
 /**
- * Mirrors Python's {@code ExecuteCmdResult} in
- * {@code openjiuwen/core/sys_operation/result/shell_operation_result.py}.
+ * Result type for shell command execution.
+ * 
+ * @since 0.1.7
  */
+@SuperBuilder
+@NoArgsConstructor
 public class ExecuteCmdResult extends BaseResult<ExecuteCmdData> {
-
-    public ExecuteCmdResult() {
-    }
-
+    /**
+     * ExecuteCmdResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
+     */
     public ExecuteCmdResult(int code, String message, ExecuteCmdData data) {
-        setCode(code);
-        setMessage(message);
-        setData(data);
+        super(code, message, data);
     }
 }

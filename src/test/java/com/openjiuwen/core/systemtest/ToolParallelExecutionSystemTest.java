@@ -4,17 +4,25 @@
 package com.openjiuwen.core.systemtest;
 
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
-import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
@@ -26,22 +34,22 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * System tests for ReAct tool parallel execution through the agent runtime.
+ * System tests for ReAct tool execution through the agent runtime.
  */
 @Tag("system-test")
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class ToolParallelExecutionSystemTest extends SystemTestSupport {
 
+    private static final String TEST_PROVIDER = "tool-parallel-system-test-provider";
     private static final String SEAT_TOOL = "st_open_seat_massage";
     private static final String AC_TOOL = "st_open_air_conditioner";
 
@@ -60,19 +68,14 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
 
         try {
             String sessionId = trackSessionId("parallel-tools-session");
-            AgentSession session = AgentSession.createAgentSession(sessionId, null, agent.getCard());
-            Map<String, Object> inputs = Map.of(
-                    "query", "帮我打开座椅按摩，帮我打开空调",
-                    "conversation_id", sessionId
+            InvocationCapture capture = invokeAgent(
+                    agent,
+                    Map.of(
+                            "query", "帮我打开座椅按摩，帮我打开空调",
+                            "conversation_id", sessionId
+                    ),
+                    sessionId
             );
-            session.preRun(Map.of("inputs", inputs));
-            Object result;
-            try {
-                result = agent.invoke(inputs, session);
-            } finally {
-                session.postRun();
-            }
-            String flattened = flattenText(List.of(result, collect(session.streamIterator())));
 
             assertThat(modelClient.invokeCount).isEqualTo(2);
             assertThat(modelClient.firstCallToolNames).contains(SEAT_TOOL, AC_TOOL);
@@ -80,7 +83,7 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
             assertThat(modelClient.observedToolMessages)
                     .allMatch(content -> content.contains("parallel=true"))
                     .allMatch(content -> content.contains("session=" + sessionId));
-            assertThat(flattened)
+            assertThat(capture.flattenedText())
                     .contains("seat_massage_on:parallel=true")
                     .contains("air_conditioner_on:parallel=true")
                     .contains("tc-seat>tc-ac");
@@ -103,8 +106,29 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
                         "content", "You are a deterministic vehicle control assistant."
                 )))
                 .build());
-        agent.setLlm(new Model(modelClient));
+        agent.setLlm(newModel(modelClient));
         return agent;
+    }
+
+    private static Model newModel(SequencedToolCallingClient modelClient) {
+        Model.registerFactory(new Model.ModelClientFactory() {
+            @Override
+            public String providerName() {
+                return TEST_PROVIDER;
+            }
+
+            @Override
+            public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
+                return modelClient;
+            }
+        });
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientId("tool-parallel-system-test")
+                .clientProvider(TEST_PROVIDER)
+                .apiKey("test-key")
+                .apiBase("mirror://tool-parallel-system-test")
+                .build();
+        return new Model(clientConfig, ModelRequestConfig.builder().modelName("fake-model").build());
     }
 
     private static LocalFunction carControlTool(String toolName, String resultPrefix, CountDownLatch bothToolsStarted) {
@@ -122,11 +146,8 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
                 (LocalFunction.ContextFunction) (inputs, kwargs) -> {
                     bothToolsStarted.countDown();
                     boolean parallel = await(bothToolsStarted, 2, TimeUnit.SECONDS);
-                    Object currentSession = SessionContextHolder.getCurrentSession();
-                    String sessionId = SessionContextHolder.resolveSessionId(currentSession);
-                    if (sessionId == null) {
-                        sessionId = "missing";
-                    }
+                    Session currentSession = SessionContextHolder.getCurrentSession();
+                    String sessionId = currentSession != null ? currentSession.getSessionId() : "missing";
                     return resultPrefix + ":parallel=" + parallel + ":session=" + sessionId;
                 }
         );
@@ -145,18 +166,31 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
         Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
     }
 
-    private static final class SequencedToolCallingClient implements Model.ModelClient {
+    private static final class SequencedToolCallingClient extends BaseModelClient {
         private int invokeCount;
         private List<String> firstCallToolNames = List.of();
         private final List<String> observedToolCallIds = new ArrayList<>();
         private final List<String> observedToolMessages = new ArrayList<>();
 
+        private SequencedToolCallingClient() {
+            super(ModelRequestConfig.builder().modelName("fake-model").build(),
+                    ModelClientConfig.builder()
+                            .clientId("tool-parallel-system-test")
+                            .clientProvider(TEST_PROVIDER)
+                            .apiKey("test-key")
+                            .apiBase("mirror://tool-parallel-system-test")
+                            .build());
+        }
+
         @Override
-        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP,
+                                       String model, Integer maxTokens, String stop,
+                                       BaseOutputParser outputParser, Float timeout,
+                                       Map<String, Object> kwargs) {
             invokeCount++;
             if (invokeCount == 1) {
-                firstCallToolNames = extractToolNames(options == null ? null : options.getTools());
-                return CompletableFuture.completedFuture(AssistantMessage.builder()
+                firstCallToolNames = extractToolNames(tools);
+                return AssistantMessage.builder()
                         .content("")
                         .toolCalls(List.of(
                                 ToolCall.builder()
@@ -173,15 +207,47 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
                                         .build()
                         ))
                         .finishReason("tool_calls")
-                        .build());
+                        .build();
             }
 
             collectToolMessages(messages);
-            return CompletableFuture.completedFuture(AssistantMessage.builder()
+            return AssistantMessage.builder()
                     .content("tool observations: " + String.join(" | ", observedToolMessages)
                             + " order=" + String.join(">", observedToolCallIds))
                     .finishReason("stop")
-                    .build());
+                    .build();
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature,
+                                                      Float topP, String model, Integer maxTokens,
+                                                      String stop, BaseOutputParser outputParser,
+                                                      Float timeout, Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("stream is not used in this system test");
+        }
+
+        @Override
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model,
+                                                     String size, String negativePrompt, int n,
+                                                     boolean promptExtend, boolean watermark, int seed,
+                                                     Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("image generation is not used in this system test");
+        }
+
+        @Override
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model,
+                                                      String voice, String languageType,
+                                                      Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("speech generation is not used in this system test");
+        }
+
+        @Override
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl,
+                                                     String audioUrl, String model, String size,
+                                                     String resolution, int duration, boolean promptExtend,
+                                                     boolean watermark, String negativePrompt, Integer seed,
+                                                     Map<String, Object> kwargs) {
+            throw new UnsupportedOperationException("video generation is not used in this system test");
         }
 
         private static List<String> extractToolNames(Object tools) {
@@ -197,16 +263,18 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
             return names;
         }
 
-        private void collectToolMessages(List<BaseMessage> messages) {
+        private void collectToolMessages(Object messages) {
             observedToolCallIds.clear();
             observedToolMessages.clear();
-            if (messages == null) {
+            if (!(messages instanceof List<?> messageList)) {
                 return;
             }
-            for (BaseMessage message : messages) {
+            for (Object message : messageList) {
                 if (message instanceof ToolMessage toolMessage) {
                     observedToolCallIds.add(toolMessage.getToolCallId());
                     observedToolMessages.add(String.valueOf(toolMessage.getContent()));
+                } else if (message instanceof BaseMessage) {
+                    // Other message types are irrelevant for this assertion.
                 }
             }
         }

@@ -9,7 +9,6 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.extensions.a2a.A2ARemoteClient;
 
-import java.util.Iterator;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,20 +17,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * Factory and registry for remote client instances.
  * <p>
  * Built-in protocols are discovered via {@link ServiceLoader} from
- * {@code META-INF/services/com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientProvider}.
+ * {@code META-INF/services/com.openjiuwen.core.runner.drunner.remote_client.RemoteClientProvider}.
  * Service adapters can register additional protocols via
  * {@link #register(String, RemoteClientProvider)} without modifying Core source.
  * <p>
- * This package is the SPI / sync facade. Production async callers should prefer
- * {@code com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory}, which
- * bridges known SPI providers onto the async API.
+ * Calling point: remote-agent Tool creation in the execution chain.
  * 
  * @see RemoteClientProvider
  * @see RemoteClient
  * @since 0.1.7
- * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory}.
  */
-@Deprecated(since = "0.1.14")
 public final class RemoteClientFactory {
     private static final Map<String, RemoteClientProvider> REGISTRY = new ConcurrentHashMap<>();
 
@@ -95,62 +90,11 @@ public final class RemoteClientFactory {
      */
     public static RemoteClient createA2A(RemoteClientConfig config) {
         try {
-            com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig adaptedConfig =
-                    new com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig(
-                            config.getId(),
-                            config.getVersion(),
-                            config.getName(),
-                            config.getDescription(),
-                            com.openjiuwen.core.runner.drunner.remote_client.ProtocolEnum.valueOf(
-                                    config.getProtocol() != null ? config.getProtocol().name() : ProtocolEnum.MQ.name()),
-                            config.getType(),
-                            config.getTopic(),
-                            config.getUrl(),
-                            config.getKwargs()
-                    );
-            com.openjiuwen.core.runner.drunner.remote_client.RemoteClient a2aClient =
-                    new A2ARemoteClient(adaptedConfig);
-            return new RemoteClientAdapter(a2aClient);
+            return new A2ARemoteClient(config);
         } catch (Exception ex) {
             throw ErrorHelper.buildError(StatusCode.REMOTE_AGENT_EXECUTION_ERROR, "agent_id",
                     config != null ? String.valueOf(config.getId()) : "", "reason",
                     "failed to instantiate A2A remote client plugin");
-        }
-    }
-
-    /**
-     * Adapter bridging remote_client.RemoteClient to remoteclient.RemoteClient.
-     */
-    private static final class RemoteClientAdapter implements RemoteClient {
-        private final com.openjiuwen.core.runner.drunner.remote_client.RemoteClient delegate;
-
-        RemoteClientAdapter(com.openjiuwen.core.runner.drunner.remote_client.RemoteClient delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        public void start() {
-            delegate.start().toCompletableFuture().join();
-        }
-
-        @Override
-        public void stop() {
-            delegate.stop().toCompletableFuture().join();
-        }
-
-        @Override
-        public boolean isStarted() {
-            return delegate.isStarted();
-        }
-
-        @Override
-        public Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
-            return delegate.invoke(inputs, timeoutSeconds).toCompletableFuture().join();
-        }
-
-        @Override
-        public Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
-            return delegate.stream(inputs, timeoutSeconds);
         }
     }
 

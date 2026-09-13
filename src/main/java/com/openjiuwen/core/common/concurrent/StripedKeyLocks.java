@@ -11,6 +11,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * <p>
  * Concurrent operations on different keys typically take different stripes and proceed in parallel,
  * while the same key always maps to the same {@link ReentrantLock}.
+ *
+ * @since 0.1.14
  */
 public final class StripedKeyLocks {
     private final ReentrantLock[] stripes;
@@ -20,6 +22,7 @@ public final class StripedKeyLocks {
      * Creates a stripe table with at least {@code stripeCount} locks (rounded up to a power of two).
      *
      * @param stripeCount requested minimum number of stripes; values below 1 are treated as 1
+     * @since 0.1.14
      */
     public StripedKeyLocks(int stripeCount) {
         int size = 1;
@@ -39,6 +42,7 @@ public final class StripedKeyLocks {
      *
      * @param key partition key; {@code null} maps to stripe 0
      * @return the non-null {@link ReentrantLock} for this key
+     * @since 0.1.14
      */
     public ReentrantLock get(String key) {
         int hash = key == null ? 0 : key.hashCode();

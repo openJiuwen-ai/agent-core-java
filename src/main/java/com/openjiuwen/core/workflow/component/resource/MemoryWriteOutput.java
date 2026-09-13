@@ -4,45 +4,66 @@
 
 package com.openjiuwen.core.workflow.component.resource;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Output schema for memory write.
- *
- * <p>Mirrors Python's {@code MemoryWriteOutput} in
- * {@code openjiuwen/core/workflow/components/resource/memory_write_comp.py}.</p>
+ * Output model for the Memory Write component.
+ * <p>
+ * Mirrors Python's {@code MemoryWriteOutput}.
+ * 
+ * @since 0.1.7
  */
 public class MemoryWriteOutput {
+    private boolean isSuccess = true;
 
-    @JsonProperty("success")
-    private boolean success = true;
-
+    /**
+     * Default constructor.
+     * 
+     * @since 0.1.7
+     */
     public MemoryWriteOutput() {
     }
 
-    public MemoryWriteOutput(boolean success) {
-        this.success = success;
-    }
-
-    public boolean isSuccess() {
-        return success;
-    }
-
-    public void setSuccess(boolean success) {
-        this.success = success;
+    /**
+     * Constructor with success parameter.
+     * 
+     * @param isSuccess whether the operation was successful
+     * @since 0.1.7
+     */
+    public MemoryWriteOutput(boolean isSuccess) {
+        this.isSuccess = isSuccess;
     }
 
     /**
-     * Convert to Python's {@code model_dump()} dictionary shape.
-     *
-     * @return plain output map with Python field names
+     * Check if the operation was successful.
+     * 
+     * @return true if successful, false otherwise
+     * @since 0.1.7
+     */
+    public boolean isSuccess() {
+        return isSuccess;
+    }
+
+    /**
+     * Set the success status.
+     * 
+     * @param isSuccess whether the operation was successful
+     * @since 0.1.7
+     */
+    public void setSuccess(boolean isSuccess) {
+        this.isSuccess = isSuccess;
+    }
+
+    /**
+     * Convert to a plain map representation.
+     * 
+     * @return the map representation
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
-        Map<String, Object> output = new LinkedHashMap<>();
-        output.put("success", success);
-        return output;
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("success", isSuccess);
+        return map;
     }
 }

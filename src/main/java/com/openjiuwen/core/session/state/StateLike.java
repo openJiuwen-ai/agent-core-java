@@ -8,12 +8,27 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Mirrors Python's {@code StateLike} in
- * {@code openjiuwen/core/session/state/base.py}.
+ * Mutable state interface with read/write capabilities.
+ * <p>
+ * Mirrors Python's {@code StateLike}.
+ * 
+ * @since 0.1.7
  */
 public interface StateLike extends ReadableState, RecoverableState {
-
+    /**
+     * update.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     void update(Map<String, Object> data);
 
+    /**
+     * Get value via transformer function.
+     * 
+     * @param transformer transformer
+     * @return the result
+     * @since 0.1.7
+     */
     Object getByTransformer(Function<Object, Object> transformer);
 }

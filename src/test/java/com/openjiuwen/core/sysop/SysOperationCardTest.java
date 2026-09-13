@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -66,12 +65,10 @@ class SysOperationCardTest {
         assertEquals("code", proxy.getOpType());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @DisplayName("builder sets all fields correctly")
     void testBuilderFields() {
-        LocalWorkConfig workConfig = new LocalWorkConfig();
-        workConfig.setWorkDir("/tmp");
+        LocalWorkConfig workConfig = LocalWorkConfig.builder().workDir("/tmp").build();
         SysOperationCard card = new SysOperationCard();
         card.setId("my_card");
         card.setName("Test Card");
@@ -83,6 +80,6 @@ class SysOperationCardTest {
         assertEquals("Test Card", card.getName());
         assertEquals("A test card", card.getDescription());
         assertEquals(OperationMode.LOCAL, card.getMode());
-        assertEquals("/tmp", ((LocalWorkConfig) card.getWorkConfig()).getWorkDir());
+        assertEquals("/tmp", card.getWorkConfig().getWorkDir());
     }
 }

@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.openjiuwen.core.application.llm.LlmAgent;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
@@ -17,7 +20,6 @@ import com.openjiuwen.core.multiagent.BaseGroup;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
-import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -42,22 +44,128 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletionStage;
-
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 abstract class SystemTestSupport {
-
     private final Set<String> sessionIds = new LinkedHashSet<>();
     private final Set<String> workflowIds = new LinkedHashSet<>();
     private final Set<String> agentIds = new LinkedHashSet<>();
     private final Set<String> groupIds = new LinkedHashSet<>();
 
+    // ------------------------------------------------------------------
+    // Configuration resolution: environment variables take precedence; when
+    // absent, values fall back to the classpath resource APIKEY/apiconfig.json
+    // (via ApiConfigLoader). LLM settings come from API_BASE/API_KEY/
+    // MODEL_PROVIDER/MODEL_NAME/LLM_SSL_VERIFY/LLM_SSL_CERT; Redis settings
+    // come from REDIS_HOST/REDIS_PORT.
+    // ------------------------------------------------------------------
+
+    protected static String env(String name) {
+        return System.getenv(name);
+    }
+
+    protected static boolean isEnvPresent(String name) {
+        String value = System.getenv(name);
+        return value != null && !value.isBlank();
+    }
+
+    protected static boolean envFlag(String name, boolean defaultValue) {
+        String value = System.getenv(name);
+        return (value == null || value.isBlank()) ? defaultValue : Boolean.parseBoolean(value);
+    }
+
+    private static boolean isNotBlank(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static String resolveEnvOrConfig(String envName, String configValue) {
+        String envValue = System.getenv(envName);
+        return isNotBlank(envValue) ? envValue : configValue;
+    }
+
+    private String resolveApiBase() {
+        return resolveEnvOrConfig("API_BASE", ApiConfigLoader.getApiBase());
+    }
+
+    private String resolveApiKey() {
+        return resolveEnvOrConfig("API_KEY", ApiConfigLoader.getApiKey());
+    }
+
+    private String resolveModelProvider() {
+        return resolveEnvOrConfig("MODEL_PROVIDER", ApiConfigLoader.getModelProvider());
+    }
+
+    private String resolveModelName() {
+        return resolveEnvOrConfig("MODEL_NAME", ApiConfigLoader.getModelName());
+    }
+
+    private boolean resolveSslVerify() {
+        return isEnvPresent("LLM_SSL_VERIFY") ? envFlag("LLM_SSL_VERIFY", true)
+                : ApiConfigLoader.getSslVerify();
+    }
+
+    private String resolveSslCert() {
+        return resolveEnvOrConfig("LLM_SSL_CERT", ApiConfigLoader.getSslCert());
+    }
+
     protected void assumeRemoteModelAvailable() {
-        assumeTrue(isNotBlank(ApiConfigLoader.getApiBase()), "API_BASE is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getApiKey()), "API_KEY is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getModelProvider()), "MODEL_PROVIDER is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getModelName()), "MODEL_NAME is required");
+        assumeTrue(isNotBlank(resolveApiBase()), "API_BASE is required (env or apiconfig.json)");
+        assumeTrue(isNotBlank(resolveApiKey()), "API_KEY is required (env or apiconfig.json)");
+        assumeTrue(isNotBlank(resolveModelProvider()),
+                "MODEL_PROVIDER is required (env or apiconfig.json)");
+        assumeTrue(isNotBlank(resolveModelName()), "MODEL_NAME is required (env or apiconfig.json)");
+    }
+
+    /**
+     * Skips the test when Redis is not configured. Redis may be provided via
+     * the {@code REDIS_HOST}/{@code REDIS_PORT} environment variables or, as a
+     * fallback, via {@code REDIS_HOST}/{@code REDIS_PORT} in the classpath
+     * apiconfig.json.
+     */
+    protected void assumeRedisAvailable() {
+        assumeTrue(redisConfigured(), "Redis config (REDIS_HOST/REDIS_PORT env or apiconfig.json) is required");
+    }
+
+    private boolean redisConfigured() {
+        return (isEnvPresent("REDIS_HOST") && isEnvPresent("REDIS_PORT"))
+                || isNotBlank(ApiConfigLoader.getRedisHost());
+    }
+
+    /**
+     * @return Redis host from {@code REDIS_HOST} env var, falling back to
+     *         {@code REDIS_HOST} in apiconfig.json, then {@code 127.0.0.1}
+     */
+    protected String redisHost() {
+        if (isEnvPresent("REDIS_HOST")) {
+            return env("REDIS_HOST");
+        }
+        String configHost = ApiConfigLoader.getRedisHost();
+        if (isNotBlank(configHost)) {
+            return configHost;
+        }
+        return "127.0.0.1";
+    }
+
+    /**
+     * @return Redis port from {@code REDIS_PORT} env var, falling back to
+     *         {@code REDIS_PORT} in apiconfig.json, then {@code 6379}
+     */
+    protected int redisPort() {
+        if (isEnvPresent("REDIS_PORT")) {
+            try {
+                return Integer.parseInt(env("REDIS_PORT").trim());
+            } catch (NumberFormatException e) {
+                return 6379;
+            }
+        }
+        String configPort = ApiConfigLoader.getRedisPort();
+        if (isNotBlank(configPort)) {
+            try {
+                return Integer.parseInt(configPort.trim());
+            } catch (NumberFormatException e) {
+                return 6379;
+            }
+        }
+        return 6379;
     }
 
     protected String trackSessionId(String prefix) {
@@ -87,67 +195,40 @@ abstract class SystemTestSupport {
     }
 
     protected ModelClientConfig remoteClientConfig(double timeoutSeconds) {
-        return ModelClientConfig.builder()
-                .clientProvider(ApiConfigLoader.getModelProvider())
-                .apiKey(ApiConfigLoader.getApiKey())
-                .apiBase(ApiConfigLoader.getApiBase())
-                .timeout(timeoutSeconds)
-                .maxRetries(2)
-                .verifySsl(ApiConfigLoader.getSslVerify())
-                .sslCert(ApiConfigLoader.getSslCert())
-                .build();
+        return ModelClientConfig.builder().clientProvider(resolveModelProvider())
+                .apiKey(resolveApiKey()).apiBase(resolveApiBase()).timeout(timeoutSeconds)
+                .maxRetries(2).verifySsl(resolveSslVerify()).sslCert(resolveSslCert()).build();
     }
 
     protected ModelRequestConfig remoteRequestConfig(double temperature, int maxTokens) {
-        return ModelRequestConfig.builder()
-                .modelName(ApiConfigLoader.getModelName())
-                .temperature(temperature)
-                .topP(0.9)
-                .maxTokens(maxTokens)
-                .build();
+        return ModelRequestConfig.builder().modelName(resolveModelName()).temperature(temperature).topP(0.9)
+                .maxTokens(maxTokens).build();
     }
 
     protected ModelConfig remoteApplicationModelConfig(double temperature) {
-        BaseModelInfo modelInfo = BaseModelInfo.builder()
-                .apiKey(ApiConfigLoader.getApiKey())
-                .apiBase(ApiConfigLoader.getApiBase())
-                .modelName(ApiConfigLoader.getModelName())
-                .temperature(temperature)
-                .topP(0.9)
-                .timeout(60)
-                .customHeaders(Map.of("verify_ssl", ApiConfigLoader.getSslVerify(), "ssl_cert", ApiConfigLoader.getSslCert()))
-                .build();
-        return new ModelConfig(ApiConfigLoader.getModelProvider(), modelInfo);
+        BaseModelInfo modelInfo =
+            BaseModelInfo.builder().apiKey(resolveApiKey()).apiBase(resolveApiBase())
+                    .modelName(resolveModelName()).temperature(temperature).topP(0.9).timeout(60)
+                    .verifySsl(resolveSslVerify()).sslCert(resolveSslCert()).build();
+        return new ModelConfig(resolveModelProvider(), modelInfo);
     }
 
     protected LlmAgent newRemoteLlmAgent(String agentId, String systemPrompt) {
-        LlmAgentConfig config = LlmAgentConfig.builder()
-                .id(agentId)
-                .description("system test llm agent")
+        LlmAgentConfig config = LlmAgentConfig.builder().id(agentId).description("system test llm agent")
                 .model(remoteApplicationModelConfig(0.1))
-                .promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt))
-                .build();
+                .promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt)).build();
         return new LlmAgent(config);
     }
 
     protected ReActAgent newRemoteReActAgent(String agentId, String systemPrompt) {
-        ReActAgent agent = new ReActAgent(AgentCard.builder()
-                .id(agentId)
-                .name(agentId)
-                .description("system test react agent")
-                .build());
+        ReActAgent agent = new ReActAgent(
+                AgentCard.builder().id(agentId).name(agentId).description("system test react agent").build());
 
-        ReActAgentConfig config = ReActAgentConfig.builder()
-                .promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt))
-                .maxIterations(3)
-                .build()
-                .configureModelClient(
-                        ApiConfigLoader.getModelProvider(),
-                        ApiConfigLoader.getApiKey(),
-                        ApiConfigLoader.getApiBase(),
-                        ApiConfigLoader.getModelName(),
-                        ApiConfigLoader.getSslVerify()
-                );
+        ReActAgentConfig config =
+            ReActAgentConfig.builder().promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt))
+                    .maxIterations(3).build().configureModelClient(resolveModelProvider(),
+                            resolveApiKey(), resolveApiBase(), resolveModelName(),
+                            resolveSslVerify(), resolveSslCert(), null);
 
         config.getModelConfigObj().setTemperature(0.1);
         config.getModelConfigObj().setTopP(0.9);
@@ -156,65 +237,29 @@ abstract class SystemTestSupport {
         return agent;
     }
 
-    protected InvocationCapture invokeAgent(Object agent, Map<String, Object> inputs, String sessionId) {
-        AgentSession session = new AgentSession();
+    protected InvocationCapture invokeAgent(BaseAgent agent, Map<String, Object> inputs, String sessionId) {
+        AgentSessionApi session = AgentSessionApi.create(sessionId, null, agent.getCard());
+        session.preRun(inputs);
         Object result;
         try {
-            if (agent instanceof BaseAgent baseAgent) {
-                result = baseAgent.invoke(inputs, session);
-            } else {
-                result = invokeDeepAgentCompat(agent, inputs, session);
-            }
-        } catch (Exception e) {
-            result = e;
+            result = agent.invoke(inputs, session);
+        } finally {
+            session.postRun();
         }
         List<Object> streamItems = collect(session.streamIterator());
         return new InvocationCapture(result, streamItems, flattenText(List.of(result, streamItems)));
     }
 
-    @SuppressWarnings("unchecked")
-    protected InvocationCapture streamAgent(Object agent, Map<String, Object> inputs, String sessionId) {
-        AgentSession session = new AgentSession();
+    protected InvocationCapture streamAgent(BaseAgent agent, Map<String, Object> inputs, String sessionId) {
+        AgentSessionApi session = AgentSessionApi.create(sessionId, null, agent.getCard());
+        session.preRun(inputs);
         List<Object> streamItems;
         try {
-            Iterator<Object> iterator;
-            if (agent instanceof BaseAgent baseAgent) {
-                iterator = baseAgent.stream(inputs, session, List.of(StreamMode.OUTPUT));
-            } else {
-                java.lang.reflect.Method streamMethod = agent.getClass().getMethod("stream", Map.class, AgentSessionApi.class, List.class);
-                iterator = (Iterator<Object>) streamMethod.invoke(agent, inputs, session, List.of(StreamMode.OUTPUT));
-            }
-            streamItems = collect(iterator);
-        } catch (Exception e) {
-            streamItems = List.of(e);
+            streamItems = collect(agent.stream(inputs, session, List.of(StreamMode.OUTPUT)));
+        } finally {
+            session.postRun();
         }
         return new InvocationCapture(streamItems, streamItems, flattenText(streamItems));
-    }
-
-    /**
-     * Invoke DeepAgent-compatible agents whether {@code invoke} is sync ({@code Map})
-     * or legacy async ({@code CompletionStage}).
-     */
-    private static Object invokeDeepAgentCompat(Object agent, Map<String, Object> inputs, AgentSessionApi session)
-            throws Exception {
-        try {
-            java.lang.reflect.Method async = agent.getClass()
-                    .getMethod("invokeAsync", Map.class, AgentSessionApi.class);
-            Object stage = async.invoke(agent, inputs, session);
-            if (stage instanceof CompletionStage<?> completionStage) {
-                return completionStage.toCompletableFuture().join();
-            }
-            return stage;
-        } catch (NoSuchMethodException ignored) {
-            // fall through to invoke(...)
-        }
-        java.lang.reflect.Method invokeMethod = agent.getClass()
-                .getMethod("invoke", Map.class, AgentSessionApi.class);
-        Object invoked = invokeMethod.invoke(agent, inputs, session);
-        if (invoked instanceof CompletionStage<?> completionStage) {
-            return completionStage.toCompletableFuture().join();
-        }
-        return invoked;
     }
 
     protected List<Object> collect(Iterator<Object> iterator) {
@@ -230,8 +275,7 @@ abstract class SystemTestSupport {
     }
 
     protected boolean containsIgnoreCase(String text, String token) {
-        return text != null && token != null
-                && text.toUpperCase(Locale.ROOT).contains(token.toUpperCase(Locale.ROOT));
+        return text != null && token != null && text.toUpperCase(Locale.ROOT).contains(token.toUpperCase(Locale.ROOT));
     }
 
     protected List<Map<String, String>> systemPrompt(String content) {
@@ -242,9 +286,7 @@ abstract class SystemTestSupport {
         if (value == null) {
             return;
         }
-        if (value instanceof String
-                || value instanceof Number
-                || value instanceof Boolean
+        if (value instanceof String || value instanceof Number || value instanceof Boolean
                 || value instanceof Enum<?>) {
             builder.append(value).append(' ');
             return;
@@ -307,10 +349,6 @@ abstract class SystemTestSupport {
             return;
         }
         builder.append(value).append(' ');
-    }
-
-    private boolean isNotBlank(String value) {
-        return value != null && !value.isBlank();
     }
 
     @AfterEach

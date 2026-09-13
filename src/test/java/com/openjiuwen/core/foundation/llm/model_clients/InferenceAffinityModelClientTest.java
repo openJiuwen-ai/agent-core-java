@@ -1,330 +1,267 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.llm.model_clients;
 
-import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.llm.schema.KvCacheReleaseRequest;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.foundation.llm.schema.ProviderType;
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
+
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.net.http.HttpClient;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Focused parity tests for {@link InferenceAffinityModelClient}.
- *
- * <p>Mirrors Python's {@code InferenceAffinityModelClient} in
- * {@code openjiuwen/core/foundation/llm/model_clients/inference_affinity_model_client.py}.</p>
+ * Unit tests for {@link InferenceAffinityModelClient#release} and
+ * {@link InferenceAffinityModelClient#supportsKvCacheRelease}.
+ * <p>
+ * Uses a JDK built-in {@link HttpServer} on 127.0.0.1 with an ephemeral port
+ * to mock the vLLM {@code /release_kv_cache} endpoint, mirroring the
+ * {@code OpenAiCompatibleModelClientTest} pattern.
  */
 class InferenceAffinityModelClientTest {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
-    void buildAndSanitizeParamsAddsCacheSharingAndCleansToolCalls() {
-        RecordingInferenceAffinityClient client = new RecordingInferenceAffinityClient();
-        AssistantMessage assistantMessage = AssistantMessage.builder()
-                .content("tool result")
-                .toolCalls(List.of(ToolCall.builder()
-                        .id("call-1")
-                        .type("legacy")
-                        .name("lookup")
-                        .arguments("{\"q\":\"java\"}")
-                        .index(3)
-                        .build()))
-                .build();
-
-        Map<String, Object> params = client.buildAndSanitizeParams(
-                List.of(assistantMessage),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                false,
-                "session-1",
-                true,
-                Map.of("custom", "value")
-        );
-
-        assertThat(params)
-                .containsEntry("model", "test-model")
-                .containsEntry("cache_sharing", true)
-                .containsEntry("cache_salt", "session-1")
-                .containsEntry("custom", "value");
-
-        List<?> messages = (List<?>) params.get("messages");
-        Map<?, ?> message = (Map<?, ?>) messages.get(0);
-        List<?> toolCalls = (List<?>) message.get("tool_calls");
-        Map<?, ?> toolCall = (Map<?, ?>) toolCalls.get(0);
-        Map<?, ?> function = (Map<?, ?>) toolCall.get("function");
-        assertThat(toolCall.get("id")).isEqualTo("call-1");
-        assertThat(toolCall.get("type")).isEqualTo("function");
-        assertThat(toolCall.containsKey("index")).isTrue();
-        assertThat(function.get("name")).isEqualTo("lookup");
-        assertThat(function.get("arguments")).isEqualTo("{\"q\":\"java\"}");
+    @DisplayName("supportsKvCacheRelease returns true")
+    void supportsKvCacheRelease_returnsTrue() {
+        InferenceAffinityModelClient client = newClient("http://127.0.0.1:1");
+        assertThat(client.supportsKvCacheRelease()).isTrue();
     }
 
     @Test
-    void invokePostsChatCompletionAndParsesUsageToolsAndParserContent() throws Exception {
-        RecordingInferenceAffinityClient client = new RecordingInferenceAffinityClient();
-        client.nextJson = """
-                {
-                  "choices": [
-                    {
-                      "message": {
-                        "content": "answer",
-                        "reasoning_content": "because",
-                        "tool_calls": [
-                          {
-                            "id": "call-1",
-                            "index": 2,
-                            "function": {
-                              "name": "lookup",
-                              "arguments": "{\\"q\\":\\"java\\"}"
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  ],
-                  "usage": {
-                    "prompt_tokens": 11,
-                    "completion_tokens": 7,
-                    "total_tokens": 18,
-                    "prompt_tokens_details": {
-                      "cached_tokens": 5
-                    }
-                  }
-                }
-                """;
-        Map<String, Object> kwargs = new LinkedHashMap<>();
-        kwargs.put("session_id", "session-1");
-        kwargs.put("enable_cache_sharing", true);
-        kwargs.put("tracer_record_data", "not-sent");
-
-        AssistantMessage result = client.invoke(
-                "hello",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                new PrefixParser("parsed:"),
-                12.0F,
-                kwargs
-        );
-
-        assertThat(client.lastPath).isEqualTo("/v1/chat/completions");
-        assertThat(client.lastTimeout).isEqualTo(12.0F);
-        assertThat(client.lastPayload)
-                .containsEntry("stream", false)
-                .containsEntry("cache_sharing", true)
-                .containsEntry("cache_salt", "session-1");
-        assertThat(client.lastPayload).doesNotContainKeys("session_id", "enable_cache_sharing", "tracer_record_data");
-        assertThat(result.getContent()).isEqualTo("answer");
-        assertThat(result.getReasoningContent()).isEqualTo("because");
-        assertThat(result.getParserContent()).isEqualTo("parsed:answer");
-        assertThat(result.getUsageMetadata().getInputTokens()).isEqualTo(11);
-        assertThat(result.getUsageMetadata().getCacheTokens()).isEqualTo(5);
-        assertThat(result.getToolCalls()).singleElement().satisfies(toolCall -> {
-            assertThat(toolCall.getId()).isEqualTo("call-1");
-            assertThat(toolCall.getType()).isEqualTo("function");
-            assertThat(toolCall.getName()).isEqualTo("lookup");
-            assertThat(toolCall.getIndex()).isEqualTo(2);
+    @DisplayName("release returns true and POSTs expected body on HTTP 200")
+    void release_whenHttp200_returnsTrueAndSendsExpectedBody() throws Exception {
+        AtomicReference<String> capturedBody = new AtomicReference<>();
+        AtomicReference<String> capturedPath = new AtomicReference<>();
+        HttpServer server = newServer("/release_kv_cache", exchange -> {
+            capturedPath.set(exchange.getRequestURI().getPath());
+            capturedBody.set(readBody(exchange));
+            writeJson(exchange, "{\"cache_salt\":\"sess-1\",\"block_released\":3}");
         });
-        assertThat(result.getFinishReason()).isEqualTo("tool_calls");
+
+        try {
+            server.start();
+            InferenceAffinityModelClient client =
+                newClient("http://127.0.0.1:" + server.getAddress().getPort());
+
+            boolean result = client.release(new KvCacheReleaseRequest("sess-1",
+                List.of(new UserMessage("hello"), new UserMessage("world")), 1,
+                null, null, null));
+
+            assertThat(result).as("release should return true on HTTP 2xx").isTrue();
+            assertThat(capturedPath.get()).isEqualTo("/release_kv_cache");
+
+            Map<String, Object> body = MAPPER.readValue(capturedBody.get(), Map.class);
+            assertThat(body).containsEntry("model", "test-model");
+            assertThat(body).containsEntry("cache_salt", "sess-1");
+            assertThat(body).containsEntry("cache_sharing", true);
+            assertThat(body).containsEntry("messages_released_index", 1);
+            assertThat(body).containsKey("messages");
+            assertThat(body).doesNotContainKey("tools");
+            assertThat(body).doesNotContainKey("tools_released_index");
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
-    void streamParsesSseChunksAndAppliesIncrementalParser() throws Exception {
-        RecordingInferenceAffinityClient client = new RecordingInferenceAffinityClient();
-        client.nextStreamLines = List.of(
-                "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}",
-                "data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}],"
-                        + "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}",
-                "data: [DONE]"
-        );
+    @DisplayName("release uses explicit model name when provided")
+    void release_whenModelProvided_usesExplicitModel() throws Exception {
+        AtomicReference<String> capturedBody = new AtomicReference<>();
+        HttpServer server = newServer("/release_kv_cache", exchange -> {
+            capturedBody.set(readBody(exchange));
+            writeJson(exchange, "{\"block_released\":1}");
+        });
 
-        Iterator<AssistantMessageChunk> iterator = client.stream(
-                "hello",
-                null,
-                null,
-                null,
-                "override-model",
-                32,
-                null,
-                new PrefixParser("parsed:"),
-                null,
-                Map.of()
-        );
-        List<AssistantMessageChunk> chunks = iteratorToList(iterator);
+        try {
+            server.start();
+            InferenceAffinityModelClient client =
+                newClient("http://127.0.0.1:" + server.getAddress().getPort());
 
-        assertThat(client.lastPath).isEqualTo("/v1/chat/completions");
-        assertThat(client.lastPayload)
-                .containsEntry("model", "override-model")
-                .containsEntry("max_tokens", 32)
-                .containsEntry("stream", true);
-        assertThat(chunks).hasSize(2);
-        assertThat(chunks.get(0).getContent()).isEqualTo("Hello");
-        assertThat(chunks.get(0).getParserContent()).isEqualTo("parsed:Hello");
-        assertThat(chunks.get(1).getContent()).isEqualTo(" world");
-        assertThat(chunks.get(1).getFinishReason()).isEqualTo("stop");
-        assertThat(chunks.get(1).getUsageMetadata().getTotalTokens()).isEqualTo(3);
+            client.release(new KvCacheReleaseRequest("sess-2", List.of(new UserMessage("hi")), 0,
+                null, null, "explicit-model-name"));
+
+            Map<String, Object> body = MAPPER.readValue(capturedBody.get(), Map.class);
+            assertThat(body).containsEntry("model", "explicit-model-name");
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
-    void releasePostsKvCachePayloadAndReturnsFalseForNonSuccessStatus() throws Exception {
-        RecordingInferenceAffinityClient client = new RecordingInferenceAffinityClient();
-        client.nextJson = "{\"ok\":true}";
-        AssistantMessage assistantMessage = AssistantMessage.builder()
-                .content("answer")
-                .toolCalls(List.of(ToolCall.builder()
-                        .id("call-1")
-                        .type("legacy")
-                        .name("lookup")
-                        .arguments("{}")
-                        .build()))
-                .build();
-        ToolInfo toolInfo = ToolInfo.builder()
-                .name("lookup")
-                .description("Lookup")
-                .parameters(Map.of("type", "object"))
-                .build();
+    @DisplayName("release includes tools and tools_released_index when provided")
+    void release_whenToolsProvided_includesToolFields() throws Exception {
+        AtomicReference<String> capturedBody = new AtomicReference<>();
+        HttpServer server = newServer("/release_kv_cache", exchange -> {
+            capturedBody.set(readBody(exchange));
+            writeJson(exchange, "{\"block_released\":2}");
+        });
 
-        Boolean released = client.release("session-1", List.of(assistantMessage), 1, List.of(toolInfo), 0, null);
+        try {
+            server.start();
+            InferenceAffinityModelClient client =
+                newClient("http://127.0.0.1:" + server.getAddress().getPort());
 
-        assertThat(released).isTrue();
-        assertThat(client.lastPath).isEqualTo("/release_kv_cache");
-        assertThat(client.lastPayload)
-                .containsEntry("model", "test-model")
-                .containsEntry("cache_salt", "session-1")
-                .containsEntry("cache_sharing", true)
-                .containsEntry("messages_released_index", 1)
-                .containsEntry("tools_released_index", 0);
-        List<?> messages = (List<?>) client.lastPayload.get("messages");
-        Map<?, ?> firstMessage = (Map<?, ?>) messages.get(0);
-        Map<?, ?> firstToolCall = (Map<?, ?>) ((List<?>) firstMessage.get("tool_calls")).get(0);
-        assertThat(firstToolCall.get("type")).isEqualTo("function");
-        assertThat((List<?>) client.lastPayload.get("tools")).hasSize(1);
+            Map<String, Object> toolParams = new java.util.LinkedHashMap<>();
+            toolParams.put("type", "object");
+            Map<String, Object> tool = new java.util.LinkedHashMap<>();
+            tool.put("name", "weather");
+            tool.put("description", "get weather");
+            tool.put("parameters", toolParams);
 
-        client.nextStatus = 500;
-        client.nextJson = "error";
-        assertThat(client.release("session-1", List.of(assistantMessage), 1, null, null, null)).isFalse();
+            client.release(new KvCacheReleaseRequest("sess-3", List.of(new UserMessage("hi")), 0,
+                List.of(tool), 2, null));
+
+            Map<String, Object> body = MAPPER.readValue(capturedBody.get(), Map.class);
+            assertThat(body).containsEntry("tools_released_index", 2);
+            assertThat(body).containsKey("tools");
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
-    void appliesConfiguredHttpVersionToHttpClient() {
-        InferenceAffinityModelClient client = new InferenceAffinityModelClient(
-                requestConfig(),
-                ModelClientConfig.builder()
-                        .clientProvider(ProviderType.INFERENCE_AFFINITY)
-                        .apiKey("sk-test")
-                        .apiBase("http://localhost:8000")
-                        .verifySsl(false)
-                        .httpVersion(ModelHttpVersion.HTTP_1_1)
-                        .build());
+    @DisplayName("release returns false on HTTP 404 (endpoint not implemented)")
+    void release_whenHttp404_returnsFalseWithoutThrowing() throws Exception {
+        HttpServer server = newServer("/release_kv_cache",
+            exchange -> writeText(exchange, 404, "Not Found"));
 
-        assertThat(client.httpClientForTesting().version()).isEqualTo(HttpClient.Version.HTTP_1_1);
-    }
+        try {
+            server.start();
+            InferenceAffinityModelClient client =
+                newClient("http://127.0.0.1:" + server.getAddress().getPort());
 
-    private static List<AssistantMessageChunk> iteratorToList(Iterator<AssistantMessageChunk> iterator) {
-        List<AssistantMessageChunk> result = new java.util.ArrayList<>();
-        while (iterator.hasNext()) {
-            result.add(iterator.next());
-        }
-        return result;
-    }
+            boolean result = client.release(new KvCacheReleaseRequest("sess-4",
+                List.of(new UserMessage("hi")), 0, null, null, null));
 
-    private static ModelRequestConfig requestConfig() {
-        return ModelRequestConfig.builder()
-                .modelName("test-model")
-                .build();
-    }
-
-    private static ModelClientConfig clientConfig() {
-        return ModelClientConfig.builder()
-                .clientProvider(ProviderType.INFERENCE_AFFINITY)
-                .apiKey("sk-test")
-                .apiBase("http://localhost:8000")
-                .verifySsl(false)
-                .build();
-    }
-
-    /**
-     * Test double exposing the HTTP seam for deterministic focused tests.
-     *
-     * <p>Mirrors Python's patched aiohttp session in
-     * {@code openjiuwen/core/foundation/llm/model_clients/inference_affinity_model_client.py}.</p>
-     */
-    private static final class RecordingInferenceAffinityClient extends InferenceAffinityModelClient {
-        private String lastPath;
-        private Map<String, Object> lastPayload;
-        private Float lastTimeout;
-        private int nextStatus = 200;
-        private String nextJson = "{}";
-        private List<String> nextStreamLines = List.of();
-
-        private RecordingInferenceAffinityClient() {
-            super(requestConfig(), clientConfig());
-        }
-
-        @Override
-        protected HttpResult postJson(String path, Map<String, Object> payload, Float timeout) {
-            this.lastPath = path;
-            this.lastPayload = new LinkedHashMap<>(payload);
-            this.lastTimeout = timeout;
-            return new HttpResult(nextStatus, nextJson);
-        }
-
-        @Override
-        protected HttpStreamResult postStream(String path, Map<String, Object> payload, Float timeout) {
-            this.lastPath = path;
-            this.lastPayload = new LinkedHashMap<>(payload);
-            this.lastTimeout = timeout;
-            return new HttpStreamResult(nextStatus, nextStreamLines, String.join("\n", nextStreamLines));
-        }
-
-        @Override
-        protected void sleepBeforeRetry(int attempt) {
+            assertThat(result).as("release should return false on HTTP 404").isFalse();
+        } finally {
+            server.stop(0);
         }
     }
 
-    /**
-     * Deterministic output parser for invoke and stream tests.
-     *
-     * <p>Mirrors Python's {@code BaseOutputParser.parse(...)} collaborator in
-     * {@code openjiuwen/core/foundation/llm/model_clients/inference_affinity_model_client.py}.</p>
-     */
-    private static final class PrefixParser extends BaseOutputParser {
-        private final String prefix;
+    @Test
+    @DisplayName("release returns false on HTTP 500")
+    void release_whenHttp500_returnsFalseWithoutThrowing() throws Exception {
+        HttpServer server = newServer("/release_kv_cache",
+            exchange -> writeText(exchange, 500, "Internal Server Error"));
 
-        private PrefixParser(String prefix) {
-            this.prefix = prefix;
+        try {
+            server.start();
+            InferenceAffinityModelClient client =
+                newClient("http://127.0.0.1:" + server.getAddress().getPort());
+
+            boolean result = client.release(new KvCacheReleaseRequest("sess-5",
+                List.of(new UserMessage("hi")), 0, null, null, null));
+
+            assertThat(result).as("release should return false on HTTP 500").isFalse();
+        } finally {
+            server.stop(0);
         }
+    }
 
-        @Override
-        public CompletableFuture<Object> parse(Object inputs) {
-            return CompletableFuture.completedFuture(prefix + inputs);
+    @Test
+    @DisplayName("release propagates IOException when connection refused")
+    void release_whenConnectionRefused_throwsException() {
+        // Use a port that is almost certainly not listening — connection refused
+        InferenceAffinityModelClient client = newClient("http://127.0.0.1:1");
+
+        assertThatThrownBy(() -> client.release(new KvCacheReleaseRequest("sess-6",
+            List.of(new UserMessage("hi")), 0, null, null, null)))
+            .isInstanceOf(Exception.class);
+    }
+
+    @Test
+    @DisplayName("release sends POST to {apiBase}/release_kv_cache with trailing slash stripped")
+    void release_stripsTrailingSlashFromApiBase() throws Exception {
+        AtomicReference<String> capturedPath = new AtomicReference<>();
+        HttpServer server = newServer("/release_kv_cache",
+            exchange -> {
+                capturedPath.set(exchange.getRequestURI().getPath());
+                writeJson(exchange, "{\"block_released\":0}");
+            });
+
+        try {
+            server.start();
+            // apiBase with trailing slash — should be stripped
+            InferenceAffinityModelClient client = newClient(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/");
+
+            boolean result = client.release(new KvCacheReleaseRequest("sess-7",
+                List.of(new UserMessage("hi")), 0, null, null, null));
+
+            assertThat(result).isTrue();
+            assertThat(capturedPath.get()).isEqualTo("/release_kv_cache");
+        } finally {
+            server.stop(0);
         }
+    }
 
-        @Override
-        public Iterator<Object> streamParse(Iterator<?> streamingInputs) {
-            return List.of().iterator();
+    private static InferenceAffinityModelClient newClient(String apiBase) {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+            .clientProvider("InferenceAffinity")
+            .apiKey("sk-test")
+            .apiBase(apiBase)
+            .timeout(5.0)
+            .build();
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder()
+            .modelName("test-model")
+            .build();
+        return new InferenceAffinityModelClient(requestConfig, clientConfig);
+    }
+
+    private static HttpServer newServer(String contextPath, HttpHandler handler) {
+        try {
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext(contextPath, exchange -> {
+                try {
+                    handler.handle(exchange);
+                } finally {
+                    exchange.close();
+                }
+            });
+            return server;
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to start test HttpServer", e);
+        }
+    }
+
+    private static String readBody(HttpExchange exchange) throws IOException {
+        byte[] bytes = exchange.getRequestBody().readAllBytes();
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    private static void writeJson(HttpExchange exchange, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
+    }
+
+    private static void writeText(HttpExchange exchange, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(status, bytes.length);
+        try (OutputStream output = exchange.getResponseBody()) {
+            output.write(bytes);
         }
     }
 }

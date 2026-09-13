@@ -16,38 +16,17 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
-/**
- * Redis checkpointer cluster-mode selection contracts (ported from branch 730, adapted to develop).
- */
 class RedisCheckpointerCompatibilityTest {
-
     @Test
-    void urlWithClusterModeInsideConnectionArgsSelectsClusterStore() {
+    void helperStyleClusterModeInsideConnectionArgsSelectsClusterClient() {
         Map<String, Object> connectionArgs = new LinkedHashMap<>();
         connectionArgs.put("cluster_mode", true);
 
         Map<String, Object> connection = new LinkedHashMap<>();
         connection.put("url", "redis://cluster.example.invalid:7001");
         connection.put("connection_args", connectionArgs);
-
-        Map<String, Object> conf = new LinkedHashMap<>();
-        conf.put("connection", connection);
-
-        try (RedisCheckpointer checkpointer = assertInstanceOf(RedisCheckpointer.class,
-                CheckpointerFactory.create("redis", conf))) {
-            // develop uses UrlBackedRedisClusterClient for url + cluster_mode (not JedisCluster ctor)
-            assertThat(checkpointer.getRedisStore().isCluster()).isTrue();
-        }
-    }
-
-    @Test
-    void nodesConfigConstructsJedisClusterClient() {
-        Map<String, Object> connection = new LinkedHashMap<>();
-        connection.put("nodes", List.of("127.0.0.1:7001", "127.0.0.1:7002"));
-        connection.put("cluster_mode", true);
 
         Map<String, Object> conf = new LinkedHashMap<>();
         conf.put("connection", connection);

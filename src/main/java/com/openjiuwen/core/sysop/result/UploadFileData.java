@@ -10,16 +10,16 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Mirrors Python's {@code UploadFileData} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ * Data structure for upload file operation.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class UploadFileData {
-
     private String localPath;
     private String targetPath;
-    private int size;
+    private long size;
 }

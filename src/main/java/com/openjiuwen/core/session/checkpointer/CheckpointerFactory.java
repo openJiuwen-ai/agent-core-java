@@ -9,131 +9,146 @@ import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Registry for checkpointer providers and default instances.
- *
- * <p>Built-in types are discovered via {@link ServiceLoader} from
+ * Factory and registry for checkpointer instances.
+ * <p>
+ * Built-in types are discovered via {@link ServiceLoader} from
  * {@code META-INF/services/com.openjiuwen.core.session.checkpointer.CheckpointerProvider}.
- * Each provider is registered under {@link CheckpointerProvider#typeName()} and
- * {@link CheckpointerProvider#aliases()}. Service adapters can also register
- * additional types via {@link #register(String, CheckpointerProvider)}
- * without modifying Core source.</p>
- *
- * <p>Mirrors Python's {@code CheckpointerFactory} in
- * {@code openjiuwen/core/session/checkpointer/checkpointer.py}.</p>
+ * Service adapters can register additional types via
+ * {@link #register(String, CheckpointerProvider)} without modifying Core source.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.checkpointer.checkpointer.CheckpointerFactory}.
+ * 
+ * @since 0.1.7
  */
 public final class CheckpointerFactory {
-
-    private static final InMemoryCheckpointer DEFAULT_IN_MEMORY_CHECKPOINTER = new InMemoryCheckpointer();
     private static final Map<String, CheckpointerProvider> REGISTRY = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, Checkpointer> TYPE_CHECKPOINTERS = new ConcurrentHashMap<>();
-    private static volatile Checkpointer defaultCheckpointer;
+    private static Checkpointer defaultCheckpointer = null;
+
+    /**
+     * InMemoryCheckpointer.
+     * 
+     * @since 0.1.7
+     */
+    private static final Checkpointer DEFAULT_INMEMORY_CHECKPOINTER = new InMemoryCheckpointer();
 
     static {
+        // Discover and register providers via ServiceLoader
         for (CheckpointerProvider provider : ServiceLoader.load(CheckpointerProvider.class)) {
-            registerProviderNames(provider);
+            REGISTRY.putIfAbsent(provider.typeName(), provider);
         }
-        // Ensure critical builtins exist even if META-INF is incomplete on the classpath.
-        REGISTRY.putIfAbsent("in_memory", new InMemoryCheckpointerProvider());
-        REGISTRY.putIfAbsent("persistence", new PersistenceCheckpointerProvider());
-    }
-
-    private static void registerProviderNames(CheckpointerProvider provider) {
-        putIfAbsentName(provider.typeName(), provider);
-        Iterable<String> aliases = provider.aliases();
-        if (aliases == null) {
-            return;
-        }
-        for (String alias : aliases) {
-            putIfAbsentName(alias, provider);
+        // Register redis_checkpointer_cluster as alias for redis
+        if (REGISTRY.containsKey("redis") && !REGISTRY.containsKey("redis_checkpointer_cluster")) {
+            REGISTRY.put("redis_checkpointer_cluster", REGISTRY.get("redis"));
         }
     }
 
-    private static void putIfAbsentName(String name, CheckpointerProvider provider) {
-        if (name != null && !name.isBlank()) {
-            REGISTRY.putIfAbsent(name, provider);
-        }
-    }
-
+    /**
+     * CheckpointerFactory.
+     * 
+     * @since 0.1.7
+     */
     private CheckpointerFactory() {
     }
 
+    /**
+     * Register a checkpointer provider for a given type name.
+     * 
+     * @param name the type name
+     * @param provider the provider
+     * @since 0.1.7
+     */
     public static void register(String name, CheckpointerProvider provider) {
-        if (name != null && provider != null) {
-            REGISTRY.put(name, provider);
+        REGISTRY.put(name, provider);
+    }
+
+    /**
+     * Create a checkpointer from a CheckpointerConfig.
+     * 
+     * @param checkpointerConf the checkpointer configuration
+     * @return the checkpointer instance
+     * @since 0.1.7
+     */
+    public static Checkpointer create(CheckpointerConfig checkpointerConf) {
+        if (checkpointerConf == null) {
+            throw new IllegalArgumentException("checkpointerConf cannot be null");
         }
+        return create(checkpointerConf.getType(), checkpointerConf.getConf());
     }
 
-    public static Checkpointer create(CheckpointerConfig config) {
-        CheckpointerConfig actual = config == null ? new CheckpointerConfig() : config;
-        return create(actual.getType(), actual.getConf());
-    }
-
+    /**
+     * Create a checkpointer from config.
+     * 
+     * @param type the checkpointer type
+     * @param conf the configuration map
+     * @return the checkpointer instance
+     * @since 0.1.7
+     */
     public static Checkpointer create(String type, Map<String, Object> conf) {
         CheckpointerProvider provider = REGISTRY.get(type);
         if (provider == null) {
-            throw new IllegalArgumentException("Unsupported checkpointer type: " + type);
+            throw new IllegalArgumentException("No checkpointer provider registered for type: " + type);
         }
         return provider.create(conf);
     }
 
-    public static synchronized void installDefaultCheckpointer(CheckpointerConfig config) {
-        if (config == null) {
-            return;
-        }
-        Checkpointer checkpointer = create(config);
-        try {
-            releaseDefaultCheckpointer();
-        } catch (RuntimeException exception) {
-            closeDefaultCheckpointer(checkpointer);
-            throw exception;
-        }
-        defaultCheckpointer = checkpointer;
-    }
-
-    public static synchronized void releaseDefaultCheckpointer() {
-        Checkpointer checkpointer = defaultCheckpointer;
-        defaultCheckpointer = null;
-        closeDefaultCheckpointer(checkpointer);
-    }
-
+    /**
+     * Set the default checkpointer instance.
+     * 
+     * @param checkpointer checkpointer
+     * @since 0.1.7
+     */
     public static void setDefaultCheckpointer(Checkpointer checkpointer) {
         defaultCheckpointer = checkpointer;
     }
 
-    private static void closeDefaultCheckpointer(Checkpointer checkpointer) {
-        if (checkpointer instanceof AutoCloseable closeable) {
-            try {
-                closeable.close();
-            } catch (Exception exception) {
-                throw new IllegalStateException("Failed to close default checkpointer", exception);
-            }
-        }
-    }
-
+    /**
+     * Set a checkpointer instance for a specific type.
+     * 
+     * @param storeType the type
+     * @param checkpointer the instance
+     * @since 0.1.7
+     */
     public static void setCheckpointer(String storeType, Checkpointer checkpointer) {
-        if (storeType != null && checkpointer != null) {
-            TYPE_CHECKPOINTERS.put(storeType, checkpointer);
-        }
+        TYPE_CHECKPOINTERS.put(storeType, checkpointer);
     }
 
-    public static Checkpointer getCheckpointer() {
-        return getCheckpointer(null);
-    }
-
+    /**
+     * Get checkpointer instance.
+     * 
+     * @param storeType optional checkpointer type
+     * @return checkpointer instance
+     * @since 0.1.7
+     */
     public static Checkpointer getCheckpointer(String storeType) {
         if (storeType != null) {
-            Checkpointer typed = TYPE_CHECKPOINTERS.get(storeType);
-            if (typed != null) {
-                return typed;
+            Checkpointer cp = TYPE_CHECKPOINTERS.get(storeType);
+            if (cp != null) {
+                return cp;
             }
             if ("in_memory".equals(storeType)) {
-                return DEFAULT_IN_MEMORY_CHECKPOINTER;
+                return DEFAULT_INMEMORY_CHECKPOINTER;
             }
         }
-        return defaultCheckpointer == null ? DEFAULT_IN_MEMORY_CHECKPOINTER : defaultCheckpointer;
+        if (defaultCheckpointer != null) {
+            return defaultCheckpointer;
+        }
+        return DEFAULT_INMEMORY_CHECKPOINTER;
     }
 
-    public static InMemoryCheckpointer defaultInMemoryCheckpointer() {
-        return DEFAULT_IN_MEMORY_CHECKPOINTER;
+    /**
+     * Get the default in-memory checkpointer.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public static Checkpointer getCheckpointer() {
+        return getCheckpointer(null);
     }
 }

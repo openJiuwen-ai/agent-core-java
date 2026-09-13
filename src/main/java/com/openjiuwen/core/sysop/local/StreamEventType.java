@@ -5,8 +5,11 @@
 package com.openjiuwen.core.sysop.local;
 
 /**
- * Mirrors Python's {@code StreamEventType} in
- * {@code openjiuwen/core/sys_operation/local/utils.py}.
+ * Enumeration of stream event types for process output monitoring.
+ * <p>
+ * Mirrors Python's {@code StreamEventType} in {@code local/utils.py}.
+ * 
+ * @since 0.1.7
  */
 public enum StreamEventType {
     STDOUT("stdout"),
@@ -20,6 +23,12 @@ public enum StreamEventType {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }

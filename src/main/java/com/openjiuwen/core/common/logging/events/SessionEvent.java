@@ -12,9 +12,8 @@ import java.util.Map;
 
 /**
  * Session management related event.
- *
- * <p>Mirrors Python's {@code SessionEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -27,11 +26,22 @@ public class SessionEvent extends BaseLogEvent {
     private Map<String, Object> sessionConfig;
     private Integer messageCount;
 
+    /**
+     * SessionEvent.
+     * 
+     * @since 0.1.7
+     */
     public SessionEvent() {
         super();
         setModuleType(ModuleType.SESSION);
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "session_type", sessionType);
@@ -42,5 +52,3 @@ public class SessionEvent extends BaseLogEvent {
         putIfNotNull(map, "message_count", messageCount);
     }
 }
-
-

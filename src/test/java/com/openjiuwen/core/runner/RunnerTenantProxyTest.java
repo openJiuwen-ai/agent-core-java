@@ -2,8 +2,7 @@ package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
-import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 
@@ -43,7 +42,7 @@ class RunnerTenantProxyTest {
             CheckpointerFactory.getCheckpointer().release(sessionId);
         }
         sessionsToRelease.clear();
-        Runner.stop().toCompletableFuture().join();
+        Runner.stop();
         Runner.setConfig(RunnerConfig.DEFAULT);
         TenantContextHolder.clearCurrentTenant();
         CwdContext.reset();
@@ -68,7 +67,7 @@ class RunnerTenantProxyTest {
             RunnerConfig config = RunnerConfig.builder().distributedMode(false)
                     .enableTenantIsolation(true).tenantDataRoot(tempDir.toString()).build();
             Runner.setConfig(config);
-            Runner.start().toCompletableFuture().join();
+            Runner.start();
 
             TenantContext tenantCtx = TenantContext.builder().tenantId("proxy_tenant").build();
             ProxyCaptureAgent agent = new ProxyCaptureAgent();
@@ -88,7 +87,7 @@ class RunnerTenantProxyTest {
         void testRunAgentWithoutTenantCtx() {
             RunnerConfig config = RunnerConfig.builder().distributedMode(false).build();
             Runner.setConfig(config);
-            Runner.start().toCompletableFuture().join();
+            Runner.start();
 
             ProxyCaptureAgent agent = new ProxyCaptureAgent();
             String sessionId = "proxy-no-tenant-session";
@@ -96,18 +95,37 @@ class RunnerTenantProxyTest {
 
             TenantContextHolder.clearCurrentTenant();
             Map<String, Object> result = castMap(
-                    Runner.runAgent(agent, Map.of("conversation_id", sessionId), null, null, null)
-                            .toCompletableFuture().join());
+                    Runner.runAgent(agent, Map.of("conversation_id", sessionId), null, null, null));
 
             assertThat(result.get("tenant_id")).isNull();
         }
     }
-    private static class ProxyCaptureAgent {
-        public AgentCard getCard() {
-            return AgentCard.builder().id("proxy_agent").name("proxy_agent").description("proxy").build();
-        }
 
-        public Map<String, Object> invoke(Map<String, Object> inputs, AgentSession session) {
+    @Nested
+    @DisplayName("Runner.runAgentAsync with TenantContext")
+    class RunAgentAsyncTenantProxy {
+
+        @Test
+        @DisplayName("Runner.runAgentAsync with TenantContext delegates to RunnerImpl")
+        void testRunAgentAsyncWithTenantCtx() {
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false)
+                    .enableTenantIsolation(true).tenantDataRoot(tempDir.toString()).build();
+            Runner.setConfig(config);
+            Runner.start();
+
+            TenantContext tenantCtx = TenantContext.builder().tenantId("async_tenant").build();
+            ProxyCaptureAgent agent = new ProxyCaptureAgent();
+
+            Object result = Runner.runAgentAsync(agent, Map.of("query", "async_test"), null, null, null, tenantCtx)
+                    .block();
+
+            Map<String, Object> resultMap = castMap(result);
+            assertThat(resultMap.get("tenant_id")).isEqualTo("async_tenant");
+        }
+    }
+
+    private static class ProxyCaptureAgent {
+        public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
             TenantContext currentTenant = TenantContextHolder.getCurrentTenant();
             String tenantId = currentTenant != null ? currentTenant.getTenantId() : null;
             String tenantRoot = CwdContext.getTenantRoot();

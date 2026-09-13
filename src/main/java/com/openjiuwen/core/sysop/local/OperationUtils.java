@@ -4,76 +4,110 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
 
+import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Mirrors Python's {@code OperationUtils} in
- * {@code openjiuwen/core/sys_operation/local/utils.py}.
+ * Utility class for common subprocess operation helper methods.
+ * <p>
+ * Mirrors Python's {@code OperationUtils} in {@code local/utils.py}.
+ * 
+ * @since 0.1.7
  */
 public final class OperationUtils {
-
-    private static final LoggerProtocol LOGGER = Loggers.SYS_OPERATION;
-
+    /**
+     * OperationUtils.
+     * 
+     * @since 0.1.7
+     */
     private OperationUtils() {
     }
 
-    public static CompletableFuture<String> createTmpFile(String fileContent, String fileSuffix) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                Path path = Files.createTempFile("openjiuwen-", fileSuffix);
-                Files.writeString(path, fileContent != null ? fileContent : "", StandardCharsets.UTF_8);
-                return path.toAbsolutePath().toString();
-            } catch (Exception exception) {
-                LOGGER.warning("Failed to create tmp file: {}", exception.getMessage());
-                return null;
-            }
-        });
-    }
-
-    public static CompletableFuture<Boolean> deleteTmpFile(String filePath) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (filePath == null || filePath.isBlank()) {
-                return false;
-            }
-            try {
-                Path path = Path.of(filePath);
-                if (!Files.exists(path) || !Files.isRegularFile(path)) {
-                    return false;
-                }
-                Files.delete(path);
-                return true;
-            } catch (Exception exception) {
-                LOGGER.warning("Failed to delete tmp file: {}", exception.getMessage());
-                return false;
-            }
-        });
-    }
-
-    public static Map<String, String> prepareEnvironment(Map<String, String> customEnv) {
-        Map<String, String> environment = new LinkedHashMap<>(System.getenv());
-        if (customEnv != null) {
-            environment.putAll(customEnv);
+    /**
+     * Create a unique temporary file and write content to it.
+     * 
+     * @param fileContent content to be written into the temporary file (UTF-8 encoded)
+     * @param fileSuffix suffix of the temporary file (e.g., ".py", ".sh", ".txt")
+     * @return absolute path of the created temporary file, or null if creation fails
+     * @since 0.1.7
+     */
+    public static String createTmpFile(String fileContent, String fileSuffix) {
+        try {
+            Path tmpFile = Files.createTempFile("sysop_", fileSuffix);
+            Files.writeString(tmpFile, fileContent, StandardCharsets.UTF_8);
+            return tmpFile.toAbsolutePath().toString();
+        } catch (IOException e) {
+            Loggers.SYS_OPERATION.warning("Failed to create tmp file", LogEventType.SYS_OP_ERROR.getValue(), e);
+            return null;
         }
-        return environment;
     }
 
-    public static AsyncProcessHandler createHandler(Process process, int chunkSize, String encoding, int timeout) {
-        return new AsyncProcessHandler(process, chunkSize, encoding, timeout);
+    /**
+     * Delete the specified temporary file.
+     * 
+     * @param filePath absolute path of the temporary file to be deleted
+     * @return true if the file was deleted successfully, false otherwise
+     * @since 0.1.7
+     */
+    public static boolean deleteTmpFile(String filePath) {
+        Path path = Path.of(filePath);
+        if (!Files.exists(path) || !Files.isRegularFile(path)) {
+            return false;
+        }
+        try {
+            Files.delete(path);
+            return true;
+        } catch (IOException e) {
+            Loggers.SYS_OPERATION.warning("Failed to delete tmp file", LogEventType.SYS_OP_ERROR.getValue(), e);
+            return false;
+        }
     }
 
-    public static AsyncProcessHandler createHandler(Process process, String encoding, int timeout) {
-        return createHandler(process, 1024, encoding, timeout);
+    /**
+     * Create a merged environment dictionary for subprocess execution.
+     * 
+     * @param customEnv optional custom environment variables to add/override (can be null)
+     * @return merged environment map (system env + custom env)
+     * @since 0.1.7
+     */
+    public static Map<String, String> prepareEnvironment(Map<String, String> customEnv) {
+        Map<String, String> env = new HashMap<>(System.getenv());
+        if (customEnv != null) {
+            env.putAll(customEnv);
+        }
+        return env;
     }
 
-    public static AsyncProcessHandler createHandler(Process process) {
-        return createHandler(process, 1024, "utf-8", 300);
+    /**
+     * Factory method to create a ProcessHandler instance.
+     * 
+     * @param process Java Process instance to monitor
+     * @param chunkSize max char size for each stream read operation (default: 1024)
+     * @param encoding text encoding (default: UTF-8)
+     * @param timeout overall timeout in seconds (default: 300)
+     * @return initialized ProcessHandler
+     * @since 0.1.7
+     */
+    public static ProcessHandler createHandler(Process process, int chunkSize, Charset encoding, int timeout) {
+        return new ProcessHandler(process, chunkSize, encoding, timeout);
+    }
+
+    /**
+     * Factory method to create a ProcessHandler with defaults.
+     * 
+     * @param process Java Process instance to monitor
+     * @return initialized ProcessHandler with default settings
+     * @since 0.1.7
+     */
+    public static ProcessHandler createHandler(Process process) {
+        return new ProcessHandler(process);
     }
 }

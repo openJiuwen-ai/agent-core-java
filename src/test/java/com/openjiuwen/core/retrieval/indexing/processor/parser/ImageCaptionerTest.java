@@ -1,155 +1,94 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
-import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.retrieval.TestModelClient;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-/**
- * Mirrors Python's {@code ImageCaptioner} in
- * {@code openjiuwen/core/retrieval/indexing/processor/parser/captioner.py}.
- *
- * <p>Mirrors Python's {@code TestImageCaptioner} in
- * {@code tests/unit_tests/core/retrieval/indexing/processor/parser/test_captioner.py}.</p>
- */
 class ImageCaptionerTest {
-
     @TempDir
     Path tempDir;
 
     @Test
-    void cpImageCopiesFileAndFailsForMissingSource() throws Exception {
-        Path image = Files.writeString(tempDir.resolve("source.jfif"), "image");
-        Path target = tempDir.resolve("images");
+    void cpImageCopiesToTargetDirectory() throws IOException {
+        Path image = tempDir.resolve("sample.png");
+        Files.write(image, new byte[]{(byte) 0x89, 'P', 'N', 'G'});
 
-        String copied = ImageCaptioner.cpImage(image.toString(), target.toString());
+        String copied = ImageCaptioner.cpImage(image.toString(), "images", tempDir);
 
-        assertThat(Path.of(copied)).exists();
-        assertThat(Path.of(copied).getFileName().toString()).isEqualTo("source.jfif");
-        assertThatThrownBy(() -> ImageCaptioner.cpImage(tempDir.resolve("missing.png").toString(), target.toString()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unable to copy image from");
+        assertTrue(Files.exists(Path.of(copied)));
+        assertEquals(Files.readAllBytes(image).length, Files.readAllBytes(Path.of(copied)).length);
     }
 
     @Test
-    void llmCallReturnsEmptyWhenClientIsMissing() throws Exception {
-        Path image = Files.writeString(tempDir.resolve("image.png"), "image");
+    void cpImageRejectsTargetsOutsideAllowedBaseDirectory() throws IOException {
+        Path image = tempDir.resolve("sample.png");
+        Files.write(image, new byte[]{(byte) 0x89, 'P', 'N', 'G'});
+        Path allowedBaseDir = Files.createDirectories(tempDir.resolve("allowed"));
+        Path outsideDir = Files.createDirectories(tempDir.resolve("outside"));
 
-        assertThat(new ImageCaptioner().llmCallAsync(image.toString()).join()).isEmpty();
+        assertThrows(SecurityException.class,
+                () -> ImageCaptioner.cpImage(image.toString(), "../outside", allowedBaseDir));
+        assertThrows(SecurityException.class,
+                () -> ImageCaptioner.cpImage(image.toString(), outsideDir.toString(), allowedBaseDir));
+
+        Files.createSymbolicLink(allowedBaseDir.resolve("linked"), outsideDir);
+        assertThrows(SecurityException.class,
+                () -> ImageCaptioner.cpImage(image.toString(), "linked", allowedBaseDir));
     }
 
     @Test
-    void llmCallBuildsMultimodalMessageAndUsesResponseContent() throws Exception {
-        Path image = Files.writeString(tempDir.resolve("image.unknown"), "image");
-        RecordingModelClient client = new RecordingModelClient();
-        ImageCaptioner captioner = new ImageCaptioner(new Model(
-                client,
-                null,
-                ModelRequestConfig.builder().modelName("gpt-4o-mini").build()
-        ));
-
-        String caption = captioner.llmCallAsync(image.toString()).join();
-
-        assertThat(caption).isEqualTo("caption text");
-        assertThat(client.messages).hasSize(1);
-        Object content = client.messages.get(0).getContent();
-        assertThat(content).isInstanceOf(List.class);
-        List<?> contentItems = (List<?>) content;
-        assertThat(contentItems).hasSize(2);
-        assertThat(contentItems.get(0))
-                .isInstanceOf(Map.class)
-                .asString()
-                .contains("semantic retrieval");
-        assertThat(contentItems.get(1).toString())
-                .contains("image_url")
-                .contains("data:image/png;base64,");
+    void cpImageRejectsInvalidSourcePath() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ImageCaptioner.cpImage(tempDir.resolve("missing.png").toString(), "images", tempDir));
+        assertThrows(IllegalArgumentException.class,
+                () -> ImageCaptioner.cpImage(tempDir.toString(), "images", tempDir));
     }
 
     @Test
-    void captionImagesCallsLlmForEachImage() throws Exception {
-        Path first = Files.writeString(tempDir.resolve("first.png"), "first");
-        Path second = Files.writeString(tempDir.resolve("second.jpg"), "second");
-        RecordingModelClient client = new RecordingModelClient("caption for first.png", "caption for second.jpg");
-        ImageCaptioner captioner = new ImageCaptioner(new Model(client));
+    void sourceResolverRequiresARealRegularFile() throws Exception {
+        Path image = tempDir.resolve("source.png");
+        Files.write(image, new byte[] {1, 2, 3});
 
-        List<String> captions = captioner.captionImages(List.of(first.toString(), second.toString())).join();
-
-        assertThat(captions).containsExactly("caption for first.png", "caption for second.jpg");
-        assertThat(client.invokeCount).isEqualTo(2);
+        assertEquals(image.toRealPath(), ImageCaptioner.resolveSafeSourcePath(image.toString()));
+        assertThrows(IllegalArgumentException.class, () -> ImageCaptioner.resolveSafeSourcePath(" "));
+        assertThrows(IllegalArgumentException.class,
+                () -> ImageCaptioner.resolveSafeSourcePath(tempDir.toString()));
     }
 
     @Test
-    void captionImagesHandlesLlmExceptionsAndContinues() throws Exception {
-        Path first = Files.writeString(tempDir.resolve("good.png"), "first");
-        Path bad = Files.writeString(tempDir.resolve("bad.png"), "bad");
-        Path third = Files.writeString(tempDir.resolve("good2.png"), "third");
-        RecordingModelClient client = new RecordingModelClient(
-                CompletableFuture.completedFuture(new AssistantMessage("ok:good.png")),
-                CompletableFuture.failedFuture(new RuntimeException("boom")),
-                CompletableFuture.completedFuture(new AssistantMessage("ok:good2.png"))
-        );
-        ImageCaptioner captioner = new ImageCaptioner(new Model(client));
+    void captionImagesUsesLlmForExistingFiles() throws IOException {
+        Path image = tempDir.resolve("sample.png");
+        Files.write(image, new byte[]{(byte) 0x89, 'P', 'N', 'G'});
 
-        List<String> captions = captioner.captionImages(List.of(first.toString(), bad.toString(), third.toString()))
-                .join();
+        TestModelClient llmClient = new TestModelClient("gpt-4o", "caption text");
+        ImageCaptioner captioner = new ImageCaptioner(llmClient);
+        List<String> captions = captioner.captionImages(List.of(image.toString()));
 
-        assertThat(captions).hasSize(3);
-        assertThat(captions.get(0)).startsWith("ok:good.png");
-        assertThat(captions.get(1)).isEmpty();
-        assertThat(captions.get(2)).startsWith("ok:good2.png");
-        assertThat(client.invokeCount).isEqualTo(3);
+        assertEquals(List.of("caption text"), captions);
+        assertTrue(llmClient.getLastMessages() instanceof List<?>);
     }
 
-    /**
-     * Mirrors Python's injected {@code Model} collaborator in
-     * {@code openjiuwen/core/retrieval/indexing/processor/parser/captioner.py}.
-     */
-    private static final class RecordingModelClient implements Model.ModelClient {
-        private List<BaseMessage> messages = List.of();
-        private int invokeCount;
-        private final Deque<CompletionStage<AssistantMessage>> responses = new ArrayDeque<>();
+    @Test
+    void captionImagesReturnsEmptyStringWithoutLlm() throws IOException {
+        Path image = tempDir.resolve("sample.png");
+        Files.write(image, new byte[]{(byte) 0x89, 'P', 'N', 'G'});
 
-        private RecordingModelClient() {
-        }
+        ImageCaptioner captioner = new ImageCaptioner(null);
 
-        private RecordingModelClient(String... captions) {
-            for (String caption : captions) {
-                responses.add(CompletableFuture.completedFuture(new AssistantMessage(caption)));
-            }
-        }
-
-        @SafeVarargs
-        private RecordingModelClient(CompletionStage<AssistantMessage>... responses) {
-            this.responses.addAll(List.of(responses));
-        }
-
-        @Override
-        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
-            this.messages = messages;
-            invokeCount++;
-            if (responses.isEmpty()) {
-                return CompletableFuture.completedFuture(new AssistantMessage("caption text"));
-            }
-            return responses.removeFirst();
-        }
+        assertEquals(List.of(""), captioner.captionImages(List.of(image.toString())));
     }
 }

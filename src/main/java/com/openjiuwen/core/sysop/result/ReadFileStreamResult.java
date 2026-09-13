@@ -4,18 +4,26 @@
 
 package com.openjiuwen.core.sysop.result;
 
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
 /**
- * Mirrors Python's {@code ReadFileStreamResult} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ * Result type for streaming read file operation.
+ * 
+ * @since 0.1.7
  */
+@SuperBuilder
+@NoArgsConstructor
 public class ReadFileStreamResult extends BaseResult<ReadFileChunkData> {
-
-    public ReadFileStreamResult() {
-    }
-
+    /**
+     * ReadFileStreamResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
+     */
     public ReadFileStreamResult(int code, String message, ReadFileChunkData data) {
-        setCode(code);
-        setMessage(message);
-        setData(data);
+        super(code, message, data);
     }
 }

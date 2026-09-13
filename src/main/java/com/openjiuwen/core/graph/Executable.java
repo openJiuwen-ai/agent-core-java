@@ -9,116 +9,111 @@ import com.openjiuwen.core.session.BaseSession;
 import java.util.Iterator;
 
 /**
- * Mirrors Python's {@code Executable} in
- * {@code openjiuwen/core/graph/executable.py}.
- *
- * <p>This dependency is required by Python's {@code ExecutableGraph} in
- * {@code openjiuwen/core/graph/base.py}.</p>
- *
- * @param <I> input type
- * @param <O> output type
+ * Generic executable component base class with invoke/stream/collect/transform abilities.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.executable.Executable[Input, Output]}.
+ * 
+ * @since 0.1.7
  */
 public abstract class Executable<I, O> {
-
     /**
-     * Invoke this executable.
-     *
-     * @param inputs input payload
-     * @param session execution session
-     * @param kwargs keyword-style arguments
-     * @return invocation output
+     * onInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     public O onInvoke(I inputs, BaseSession session, Object... kwargs) {
-        String className = getClass().getSimpleName();
-        throw new UnsupportedOperationException(
-                String.format("Component '%s' does not implement the on_invoke method. "
-                        + "Please override this method in the subclass to provide inference logic. "
-                        + "Required implementation: async def on_invoke(self, inputs: Input, "
-                        + "session: BaseSession, **kwargs) -> Output:", className));
+        String className = this.getClass().getSimpleName();
+        throw new UnsupportedOperationException(String.format("Component '%s' does not implement the onInvoke method. "
+                + "Please override this method in the subclass to provide inference logic.", className));
     }
 
     /**
-     * Stream this executable's output.
-     *
-     * @param inputs input payload
+     * Stream the component output.
+     * 
+     * @param inputs input data
      * @param session execution session
-     * @param kwargs keyword-style arguments
-     * @return streamed outputs
+     * @param kwargs additional arguments
+     * @return an iterator of output chunks
+     * @since 0.1.7
      */
     public Iterator<O> onStream(I inputs, BaseSession session, Object... kwargs) {
-        String className = getClass().getSimpleName();
-        throw new UnsupportedOperationException(
-                String.format("Component '%s' does not implement the on_stream method. "
-                        + "Please override this method in the subclass to provide streaming logic. "
-                        + "Required implementation: async def on_stream(self, inputs: Input, "
-                        + "session: BaseSession, **kwargs) -> AsyncIterator[Output]:", className));
+        String className = this.getClass().getSimpleName();
+        throw new UnsupportedOperationException(String.format("Component '%s' does not implement the onStream method. "
+                + "Please override this method in the subclass to provide streaming logic.", className));
     }
 
     /**
-     * Collect streaming input into one output.
-     *
-     * @param inputs input payload
+     * Collect from streaming inputs and produce a single output.
+     * 
+     * @param inputs input data
      * @param session execution session
-     * @param kwargs keyword-style arguments
-     * @return collected output
+     * @param kwargs additional arguments
+     * @return the collected output
+     * @since 0.1.7
      */
     public O onCollect(I inputs, BaseSession session, Object... kwargs) {
-        String className = getClass().getSimpleName();
-        throw new UnsupportedOperationException(
-                String.format("Component '%s' does not implement the on_collect method. "
-                        + "Please override this method in the subclass to provide collection logic. "
-                        + "Required implementation: async def on_collect(self, inputs: Input, "
-                        + "session: BaseSession, **kwargs) -> Output:", className));
+        String className = this.getClass().getSimpleName();
+        throw new UnsupportedOperationException(String.format("Component '%s' does not implement the onCollect method. "
+                + "Please override this method in the subclass to provide collection logic.", className));
     }
 
     /**
-     * Transform streaming input into streaming output.
-     *
-     * @param inputs input payload
+     * Transform streaming inputs to streaming outputs.
+     * 
+     * @param inputs input data
      * @param session execution session
-     * @param kwargs keyword-style arguments
-     * @return transformed outputs
+     * @param kwargs additional arguments
+     * @return an iterator of transformed output chunks
+     * @since 0.1.7
      */
     public Iterator<O> onTransform(I inputs, BaseSession session, Object... kwargs) {
-        String className = getClass().getSimpleName();
+        String className = this.getClass().getSimpleName();
         throw new UnsupportedOperationException(
-                String.format("Component '%s' does not implement the on_transform method. "
-                        + "Please override this method in the subclass to provide transformation logic. "
-                        + "Required implementation: async def on_transform(self, inputs: Input, "
-                        + "session: BaseSession, **kwargs) -> AsyncIterator[Output]:", className));
+                String.format(
+                        "Component '%s' does not implement the onTransform method. "
+                                + "Please override this method in the subclass to provide transformation logic.",
+                        className));
     }
 
     /**
-     * Whether tracing should be skipped.
-     *
-     * @return false by default
+     * Whether tracing should be skipped for this component.
+     * 
+     * @return true to skip tracing
+     * @since 0.1.7
      */
     public boolean skipTrace() {
         return false;
     }
 
     /**
-     * Whether this executable invokes a graph.
-     *
-     * @return false by default
+     * Whether this component is a graph invoker.
+     * 
+     * @return true if it is a graph invoker
+     * @since 0.1.7
      */
     public boolean graphInvoker() {
         return false;
     }
 
     /**
-     * Whether post-commit should run after execution.
-     *
-     * @return true by default
+     * Whether post-commit should be performed after execution.
+     * 
+     * @return true to perform post-commit
+     * @since 0.1.7
      */
     public boolean postCommit() {
         return true;
     }
 
     /**
-     * Component type identifier.
-     *
-     * @return empty string by default
+     * The component type identifier.
+     * 
+     * @return component type string
+     * @since 0.1.7
      */
     public String componentType() {
         return "";

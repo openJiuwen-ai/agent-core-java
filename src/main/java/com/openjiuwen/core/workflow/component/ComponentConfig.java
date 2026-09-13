@@ -9,8 +9,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Mirrors Python's {@code ComponentConfig} in
- * {@code openjiuwen/core/workflow/components/base.py}.
+ * Public workflow component configuration shell.
+ * <p>
+ * Mirrors Python's {@code ComponentConfig}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor

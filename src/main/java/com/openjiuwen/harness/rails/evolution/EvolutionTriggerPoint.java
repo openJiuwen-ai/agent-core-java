@@ -4,14 +4,10 @@
 
 package com.openjiuwen.harness.rails.evolution;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
-
 /**
- * Evolution trigger points.
- *
- * <p>Mirrors Python's {@code EvolutionTriggerPoint} in
- * {@code openjiuwen/harness/rails/evolution/evolution_rail.py}.</p>
+ * Public enum EvolutionTriggerPoint used by the Java parity implementation.
+ * 
+ * @since 0.1.7
  */
 public enum EvolutionTriggerPoint {
     AFTER_INVOKE("after_invoke"),
@@ -26,23 +22,13 @@ public enum EvolutionTriggerPoint {
         this.value = value;
     }
 
-    @JsonValue
-    public String getValue() {
-        return value;
-    }
-
-    @JsonCreator
-    public static EvolutionTriggerPoint fromValue(String value) {
-        for (EvolutionTriggerPoint triggerPoint : values()) {
-            if (triggerPoint.value.equals(value)) {
-                return triggerPoint;
-            }
-        }
-        throw new IllegalArgumentException("Unknown evolution trigger point: " + value);
-    }
-
-    @Override
-    public String toString() {
+    /**
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public String value() {
         return value;
     }
 }

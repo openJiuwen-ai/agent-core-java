@@ -4,28 +4,24 @@
 
 package com.openjiuwen.core.runner.drunner.remoteclient;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Remote client configuration.
- *
- * <p>Mirrors Python's {@code RemoteClientConfig} in
- * {@code openjiuwen/core/runner/drunner/remote_client/remote_client_config.py}.</p>
- *
- * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig}.
+ * 
+ * @since 0.1.7
  */
-@Deprecated(since = "0.1.14")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class RemoteClientConfig {
-
     private String id;
 
     private String version;
@@ -44,5 +40,10 @@ public class RemoteClientConfig {
     private String url;
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> kwargs = new LinkedHashMap<>();
 }

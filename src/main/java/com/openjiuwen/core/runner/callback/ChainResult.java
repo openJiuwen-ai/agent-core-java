@@ -10,20 +10,23 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Mirrors Python's {@code ChainResult} in
- * {@code openjiuwen/core/runner/callback/models.py}.
+ * Result of callback chain execution.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ChainResult {
-
     private ChainAction action;
 
+    /** Final result value. */
     private Object result;
 
+    /** The chain execution context. */
     private ChainContext context;
 
+    /** Exception if chain failed. */
     private Exception error;
 }

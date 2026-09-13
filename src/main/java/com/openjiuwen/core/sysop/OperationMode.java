@@ -4,14 +4,12 @@
 
 package com.openjiuwen.core.sysop;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
-
 /**
  * Enum for operation mode.
- *
- * <p>Mirrors Python's {@code OperationMode} in
- * {@code openjiuwen/core/sys_operation/base.py}.</p>
+ * <p>
+ * Mirrors Python's {@code OperationMode} enum in {@code sys_operation/base.py}.
+ * 
+ * @since 0.1.7
  */
 public enum OperationMode {
     LOCAL("local"),
@@ -23,46 +21,29 @@ public enum OperationMode {
         this.value = value;
     }
 
-    @JsonValue
-    public String value() {
-        return value;
-    }
-
-    /** Bean-style alias used by older tests/call sites. */
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
-    @JsonCreator
-    public static OperationMode fromValue(String value) {
-        if (value == null) {
-            return LOCAL;
-        }
-        for (OperationMode mode : values()) {
-            if (mode.value.equalsIgnoreCase(value.trim())) {
-                return mode;
-            }
-        }
-        return LOCAL;
-    }
-
     /**
-     * Strict parse used by legacy APIs; throws on unknown values.
+     * Parse a string value to OperationMode (case-insensitive).
+     * 
+     * @param text the string to parse
+     * @return the corresponding OperationMode
+     * @since 0.1.7
      */
-    public static OperationMode fromString(String value) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Invalid operation mode: " + value);
-        }
+    public static OperationMode fromString(String text) {
         for (OperationMode mode : values()) {
-            if (mode.value.equalsIgnoreCase(value.trim())) {
+            if (mode.value.equalsIgnoreCase(text)) {
                 return mode;
             }
         }
-        throw new IllegalArgumentException("Invalid operation mode: " + value);
-    }
-
-    @Override
-    public String toString() {
-        return value;
+        throw new IllegalArgumentException("Unknown operation mode: " + text);
     }
 }

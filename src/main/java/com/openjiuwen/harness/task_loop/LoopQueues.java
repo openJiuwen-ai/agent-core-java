@@ -4,71 +4,161 @@
 
 package com.openjiuwen.harness.task_loop;
 
+import com.openjiuwen.core.singleagent.rail.SteeringQueue;
+
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Mirrors Python's {@code LoopQueues} in
- * {@code openjiuwen/harness/task_loop/loop_queues.py}.
+ * Public class LoopQueues used by the Java parity implementation.
+ * 
+ * @since 0.1.7
  */
-public final class LoopQueues {
+public class LoopQueues implements SteeringQueue {
+    private final ConcurrentLinkedQueue<String> steering = new ConcurrentLinkedQueue<>();
 
-    private final Queue<String> steering;
-    private final Queue<String> followUp;
-    private final Queue<Object> input;
-    private final Queue<Object> output;
+    /**
+     * ConcurrentLinkedQueue<>.
+     * 
+     * @since 0.1.7
+     */
+    private final ConcurrentLinkedQueue<String> isFollowUp = new ConcurrentLinkedQueue<>();
 
-    public LoopQueues() {
-        this.steering = new ConcurrentLinkedQueue<>();
-        this.followUp = new ConcurrentLinkedQueue<>();
-        this.input = new ConcurrentLinkedQueue<>();
-        this.output = new ConcurrentLinkedQueue<>();
+    /**
+     * PriorityBlockingQueue<>.
+     * 
+     * @since 0.1.7
+     */
+    private final PriorityBlockingQueue<DeepLoopEvent> events = new PriorityBlockingQueue<>();
+    private final AtomicLong sequence = new AtomicLong();
+
+    /**
+     * pushSteer.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
+    public void pushSteer(String message) {
+        steering.add(message);
     }
 
-    public Queue<String> steering() {
-        return steering;
+    /**
+     * pushSteering.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
+    @Override
+    public void pushSteering(String message) {
+        pushSteer(message);
     }
 
-    public Queue<String> followUp() {
-        return followUp;
+    /**
+     * pushFollowUp.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
+    public void pushFollowUp(String message) {
+        isFollowUp.add(message);
     }
 
-    public Queue<Object> input() {
-        return input;
-    }
-
-    public Queue<Object> output() {
-        return output;
-    }
-
-    public void pushSteer(String msg) {
-        steering.add(msg);
-    }
-
-    public void pushFollowUp(String msg) {
-        followUp.add(msg);
-    }
-
-    public boolean hasFollowUp() {
-        return !followUp.isEmpty();
-    }
-
+    /**
+     * drainSteering.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
     public List<String> drainSteering() {
-        return drain(steering);
-    }
-
-    public List<String> drainFollowUp() {
-        return drain(followUp);
-    }
-
-    private static List<String> drain(Queue<String> queue) {
-        List<String> messages = new ArrayList<>();
-        String next;
-        while ((next = queue.poll()) != null) {
-            messages.add(next);
+        List<String> result = new ArrayList<>();
+        String message;
+        while ((message = steering.poll()) != null) {
+            result.add(message);
         }
-        return messages;
+        return result;
+    }
+
+    /**
+     * Whether at least one steering instruction is pending without consuming it.
+     *
+     * @return the result
+     * @since 0.1.15
+     */
+    @Override
+    public boolean hasPending() {
+        return !steering.isEmpty();
+    }
+
+    /**
+     * hasFollowUp.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean hasFollowUp() {
+        return !isFollowUp.isEmpty();
+    }
+
+    /**
+     * drainFollowUp.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<String> drainFollowUp() {
+        List<String> result = new ArrayList<>();
+        String message;
+        while ((message = isFollowUp.poll()) != null) {
+            result.add(message);
+        }
+        return result;
+    }
+
+    /**
+     * pushEvent.
+     * 
+     * @param eventType eventType
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
+    public DeepLoopEvent pushEvent(DeepLoopEventType eventType, String content) {
+        DeepLoopEvent event = DeepLoopEvent.builder(sequence.incrementAndGet(), eventType, content).build();
+        events.add(event);
+        if (eventType == DeepLoopEventType.STEER) {
+            pushSteer(content);
+        } else if (eventType == DeepLoopEventType.FOLLOWUP) {
+            pushFollowUp(content);
+        }
+        return event;
+    }
+
+    /**
+     * hasEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean hasEvents() {
+        return !events.isEmpty();
+    }
+
+    /**
+     * drainEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<DeepLoopEvent> drainEvents() {
+        List<DeepLoopEvent> result = new ArrayList<>();
+        DeepLoopEvent event;
+        while ((event = events.poll()) != null) {
+            result.add(event);
+        }
+        return result;
     }
 }

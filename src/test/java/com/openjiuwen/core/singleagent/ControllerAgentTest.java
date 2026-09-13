@@ -1,202 +1,231 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
+// Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
 
 package com.openjiuwen.core.singleagent;
 
-import com.openjiuwen.core.context.ContextEngine;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.controller.ControllerConfig;
-import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.modules.EventQueue;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
- * Focused parity tests for {@link ControllerAgent}.
- *
- * <p>Mirrors Python's {@code ControllerAgent} in
- * {@code openjiuwen/core/single_agent/base.py}.</p>
+ * Unit tests for {@link ControllerAgent}.
  */
 class ControllerAgentTest {
+    private Controller mockController;
+    private AgentCard card;
 
-    @Test
-    void constructorCreatesDefaultConfigAndInitializesController() {
-        AgentCard card = card();
-        RecordingController controller = new RecordingController();
-
-        ControllerAgent agent = new ControllerAgent(card, controller);
-
-        assertSame(card, controller.card);
-        assertSame(agent.getAbilityManager(), controller.abilityManager);
-        assertSame(agent.getContextEngine(), controller.contextEngine);
-        assertInstanceOf(ControllerConfig.class, agent.getConfig());
-        assertNotNull(controller.config);
+    @BeforeEach
+    void setUp() {
+        mockController = mock(Controller.class);
+        card = AgentCard.builder().name("ctrl-agent").description("Controller agent").build();
     }
 
+    // ========== Construction ==========
+
     @Test
-    void configureMapMergesIntoControllerConfigAndPropagates() {
-        RecordingController controller = new RecordingController();
-        ControllerAgent agent = new ControllerAgent(card(), controller);
+    void testConstructionWithoutConfig() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
 
-        ControllerConfig before = (ControllerConfig) agent.getConfig();
-        agent.configure(Map.of(
-                "schedule_interval", 2.0,
-                "enable_task_persistence", true,
-                "max_concurrent_tasks", 3
-        ));
-        ControllerConfig after = (ControllerConfig) agent.getConfig();
+        assertThat(agent.getCard().getName()).isEqualTo("ctrl-agent");
+        assertThat(agent.getController()).isSameAs(mockController);
+        assertThat(agent.getContextEngine()).isNotNull();
+        assertThat(agent.getConfig()).isInstanceOf(ControllerConfig.class);
 
-        assertEquals(1, before.getDefaultTaskPriority());
-        assertEquals(2.0, after.getScheduleInterval());
-        assertEquals(3, after.getMaxConcurrentTasks());
-        assertTrue(after.isEnableTaskPersistence());
-        assertSame(after, controller.config);
+        // Verify controller.init was called
+        verify(mockController).init(eq(card), any(ControllerConfig.class), any(), any());
     }
 
     @Test
-    void invokeConvertsUserInputToInputEventBeforeDelegating() {
-        RecordingController controller = new RecordingController();
-        ControllerAgent agent = new ControllerAgent(card(), controller);
-        FakeSession session = new FakeSession("session-1");
+    void testConstructionWithConfig() {
+        ControllerConfig config = new ControllerConfig();
+        ControllerAgent agent = new ControllerAgent(card, mockController, config);
 
-        Object result = agent.invoke("hello", session);
+        assertThat(agent.getConfig()).isSameAs(config);
+        verify(mockController).init(eq(card), eq(config), any(), any());
+    }
 
-        assertEquals("invoked", result);
-        assertSame(session, controller.session);
-        assertInstanceOf(InputEvent.class, controller.inputEvent);
-        DataFrame frame = controller.inputEvent.getInputData().get(0);
-        assertInstanceOf(DataFrame.TextDataFrame.class, frame);
-        assertEquals("hello", ((DataFrame.TextDataFrame) frame).text());
+    // ========== Configure ==========
+
+    @Test
+    void testConfigureWithControllerConfig() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+
+        ControllerConfig newConfig = new ControllerConfig();
+        BaseAgent result = agent.configure(newConfig);
+
+        assertThat(result).isSameAs(agent);
+        assertThat(agent.getConfig()).isSameAs(newConfig);
+        verify(mockController).setConfig(newConfig);
     }
 
     @Test
-    void streamConvertsUserInputAndReturnsControllerIterator() {
-        RecordingController controller = new RecordingController();
-        ControllerAgent agent = new ControllerAgent(card(), controller);
-        FakeSession session = new FakeSession("session-1");
+    @SuppressWarnings("unchecked")
+    void testConfigureWithMapLogsWarning() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
 
-        Iterator<Object> iterator = agent.stream(
-                Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT));
+        agent.configure(Map.of("maxConcurrentTasks", 7, "enableTaskPersistence", true));
 
-        assertEquals("chunk-1", iterator.next());
-        assertSame(session, controller.session);
-        assertEquals(List.of(StreamMode.OUTPUT), controller.streamModes);
-        DataFrame frame = controller.inputEvent.getInputData().get(0);
-        assertInstanceOf(DataFrame.JsonDataFrame.class, frame);
-        assertEquals("hello", ((DataFrame.JsonDataFrame) frame).data().get("query"));
+        ControllerConfig actual = (ControllerConfig) agent.getConfig();
+        assertThat(actual.getMaxConcurrentTasks()).isEqualTo(7);
+        assertThat(actual.isEnableTaskPersistence()).isTrue();
+        assertThat(actual.getEventQueueSize()).isEqualTo(10000);
+        verify(mockController).setConfig(actual);
+    }
+
+    // ========== Getters ==========
+
+    @Test
+    void testGetController() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        assertThat(agent.getController()).isSameAs(mockController);
     }
 
     @Test
-    void releaseSessionUnsubscribesControllerEventQueue() {
-        RecordingController controller = new RecordingController();
-        ControllerAgent agent = new ControllerAgent(card(), controller);
-
-        agent.releaseSession("session-99").toCompletableFuture().join();
-
-        assertEquals("agent-1", controller.eventQueue.agentId);
-        assertEquals("session-99", controller.eventQueue.sessionId);
+    void testGetContextEngine() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        assertThat(agent.getContextEngine()).isNotNull();
     }
 
-    private static AgentCard card() {
-        return new AgentCard("agent-1", "agent", "test agent");
+    // ========== Invoke ==========
+
+    @Test
+    void testInvokeNullSessionThrows() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+
+        assertThatThrownBy(() -> agent.invoke("hello", null)).isInstanceOf(RuntimeException.class);
     }
 
-    public static final class RecordingController {
-        private AgentCard card;
-        private ControllerConfig config;
-        private AbilityManager abilityManager;
-        private ContextEngine contextEngine;
-        private InputEvent inputEvent;
-        private AgentSessionApi session;
-        private List<StreamMode> streamModes;
-        private final RecordingEventQueue eventQueue = new RecordingEventQueue();
+    @Test
+    void testInvokeSuccess() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        Session mockSession = mock(Session.class);
+        when(mockSession.getSessionId()).thenReturn("sess-1");
 
-        public void init(AgentCard card, ControllerConfig config, AbilityManager abilityManager,
-                         ContextEngine contextEngine) {
-            this.card = card;
-            this.config = config;
-            this.abilityManager = abilityManager;
-            this.contextEngine = contextEngine;
-        }
+        ControllerOutput mockOutput = mock(ControllerOutput.class);
+        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class))).thenReturn(mockOutput);
 
-        public void setConfig(ControllerConfig config) {
-            this.config = config;
-        }
+        Object result = agent.invoke("hello", mockSession);
 
-        public Object invoke(InputEvent inputs, AgentSessionApi session) {
-            this.inputEvent = inputs;
-            this.session = session;
-            return "invoked";
-        }
-
-        public Iterator<Object> stream(InputEvent inputs, AgentSessionApi session, List<StreamMode> streamModes) {
-            this.inputEvent = inputs;
-            this.session = session;
-            this.streamModes = streamModes;
-            return List.<Object>of("chunk-1").iterator();
-        }
-
-        public RecordingEventQueue getEventQueue() {
-            return eventQueue;
-        }
+        assertThat(result).isSameAs(mockOutput);
+        verify(mockController).invoke(any(InputEvent.class), any(AgentSessionApi.class));
     }
 
-    public static final class RecordingEventQueue {
-        private String agentId;
-        private String sessionId;
+    @Test
+    void testInvokeControllerThrows() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        Session mockSession = mock(Session.class);
+        when(mockSession.getSessionId()).thenReturn("sess-1");
 
-        public void unsubscribe(String agentId, String sessionId) {
-            this.agentId = agentId;
-            this.sessionId = sessionId;
-        }
+        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class)))
+                .thenThrow(new RuntimeException("controller failed"));
+
+        assertThatThrownBy(() -> agent.invoke("hello", mockSession)).isInstanceOf(RuntimeException.class);
     }
 
-    private static final class FakeSession implements AgentSessionApi {
-        private final String sessionId;
-        private final Map<String, Object> state = new LinkedHashMap<>();
-        private final List<Object> stream = new ArrayList<>();
+    @Test
+    void testInvokeBaseErrorPassThrough() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        Session mockSession = mock(Session.class);
+        when(mockSession.getSessionId()).thenReturn("sess-base-error");
 
-        private FakeSession(String sessionId) {
-            this.sessionId = sessionId;
-        }
+        BaseError error = ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", "base error");
+        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class))).thenThrow(error);
 
-        @Override
-        public String getSessionId() {
-            return sessionId;
-        }
+        assertThatThrownBy(() -> agent.invoke("hello", mockSession)).isSameAs(error);
+    }
 
-        @Override
-        public Object getState(String key) {
-            return state.get(key);
-        }
+    @Test
+    void testInvokeWithMapInput() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        Session mockSession = mock(Session.class);
+        when(mockSession.getSessionId()).thenReturn("sess-2");
 
-        @Override
-        public void updateState(Map<String, Object> data) {
-            state.putAll(data);
-        }
+        ControllerOutput mockOutput = mock(ControllerOutput.class);
+        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class))).thenReturn(mockOutput);
 
-        @Override
-        public void writeStream(Object data) {
-            stream.add(data);
-        }
+        Object result = agent.invoke(Map.of("key", "val"), mockSession);
 
-        @Override
-        public Iterator<Object> streamIterator() {
-            return new ArrayList<>(stream).iterator();
-        }
+        assertThat(result).isSameAs(mockOutput);
+    }
+
+    // ========== Stream ==========
+
+    @Test
+    void testStreamNullSessionThrows() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+
+        assertThatThrownBy(() -> agent.stream("hello", null, List.of())).isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testStreamSuccess() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        Session mockSess = mock(Session.class);
+        when(mockSess.getSessionId()).thenReturn("sess-3");
+
+        Iterator<Object> mockIter = mock(Iterator.class);
+        when(mockController.stream(any(InputEvent.class), any(AgentSessionApi.class), any())).thenReturn(mockIter);
+
+        Iterator<Object> result = agent.stream("hello", mockSess, List.of());
+        assertThat(result).isSameAs(mockIter);
+    }
+
+    @Test
+    void testStreamControllerThrows() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        Session mockSess = mock(Session.class);
+        when(mockSess.getSessionId()).thenReturn("sess-4");
+
+        when(mockController.stream(any(InputEvent.class), any(AgentSessionApi.class), any()))
+                .thenThrow(new RuntimeException("stream failed"));
+
+        assertThatThrownBy(() -> agent.stream("hello", mockSess, List.of())).isInstanceOf(RuntimeException.class);
+    }
+
+    // ========== Release Session ==========
+
+    @Test
+    void testReleaseSession() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        EventQueue eventQueue = mock(EventQueue.class);
+        when(mockController.getEventQueue()).thenReturn(eventQueue);
+
+        agent.releaseSession("sess-123");
+
+        verify(eventQueue).unsubscribe(card.getId(), "sess-123");
+    }
+
+    // ========== Inherited BaseAgent ==========
+
+    @Test
+    void testAbilityManagerAvailable() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        assertThat(agent.getAbilityManager()).isNotNull();
+    }
+
+    @Test
+    void testCallbackManagerAvailable() {
+        ControllerAgent agent = new ControllerAgent(card, mockController);
+        assertThat(agent.getAgentCallbackManager()).isNotNull();
     }
 }

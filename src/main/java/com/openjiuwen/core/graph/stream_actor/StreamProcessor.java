@@ -13,104 +13,183 @@ import com.openjiuwen.core.common.utils.DictUtils;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
- * Mirrors Python's {@code StreamProcessor} in
- * {@code openjiuwen/core/graph/stream_actor/base.py}.
+ * Processes stream messages for a single node by managing message routing and
+ * generating iterators for consuming stream data.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.base.StreamProcessor}.
+ * Uses BlockingQueue instead of asyncio.Queue, and Iterator instead of AsyncGenerator.
+ * 
+ * @since 0.1.7
  */
 public class StreamProcessor {
+    private static final LoggerProtocol logger = Loggers.GRAPH;
 
-    static final Object TIMEOUT_SENTINEL = new Object();
+    /**
+     * END_SENTINEL.
+     * 
+     * @since 0.1.7
+     */
+    public static final Object END_SENTINEL = new Object();
 
-    private static final LoggerProtocol LOGGER = Loggers.GRAPH;
-    private static final long MILLIS_PER_SECOND = 1000L;
+    /**
+     * TIMEOUT_SENTINEL. Offered to processor queues when the main loop queue poll
+     * times out, so the consumer's iterator can distinguish a genuine stream end
+     * ({@link #END_SENTINEL}) from an upstream stall / crash (this sentinel).
+     * {@code hasNext()} sees it, logs, and raises a
+     * {@link GraphError}({@link StatusCode#STREAM_PROCESSOR_QUEUE_TIMEOUT})
+     * instead of returning {@code false} (which the caller would interpret as a
+     * normal stream end and silently consume incomplete data).
+     *
+     * @since 0.1.15
+     */
+    public static final Object TIMEOUT_SENTINEL = new Object();
 
     private final String nodeId;
-    private final BlockingQueue<StreamPayload> queue = new LinkedBlockingQueue<>();
-    private final Map<String, List<BlockingQueue<Object>>> processorQueues = new ConcurrentHashMap<>();
-    private final List<Set<String>> sourceGroups;
-    private final Set<String> sourceIds;
-    private final boolean hasTimeout;
-    private final long timeoutMillis;
 
-    public StreamProcessor(String nodeId, List<List<String>> sourceGroups, double streamGeneratorTimeoutSeconds) {
+    /**
+     * LinkedBlockingQueue<>.
+     *
+     * @since 0.1.7
+     */
+    private final BlockingQueue<StreamPayload> queue = new LinkedBlockingQueue<>();
+
+    /**
+     * HashMap<>.
+     *
+     * @since 0.1.7
+     */
+    private final Map<String, List<BlockingQueue<Object>>> processorQueues = new HashMap<>();
+
+    /**
+     * Source groups (CNF OR-groups). The processor finishes once each group has
+     * at least one handled source. Mirrors Python {@code StreamProcessor.source_groups}.
+     *
+     * @since 0.1.7
+     */
+    private final List<Set<String>> sourceGroups;
+
+    /**
+     * Union of all source keys across groups, for fast membership tests.
+     *
+     * @since 0.1.7
+     */
+    private final Set<String> sources;
+    private final Set<String> completedSources = ConcurrentHashMap.newKeySet();
+    private final Set<BlockingQueue<Object>> closedProcessorQueues = ConcurrentHashMap.newKeySet();
+
+    private final long timeoutSeconds;
+
+    /**
+     * StreamProcessor.
+     *
+     * @param nodeId nodeId
+     * @param sourceGroups sourceGroups (CNF OR-groups)
+     * @param streamGeneratorTimeoutSeconds streamGeneratorTimeoutSeconds
+     * @since 0.1.7
+     */
+    public StreamProcessor(String nodeId, List<Set<String>> sourceGroups, long streamGeneratorTimeoutSeconds) {
         this.nodeId = nodeId;
-        this.sourceGroups = normalizeSourceGroups(sourceGroups);
-        this.sourceIds = collectSourceIds(this.sourceGroups);
-        this.hasTimeout = streamGeneratorTimeoutSeconds > 0.0d;
-        this.timeoutMillis = hasTimeout
-                ? Math.max(1L, Math.round(streamGeneratorTimeoutSeconds * MILLIS_PER_SECOND))
-                : 0L;
+        this.sourceGroups = new ArrayList<>();
+        Set<String> allSources = new HashSet<>();
+        if (sourceGroups != null) {
+            for (Set<String> group : sourceGroups) {
+                if (group != null && !group.isEmpty()) {
+                    Set<String> copy = new HashSet<>(group);
+                    this.sourceGroups.add(copy);
+                    allSources.addAll(copy);
+                }
+            }
+        }
+        this.sources = allSources;
+        this.timeoutSeconds = streamGeneratorTimeoutSeconds > 0 ? streamGeneratorTimeoutSeconds : 0;
     }
 
     /**
-     * Runs the queue processor until every configured source group has produced an end frame.
+     * Main processing loop. Reads from the queue and dispatches to processor queues.
+     * Should be run on a virtual thread.
      *
-     * @param ability consumer ability associated with this processor
+     * <p>Mirrors Python {@code StreamProcessor.run}: a consumer's stream
+     * processor finishes once every CNF OR-group has at least one handled source.
+     * For single-source groups that source must send its end frame; for
+     * multi-source groups (mutually-exclusive branches) any one source finishing
+     * completes the group.
+     *
+     * @param ability the component ability being processed
+     * @since 0.1.7
      */
     public void run(ComponentAbility ability) {
-        Set<String> handledSources = new HashSet<>();
-        Map<String, Set<String>> sourcePathMap = new LinkedHashMap<>();
-        boolean timedOut = false;
+        Set<String> handleMap = new HashSet<>(completedSources);
+        // source_path_map[producer_id] = set of schema paths this source produced.
+        Map<String, Set<String>> sourcePathMap = new HashMap<>();
+        boolean isTimedOut = false;
         try {
+            for (String completedSource : completedSources) {
+                closeQueuesForSource(producerIdFromSourceKey(completedSource));
+            }
+            if (allSourceGroupsFinished(handleMap)) {
+                return;
+            }
+
             while (true) {
-                StreamPayload payload;
-                try {
-                    payload = pollPayload();
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+                StreamPayload payload = pollPayload();
                 if (payload == null) {
-                    timedOut = true;
+                    // pollPayload returns null only on timeout (upstream stall). On
+                    // timeout we propagate TIMEOUT_SENTINEL so consumers distinguish a
+                    // genuine stream end (END_SENTINEL) from an upstream stall.
+                    // Interruption is handled separately by the catch block below —
+                    // interrupt is a graceful shutdown signal, not a stall.
+                    isTimedOut = true;
                     break;
                 }
-
-                Object message = payload.getMessage();
-                String sourceKey = getUniqueSourceKey(payload);
-                if (isEndMessage(message)) {
-                    String sourceId = getProducerId(message);
-                    handledSources.add(sourceKey);
-                    closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
-
-                    if (allSourceGroupsFinished(handledSources)) {
-                        closeAllQueues(sourceId);
-                    }
-                } else {
-                    closeInactiveGroupSources(sourceKey);
-                    routeMessageValue(message, sourceKey, sourcePathMap);
-                }
-
-                if (allSourceGroupsFinished(handledSources)) {
+                processPayload(payload, handleMap, sourcePathMap);
+                if (allSourceGroupsFinished(handleMap)) {
                     break;
                 }
             }
+        } catch (InterruptedException e) {
+            // Graceful shutdown via interrupt — close queues normally (END_SENTINEL)
+            // so consumers see this as a regular stream end, not a timeout.
+            Thread.currentThread().interrupt();
         } finally {
-            if (timedOut) {
+            if (isTimedOut) {
                 closeAllQueuesWithTimeout();
+            } else {
+                closeAllQueues();
             }
         }
     }
 
+    /**
+     * Poll the next payload from the queue with the framework default blocking-queue timeout.
+     *
+     * @return the next payload, or null on timeout (caller should break and flag timeout)
+     * @throws InterruptedException if the current thread was interrupted while polling
+     * @since 0.1.7
+     */
     private StreamPayload pollPayload() throws InterruptedException {
-        StreamPayload payload = queue.poll(TimeoutConstants.BLOCKING_QUEUE_MS, TimeUnit.MILLISECONDS);
+        // queue.poll() is bounded by the framework default blocking-queue timeout, so
+        // an upstream producer that crashes without emitting the END frame cannot hang
+        // the stream-in worker thread indefinitely. On expiry, log + return null so the
+        // caller's loop exits rather than the whole thread dying silently.
+        StreamPayload payload = queue.poll(
+                TimeoutConstants.BLOCKING_QUEUE_MS,
+                TimeUnit.MILLISECONDS);
         if (payload == null) {
             Loggers.PERFORMANCE.warning(
                     "StreamProcessor main loop queue poll timeout after {}ms, node_id={}",
@@ -120,148 +199,245 @@ public class StreamProcessor {
     }
 
     /**
-     * Enqueues a stream payload for processing.
+     * Process a single payload: route end-frames or data to the right processor queues.
      *
-     * @param payload stream payload
+     * @param payload the stream payload to process
+     * @param handleMap set of handled source keys (mutated)
+     * @param sourcePathMap producer_id → schema paths produced (mutated)
+     * @since 0.1.7
      */
-    public void receive(StreamPayload payload) {
-        queue.offer(payload);
+    private void processPayload(StreamPayload payload, Set<String> handleMap,
+            Map<String, Set<String>> sourcePathMap) {
+        Object message = payload.getMessage();
+        ComponentAbility sourceAbility = payload.getSourceAbility();
+        String sourceKey = getUniqueSourceKey(payload);
+
+        if (isEndMessage(message)) {
+            String sourceId = getProducerId(message);
+            handleMap.add(sourceKey);
+            closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
+        } else {
+            closeInactiveGroupSources(sourceKey);
+            for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
+                String path = SessionUtils.extractOriginKey(entry.getKey());
+                Object value = (message instanceof Map<?, ?> messageMap)
+                        ? SessionUtils.getValueByNestedPath(path, (Map<String, Object>) messageMap)
+                        : null;
+                if (value != null) {
+                    sourcePathMap.computeIfAbsent(sourceKey, k -> new HashSet<>()).add(path);
+                    for (BlockingQueue<Object> q : entry.getValue()) {
+                        q.offer(value);
+                    }
+                }
+            }
+        }
     }
 
     /**
-     * Creates a nested map whose stream references are backed by blocking iterators.
+     * Check whether every source group has at least one handled source.
+     * Mirrors Python {@code StreamProcessor._all_source_groups_finished}.
      *
-     * @param schema input schema
-     * @param streamCallback optional callback invoked after each yielded chunk
-     * @return nested map matching the schema
+     * @param handledSources handledSources
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> generator(Map<String, Object> schema, Consumer<Map<String, Object>> streamCallback) {
-        if (schema == null || schema.isEmpty()) {
-            return Collections.emptyMap();
-        }
-
-        List<DictUtils.PathValuePair> inputs = new ArrayList<>();
-        for (DictUtils.PathValuePair path : DictUtils.extractLeafNodes(schema)) {
-            List<String> keyPath = path.path();
-            Object refPath = path.value();
-            String pathStr = DictUtils.formatPath(keyPath);
-            if (!(refPath instanceof String refPathValue) || !refPathValue.contains("$")) {
-                inputs.add(new DictUtils.PathValuePair(keyPath, refPath));
-                continue;
-            }
-            inputs.add(new DictUtils.PathValuePair(
-                    keyPath,
-                    createIterator(pathStr, refPathValue, streamCallback)));
-        }
-
-        return castStringObjectMap(DictUtils.rebuildDict(inputs));
-    }
-
-    boolean allSourceGroupsFinished(Set<String> handledSources) {
+    private boolean allSourceGroupsFinished(Set<String> handledSources) {
         if (sourceGroups.isEmpty()) {
             return false;
         }
         for (Set<String> group : sourceGroups) {
-            if (Collections.disjoint(group, handledSources)) {
+            boolean hasIntersection = false;
+            for (String source : group) {
+                if (handledSources.contains(source)) {
+                    hasIntersection = true;
+                    break;
+                }
+            }
+            if (!hasIntersection) {
                 return false;
             }
         }
         return true;
     }
 
-    private void routeMessageValue(Object message, String sourceKey, Map<String, Set<String>> sourcePathMap) {
-        for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
-            String path = entry.getKey();
-            String originPath = SessionUtils.extractOriginKey(path);
-            Object value = SessionUtils.getValueByNestedPath(originPath, message);
-            if (value == null) {
-                continue;
-            }
-            sourcePathMap.computeIfAbsent(sourceKey, ignored -> new LinkedHashSet<>()).add(path);
-            for (BlockingQueue<Object> destinationQueue : entry.getValue()) {
-                destinationQueue.offer(value);
-            }
-        }
-    }
-
+    /**
+     * For multi-source OR-groups, when one source starts producing, close the
+     * inactive alternatives so the consumer does not wait for them.
+     * Mirrors Python {@code StreamProcessor._close_inactive_group_sources}.
+     *
+     * @param activeSourceKey activeSourceKey
+     * @since 0.1.7
+     */
     private void closeInactiveGroupSources(String activeSourceKey) {
         for (Set<String> group : sourceGroups) {
             if (!group.contains(activeSourceKey) || group.size() <= 1) {
                 continue;
             }
             for (String inactiveSourceKey : group) {
-                if (!inactiveSourceKey.equals(activeSourceKey)) {
-                    closeQueuesForSourceKey(inactiveSourceKey);
+                if (inactiveSourceKey.equals(activeSourceKey)) {
+                    continue;
+                }
+                String sourceId = producerIdFromSourceKey(inactiveSourceKey);
+                closeQueuesForSource(sourceId);
+            }
+        }
+    }
+
+    /**
+     * Offer END_SENTINEL to processor queues that the given source actually
+     * produced data for. Mirrors Python
+     * {@code StreamProcessor._close_queues_for_source_key}.
+     *
+     * @param sourceId sourceId
+     * @param sourceKey sourceKey
+     * @param sourcePathMap sourcePathMap
+     * @since 0.1.7
+     */
+    private void closeQueuesForSourceKey(String sourceId, String sourceKey,
+            Map<String, Set<String>> sourcePathMap) {
+        Set<String> handledPaths = sourcePathMap.get(sourceKey);
+        if (handledPaths == null) {
+            return;
+        }
+        for (String path : handledPaths) {
+            for (BlockingQueue<Object> q : processorQueues.getOrDefault(path, List.of())) {
+                closeQueue(q);
+            }
+        }
+    }
+
+    /**
+     * Offer END_SENTINEL to every processor queue whose origin path belongs to
+     * the given source. Mirrors Python {@code StreamProcessor._close_queues_for_source}.
+     *
+     * @param sourceId sourceId
+     * @since 0.1.7
+     */
+    private void closeQueuesForSource(String sourceId) {
+        for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
+            String path = SessionUtils.extractOriginKey(entry.getKey());
+            if (isValueFromSource(path, sourceId)) {
+                for (BlockingQueue<Object> q : entry.getValue()) {
+                    closeQueue(q);
                 }
             }
         }
     }
 
-    private void closeQueuesForSource(String sourceId) {
-        for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
-            String originPath = SessionUtils.extractOriginKey(entry.getKey());
-            if (isValueFromSource(originPath, sourceId)) {
-                putEndFrame(sourceId, entry.getValue());
+    /**
+     * Offer END_SENTINEL to every processor queue.
+     * Mirrors Python {@code StreamProcessor._close_all_queues}.
+     *
+     * @since 0.1.7
+     */
+    private void closeAllQueues() {
+        for (List<BlockingQueue<Object>> queues : processorQueues.values()) {
+            for (BlockingQueue<Object> q : queues) {
+                closeQueue(q);
             }
         }
     }
 
-    private void closeQueuesForSourceKey(String sourceKey) {
-        for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
-            String originPath = SessionUtils.extractOriginKey(entry.getKey());
-            if (isValueFromSource(originPath, producerIdFromSourceKey(sourceKey))) {
-                putEndFrame(sourceKey, entry.getValue());
+    /**
+     * Offer TIMEOUT_SENTINEL to every processor queue. Used when the main loop poll
+     * times out so consumers can distinguish an upstream stall / crash from a genuine
+     * stream end. Mirrors {@link #closeAllQueues()} but with a different sentinel so
+     * {@code hasNext()} raises rather than returns {@code false}.
+     *
+     * @since 0.1.15
+     */
+    private void closeAllQueuesWithTimeout() {
+        for (List<BlockingQueue<Object>> queues : processorQueues.values()) {
+            for (BlockingQueue<Object> q : queues) {
+                closeQueueWithTimeout(q);
             }
         }
     }
 
-    private void closeQueuesForSourceKey(String sourceId, String sourceKey, Map<String, Set<String>> sourcePathMap) {
-        Set<String> handledPaths = sourcePathMap.get(sourceKey);
-        if (handledPaths == null || handledPaths.isEmpty()) {
-            closeQueuesForSource(sourceId);
-            return;
+    private void closeQueue(BlockingQueue<Object> processorQueue) {
+        if (closedProcessorQueues.add(processorQueue)) {
+            processorQueue.offer(END_SENTINEL);
         }
-        for (String path : handledPaths) {
-            List<BlockingQueue<Object>> destinations = processorQueues.get(path);
-            if (destinations != null) {
-                putEndFrame(sourceId, destinations);
+    }
+
+    private void closeQueueWithTimeout(BlockingQueue<Object> processorQueue) {
+        if (closedProcessorQueues.add(processorQueue)) {
+            processorQueue.offer(TIMEOUT_SENTINEL);
+        }
+    }
+
+    /**
+     * Receive a stream message for processing.
+     * 
+     * @param payload the stream payload
+     * @since 0.1.7
+     */
+    public void receive(StreamPayload payload) {
+        queue.offer(payload);
+    }
+
+    /**
+     * Seed source completions restored from an earlier interrupted invocation.
+     *
+     * @param sourceKeys completed producer-ability keys
+     * @since 0.1.7
+     */
+    public void seedCompletedSources(Set<String> sourceKeys) {
+        if (sourceKeys != null) {
+            completedSources.addAll(sourceKeys);
+        }
+    }
+
+    /**
+     * generator.
+     * 
+     * @param schema schema
+     * @param streamCallback streamCallback
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> generator(Map<String, Object> schema, Consumer<Object> streamCallback) {
+        if (schema == null || schema.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<Map.Entry<List<String>, Object>> inputs = new ArrayList<>();
+        List<Map.Entry<List<String>, Object>> paths = DictUtils.extractLeafNodes(schema, null);
+
+        for (Map.Entry<List<String>, Object> pathEntry : paths) {
+            List<String> keyPath = pathEntry.getKey();
+            Object refPath = pathEntry.getValue();
+            String pathStr = DictUtils.formatPath(keyPath);
+
+            if (!(refPath instanceof String) || !((String) refPath).contains("$")) {
+                inputs.add(new AbstractMap.SimpleEntry<>(keyPath, refPath));
+                continue;
             }
+
+            inputs.add(
+                    new AbstractMap.SimpleEntry<>(keyPath, createIterator(pathStr, (String) refPath, streamCallback)));
         }
+
+        return DictUtils.rebuildDict(inputs);
     }
 
-    private void closeAllQueues(String sourceId) {
-        for (List<BlockingQueue<Object>> destinations : processorQueues.values()) {
-            putEndFrame(sourceId, destinations);
-        }
-    }
-
-    void closeAllQueuesWithTimeout() {
-        for (List<BlockingQueue<Object>> destinations : processorQueues.values()) {
-            for (BlockingQueue<Object> destination : destinations) {
-                destination.offer(TIMEOUT_SENTINEL);
-            }
-        }
-    }
-
-    private void putEndFrame(String sourceId, Collection<BlockingQueue<Object>> destinations) {
-        SessionUtils.EndFrame endFrame = new SessionUtils.EndFrame(sourceId);
-        for (BlockingQueue<Object> destination : destinations) {
-            destination.offer(endFrame);
-        }
-    }
-
-    private Iterator<Object> createIterator(
-            String keyPath,
-            String referencePath,
-            Consumer<Map<String, Object>> streamCallback) {
-        BlockingQueue<Object> iteratorQueue = new LinkedBlockingQueue<>();
-        processorQueues.computeIfAbsent(referencePath, ignored -> new CopyOnWriteArrayList<>()).add(iteratorQueue);
-        boolean useTimeout = hasTimeout && !pathHasDeclaredSource(referencePath);
+    /**
+     * Create a blocking iterator backed by a queue for a specific schema path.
+     * 
+     * @param kPath kPath
+     * @param rPath rPath
+     * @param streamCallback streamCallback
+     * @return the result
+     * @since 0.1.7
+     */
+    private Iterator<Object> createIterator(String kPath, String rPath, Consumer<Object> streamCallback) {
+        BlockingQueue<Object> iterQueue = new LinkedBlockingQueue<>();
+        processorQueues.computeIfAbsent(rPath, k -> new ArrayList<>()).add(iterQueue);
 
         return new Iterator<>() {
-            private Object next;
-            private boolean done;
-
+            private Object next = null;
+            private boolean done = false;
             @Override
             public boolean hasNext() {
                 if (done) {
@@ -271,29 +447,49 @@ public class StreamProcessor {
                     return true;
                 }
                 try {
-                    Object message = pollNextMessage(iteratorQueue, useTimeout);
-                    if (message == null) {
-                        LOGGER.warning("Receive chunk timeout {}ms of [{}.{}]",
-                                useTimeout ? timeoutMillis : TimeoutConstants.BLOCKING_QUEUE_MS, nodeId, keyPath);
+                    Object msg;
+                    if (timeoutSeconds > 0) {
+                        msg = iterQueue.poll(timeoutSeconds, TimeUnit.SECONDS);
+                    } else {
+                        // iterQueue.poll() falls back to the framework default blocking-queue
+                        // timeout when no explicit caller timeout is supplied, so iterator
+                        // consumers are not hung even after the upstream finishes abnormally.
+                        long pollMs = TimeoutConstants.BLOCKING_QUEUE_MS;
+                        msg = iterQueue.poll(pollMs, TimeUnit.MILLISECONDS);
+                        if (msg == null) {
+                            Loggers.PERFORMANCE.warning(
+                                    "StreamProcessor iterator queue poll timeout after {}ms, node_id={}, kPath={}",
+                                    pollMs, nodeId, kPath);
+                            done = true;
+                            return false;
+                        }
+                    }
+                    if (msg == null) {
+                        // Timeout
+                        logger.warning("Receive chunk timeout {}s of [{}.{}]", timeoutSeconds, nodeId, kPath);
                         done = true;
                         return false;
                     }
-                    if (message == TIMEOUT_SENTINEL) {
+                    if (msg == END_SENTINEL) {
+                        logger.debug("Receive EndFrame chunk of [{}.{}]", nodeId, kPath);
+                        done = true;
+                        return false;
+                    }
+                    if (msg == TIMEOUT_SENTINEL) {
+                        // Upstream poll timed out; the stream did not end normally. Raise
+                        // so the consumer can retry / report rather than silently treating
+                        // incomplete data as a complete stream.
+                        logger.warning("Receive timeout sentinel of [{}.{}]", nodeId, kPath);
                         done = true;
                         throw new GraphError(
                                 StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT,
                                 Map.of("timeout", TimeoutConstants.BLOCKING_QUEUE_MS,
-                                        "source", nodeId + "." + keyPath));
+                                        "node_id", nodeId, "kPath", kPath));
                     }
-                    if (message instanceof SessionUtils.EndFrame) {
-                        LOGGER.debug("Receive EndFrame chunk of [{}.{}]", nodeId, keyPath);
-                        done = true;
-                        return false;
-                    }
-                    LOGGER.debug("Receive chunk of [{}.{}]", nodeId, keyPath);
-                    next = message;
+                    logger.debug("Receive chunk of [{}.{}]", nodeId, kPath);
+                    next = msg;
                     return true;
-                } catch (InterruptedException exception) {
+                } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     done = true;
                     return false;
@@ -303,114 +499,69 @@ public class StreamProcessor {
             @Override
             public Object next() {
                 if (next == null && !hasNext()) {
-                    throw new NoSuchElementException();
+                    throw new java.util.NoSuchElementException();
                 }
                 Object value = next;
                 next = null;
                 if (streamCallback != null) {
-                    streamCallback.accept(Map.of(keyPath, value));
+                    streamCallback.accept(Map.of(kPath, value));
                 }
                 return value;
             }
         };
     }
 
-    private Object pollNextMessage(BlockingQueue<Object> iteratorQueue, boolean useTimeout)
-            throws InterruptedException {
-        if (useTimeout) {
-            return iteratorQueue.poll(timeoutMillis, TimeUnit.MILLISECONDS);
-        }
-        Object message = iteratorQueue.poll(TimeoutConstants.BLOCKING_QUEUE_MS, TimeUnit.MILLISECONDS);
-        if (message == null) {
-            Loggers.PERFORMANCE.warning(
-                    "StreamProcessor iterator queue poll timeout after {}ms, node_id={}",
-                    TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
-        }
-        return message;
+    // ---- Helpers ----
+
+    static boolean isValueFromSource(String path, String sourceId) {
+        return path.equals(sourceId) || path.startsWith(sourceId + ".");
     }
 
-    private boolean pathHasDeclaredSource(String referencePath) {
-        String originKey = SessionUtils.extractOriginKey(referencePath);
-        if (originKey == null || originKey.isEmpty()) {
-            return false;
-        }
-        String sourceId = originKey.split("\\.", 2)[0];
-        return sourceIds.contains(sourceId);
-    }
-
-    public static boolean isValueFromSource(String path, String sourceId) {
-        return path != null && sourceId != null && (path.equals(sourceId) || path.startsWith(sourceId + "."));
-    }
-
-    static String getUniqueSourceKey(StreamPayload payload) {
+    /**
+     * getUniqueSourceKey.
+     * 
+     * @param payload payload
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String getUniqueSourceKey(StreamPayload payload) {
         String sourceId = getProducerId(payload.getMessage());
-        return sourceId + "-" + payload.getSourceAbility().getAbilityName();
+        String ability = payload.getSourceAbility().name();
+        return sourceId + "-" + ability;
     }
 
-    static String producerIdFromSourceKey(String sourceKey) {
-        int splitIndex = sourceKey.lastIndexOf('-');
-        return splitIndex < 0 ? sourceKey : sourceKey.substring(0, splitIndex);
-    }
-
-    public static boolean isEndMessage(Object message) {
-        Map.Entry<?, ?> entry = singleMessageEntry(message);
-        Object messageContent = entry.getValue();
-        return messageContent instanceof String text && text.startsWith("END_");
-    }
-
-    public static String getProducerId(Object message) {
-        return String.valueOf(singleMessageEntry(message).getKey());
-    }
-
-    private static Map.Entry<?, ?> singleMessageEntry(Object message) {
-        if (!(message instanceof Map<?, ?> map) || map.size() != 1) {
-            throw new IllegalArgumentException("message is invalid");
-        }
-        return map.entrySet().iterator().next();
-    }
-
-    private static List<Set<String>> normalizeSourceGroups(List<List<String>> rawSourceGroups) {
-        if (rawSourceGroups == null || rawSourceGroups.isEmpty()) {
-            return List.of();
-        }
-        List<Set<String>> normalized = new ArrayList<>();
-        for (List<String> group : rawSourceGroups) {
-            if (group == null || group.isEmpty()) {
-                continue;
-            }
-            Set<String> values = new LinkedHashSet<>(group);
-            Set<String> producerIds = new LinkedHashSet<>();
-            for (String value : values) {
-                producerIds.add(producerIdFromSourceKey(value));
-            }
-            if (producerIds.size() == 1 && values.size() > 1) {
-                for (String value : values) {
-                    normalized.add(Collections.unmodifiableSet(new LinkedHashSet<>(List.of(value))));
-                }
-                continue;
-            }
-            if (!values.isEmpty()) {
-                normalized.add(Collections.unmodifiableSet(values));
-            }
-        }
-        return Collections.unmodifiableList(normalized);
-    }
-
-    private static Set<String> collectSourceIds(List<Set<String>> sourceGroups) {
-        Set<String> ids = new LinkedHashSet<>();
-        for (Set<String> group : sourceGroups) {
-            for (String sourceKey : group) {
-                ids.add(producerIdFromSourceKey(sourceKey));
-            }
-        }
-        return Collections.unmodifiableSet(ids);
+    /**
+     * Extract the producer id from a "{producer_id}-{ABILITY}" source key.
+     * Mirrors Python {@code StreamProcessor._producer_id_from_source_key}.
+     *
+     * @param sourceKey sourceKey
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String producerIdFromSourceKey(String sourceKey) {
+        int idx = sourceKey.lastIndexOf('-');
+        return idx > 0 ? sourceKey.substring(0, idx) : sourceKey;
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> castStringObjectMap(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
+    static boolean isEndMessage(Object message) {
+        if (!(message instanceof Map)) {
+            return false;
         }
-        return Collections.emptyMap();
+        Map<String, Object> msgMap = (Map<String, Object>) message;
+        if (msgMap.size() != 1) {
+            return false;
+        }
+        String producerId = msgMap.keySet().iterator().next();
+        Object content = msgMap.get(producerId);
+        return content instanceof String && ((String) content).startsWith("END_");
+    }
+
+    @SuppressWarnings("unchecked")
+    static String getProducerId(Object message) {
+        if (!(message instanceof Map) || ((Map<?, ?>) message).size() != 1) {
+            throw new IllegalArgumentException("message is invalid");
+        }
+        return ((Map<String, Object>) message).keySet().iterator().next();
     }
 }

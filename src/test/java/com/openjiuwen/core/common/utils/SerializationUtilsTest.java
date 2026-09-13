@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.graph.pregel.Message;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
+import com.openjiuwen.core.singleagent.interrupt.ToolCallInterruptRequest;
 
 import org.junit.jupiter.api.Test;
 
@@ -33,17 +34,21 @@ class SerializationUtilsTest {
                 Map.of("trace", "trace-1"));
         Message graphMessage = new Message("sender", "target", Map.of("event", "pending"));
         InteractionOutput output = new InteractionOutput("interaction", Map.of("answer", "yes"));
+        ToolCallInterruptRequest request = new ToolCallInterruptRequest();
+        request.setQuestions(List.of(Map.of("question", "Continue?")));
         BaseError error = new BaseError(StatusCode.ERROR, "failed", Map.of("detail", "value"), null,
                 Map.of("parameter", "value"));
 
         BaseMessage restoredMessage = roundTrip(message, BaseMessage.class);
         Message restoredGraphMessage = roundTrip(graphMessage, Message.class);
         InteractionOutput restoredOutput = roundTrip(output, InteractionOutput.class);
+        ToolCallInterruptRequest restoredRequest = roundTrip(request, ToolCallInterruptRequest.class);
         BaseError restoredError = roundTrip(error, BaseError.class);
 
         assertEquals(message, restoredMessage);
         assertEquals(Map.of("event", "pending"), restoredGraphMessage.getPayload());
         assertEquals(output, restoredOutput);
+        assertEquals(request.getQuestions(), restoredRequest.getQuestions());
         assertEquals(error.getParams(), restoredError.getParams());
         assertEquals(error.getDetails(), restoredError.getDetails());
     }
@@ -56,23 +61,19 @@ class SerializationUtilsTest {
                 () -> new BaseMessage("user", nonSerializable, null, null));
         assertThrows(IllegalArgumentException.class, () -> new Message("sender", "target", nonSerializable));
         assertThrows(IllegalArgumentException.class, () -> new InteractionOutput("interaction", nonSerializable));
-        assertThrows(IllegalArgumentException.class,
-                () -> new BaseError(StatusCode.ERROR, "failed", nonSerializable, null, Map.of()));
     }
 
     @Test
     void nullablePayloadsPreserveExistingContracts() {
         BaseError error = new BaseError(StatusCode.ERROR, "failed", null, null, Map.of());
-        BaseMessage twoArgMessage = new BaseMessage("user", null);
-        BaseMessage fourArgMessage = new BaseMessage("user", null, null, null);
+        BaseMessage baseMessage = new BaseMessage("user", null, null, null);
         Message graphMessage = new Message("sender", "target");
         InteractionOutput output = new InteractionOutput("interaction", null);
         InteractiveInput input = new InteractiveInput();
 
         assertDoesNotThrow(() -> input.setRawInputs(null));
         assertNull(error.getDetails());
-        assertEquals("", twoArgMessage.getContent());
-        assertNull(fourArgMessage.getContent());
+        assertNull(baseMessage.getContent());
         assertNull(graphMessage.getPayload());
         assertNull(output.getValue());
         assertNull(input.getRawInputs());

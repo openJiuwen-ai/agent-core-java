@@ -22,9 +22,6 @@ public abstract class TraceExtAgentHandler {
     /** Tracer UUID injected by {@code Tracer.init()} to bridge OTel traces with the tracer UUID. */
     protected String traceId = "";
 
-    /** Session id injected by {@code Tracer.init()} (may be null/blank when unbound). */
-    protected String sessionId;
-
     /**
      * Inject the tracer UUID into this handler.
      *
@@ -37,19 +34,6 @@ public abstract class TraceExtAgentHandler {
      */
     public void setTraceId(String traceId) {
         this.traceId = traceId != null ? traceId : "";
-    }
-
-    /**
-     * Inject the session id into this handler.
-     *
-     * <p>Called by {@code Tracer.init()} alongside {@link #setTraceId(String)}.
-     * Subclasses can attach {@code sessionId} as an OTel attribute.</p>
-     *
-     * @param sessionId the session id, or {@code null}
-     * @since 0.1.7
-     */
-    public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
     }
 
     // --- LLM events ---

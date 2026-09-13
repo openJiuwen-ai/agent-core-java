@@ -4,174 +4,325 @@
 
 package com.openjiuwen.dev_tools.tune;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * Definition of an evaluated tuning case.
- *
- * <p>Mirrors Python's {@code EvaluatedCase} in
- * {@code openjiuwen/dev_tools/tune/base.py}.</p>
+ * Mirrors Python's openjiuwen.dev_tools.tune.base.EvaluatedCase.
+ * 
+ * @since 0.1.7
  */
 public class EvaluatedCase {
-    @JsonProperty("case")
-    private Case caseValue;
+    private Case caseData;
     private Map<String, Object> answer;
-    private double score;
+    private float score;
     private String reason;
 
+    /**
+     * EvaluatedCase.
+     * 
+     * @since 0.1.7
+     */
     public EvaluatedCase() {
-        this.caseValue = null;
-        this.answer = null;
-        this.score = 0.0d;
-        this.reason = "";
+        this(null, null, 0.0f, "");
     }
 
-    public EvaluatedCase(Case caseValue) {
-        this(caseValue, null, 0.0d, "");
+    /**
+     * EvaluatedCase.
+     * 
+     * @param caseData caseData
+     * @param answer answer
+     * @since 0.1.7
+     */
+    public EvaluatedCase(Case caseData, Map<String, Object> answer) {
+        this(caseData, answer, 0.0f, "");
     }
 
-    public EvaluatedCase(Case caseValue, Map<String, Object> answer) {
-        this(caseValue, answer, 0.0d, "");
+    /**
+     * EvaluatedCase.
+     * 
+     * @param caseData caseData
+     * @param answer answer
+     * @param score score
+     * @param reason reason
+     * @since 0.1.7
+     */
+    public EvaluatedCase(Case caseData, Map<String, Object> answer, float score, String reason) {
+        this.caseData = caseData;
+        this.answer = answer;
+        this.score = clampScore(score);
+        this.reason = reason != null ? reason : "";
     }
 
-    public EvaluatedCase(Case caseValue, Map<String, Object> answer, float score, String reason) {
-        this(caseValue, answer, (double) score, reason);
-    }
-
-    public EvaluatedCase(Case caseValue, Map<String, Object> answer, double score, String reason) {
-        this.caseValue = Objects.requireNonNull(caseValue, "case");
-        setAnswer(answer);
-        setScore(score);
-        this.reason = reason == null ? "" : reason;
-    }
-
+    /**
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static Builder builder() {
         return new Builder();
     }
 
-    @JsonProperty("case")
+    /**
+     * getCase.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Case getCase() {
-        return caseValue;
+        return caseData;
     }
 
-    @JsonProperty("case")
-    public void setCase(Case caseValue) {
-        this.caseValue = Objects.requireNonNull(caseValue, "case");
+    /**
+     * setCase.
+     * 
+     * @param caseData caseData
+     * @since 0.1.7
+     */
+    public void setCase(Case caseData) {
+        this.caseData = caseData;
     }
 
+    /**
+     * getCaseData.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Case getCaseData() {
-        return caseValue;
+        return caseData;
     }
 
-    public void setCaseData(Case caseValue) {
-        setCase(caseValue);
+    /**
+     * setCaseData.
+     * 
+     * @param caseData caseData
+     * @since 0.1.7
+     */
+    public void setCaseData(Case caseData) {
+        this.caseData = caseData;
     }
 
+    /**
+     * getCase_.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Case getCase_() {
-        return caseValue;
+        return caseData;
     }
 
-    public void setCase_(Case caseValue) {
-        setCase(caseValue);
+    /**
+     * setCase_.
+     * 
+     * @param caseData caseData
+     * @since 0.1.7
+     */
+    public void setCase_(Case caseData) {
+        this.caseData = caseData;
     }
 
+    /**
+     * getAnswer.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getAnswer() {
         return answer;
     }
 
+    /**
+     * setAnswer.
+     * 
+     * @param answer answer
+     * @since 0.1.7
+     */
     public void setAnswer(Map<String, Object> answer) {
-        this.answer = answer == null ? null : new LinkedHashMap<>(answer);
+        this.answer = answer;
     }
 
+    /**
+     * getScore.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public float getScore() {
-        return (float) score;
+        return score;
     }
 
-    public void setScore(double score) {
-        if (score < 0.0d || score > 1.0d) {
-            throw new IllegalArgumentException("score must be between 0.0 and 1.0");
-        }
-        this.score = score;
-    }
-
+    /**
+     * setScore.
+     * 
+     * @param score score
+     * @since 0.1.7
+     */
     public void setScore(float score) {
-        setScore((double) score);
+        this.score = clampScore(score);
     }
 
+    /**
+     * getReason.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getReason() {
         return reason;
     }
 
+    /**
+     * setReason.
+     * 
+     * @param reason reason
+     * @since 0.1.7
+     */
     public void setReason(String reason) {
-        this.reason = reason == null ? "" : reason;
+        this.reason = reason != null ? reason : "";
     }
 
+    /**
+     * getInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getInputs() {
-        return caseValue == null ? null : caseValue.getInputs();
+        return caseData != null ? caseData.getInputs() : null;
     }
 
+    /**
+     * getLabel.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getLabel() {
-        return caseValue == null ? null : caseValue.getLabel();
+        return caseData != null ? caseData.getLabel() : null;
     }
 
+    /**
+     * getTools.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public List<ToolInfo> getTools() {
-        return caseValue == null ? null : caseValue.getTools();
+        return caseData != null ? caseData.getTools() : null;
     }
 
-    @JsonProperty("case_id")
+    /**
+     * getCaseId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getCaseId() {
-        return caseValue == null ? null : caseValue.getCaseId();
+        return caseData != null ? caseData.getCaseId() : null;
     }
 
+    /**
+     * clampScore.
+     * 
+     * @param score score
+     * @return the result
+     * @since 0.1.7
+     */
+    private static float clampScore(float score) {
+        return Math.max(0.0f, Math.min(1.0f, score));
+    }
+
+    /**
+     * Builder.
+     * 
+     * @since 0.1.7
+     */
     public static final class Builder {
         private Case caseData;
         private Map<String, Object> answer;
-        private double score;
+        private float score = 0.0f;
         private String reason = "";
 
+        /**
+         * Builder.
+         * 
+         * @since 0.1.7
+         */
         private Builder() {
         }
 
+        /**
+         * caseData.
+         * 
+         * @param caseData caseData
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder caseData(Case caseData) {
             this.caseData = caseData;
             return this;
         }
 
+        /**
+         * case_.
+         * 
+         * @param caseData caseData
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder case_(Case caseData) {
             this.caseData = caseData;
             return this;
         }
 
+        /**
+         * answer.
+         * 
+         * @param answer answer
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder answer(Map<String, Object> answer) {
             this.answer = answer;
             return this;
         }
 
+        /**
+         * score.
+         * 
+         * @param score score
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder score(float score) {
             this.score = score;
             return this;
         }
 
-        public Builder score(double score) {
-            this.score = score;
-            return this;
-        }
-
+        /**
+         * reason.
+         * 
+         * @param reason reason
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder reason(String reason) {
             this.reason = reason;
             return this;
         }
 
+        /**
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         public EvaluatedCase build() {
-            if (caseData == null && answer == null && score == 0.0d && (reason == null || reason.isEmpty())) {
-                return new EvaluatedCase();
-            }
             return new EvaluatedCase(caseData, answer, score, reason);
         }
     }

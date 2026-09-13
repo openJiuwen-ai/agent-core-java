@@ -4,12 +4,17 @@ package com.openjiuwen.harness.rails.fixtures;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Minimal MCP stdio fixture that speaks NDJSON (one JSON object per line),
+ * matching {@link com.openjiuwen.core.foundation.tool.mcp.client.StdioClient}.
+ */
 public final class StdioMcpResourceServer {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -17,18 +22,24 @@ public final class StdioMcpResourceServer {
     }
 
     public static void main(String[] args) throws Exception {
+        BufferedInputStream in = new BufferedInputStream(System.in);
+        BufferedOutputStream out = new BufferedOutputStream(System.out);
         while (true) {
-            Map<String, Object> request = readFrame();
+            Map<String, Object> request = readFrame(in);
             if (request == null) {
                 return;
             }
             Object id = request.get("id");
             String method = String.valueOf(request.get("method"));
+            // Notifications have no id; ignore them.
+            if (id == null) {
+                continue;
+            }
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("jsonrpc", "2.0");
             response.put("id", id);
             response.put("result", result(method, request.get("params")));
-            writeFrame(response);
+            writeFrame(out, response);
         }
     }
 
@@ -59,51 +70,31 @@ public final class StdioMcpResourceServer {
         return Map.of();
     }
 
-    private static Map<String, Object> readFrame() throws Exception {
-        int contentLength = -1;
-        String line;
-        while (!(line = readHeaderLine()).isEmpty()) {
-            String lower = line.toLowerCase();
-            if (lower.startsWith("content-length:")) {
-                contentLength = Integer.parseInt(line.substring("content-length:".length()).trim());
+    private static Map<String, Object> readFrame(BufferedInputStream in) throws Exception {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int current;
+        while ((current = in.read()) != -1) {
+            if (current == '\n') {
+                break;
+            }
+            if (current != '\r') {
+                buffer.write(current);
             }
         }
-        if (contentLength < 0) {
+        if (current == -1 && buffer.size() == 0) {
             return null;
         }
-        byte[] body = System.in.readNBytes(contentLength);
-        if (body.length == 0) {
-            return null;
+        byte[] lineBytes = buffer.toByteArray();
+        if (lineBytes.length == 0) {
+            return readFrame(in);
         }
-        return MAPPER.readValue(body, new TypeReference<>() {
+        return MAPPER.readValue(lineBytes, new TypeReference<>() {
         });
     }
 
-    private static String readHeaderLine() throws Exception {
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        int current;
-        while ((current = System.in.read()) != -1) {
-            if (current == '\r') {
-                int next = System.in.read();
-                if (next == '\n') {
-                    break;
-                }
-                buffer.write(current);
-                if (next != -1) {
-                    buffer.write(next);
-                }
-                continue;
-            }
-            buffer.write(current);
-        }
-        return buffer.toString(StandardCharsets.UTF_8);
-    }
-
-    private static void writeFrame(Map<String, Object> response) throws Exception {
-        byte[] json = MAPPER.writeValueAsBytes(response);
-        String header = "Content-Length: " + json.length + "\r\n\r\n";
-        System.out.write(header.getBytes(StandardCharsets.UTF_8));
-        System.out.write(json);
-        System.out.flush();
+    private static void writeFrame(BufferedOutputStream out, Map<String, Object> response) throws Exception {
+        out.write(MAPPER.writeValueAsBytes(response));
+        out.write('\n');
+        out.flush();
     }
 }

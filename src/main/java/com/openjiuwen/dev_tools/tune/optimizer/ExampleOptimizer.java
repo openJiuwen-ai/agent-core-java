@@ -4,11 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune.optimizer;
 
-import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
@@ -20,301 +16,275 @@ import com.openjiuwen.dev_tools.tune.TuneUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Few-shot example optimizer for legacy prompt tuning.
- *
- * <p>Mirrors Python's {@code ExampleOptimizer} in
- * {@code openjiuwen/dev_tools/tune/optimizer/example_optimizer.py}.</p>
+ * Example optimizer for prompt tuning.
+ * <p>
+ * Mirrors Python's {@code ExampleOptimizer} in {@code openjiuwen.dev_tools.tune.optimizer.example_optimizer}.
+ * 
+ * @since 0.1.7
  */
 public class ExampleOptimizer extends BaseOptimizer {
-
-    public static final PromptTemplate EXAMPLE_SELECTION_TEMPLATE = PromptTemplate.builder()
-            .content("""
-                    作为提示词优化专家,我的任务是帮助代理高效且成功地完成任务。
-                    当前任务描述:
-                    [任务描述]
-                    {{task_description}}
-                    请从以下回答错误的数据或正确但又代表性的示例集合中选择最具代表性的{{num_examples}}个示例,以解决上述任务中的任何问题。
-                    当前的错误示例集是
-                    {{examples}}
-
-                    选择出最具代表性示例集的标号,用列表形式输出,输出格式为:
-                    ```list
-                    [索引1, 索引2,...]
-                    ```
-                    例如输出3个示例:
-                    ```list
-                    [0, 2, 4]
-                    ```
-                    1. 输出的索引列表必须满足{{num_examples}}个
-                    2. 输出必须被'```list```'包裹
-
-                    [请选择示例]
-                    """)
-            .build();
-
     private final Model model;
     private final int numExamples;
 
-    public ExampleOptimizer(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
-        this(modelConfig, modelClientConfig, null, TuneConstant.DEFAULT_EXAMPLE_NUM);
-    }
-
-    public ExampleOptimizer(ModelRequestConfig modelConfig,
-                            ModelClientConfig modelClientConfig,
-                            Map<String, LLMCall> parameters,
-                            int numExamples) {
+    /**
+     * Creates an ExampleOptimizer.
+     * 
+     * @param modelConfig the model request configuration
+     * @param modelClientConfig the model client configuration
+     * @param parameters the LLM call parameters
+     * @param numExamples the number of examples to select
+     * @since 0.1.7
+     */
+    public ExampleOptimizer(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            Map<String, LLMCall> parameters, int numExamples) {
         super(parameters);
-        model = new Model(modelClientConfig, modelConfig);
+        this.model = new Model(modelClientConfig, modelConfig);
+
         if (numExamples < TuneConstant.MIN_EXAMPLE_NUM || numExamples > TuneConstant.MAX_EXAMPLE_NUM) {
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOLCHAIN_OPTIMIZER_PARAM_ERROR,
-                    "error_msg",
-                    "num_examples should be between " + TuneConstant.MIN_EXAMPLE_NUM + " and "
-                            + TuneConstant.MAX_EXAMPLE_NUM
-            );
+            throw new IllegalArgumentException("num_examples should be between " + TuneConstant.MIN_EXAMPLE_NUM
+                    + " and " + TuneConstant.MAX_EXAMPLE_NUM);
         }
         this.numExamples = numExamples;
     }
 
+    /**
+     * Gets the number of examples.
+     * 
+     * @return the number of examples
+     * @since 0.1.7
+     */
     public int getNumExamples() {
         return numExamples;
     }
 
-    public int num_examples() {
-        return getNumExamples();
-    }
-
+    /**
+     * doBackward.
+     * 
+     * @param evaluatedCases evaluatedCases
+     * @since 0.1.7
+     */
     @Override
     protected void doBackward(List<EvaluatedCase> evaluatedCases) {
         if (numExamples <= 0) {
-            Loggers.AGENT.info("skip do example optimization.");
             return;
         }
 
-        for (TextualParameter parameter : parameters.values()) {
-            LLMCall llmCall = parameter.getLlmCall();
-            List<Case> selectedExamples = selectBestExamples(
-                    llmCall.getSystemPrompt(),
-                    llmCall.getUserPrompt(),
-                    evaluatedCases
-            );
-            String examples = TuneUtils.convertCasesToExamples(selectedExamples);
-            if (!llmCall.getFreezeSystemPrompt()) {
-                parameter.setGradient("system_prompt", examples);
+        for (Map.Entry<String, TextualParameter> entry : parameters.entrySet()) {
+            TextualParameter param = entry.getValue();
+
+            List<Case> selectedExamples = selectBestExamples(param.getLlmCall().getSystemPrompt(),
+                    param.getLlmCall().getUserPrompt(), evaluatedCases);
+
+            if (!param.getLlmCall().getFreezeSystemPrompt()) {
+                param.setGradient("system_prompt", TuneUtils.convertCasesToExamples(selectedExamples));
             }
-            if (!llmCall.getFreezeUserPrompt()) {
-                parameter.setGradient("user_prompt", examples);
+            if (!param.getLlmCall().getFreezeUserPrompt()) {
+                param.setGradient("user_prompt", TuneUtils.convertCasesToExamples(selectedExamples));
             }
         }
     }
 
+    /**
+     * doUpdate.
+     * 
+     * @since 0.1.7
+     */
     @Override
     protected void doUpdate() {
-        for (TextualParameter parameter : parameters.values()) {
-            LLMCall llmCall = parameter.getLlmCall();
-            if (!llmCall.getFreezeUserPrompt()) {
-                String optimizedPrompt = formatPrompt(llmCall.getUserPrompt(), parameter.getGradient("user_prompt"));
-                llmCall.updateUserPrompt(optimizedPrompt);
-            } else if (!llmCall.getFreezeSystemPrompt()) {
-                String optimizedPrompt = formatPrompt(llmCall.getSystemPrompt(), parameter.getGradient("system_prompt"));
-                llmCall.updateSystemPrompt(optimizedPrompt);
+        for (Map.Entry<String, TextualParameter> entry : parameters.entrySet()) {
+            TextualParameter param = entry.getValue();
+
+            if (!param.getLlmCall().getFreezeUserPrompt()) {
+                String optimizedPrompt =
+                    formatPrompt(param.getLlmCall().getUserPrompt(), param.getGradient("user_prompt").orElse(null));
+                param.getLlmCall().updateUserPrompt(optimizedPrompt);
+            } else if (!param.getLlmCall().getFreezeSystemPrompt()) {
+                String optimizedPrompt =
+                    formatPrompt(param.getLlmCall().getSystemPrompt(), param.getGradient("system_prompt").orElse(null));
+                param.getLlmCall().updateSystemPrompt(optimizedPrompt);
+            } else {
+                // no-op
             }
         }
     }
 
+    /**
+     * Initializes examples from evaluated cases.
+     * 
+     * @param evaluatedCases the evaluated cases
+     * @since 0.1.7
+     */
     public void initExamples(List<EvaluatedCase> evaluatedCases) {
-        List<Case> preSelectedExamples = sampleExample(numExamples, safeEvaluatedCases(evaluatedCases));
-        String examples = TuneUtils.convertCasesToExamples(preSelectedExamples);
-        for (TextualParameter parameter : parameters.values()) {
-            LLMCall llmCall = parameter.getLlmCall();
-            if (!llmCall.getFreezeSystemPrompt()) {
-                parameter.setGradient("system_prompt", examples);
+        List<Case> preSelectedExamples = sampleExamples(numExamples, evaluatedCases);
+
+        for (TextualParameter param : parameters.values()) {
+            if (!param.getLlmCall().getFreezeSystemPrompt()) {
+                param.setGradient("system_prompt", TuneUtils.convertCasesToExamples(preSelectedExamples));
             }
-            if (!llmCall.getFreezeUserPrompt()) {
-                parameter.setGradient("user_prompt", examples);
+            if (!param.getLlmCall().getFreezeUserPrompt()) {
+                param.setGradient("user_prompt", TuneUtils.convertCasesToExamples(preSelectedExamples));
             }
         }
     }
 
-    public void init_examples(List<EvaluatedCase> evaluatedCases) {
-        initExamples(evaluatedCases);
-    }
-
+    /**
+     * formatPrompt.
+     * 
+     * @param prompt prompt
+     * @param gradient gradient
+     * @return the result
+     * @since 0.1.7
+     */
     public String formatPrompt(PromptTemplate prompt, String gradient) {
         String content = TuneUtils.getContentStringFromTemplate(prompt);
-        if (gradient == null) {
+        if (gradient == null || gradient.isEmpty()) {
             return content;
         }
-        return String.join("\n", content, gradient);
+        return content + "\n" + gradient;
     }
 
-    public String format_prompt(PromptTemplate prompt, String gradient) {
-        return formatPrompt(prompt, gradient);
+    /**
+     * sampleExamples.
+     * 
+     * @param num num
+     * @param evaluatedCases evaluatedCases
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Case> sampleExamples(int num, List<EvaluatedCase> evaluatedCases) {
+        if (num >= evaluatedCases.size()) {
+            return evaluatedCases.stream().map(EvaluatedCase::getCase).toList();
+        }
+
+        List<EvaluatedCase> sampled = new ArrayList<>();
+        List<EvaluatedCase> errors = new ArrayList<>(badCases);
+
+        if (!errors.isEmpty()) {
+            int numError = Math.min(num, errors.size());
+            Collections.shuffle(errors);
+            sampled.addAll(errors.subList(0, numError));
+        }
+
+        if (sampled.size() < num) {
+            int remaining = num - sampled.size();
+            List<EvaluatedCase> remainingCases =
+                evaluatedCases.stream().filter(c -> !sampled.contains(c)).collect(Collectors.toList());
+            Collections.shuffle(remainingCases);
+            sampled.addAll(remainingCases.subList(0, Math.min(remaining, remainingCases.size())));
+        }
+
+        return sampled.stream().map(EvaluatedCase::getCase).toList();
     }
 
-    List<Case> sampleExample(int requestedExamples, List<EvaluatedCase> evaluatedCases) {
-        List<EvaluatedCase> dataset = safeEvaluatedCases(evaluatedCases);
-        List<EvaluatedCase> errorCases = getBadCases(dataset);
-        if (requestedExamples >= dataset.size()) {
-            return dataset.stream().map(EvaluatedCase::getCase).collect(Collectors.toCollection(ArrayList::new));
+    /**
+     * selectBestExamples.
+     * 
+     * @param systemPrompt systemPrompt
+     * @param userPrompt userPrompt
+     * @param evaluatedCases evaluatedCases
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Case> selectBestExamples(PromptTemplate systemPrompt, PromptTemplate userPrompt,
+            List<EvaluatedCase> evaluatedCases) {
+        List<Case> preSelected = sampleExamplesFromCases(evaluatedCases);
+
+        if (preSelected.size() <= numExamples) {
+            return preSelected;
         }
 
-        List<EvaluatedCase> sampledExamples = new ArrayList<>();
-        if (!errorCases.isEmpty()) {
-            int numErrorExamples = Math.min(requestedExamples, errorCases.size());
-            sampledExamples.addAll(sample(errorCases, numErrorExamples));
+        StringBuilder examplesString = new StringBuilder();
+        for (int i = 0; i < preSelected.size(); i++) {
+            Case example = preSelected.get(i);
+            examplesString.append(String.format(Locale.ROOT, "index: %d\nquestion: %s\nassistant answer: %s\n", i,
+                    example.getInputs(), example.getLabel()));
         }
 
-        if (sampledExamples.size() < requestedExamples) {
-            int remainingCount = requestedExamples - sampledExamples.size();
-            List<EvaluatedCase> remainingExamples = new ArrayList<>(dataset);
-            remainingExamples.removeAll(sampledExamples);
-            sampledExamples.addAll(sample(remainingExamples, remainingCount));
-        } else {
-            sampledExamples = sample(sampledExamples, requestedExamples);
-        }
-        return sampledExamples.stream().map(EvaluatedCase::getCase).collect(Collectors.toCollection(ArrayList::new));
-    }
-
-    List<Case> fillMissingExample(List<Case> selectedExamples, List<EvaluatedCase> evaluatedCases) {
-        List<Case> selected = selectedExamples == null ? new ArrayList<>() : new ArrayList<>(selectedExamples);
-        List<EvaluatedCase> cases = safeEvaluatedCases(evaluatedCases);
-        int numToSelect = Math.min(numExamples, cases.size());
-        int fillCount = numToSelect - selected.size();
-        if (fillCount <= 0) {
-            return selected;
-        }
-        Set<String> selectedCaseIds = selected.stream()
-                .map(Case::getCaseId)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        List<Case> remainingCases = cases.stream()
-                .map(EvaluatedCase::getCase)
-                .filter(caseValue -> !selectedCaseIds.contains(caseValue.getCaseId()))
-                .collect(Collectors.toCollection(ArrayList::new));
-        selected.addAll(sample(remainingCases, fillCount));
-        return selected;
-    }
-
-    List<Case> selectBestExamples(PromptTemplate systemPrompt,
-                                  PromptTemplate userPrompt,
-                                  List<EvaluatedCase> evaluatedCases) {
-        List<EvaluatedCase> cases = safeEvaluatedCases(evaluatedCases);
-        List<Case> preSelectedExamples = sampleExamplesFromCases(cases);
-        if (preSelectedExamples.size() <= numExamples) {
-            return preSelectedExamples;
-        }
-
-        String examplesString = "";
-        for (int index = 0; index < preSelectedExamples.size(); index++) {
-            Case example = preSelectedExamples.get(index);
-            examplesString += "index: " + index + "\n"
-                    + "question: " + pythonStyleValue(example.getInputs()) + "\n"
-                    + "assistant answer: " + pythonStyleValue(example.getLabel());
-            if (index + 1 < preSelectedExamples.size()) {
-                examplesString += "\n";
-            }
-        }
-
-        Map<String, Object> keywords = new LinkedHashMap<>();
-        keywords.put("task_description", TuneUtils.getContentStringFromTemplate(systemPrompt) + "\n"
-                + TuneUtils.getContentStringFromTemplate(userPrompt));
-        keywords.put("num_examples", numExamples);
-        keywords.put("examples", examplesString);
-        List<BaseMessage> messages = EXAMPLE_SELECTION_TEMPLATE.format(keywords).toMessages();
+        String prompt =
+            String.format(Locale.ROOT, EXAMPLE_SELECTION_TEMPLATE,
+                    TuneUtils.getContentStringFromTemplate(systemPrompt) + "\n"
+                            + TuneUtils.getContentStringFromTemplate(userPrompt),
+                    numExamples, examplesString.toString());
 
         try {
-            String response = model.invoke(messages).toCompletableFuture().join().getContentAsString();
-            List<Case> selectedExamples = extractSelectedExamplesFromResponse(response, preSelectedExamples);
-            if (selectedExamples.size() < numExamples) {
-                selectedExamples = fillMissingExample(selectedExamples, cases);
+            String response =
+                model.invoke(prompt, null, null, null, null, null, null, null, null, null).getContentAsString();
+            Optional<List<Object>> indices = TuneUtils.parseListFromLlmResponse(response);
+
+            if (indices.isPresent()) {
+                return indices.get().stream().mapToInt(obj -> ((Number) obj).intValue())
+                        .filter(i -> i >= 0 && i < preSelected.size()).limit(numExamples).mapToObj(preSelected::get)
+                        .toList();
             }
-            return selectedExamples;
-        } catch (RuntimeException exception) {
-            Loggers.AGENT.warning("Error occur while selecting best examples: {}", exception.getMessage());
-            return sampleExample(numExamples, cases);
+        } catch (Exception e) {
+            return sampleExamples(numExamples, evaluatedCases);
         }
+
+        return sampleExamples(numExamples, evaluatedCases);
     }
 
-    List<Case> sampleExamplesFromCases(List<EvaluatedCase> evaluatedCases) {
-        List<EvaluatedCase> cases = safeEvaluatedCases(evaluatedCases);
-        if (numExamples >= cases.size()) {
-            return cases.stream().map(EvaluatedCase::getCase).collect(Collectors.toCollection(ArrayList::new));
+    /**
+     * sampleExamplesFromCases.
+     * 
+     * @param evaluatedCases evaluatedCases
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Case> sampleExamplesFromCases(List<EvaluatedCase> evaluatedCases) {
+        if (numExamples >= evaluatedCases.size()) {
+            return evaluatedCases.stream().map(EvaluatedCase::getCase).toList();
         }
 
-        List<Case> examples = badCases.stream()
-                .map(EvaluatedCase::getCase)
-                .collect(Collectors.toCollection(ArrayList::new));
-        if (examples.size() > TuneConstant.DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES) {
-            return sample(examples, TuneConstant.DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES);
+        List<Case> examples = badCases.stream().limit(TuneConstant.DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES)
+                .map(EvaluatedCase::getCase).collect(Collectors.toList());
+
+        if (examples.size() < Math.min(numExamples, evaluatedCases.size())) {
+            examples = fillMissingExamples(examples, evaluatedCases);
         }
 
-        if (examples.size() < Math.min(numExamples, cases.size())) {
-            examples = fillMissingExample(examples, cases);
-        }
         return examples;
     }
 
-    List<Case> extractSelectedExamplesFromResponse(String response, List<Case> errorCases) {
-        List<Object> bestExampleList = TuneUtils.parseListFromLlmResponse(response);
-        if (bestExampleList == null) {
-            throw new IllegalArgumentException("LLM response does not contain a valid list block");
-        }
-        List<Case> selectedExamples = new ArrayList<>();
-        int limit = Math.min(numExamples, bestExampleList.size());
-        for (int index = 0; index < limit; index++) {
-            Object rawIndex = bestExampleList.get(index);
-            if (!(rawIndex instanceof Number number)) {
-                throw new IllegalArgumentException("example index must be numeric");
-            }
-            selectedExamples.add(errorCases.get(number.intValue()));
-        }
-        return selectedExamples;
+    /**
+     * fillMissingExamples.
+     * 
+     * @param selected selected
+     * @param evaluatedCases evaluatedCases
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Case> fillMissingExamples(List<Case> selected, List<EvaluatedCase> evaluatedCases) {
+        int numToSelect = Math.min(numExamples, evaluatedCases.size());
+        int numToFill = numToSelect - selected.size();
+
+        Set<String> selectedIds = selected.stream().map(Case::getCaseId).collect(Collectors.toSet());
+
+        List<Case> remaining = evaluatedCases.stream().map(EvaluatedCase::getCase)
+                .filter(c -> !selectedIds.contains(c.getCaseId())).collect(Collectors.toList());
+
+        Collections.shuffle(remaining);
+        selected.addAll(remaining.subList(0, Math.min(numToFill, remaining.size())));
+
+        return selected;
     }
 
-    private static List<EvaluatedCase> safeEvaluatedCases(List<EvaluatedCase> evaluatedCases) {
-        return evaluatedCases == null ? List.of() : evaluatedCases;
-    }
+    private static final String EXAMPLE_SELECTION_TEMPLATE = """
+            作为提示词优化专家，从以下示例中选择最具代表性的%d个示例：
 
-    private static <T> List<T> sample(List<T> values, int count) {
-        if (count <= 0 || values.isEmpty()) {
-            return new ArrayList<>();
-        }
-        if (count >= values.size()) {
-            return new ArrayList<>(values);
-        }
-        List<T> shuffled = new ArrayList<>(values);
-        Collections.shuffle(shuffled);
-        return new ArrayList<>(shuffled.subList(0, count));
-    }
+            任务描述：
+            %s
 
-    private static String pythonStyleValue(Object value) {
-        if (value == null) {
-            return "None";
-        }
-        if (value instanceof String text) {
-            return "'" + text + "'";
-        }
-        if (value instanceof Boolean bool) {
-            return bool ? "True" : "False";
-        }
-        if (value instanceof Map<?, ?> map) {
-            List<String> parts = new ArrayList<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                parts.add(pythonStyleValue(entry.getKey()) + ": " + pythonStyleValue(entry.getValue()));
-            }
-            return "{" + String.join(", ", parts) + "}";
-        }
-        if (value instanceof List<?> list) {
-            return "[" + list.stream().map(ExampleOptimizer::pythonStyleValue).collect(Collectors.joining(", ")) + "]";
-        }
-        return String.valueOf(value);
-    }
+            示例集合：
+            %s
+
+            请输出选择的示例索引列表，格式为：[索引1, 索引2, ...]
+            """;
 }

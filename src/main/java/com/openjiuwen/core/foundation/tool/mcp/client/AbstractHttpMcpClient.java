@@ -34,19 +34,52 @@ abstract class AbstractHttpMcpClient implements McpClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final long DEFAULT_CONNECT_TIMEOUT_SECONDS = 10L;
 
+    /**
+     * config.
+     * 
+     * @since 0.1.7
+     */
     protected final McpServerConfig config;
+
+    /**
+     * httpClient.
+     * 
+     * @since 0.1.7
+     */
     protected final HttpClient httpClient;
+
+    /**
+     * requestCounter.
+     * 
+     * @since 0.1.7
+     */
     protected final AtomicLong requestCounter = new AtomicLong();
+
+    /**
+     * connected.
+     * 
+     * @since 0.1.7
+     */
     protected volatile boolean connected;
 
+    /**
+     * AbstractHttpMcpClient.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     protected AbstractHttpMcpClient(McpServerConfig config) {
         this.config = config;
         this.httpClient = resolveHttpClient(config);
     }
 
     /**
-     * Prefer runtime-injected {@code _ojw_http_client} from {@link McpServerConfig#getParams()}
-     * for outbound TLS/auth control; otherwise create a JDK client with connect timeout.
+     * Builds an {@link HttpClient} with connect timeout from config (default 10s),
+     * or returns an injected client from {@code params._ojw_http_client} when present.
+     *
+     * @param config MCP server config providing timeout / optional injected client
+     * @return HttpClient used for JSON-RPC posts
+     * @since 0.1.7
      */
     private static HttpClient resolveHttpClient(McpServerConfig config) {
         if (config != null && config.getParams() != null) {
@@ -58,6 +91,13 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(resolveConnectTimeout(config))).build();
     }
 
+    /**
+     * Resolves HTTP connect timeout in seconds from config, falling back to the default.
+     *
+     * @param config MCP server config; may be null
+     * @return positive connect timeout in seconds
+     * @since 0.1.14
+     */
     private static long resolveConnectTimeout(McpServerConfig config) {
         if (config != null && config.getConnectTimeoutSeconds() != null && config.getConnectTimeoutSeconds() > 0) {
             return config.getConnectTimeoutSeconds().longValue();
@@ -67,15 +107,27 @@ abstract class AbstractHttpMcpClient implements McpClient {
 
     /**
      * Performs the MCP initialize handshake with retries.
-     * Marks {@code connected} only after initialize and {@code notifications/initialized} succeed.
+     * <p>
+     * On failure, rolls {@code connected} back to {@code false} and returns {@code false}
+     * (or rethrows after exhausting retries) instead of leaving a permanently-true connected flag.
+     *
+     * @param retryTimes additional attempts after the first try (total attempts = retryTimes + 1)
+     * @param timeout per-attempt RPC timeout in seconds
+     * @return {@code true} when initialize and {@code notifications/initialized} succeed; {@code false} after
+     *         exhausted retries or interruption
+     * @throws Exception declared for {@link McpClient} compatibility; this implementation returns {@code false}
+     *         instead of propagating transport failures
+     * @since 0.1.7
      */
     @Override
     public boolean connect(int retryTimes, float timeout) throws Exception {
         int maxAttempts = Math.max(0, retryTimes);
         for (int i = 0; i <= maxAttempts; i++) {
+            this.connected = true;
             try {
-                handshake(timeout);
-                this.connected = true;
+                callRpc("initialize", Map.of("protocolVersion", "2024-11-05", "clientInfo",
+                        Map.of("name", "agent-core-java", "version", "0.1.7"), "capabilities", Map.of()), timeout);
+                sendNotification("notifications/initialized", Map.of(), timeout);
                 return true;
             } catch (InterruptedException e) {
                 this.connected = false;
@@ -95,18 +147,27 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return false;
     }
 
-    private void handshake(float timeout) throws IOException, InterruptedException {
-        executeRpc("initialize", Map.of("protocolVersion", "2024-11-05", "clientInfo",
-                Map.of("name", "agent-core-java", "version", "0.1.7"), "capabilities", Map.of()), timeout);
-        executeNotification("notifications/initialized", Map.of(), timeout);
-    }
-
+    /**
+     * disconnect.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public boolean disconnect(float timeout) {
         this.connected = false;
         return true;
     }
 
+    /**
+     * listTools.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
     public List<Object> listTools(float timeout) throws Exception {
         Map<String, Object> result = callRpc("tools/list", Map.of(), timeout);
@@ -117,18 +178,51 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return tools;
     }
 
+    /**
+     * listResources.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
     public List<Object> listResources(float timeout) throws Exception {
         Map<String, Object> result = callRpc("resources/list", Map.of(), timeout);
         return new ArrayList<>(asListOfMaps(result.get("resources")));
     }
 
+    /**
+     * readResource.
+     * 
+     * @param uri uri
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
     public List<Object> readResource(String uri, float timeout) throws Exception {
         Map<String, Object> result = callRpc("resources/read", Map.of("uri", uri), timeout);
         return new ArrayList<>(asListOfMaps(result.get("contents")));
     }
 
+    /**
+     * Invokes an MCP tool and flattens text content blocks.
+     * <p>
+     * When the result {@code content} list has multiple text parts, they are joined with {@code \n};
+     * a single text part is returned as a plain string; otherwise the raw result map is returned.
+     *
+     * @param toolName MCP tool name
+     * @param arguments tool arguments; {@code null} is treated as empty
+     * @param timeout RPC timeout in seconds
+     * @return tool text output or the raw result map
+     * @throws IOException when HTTP transport or JSON encode/decode fails
+     * @throws InterruptedException when the HTTP call is interrupted
+     * @throws IllegalStateException when not connected, response id mismatches, or RPC error is present
+     * @throws Exception declared for {@link McpClient} compatibility
+     * @since 0.1.7
+     */
     @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
         Map<String, Object> result = callRpc("tools/call",
@@ -137,6 +231,13 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return flattened != null ? flattened : result;
     }
 
+    /**
+     * Flattens MCP tool {@code content} text blocks into a string when present.
+     *
+     * @param content raw {@code content} field from tools/call result
+     * @return joined text, a single text string, or {@code null} when there is no text to flatten
+     * @since 0.1.14
+     */
     private static Object flattenToolTextContent(Object content) {
         if (!(content instanceof List<?> list) || list.isEmpty()) {
             return null;
@@ -151,6 +252,13 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return null;
     }
 
+    /**
+     * Collects non-null {@code text} values from MCP content list items.
+     *
+     * @param list MCP content list
+     * @return ordered text parts
+     * @since 0.1.14
+     */
     private static List<String> collectTextParts(List<?> list) {
         List<String> textParts = new ArrayList<>();
         for (Object item : list) {
@@ -165,6 +273,15 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return textParts;
     }
 
+    /**
+     * getToolInfo.
+     * 
+     * @param toolName toolName
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
     public Optional<Object> getToolInfo(String toolName, float timeout) throws Exception {
         for (Object tool : listTools(timeout)) {
@@ -175,25 +292,32 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return Optional.empty();
     }
 
+    /**
+     * getServerPath.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getServerPath() {
         return config.getServerPath();
     }
 
+    /**
+     * Sends a JSON-RPC request with an id and validates the response id.
+     *
+     * @param method JSON-RPC method name
+     * @param params method params; {@code null} is treated as empty
+     * @param timeout request timeout in seconds
+     * @return the {@code result} object as a map (non-map results are wrapped under {@code result})
+     * @throws IOException when HTTP transport or JSON encode/decode fails
+     * @throws InterruptedException when the HTTP call is interrupted
+     * @throws IllegalStateException when not connected, response id mismatches, or RPC error is present
+     * @since 0.1.7
+     */
     protected Map<String, Object> callRpc(String method, Map<String, Object> params, float timeout)
             throws IOException, InterruptedException {
         ensureConnected();
-        return executeRpc(method, params, timeout);
-    }
-
-    protected void sendNotification(String method, Map<String, Object> params, float timeout)
-            throws IOException, InterruptedException {
-        ensureConnected();
-        executeNotification(method, params, timeout);
-    }
-
-    Map<String, Object> executeRpc(String method, Map<String, Object> params, float timeout)
-            throws IOException, InterruptedException {
         long requestId = requestCounter.incrementAndGet();
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("jsonrpc", "2.0");
@@ -219,8 +343,20 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return wrapped;
     }
 
-    void executeNotification(String method, Map<String, Object> params, float timeout)
+    /**
+     * Sends a JSON-RPC notification (no {@code id} field).
+     *
+     * @param method notification method name (e.g. {@code notifications/initialized})
+     * @param params notification params; {@code null} is treated as empty
+     * @param timeout request timeout in seconds
+     * @throws IOException when HTTP transport or JSON encode/decode fails
+     * @throws InterruptedException when the HTTP call is interrupted
+     * @throws IllegalStateException when the client is not connected
+     * @since 0.1.14
+     */
+    protected void sendNotification(String method, Map<String, Object> params, float timeout)
             throws IOException, InterruptedException {
+        ensureConnected();
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("jsonrpc", "2.0");
         requestBody.put("method", method);
@@ -228,6 +364,18 @@ abstract class AbstractHttpMcpClient implements McpClient {
         postJsonRpc(requestBody, timeout);
     }
 
+    /**
+     * POSTs a JSON-RPC body to the configured server path and parses the JSON response map.
+     * <p>
+     * Empty response bodies are treated as an empty map (typical for notifications).
+     *
+     * @param requestBody JSON-RPC request or notification payload
+     * @param timeout request timeout in seconds; {@link McpServerConfig#NO_TIMEOUT} disables the request timeout
+     * @return parsed response body as a map, or empty map when the body is blank
+     * @throws IOException when serialization, HTTP I/O, or JSON parse fails
+     * @throws InterruptedException when the HTTP call is interrupted
+     * @since 0.1.14
+     */
     private Map<String, Object> postJsonRpc(Map<String, Object> requestBody, float timeout)
             throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(withAuthQuery(config.getServerPath())))
@@ -242,7 +390,7 @@ abstract class AbstractHttpMcpClient implements McpClient {
         }
 
         HttpResponse<String> response =
-                httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         String body = response.body();
         if (body == null || body.isBlank()) {
             return Map.of();
@@ -251,6 +399,13 @@ abstract class AbstractHttpMcpClient implements McpClient {
         });
     }
 
+    /**
+     * toToolCard.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     protected McpToolCard toToolCard(Map<String, Object> item) {
         Map<String, Object> inputSchema = asMap(item.get("inputSchema"));
         if (inputSchema == null) {
@@ -264,12 +419,24 @@ abstract class AbstractHttpMcpClient implements McpClient {
                 .serverId(config.getServerId()).inputParams(inputSchema != null ? inputSchema : Map.of()).build();
     }
 
+    /**
+     * ensureConnected.
+     * 
+     * @since 0.1.7
+     */
     private void ensureConnected() {
         if (!connected) {
             throw new IllegalStateException("MCP client is not connected: " + config.getServerPath());
         }
     }
 
+    /**
+     * withAuthQuery.
+     * 
+     * @param url url
+     * @return the result
+     * @since 0.1.7
+     */
     private String withAuthQuery(String url) {
         if (config.getAuthQueryParams() == null || config.getAuthQueryParams().isEmpty()) {
             return url;
@@ -282,10 +449,26 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return url + (url.contains("?") ? "&" : "?") + joiner;
     }
 
+    /**
+     * asMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
     protected static Map<String, Object> asMap(Object value) {
         return value instanceof Map<?, ?> map ? castMap(map) : null;
     }
 
+    /**
+     * asListOfMaps.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
     protected static List<Map<String, Object>> asListOfMaps(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -299,6 +482,13 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return result;
     }
 
+    /**
+     * castMap.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : source.entrySet()) {

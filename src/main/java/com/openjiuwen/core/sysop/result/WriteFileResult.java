@@ -4,18 +4,26 @@
 
 package com.openjiuwen.core.sysop.result;
 
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
 /**
- * Mirrors Python's {@code WriteFileResult} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ * Result type for write file operation.
+ * 
+ * @since 0.1.7
  */
+@SuperBuilder
+@NoArgsConstructor
 public class WriteFileResult extends BaseResult<WriteFileData> {
-
-    public WriteFileResult() {
-    }
-
+    /**
+     * WriteFileResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
+     */
     public WriteFileResult(int code, String message, WriteFileData data) {
-        setCode(code);
-        setMessage(message);
-        setData(data);
+        super(code, message, data);
     }
 }

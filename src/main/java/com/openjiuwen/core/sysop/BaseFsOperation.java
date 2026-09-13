@@ -4,232 +4,205 @@
 
 package com.openjiuwen.core.sysop;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
-import com.openjiuwen.core.sysop.result.DownloadFileResult;
-import com.openjiuwen.core.sysop.result.DownloadFileStreamResult;
-import com.openjiuwen.core.sysop.result.ListDirsResult;
-import com.openjiuwen.core.sysop.result.ListFilesResult;
-import com.openjiuwen.core.sysop.result.ReadFileResult;
-import com.openjiuwen.core.sysop.result.ReadFileStreamResult;
-import com.openjiuwen.core.sysop.result.SearchFilesResult;
-import com.openjiuwen.core.sysop.result.UploadFileResult;
-import com.openjiuwen.core.sysop.result.UploadFileStreamResult;
-import com.openjiuwen.core.sysop.result.WriteFileResult;
+import com.openjiuwen.core.sysop.result.*;
 
+import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Flow;
-import java.util.regex.Pattern;
 
 /**
- * Base file-system operation contract.
- *
- * <p>Mirrors Python's {@code BaseFsOperation} in
- * {@code openjiuwen/core/sys_operation/fs.py}.</p>
+ * Base file system operation — abstract class for FS operations.
+ * <p>
+ * Mirrors Python's {@code BaseFsOperation} in {@code sys_operation/fs.py}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseFsOperation extends BaseOperation {
-
-    public static final Pattern SAFE_PATH_PATTERN = Pattern.compile("[^\\w.-]");
-    public static final int DEFAULT_READ_CHUNK_SIZE = 0;
-    public static final int DEFAULT_UPLOAD_CHUNK_SIZE = 0;
-    public static final int DEFAULT_DOWNLOAD_CHUNK_SIZE = 0;
-    public static final int DEFAULT_DOWNLOAD_STREAM_CHUNK_SIZE = 1024 * 1024;
-    public static final int DEFAULT_UPLOAD_STREAM_CHUNK_SIZE = 1024 * 1024;
-    public static final int DEFAULT_READ_STREAM_CHUNK_SIZE = 8192;
-    public static final int TAIL_CHUNK_SIZE = 1024;
-
+    /**
+     * BaseFsOperation.
+     * 
+     * @param name name
+     * @param mode mode
+     * @param description description
+     * @param runConfig runConfig
+     * @since 0.1.7
+     */
     protected BaseFsOperation(String name, OperationMode mode, String description, Object runConfig) {
         super(name, mode, description, runConfig);
     }
 
+    /**
+     * listTools.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public List<ToolCard> listTools() {
-        return generateToolCards(List.of(
-                "read_file",
-                "read_file_stream",
-                "write_file",
-                "upload_file",
-                "upload_file_stream",
-                "download_file",
-                "download_file_stream",
-                "list_files",
-                "list_directories",
-                "search_files"
-        ));
-    }
-
-    public abstract CompletableFuture<ReadFileResult> readFile(
-            String path,
-            FileMode mode,
-            Integer head,
-            Integer tail,
-            BaseFsProtocal.LineRange lineRange,
-            String encoding,
-            int chunkSize,
-            Map<String, Object> options);
-
-    public abstract Flow.Publisher<ReadFileStreamResult> readFileStream(
-            String path,
-            FileMode mode,
-            Integer head,
-            Integer tail,
-            BaseFsProtocal.LineRange lineRange,
-            String encoding,
-            int chunkSize,
-            Map<String, Object> options);
-
-    public abstract CompletableFuture<WriteFileResult> writeFile(
-            String path,
-            String content,
-            FileMode mode,
-            boolean prependNewline,
-            boolean appendNewline,
-            boolean append,
-            boolean createIfNotExist,
-            String permissions,
-            String encoding,
-            Map<String, Object> options);
-
-    public abstract CompletableFuture<WriteFileResult> writeFile(
-            String path,
-            byte[] content,
-            FileMode mode,
-            boolean prependNewline,
-            boolean appendNewline,
-            boolean append,
-            boolean createIfNotExist,
-            String permissions,
-            String encoding,
-            Map<String, Object> options);
-
-    public abstract CompletableFuture<UploadFileResult> uploadFile(
-            String localPath,
-            String targetPath,
-            boolean overwrite,
-            boolean createParentDirs,
-            boolean preservePermissions,
-            int chunkSize,
-            Map<String, Object> options);
-
-    public abstract Flow.Publisher<UploadFileStreamResult> uploadFileStream(
-            String localPath,
-            String targetPath,
-            boolean overwrite,
-            boolean createParentDirs,
-            boolean preservePermissions,
-            int chunkSize,
-            Map<String, Object> options);
-
-    public abstract CompletableFuture<DownloadFileResult> downloadFile(
-            String sourcePath,
-            String localPath,
-            boolean overwrite,
-            boolean createParentDirs,
-            boolean preservePermissions,
-            int chunkSize,
-            Map<String, Object> options);
-
-    public abstract Flow.Publisher<DownloadFileStreamResult> downloadFileStream(
-            String sourcePath,
-            String localPath,
-            boolean overwrite,
-            boolean createParentDirs,
-            boolean preservePermissions,
-            int chunkSize,
-            Map<String, Object> options);
-
-    public abstract CompletableFuture<ListFilesResult> listFiles(
-            String path,
-            boolean recursive,
-            Integer maxDepth,
-            SortBy sortBy,
-            boolean sortDescending,
-            List<String> fileTypes,
-            Map<String, Object> options);
-
-    public abstract CompletableFuture<ListDirsResult> listDirectories(
-            String path,
-            boolean recursive,
-            Integer maxDepth,
-            SortBy sortBy,
-            boolean sortDescending,
-            Map<String, Object> options);
-
-    public abstract CompletableFuture<SearchFilesResult> searchFiles(
-            String path,
-            String pattern,
-            List<String> excludePatterns);
-
-    /**
-     * Mirrors Python's file mode literals in
-     * {@code openjiuwen/core/sys_operation/fs.py}.
-     */
-    public enum FileMode {
-        TEXT("text"),
-        BYTES("bytes");
-
-        private final String value;
-
-        FileMode(String value) {
-            this.value = value;
-        }
-
-        @JsonValue
-        public String value() {
-            return value;
-        }
-
-        @JsonCreator
-        public static FileMode fromValue(String value) {
-            if (value == null) {
-                return TEXT;
-            }
-            for (FileMode mode : values()) {
-                if (mode.value.equalsIgnoreCase(value.trim())) {
-                    return mode;
-                }
-            }
-            return TEXT;
-        }
+        return generateToolCards(List.of("readFile", "readFileStream", "writeFile", "uploadFile", "uploadFileStream",
+                "downloadFile", "downloadFileStream", "listFiles", "listDirectories", "searchFiles"));
     }
 
     /**
-     * Mirrors Python's sort literals in
-     * {@code openjiuwen/core/sys_operation/fs.py}.
+     * Read a file with specified mode and parameters.
+     * 
+     * @param path file path to read
+     * @param mode reading mode: "text" or "bytes"
+     * @param head lines from start (text mode)
+     * @param tail lines from end (text mode)
+     * @param lineRange 2-element array [start, end] (1-indexed, inclusive), or null
+     * @param encoding character encoding
+     * @param chunkSize max bytes to read at once (0 = unlimited)
+     * @param options extended configuration
+     * @return structured result
+     * @since 0.1.7
      */
-    public enum SortBy {
-        NAME("name"),
-        MODIFIED_TIME("modified_time"),
-        SIZE("size");
+    public abstract ReadFileResult readFile(String path, String mode, Integer head, Integer tail, int[] lineRange,
+            String encoding, int chunkSize, Map<String, Object> options);
 
-        private final String value;
+    /**
+     * Read a file with streaming output.
+     * 
+     * @param path path
+     * @param mode mode
+     * @param head head
+     * @param tail tail
+     * @param lineRange lineRange
+     * @param encoding encoding
+     * @param chunkSize chunkSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    public abstract Iterator<ReadFileStreamResult> readFileStream(String path, String mode, Integer head, Integer tail,
+            int[] lineRange, String encoding, int chunkSize, Map<String, Object> options);
 
-        SortBy(String value) {
-            this.value = value;
-        }
+    /**
+     * Write content to a file.
+     * 
+     * @param path file path to write
+     * @param content data to write (String for text mode, byte[] for bytes mode).
+     * @param mode writing mode: "text" or "bytes"
+     * @param isPrependNewline add newline before content (text mode)
+     * @param isAppendNewline add newline after content (text mode)
+     * @param isCreateIfMissing auto-create the file
+     * @param permissions octal file permissions
+     * @param encoding character encoding
+     * @param options extended configuration
+     * @return structured result
+     *         Mirrors Python's {@code content: str | bytes}.
+     * @since 0.1.7
+     */
+    public abstract WriteFileResult writeFile(String path, Object content, String mode, boolean isPrependNewline,
+            boolean isAppendNewline, boolean isCreateIfMissing, String permissions, String encoding,
+            Map<String, Object> options);
 
-        @JsonValue
-        public String value() {
-            return value;
-        }
+    /**
+     * Upload a file from local to target path.
+     * 
+     * @param localPath localPath
+     * @param targetPath targetPath
+     * @param isOverwrite isOverwrite
+     * @param isCreateParentDirs isCreateParentDirs
+     * @param isPreservePermissions isPreservePermissions
+     * @param chunkSize chunkSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    public abstract UploadFileResult uploadFile(String localPath, String targetPath, boolean isOverwrite,
+            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options);
 
-        @JsonCreator
-        public static SortBy fromValue(String value) {
-            if (value == null) {
-                return NAME;
-            }
-            String normalized = value.trim().toLowerCase(Locale.ROOT);
-            for (SortBy sortBy : values()) {
-                if (sortBy.value.equals(normalized)) {
-                    return sortBy;
-                }
-            }
-            return NAME;
-        }
-    }
+    /**
+     * Upload a file with streaming.
+     * 
+     * @param localPath localPath
+     * @param targetPath targetPath
+     * @param isOverwrite isOverwrite
+     * @param isCreateParentDirs isCreateParentDirs
+     * @param isPreservePermissions isPreservePermissions
+     * @param chunkSize chunkSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    public abstract Iterator<UploadFileStreamResult> uploadFileStream(String localPath, String targetPath,
+            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize,
+            Map<String, Object> options);
+
+    /**
+     * Download a file from source to local path.
+     * 
+     * @param sourcePath sourcePath
+     * @param localPath localPath
+     * @param isOverwrite isOverwrite
+     * @param isCreateParentDirs isCreateParentDirs
+     * @param isPreservePermissions isPreservePermissions
+     * @param chunkSize chunkSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    public abstract DownloadFileResult downloadFile(String sourcePath, String localPath, boolean isOverwrite,
+            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options);
+
+    /**
+     * Download a file with streaming.
+     * 
+     * @param sourcePath sourcePath
+     * @param localPath localPath
+     * @param isOverwrite isOverwrite
+     * @param isCreateParentDirs isCreateParentDirs
+     * @param isPreservePermissions isPreservePermissions
+     * @param chunkSize chunkSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    public abstract Iterator<DownloadFileStreamResult> downloadFileStream(String sourcePath, String localPath,
+            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize,
+            Map<String, Object> options);
+
+    /**
+     * List files under the specified path.
+     * 
+     * @param path path
+     * @param isRecursive isRecursive
+     * @param maxDepth maxDepth
+     * @param sortBy sortBy
+     * @param isSortDescending isSortDescending
+     * @param fileTypes fileTypes
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    public abstract ListFilesResult listFiles(String path, boolean isRecursive, Integer maxDepth, String sortBy,
+            boolean isSortDescending, List<String> fileTypes, Map<String, Object> options);
+
+    /**
+     * List directories under the specified path.
+     * 
+     * @param path path
+     * @param isRecursive isRecursive
+     * @param maxDepth maxDepth
+     * @param sortBy sortBy
+     * @param isSortDescending isSortDescending
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    public abstract ListDirsResult listDirectories(String path, boolean isRecursive, Integer maxDepth, String sortBy,
+            boolean isSortDescending, Map<String, Object> options);
+
+    /**
+     * Search files under the specified path.
+     * 
+     * @param path path
+     * @param pattern pattern
+     * @param excludePatterns excludePatterns
+     * @return the result
+     * @since 0.1.7
+     */
+    public abstract SearchFilesResult searchFiles(String path, String pattern, List<String> excludePatterns);
 }

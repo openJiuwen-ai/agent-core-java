@@ -146,9 +146,6 @@ public final class SemConv {
     /** openjiuwen.trace.id. */
     public static final String OJ_TRACE_ID = "openjiuwen.trace.id";
 
-    /** openjiuwen.session_id. */
-    public static final String OJ_SESSION_ID = "openjiuwen.session_id";
-
     // ===== openjiuwen.* — Base Span attributes (shared by both handlers) =====
 
     /** openjiuwen.invoke_id. */

@@ -5,13 +5,13 @@
 package com.openjiuwen.core.sysop.local;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.sysop.BaseShellOperation;
-import com.openjiuwen.core.sysop.Cwd;
-import com.openjiuwen.core.sysop.OperationDef;
 import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.OperationRegistry;
-import com.openjiuwen.core.sysop.ShellProcessRegistry;
+import com.openjiuwen.core.sysop.ShellType;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.cwd.CwdContext;
+import com.openjiuwen.core.sysop.registry.Operation;
 import com.openjiuwen.core.sysop.result.BaseResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
@@ -22,1050 +22,581 @@ import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 
 import java.io.File;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Flow;
-import java.util.concurrent.SubmissionPublisher;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
+import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 /**
- * Local shell operation.
- *
- * <p>Mirrors Python's {@code ShellOperation} in
- * {@code openjiuwen/core/sys_operation/local/shell_operation.py}.</p>
+ * Local shell command execution operation.
+ * <p>
+ * Mirrors Python's {@code ShellOperation} in {@code local/shell_operation.py}.
+ * 
+ * @since 0.1.7
  */
+@Operation(name = "shell", mode = OperationMode.LOCAL, description = "local shell operation")
 public class LocalShellOperation extends BaseShellOperation {
-
-    public static final OperationDef OP_DEF = new OperationDef(
-            LocalShellOperation.class,
-            "local shell operation",
-            "shell",
-            OperationMode.LOCAL
-    );
-
     private static final int DEFAULT_TIMEOUT_SECONDS = 300;
-    private static final int DEFAULT_STREAM_CHUNK_SIZE = 1024;
-    private static final String DEFAULT_ENCODING = "utf-8";
-    private static final List<String> POWERSHELL_TOKENS = List.of(
-            "powershell ", "powershell.exe ", "pwsh ", "pwsh.exe ",
-            "get-childitem", "set-location", "remove-item", "test-path",
-            "join-path", "select-object", "where-object", "foreach-object",
-            "invoke-webrequest", "invoke-restmethod", "out-file", "start-process",
-            "$env:", "$psversiontable", "$null", "$true", "$false"
-    );
-    private static final Pattern PS_VARIABLE_PATTERN = Pattern.compile("(^|[\\s;(])\\$[A-Za-z_][A-Za-z0-9_]*");
-    private static final Pattern POWERSHELL_EXECUTABLE_PATTERN = Pattern.compile(
-            "^\\s*(?:powershell(?:\\.exe)?|pwsh(?:\\.exe)?)\\b",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern POWERSHELL_COMMAND_ARG_PATTERN = Pattern.compile(
-            "(?is)(?:^|\\s)-(?:command|c)\\s+(?<script>.+)\\s*$");
-    private static final Pattern FINITE_LOOPBACK_PING_PATTERN = Pattern.compile(
-            "^\\s*ping\\s+.*-(?:c|n)\\s+\\d+\\b.*(?:127\\.0\\.0\\.1|localhost)\\s*$",
-            Pattern.CASE_INSENSITIVE);
-    private static final Set<String> POSIX_COMMANDS = Set.of(
-            "ls", "grep", "egrep", "fgrep", "cat", "head", "tail", "find", "rm",
-            "cp", "mv", "touch", "chmod", "chown", "sed", "awk", "gawk", "cut",
-            "sort", "uniq", "wc", "du", "df", "pwd", "which", "mkdir"
-    );
-    private static final Pattern QUOTED_WINDOWS_PATH_PATTERN = Pattern.compile("(['\"])([A-Za-z]:\\\\[^'\"]+)\\1");
-    private static final Pattern UNQUOTED_WINDOWS_PATH_PATTERN = Pattern.compile(
-            "(?<![\\w/])([A-Za-z]:\\\\[^\\s|&;]+)");
-    private static final List<DangerousPattern> DEFAULT_DANGEROUS_PATTERNS = List.of(
-            new DangerousPattern(Pattern.compile("\\brm\\s+-rf\\b", Pattern.CASE_INSENSITIVE), "rm -rf"),
-            new DangerousPattern(Pattern.compile("\\bdel\\s+/[a-z]*[fsq][a-z]*\\b", Pattern.CASE_INSENSITIVE),
-                    "del /f /s /q"),
-            new DangerousPattern(Pattern.compile("\\brd\\s+/s\\s+/q\\b", Pattern.CASE_INSENSITIVE), "rd /s /q"),
-            new DangerousPattern(Pattern.compile("\\bformat\\s+[a-z]:", Pattern.CASE_INSENSITIVE), "format drive"),
-            new DangerousPattern(Pattern.compile("\\bshutdown\\b", Pattern.CASE_INSENSITIVE), "shutdown"),
-            new DangerousPattern(Pattern.compile("\\breboot\\b", Pattern.CASE_INSENSITIVE), "reboot"),
-            new DangerousPattern(Pattern.compile("\\bdiskpart\\b", Pattern.CASE_INSENSITIVE), "diskpart"),
-            new DangerousPattern(Pattern.compile("\\bmkfs\\b", Pattern.CASE_INSENSITIVE), "mkfs"),
-            new DangerousPattern(Pattern.compile("\\breg\\s+delete\\b", Pattern.CASE_INSENSITIVE), "reg delete"),
-            new DangerousPattern(
-                    Pattern.compile("\\bremove-item\\b[^\\n\\r]*-recurse[^\\n\\r]*-force", Pattern.CASE_INSENSITIVE),
-                    "Remove-Item -Recurse -Force"),
-            new DangerousPattern(
-                    Pattern.compile("\\bpkill\\b[^\\n\\r;|&]*jiuwenswarm(?!-tui)", Pattern.CASE_INSENSITIVE),
-                    "pkill targeting jiuwenswarm backend"),
-            new DangerousPattern(
-                    Pattern.compile("\\bkillall\\b[^\\n\\r;|&]*jiuwenswarm(?!-tui)", Pattern.CASE_INSENSITIVE),
-                    "killall targeting jiuwenswarm backend"),
-            new DangerousPattern(
-                    Pattern.compile("\\bpkill\\b[^\\n\\r;|&]*jiuwenclaw", Pattern.CASE_INSENSITIVE),
-                    "pkill targeting jiuwenclaw backend"),
-            new DangerousPattern(
-                    Pattern.compile("\\bkillall\\b[^\\n\\r;|&]*jiuwenclaw", Pattern.CASE_INSENSITIVE),
-                    "killall targeting jiuwenclaw backend")
-    );
-    private static final List<TuiPattern> TUI_PATTERNS = List.of(
-            new TuiPattern(Pattern.compile("\\b(npx\\s+)?playwright\\s+test\\b", Pattern.CASE_INSENSITIVE),
-                    Map.of("CI", "true")),
-            new TuiPattern(Pattern.compile("\\b(npm|npx|yarn|pnpm)\\s+(run\\s+)?test\\b",
-                    Pattern.CASE_INSENSITIVE), Map.of("CI", "true")),
-            new TuiPattern(Pattern.compile("\\bvitest\\b.*(--watch|--ui)", Pattern.CASE_INSENSITIVE),
-                    Map.of("CI", "true")),
-            new TuiPattern(Pattern.compile("\\b(top|htop|vim|vi|nano|less|more)\\b",
-                    Pattern.CASE_INSENSITIVE), Map.of())
-    );
 
-    static {
-        OperationRegistry.register(LocalShellOperation.class);
-    }
-
+    /**
+     * LocalShellOperation.
+     * 
+     * @param runConfig runConfig
+     * @since 0.1.7
+     */
     public LocalShellOperation(Object runConfig) {
-        this("shell", OperationMode.LOCAL, "Local shell operation", runConfig);
+        super("shell", OperationMode.LOCAL, "local shell operation", runConfig);
     }
 
-    public LocalShellOperation(String name, OperationMode mode, String description, Object runConfig) {
-        super(name, mode, description, runConfig);
-    }
-
+    /**
+     * executeCmd.
+     * 
+     * @param command command
+     * @param cwd cwd
+     * @param timeout timeout
+     * @param environment environment
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<ExecuteCmdResult> executeCmd(String command, String cwd, Integer timeout,
-                                                          Map<String, String> environment,
-                                                          Map<String, Object> options,
-                                                          ShellType shellType) {
-        Path capturedCwd = null;
-        if (command != null && !command.isBlank()) {
-            try {
-                capturedCwd = resolveCwd(cwd);
-            } catch (Exception exception) {
-                return CompletableFuture.completedFuture(shellError("execute_cmd",
-                        "unexpected error: " + rootMessage(exception),
-                        ExecuteCmdResult.class, ExecuteCmdData.builder()
-                                .command(command)
-                                .exitCode(-1)
-                                .build()));
-            }
-        }
-        Path callerCwd = capturedCwd;
-        return CompletableFuture.supplyAsync(() -> {
-            if (command == null || command.isBlank()) {
-                return shellError("execute_cmd", "command can not be empty", ExecuteCmdResult.class, null);
-            }
-            Path actualCwd = callerCwd;
-            Process process = null;
-            String sessionId = null;
-            try {
-                Optional<ExecuteCmdResult> rejected = rejectExecuteCmd(command, actualCwd);
-                if (rejected.isPresent()) {
-                    return rejected.get();
-                }
-                int effectiveTimeout = effectiveTimeout(timeout);
-                ProcessBuilder builder = createProcessBuilder(command, actualCwd, environment, shellType, false, false);
-                process = builder.start();
-                sessionId = registerProcess(process);
-                String encoding = stringOption(options, "encoding", detectShellEncoding());
-                InvokeData invokeData = OperationUtils.createHandler(process, encoding, effectiveTimeout)
-                        .invoke()
-                        .join();
-                if (invokeData.getException() instanceof java.util.concurrent.TimeoutException) {
-                    return shellError("execute_cmd", "execution timeout after " + effectiveTimeout + " seconds",
-                            ExecuteCmdResult.class, ExecuteCmdData.builder()
-                                    .command(command)
-                                    .cwd(actualCwd.toString())
-                                    .exitCode(invokeData.getExitCode())
-                                    .stdout(invokeData.getStdout())
-                                    .stderr(invokeData.getStderr())
-                                    .build());
-                }
-                return successResult(ExecuteCmdResult.class, "Command executed successfully",
-                        ExecuteCmdData.builder()
-                                .command(command)
-                                .cwd(actualCwd.toString())
-                                .exitCode(invokeData.getExitCode())
-                                .stdout(invokeData.getStdout())
-                                .stderr(invokeData.getStderr())
-                                .build());
-            } catch (Exception exception) {
-                return shellError("execute_cmd", "unexpected error: " + rootMessage(exception),
-                        ExecuteCmdResult.class, ExecuteCmdData.builder()
-                                .command(command)
-                                .cwd(actualCwd == null ? null : actualCwd.toString())
-                                .exitCode(-1)
-                                .build());
-            } finally {
-                unregisterProcess(sessionId, process);
-            }
-        });
-    }
+    public ExecuteCmdResult executeCmd(String command, String cwd, int timeout, Map<String, String> environment,
+            Map<String, Object> options) {
+        String methodName = "executeCmd";
+        long startTime = System.currentTimeMillis();
 
-    @Override
-    public Flow.Publisher<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, Integer timeout,
-                                                                   Map<String, String> environment,
-                                                                   Map<String, Object> options,
-                                                                   ShellType shellType) {
-        Path capturedCwd = null;
-        RuntimeException cwdFailure = null;
-        if (command != null && !command.isBlank()) {
-            try {
-                capturedCwd = resolveCwd(cwd);
-            } catch (RuntimeException exception) {
-                cwdFailure = exception;
-            }
-        }
-        Path callerCwd = capturedCwd;
-        RuntimeException callerCwdFailure = cwdFailure;
-        return asyncPublisher(publisher -> {
-            int chunkIndex = 0;
-            if (command == null || command.isBlank()) {
-                publisher.submit(shellError("execute_cmd_stream", "command can not be empty",
-                        ExecuteCmdStreamResult.class, ExecuteCmdChunkData.builder()
-                                .chunkIndex(chunkIndex)
-                                .exitCode(-1)
-                                .build()));
-                return;
-            }
-            if (callerCwdFailure != null) {
-                publisher.submit(shellError("execute_cmd_stream", "unexpected error: " + rootMessage(callerCwdFailure),
-                        ExecuteCmdStreamResult.class, ExecuteCmdChunkData.builder()
-                                .chunkIndex(chunkIndex)
-                                .exitCode(-1)
-                                .build()));
-                return;
-            }
-            Path actualCwd = callerCwd;
-            Process process = null;
-            String sessionId = null;
-            try {
-                Optional<ExecuteCmdStreamResult> rejected = rejectExecuteCmdStream(command, chunkIndex);
-                if (rejected.isPresent()) {
-                    publisher.submit(rejected.get());
-                    return;
-                }
-                int effectiveTimeout = effectiveTimeout(timeout);
-                int chunkSize = intOption(options, "chunk_size", DEFAULT_STREAM_CHUNK_SIZE);
-                String encoding = stringOption(options, "encoding", detectShellEncoding());
-                ProcessBuilder builder = createProcessBuilder(command, actualCwd, environment, shellType, false, true);
-                process = builder.start();
-                sessionId = registerProcess(process);
-                BlockingQueue<StreamEvent> queue = OperationUtils.createHandler(
-                        process,
-                        Math.max(1, chunkSize),
-                        encoding,
-                        effectiveTimeout).stream();
-                while (true) {
-                    StreamEvent event = queue.poll(Math.max(effectiveTimeout, 1), TimeUnit.SECONDS);
-                    if (event == null) {
-                        publisher.submit(shellError(
-                                "execute_cmd_stream",
-                                "execution timeout after " + effectiveTimeout + " seconds",
-                                ExecuteCmdStreamResult.class,
-                                ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build()));
-                        return;
-                    }
-                    if (event.getType() == StreamEventType.ERROR && isFiniteLoopbackPingTimeout(command, event)) {
-                        publisher.submit(successResult(ExecuteCmdStreamResult.class, "Get stdout stream successfully",
-                                ExecuteCmdChunkData.builder()
-                                        .text("127.0.0.1\n")
-                                        .type(StreamEventType.STDOUT.getValue())
-                                        .chunkIndex(chunkIndex)
-                                        .build()));
-                        chunkIndex += 1;
-                        publisher.submit(successResult(ExecuteCmdStreamResult.class, "Command executed successfully",
-                                ExecuteCmdChunkData.builder()
-                                        .chunkIndex(chunkIndex)
-                                        .exitCode(0)
-                                        .build()));
-                        return;
-                    }
-                    ExecuteCmdStreamResult result = streamResult(event, chunkIndex);
-                    publisher.submit(result);
-                    chunkIndex += 1;
-                    if (event.getType() == StreamEventType.ERROR || event.getType() == StreamEventType.EXIT) {
-                        return;
-                    }
-                }
-            } catch (Exception exception) {
-                publisher.submit(shellError("execute_cmd_stream", "unexpected error: " + rootMessage(exception),
-                        ExecuteCmdStreamResult.class, ExecuteCmdChunkData.builder()
-                                .chunkIndex(chunkIndex)
-                                .exitCode(-1)
-                                .build()));
-            } finally {
-                unregisterProcess(sessionId, process);
-            }
-        });
-    }
+        Loggers.SYS_OPERATION.info("Start to execute cmd");
 
-    @Override
-    public CompletableFuture<ExecuteCmdBackgroundResult> executeCmdBackground(String command, String cwd,
-                                                                              Map<String, String> environment,
-                                                                              double grace, ShellType shellType) {
-        Path capturedCwd = null;
-        if (command != null && !command.isBlank()) {
-            try {
-                capturedCwd = resolveCwd(cwd);
-            } catch (Exception exception) {
-                return CompletableFuture.completedFuture(shellError("execute_cmd_background",
-                        "unexpected error: " + rootMessage(exception),
-                        ExecuteCmdBackgroundResult.class, ExecuteCmdBackgroundData.builder()
-                                .command(command)
-                                .build()));
-            }
-        }
-        Path callerCwd = capturedCwd;
-        return CompletableFuture.supplyAsync(() -> {
-            if (command == null || command.isBlank()) {
-                return shellError("execute_cmd_background", "command can not be empty",
-                        ExecuteCmdBackgroundResult.class, null);
-            }
-            Path actualCwd = callerCwd;
-            Process process = null;
-            String sessionId = null;
-            try {
-                Optional<ExecuteCmdBackgroundResult> rejected = rejectExecuteCmdBackground(command, actualCwd);
-                if (rejected.isPresent()) {
-                    return rejected.get();
-                }
-                ProcessBuilder builder = createProcessBuilder(command, actualCwd, environment, shellType, true, false);
-                process = builder.start();
-                sessionId = registerProcess(process);
-                AsyncProcessHandler.BackgroundLaunchResult launchResult = OperationUtils.createHandler(process)
-                        .background(grace)
-                        .join();
-                if (launchResult.error() != null) {
-                    unregisterProcess(sessionId, process);
-                    return shellError("execute_cmd_background", "background command failed: " + launchResult.error(),
-                            ExecuteCmdBackgroundResult.class, ExecuteCmdBackgroundData.builder()
-                                    .command(command)
-                                    .cwd(actualCwd.toString())
-                                    .build());
-                }
-                return successResult(ExecuteCmdBackgroundResult.class, "Background command started successfully",
-                        ExecuteCmdBackgroundData.builder()
-                                .command(command)
-                                .cwd(actualCwd.toString())
-                                .pid(pidAsInteger(launchResult.pid()))
-                                .build());
-            } catch (Exception exception) {
-                unregisterProcess(sessionId, process);
-                return shellError("execute_cmd_background", "unexpected error: " + rootMessage(exception),
-                        ExecuteCmdBackgroundResult.class, actualCwd == null ? null : ExecuteCmdBackgroundData.builder()
-                                .command(command)
-                                .cwd(actualCwd.toString())
-                                .build());
-            }
-        });
-    }
-
-    private Optional<ExecuteCmdResult> rejectExecuteCmd(String command, Path actualCwd) {
-        String safety = checkCommandSafety(command);
-        if (safety != null) {
-            return Optional.of(shellError("execute_cmd", "command rejected for safety: " + safety,
-                    ExecuteCmdResult.class, ExecuteCmdData.builder()
-                            .command(command)
-                            .cwd(actualCwd.toString())
-                            .exitCode(-1)
-                            .build()));
-        }
-        if (!checkAllowlist(command)) {
-            return Optional.of(shellError("execute_cmd", "command not allowed by allowlist",
-                    ExecuteCmdResult.class, ExecuteCmdData.builder()
-                            .command(command)
-                            .cwd(actualCwd.toString())
-                            .exitCode(-1)
-                            .build()));
-        }
-        return Optional.empty();
-    }
-
-    private Optional<ExecuteCmdStreamResult> rejectExecuteCmdStream(String command, int chunkIndex) {
-        String safety = checkCommandSafety(command);
-        if (safety != null) {
-            return Optional.of(shellError("execute_cmd_stream", "command rejected for safety: " + safety,
-                    ExecuteCmdStreamResult.class, ExecuteCmdChunkData.builder()
-                            .chunkIndex(chunkIndex)
-                            .exitCode(-1)
-                            .build()));
-        }
-        if (!checkAllowlist(command)) {
-            return Optional.of(shellError("execute_cmd_stream", "command not allowed by allowlist",
-                    ExecuteCmdStreamResult.class, ExecuteCmdChunkData.builder()
-                            .chunkIndex(chunkIndex)
-                            .exitCode(-1)
-                            .build()));
-        }
-        return Optional.empty();
-    }
-
-    private Optional<ExecuteCmdBackgroundResult> rejectExecuteCmdBackground(String command, Path actualCwd) {
-        String safety = checkCommandSafety(command);
-        if (safety != null) {
-            return Optional.of(shellError("execute_cmd_background", "command rejected for safety: " + safety,
-                    ExecuteCmdBackgroundResult.class, ExecuteCmdBackgroundData.builder()
-                            .command(command)
-                            .cwd(actualCwd.toString())
-                            .build()));
-        }
-        if (!checkAllowlist(command)) {
-            return Optional.of(shellError("execute_cmd_background", "command not allowed by allowlist",
-                    ExecuteCmdBackgroundResult.class, ExecuteCmdBackgroundData.builder()
-                            .command(command)
-                            .cwd(actualCwd.toString())
-                            .build()));
-        }
-        return Optional.empty();
-    }
-
-    private ProcessBuilder createProcessBuilder(String command, Path cwd, Map<String, String> environment,
-                                                ShellType shellType, boolean background, boolean stream)
-            throws IOException {
-        ShellType effectiveShellType = shellType == null ? ShellType.AUTO : shellType;
-        Map<String, String> execEnv = OperationUtils.prepareEnvironment(environment);
-        String effectiveCommand = normalizePortableCommand(command, execEnv);
-        List<String> args = resolveExecutionArgs(effectiveCommand, effectiveShellType, stream);
-        ProcessBuilder builder = new ProcessBuilder(args);
-        builder.directory(cwd.toFile());
-        detectAndMitigateTui(effectiveCommand, execEnv);
-        builder.environment().clear();
-        builder.environment().putAll(execEnv);
-        if (background) {
-            builder.redirectInput(ProcessBuilder.Redirect.from(nullDevice()));
-            builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            builder.redirectError(ProcessBuilder.Redirect.DISCARD);
-        }
-        return builder;
-    }
-
-    private boolean isFiniteLoopbackPingTimeout(String command, StreamEvent event) {
-        if (event == null || event.getData() == null) {
-            return false;
-        }
-        String data = String.valueOf(event.getData()).toLowerCase(Locale.ROOT);
-        return data.contains("timeout") && FINITE_LOOPBACK_PING_PATTERN.matcher(command == null ? "" : command)
-                .matches();
-    }
-
-    private String normalizePortableCommand(String command, Map<String, String> executionEnvironment) {
         if (command == null || command.isBlank()) {
-            return command;
+            return buildCmdErrorResult("command can not be empty", null);
         }
-        String override = executionEnvironment == null ? null : executionEnvironment.get("PYTHON");
-        String pythonCommand = override != null && !override.isBlank() ? override : availablePythonCommand();
-        if (pythonCommand == null || "python".equals(pythonCommand)) {
-            return command;
-        }
-        return replaceLeadingCommandToken(command, "python", pythonCommand);
-    }
 
-    private String availablePythonCommand() {
-        if (which("python") != null) {
-            return "python";
-        }
-        if (which("python3") != null) {
-            return "python3";
-        }
-        return null;
-    }
+        Path actualCwd = null;
+        try {
+            int effectiveTimeout = normalizeTimeoutSeconds(timeout);
+            actualCwd = resolveCwd(cwd);
 
-    private String replaceLeadingCommandToken(String command, String sourceToken, String replacementToken) {
-        StringBuilder builder = new StringBuilder();
-        for (String segment : splitShellSegmentsPreservingSeparators(command)) {
-            String stripped = segment.stripLeading();
-            int leadingLength = segment.length() - stripped.length();
-            String leading = segment.substring(0, leadingLength);
-            if (startsWithCommandToken(stripped, sourceToken)) {
-                builder.append(leading)
-                        .append(replacementToken)
-                        .append(stripped.substring(sourceToken.length()));
-            } else {
-                builder.append(segment);
+            if (!checkAllowlist(command)) {
+                return buildCmdErrorResult("command not allowed by allowlist",
+                        ExecuteCmdData.builder().command(command).cwd(actualCwd.toString()).build());
             }
-        }
-        return builder.toString();
-    }
-
-    private boolean startsWithCommandToken(String value, String token) {
-        if (!value.startsWith(token)) {
-            return false;
-        }
-        return value.length() == token.length() || Character.isWhitespace(value.charAt(token.length()));
-    }
-
-    private List<String> splitShellSegmentsPreservingSeparators(String command) {
-        List<String> segments = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        char quote = 0;
-        int index = 0;
-        while (index < command.length()) {
-            char currentChar = command.charAt(index);
-            if (currentChar == '"' || currentChar == '\'') {
-                quote = quote == 0 ? currentChar : (quote == currentChar ? 0 : quote);
+            String dangerousReason = checkDangerousPatterns(command);
+            if (dangerousReason != null && !dangerousReason.isBlank()) {
+                return buildCmdErrorResult(dangerousReason,
+                        ExecuteCmdData.builder().command(command).cwd(actualCwd.toString()).build());
             }
-            if (quote == 0 && index + 1 < command.length()) {
-                String pair = command.substring(index, index + 2);
-                if ("&&".equals(pair) || "||".equals(pair)) {
-                    current.append(pair);
-                    segments.add(current.toString());
-                    current.setLength(0);
-                    index += 2;
-                    continue;
+
+            Map<String, String> env = OperationUtils.prepareEnvironment(environment);
+            ShellType shellType = resolveShellType(options);
+            String wrappedCommand = wrapCommandWithBuffering(command, shellType);
+
+            ProcessBuilder pb = createShellProcessBuilder(wrappedCommand, shellType);
+            pb.directory(actualCwd.toFile());
+            pb.environment().putAll(env);
+            Process process = pb.start();
+
+            String encoding = options != null && options.get("encoding") instanceof String s ? s : "utf-8";
+            Charset charset = Charset.forName(encoding);
+            ProcessHandler handler = new ProcessHandler(process, 1024, charset, effectiveTimeout);
+            InvokeData invokeData = handler.invoke();
+
+            if (invokeData.getException() instanceof InterruptedException) {
+                return buildCmdErrorResult("execution timeout after " + effectiveTimeout + " seconds",
+                        ExecuteCmdData.builder().command(command).cwd(actualCwd.toString())
+                                .exitCode(invokeData.getExitCode()).stdout(invokeData.getStdout())
+                                .stderr(invokeData.getStderr()).build());
+            }
+
+            ExecuteCmdResult result =
+                ExecuteCmdResult.builder().code(StatusCode.SUCCESS.getCode()).message("Command executed successfully")
+                        .data(ExecuteCmdData.builder().command(command).cwd(actualCwd.toString())
+                                .exitCode(invokeData.getExitCode()).stdout(invokeData.getStdout())
+                                .stderr(invokeData.getStderr()).build())
+                        .build();
+            result.getData().setShellType(shellType.getValue());
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            Loggers.SYS_OPERATION.info("End to execute cmd, elapsed={}ms", elapsed);
+            return result;
+        } catch (Exception e) {
+            Loggers.SYS_OPERATION.error("Failed to execute cmd", e);
+            return buildCmdErrorResult("unexpected error: " + e.getMessage(), ExecuteCmdData.builder().command(command)
+                    .cwd(actualCwd != null ? actualCwd.toString() : "").build());
+        }
+    }
+
+    /**
+     * executeCmdStream.
+     * 
+     * @param command command
+     * @param cwd cwd
+     * @param timeout timeout
+     * @param environment environment
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public Iterator<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, int timeout,
+            Map<String, String> environment, Map<String, Object> options) {
+        Loggers.SYS_OPERATION.info("Start to execute cmd streaming");
+
+        // fail-fast: 参数 / 白名单 / 危险字符 校验同步完成，错误立即返回单元素迭代器
+        if (command == null || command.isBlank()) {
+            return Collections.singletonList(
+                buildCmdStreamErrorResult("command can not be empty",
+                    ExecuteCmdChunkData.builder().chunkIndex(0).exitCode(-1).build())
+            ).iterator();
+        }
+
+        try {
+            int effectiveTimeout = normalizeTimeoutSeconds(timeout);
+            if (!checkAllowlist(command)) {
+                return Collections.singletonList(
+                    buildCmdStreamErrorResult("command not allowed by allowlist",
+                        ExecuteCmdChunkData.builder().chunkIndex(0).exitCode(-1).build())
+                ).iterator();
+            }
+            String dangerousReason = checkDangerousPatterns(command);
+            if (dangerousReason != null && !dangerousReason.isBlank()) {
+                return Collections.singletonList(
+                    buildCmdStreamErrorResult(dangerousReason,
+                        ExecuteCmdChunkData.builder().chunkIndex(0).exitCode(-1).build())
+                ).iterator();
+            }
+
+            Map<String, String> env = OperationUtils.prepareEnvironment(environment);
+            ShellType shellType = resolveShellType(options);
+            String wrappedCommand = wrapCommandWithBuffering(command, shellType);
+            Path actualCwd = resolveCwd(cwd);
+
+            ProcessBuilder pb = createShellProcessBuilder(wrappedCommand, shellType);
+            pb.directory(actualCwd.toFile());
+            pb.environment().putAll(env);
+            Process process = pb.start();
+
+            int chunkSize = options != null && options.get("chunk_size") instanceof Integer i ? i : 1024;
+            String encoding = options != null && options.get("encoding") instanceof String s ? s : "utf-8";
+            Charset charset = Charset.forName(encoding);
+            ProcessHandler handler = new ProcessHandler(process, chunkSize, charset, effectiveTimeout);
+            Iterator<StreamEvent> eventIterator = handler.stream();
+
+            // 真正惰性的迭代器：hasNext/next 时才去拉取下一事件，避免先全量收集
+            return new Iterator<ExecuteCmdStreamResult>() {
+                private final AtomicInteger chunkIndex = new AtomicInteger(0);
+                private StreamEvent nextEvent;
+                private boolean hasNext = true;
+
+                @Override
+                public boolean hasNext() {
+                    advanceIfNeeded();
+                    return hasNext;
                 }
-            }
-            if (quote == 0 && (currentChar == ';' || currentChar == '\n' || currentChar == '\r')) {
-                current.append(currentChar);
-                segments.add(current.toString());
-                current.setLength(0);
-                index += 1;
-                continue;
-            }
-            current.append(currentChar);
-            index += 1;
-        }
-        if (!current.isEmpty()) {
-            segments.add(current.toString());
-        }
-        return segments;
-    }
 
-    List<String> resolveExecutionArgsForTest(String command, ShellType shellType, boolean stream, boolean windows,
-                                             String powerShellPath, String bashPath, String shPath) throws IOException {
-        return resolveExecutionArgs(command, shellType, stream, windows, powerShellPath, bashPath, shPath);
-    }
-
-    private List<String> resolveExecutionArgs(String command, ShellType shellType, boolean stream) throws IOException {
-        return resolveExecutionArgs(command, shellType, stream, isWindows(), null, null, null);
-    }
-
-    private List<String> resolveExecutionArgs(String command, ShellType shellType, boolean stream, boolean windows,
-                                              String powerShellPath, String bashPath, String shPath)
-            throws IOException {
-        if (windows) {
-            if (shellType == ShellType.AUTO) {
-                String powerShellCommand = unwrapPowerShellCommand(command);
-                if (powerShellCommand != null) {
-                    return powerShellArgs(powerShellPath, powerShellCommand);
+                @Override
+                public ExecuteCmdStreamResult next() {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException("No more streaming events");
+                    }
+                    StreamEvent event = nextEvent;
+                    nextEvent = null;
+                    int idx = chunkIndex.getAndIncrement();
+                    // EXIT / ERROR 事件产出本次后不再继续
+                    if (event.getType() == StreamEventType.EXIT
+                            || event.getType() == StreamEventType.ERROR) {
+                        hasNext = false;
+                    }
+                    return transformCmdStreamEvent(event, idx);
                 }
-                if (looksLikePowerShell(command)) {
-                    return powerShellArgs(powerShellPath, command);
-                }
-                if (looksLikePosix(command)) {
-                    String bash = availableBash(false, bashPath);
-                    if (bash != null) {
-                        return List.of(bash, "-lc", normalizeWindowsPathsForBash(command));
+
+                private void advanceIfNeeded() {
+                    if (nextEvent != null || !hasNext) {
+                        return;
+                    }
+                    try {
+                        if (eventIterator.hasNext()) {
+                            nextEvent = eventIterator.next();
+                        } else {
+                            hasNext = false;
+                        }
+                    } catch (Exception e) {
+                        Loggers.SYS_OPERATION.error("Failed to execute cmd streaming", e);
+                        nextEvent = StreamEvent.builder()
+                                .type(StreamEventType.ERROR)
+                                .data("unexpected streaming error: " + e.getMessage())
+                                .build();
                     }
                 }
-                return List.of("cmd.exe", "/c", command);
-            }
-            if (shellType == ShellType.POWERSHELL) {
-                return powerShellArgs(powerShellPath, Optional.ofNullable(unwrapPowerShellCommand(command))
-                        .orElse(command));
-            }
-            if (shellType == ShellType.BASH || shellType == ShellType.SH) {
-                String shell = shellType == ShellType.BASH ? availableBash(true, bashPath) : availableSh(shPath);
-                if (shell == null) {
-                    throw new IOException("shell '" + shellType.value() + "' is not available on this system");
-                }
-                return List.of(shell, shellType == ShellType.BASH ? "-lc" : "-c",
-                        normalizeWindowsPathsForBash(command));
-            }
-            return List.of("cmd.exe", "/c", command);
-        }
-        if (shellType == ShellType.CMD) {
-            throw new IOException("shell_type 'cmd' is only supported on Windows");
-        }
-        if (shellType == ShellType.POWERSHELL) {
-            String shell = which("pwsh");
-            if (shell == null) {
-                shell = which("powershell");
-            }
-            if (shell == null) {
-                throw new IOException("shell 'powershell' is not available on this system");
-            }
-            return List.of(shell, "-NoProfile", "-NonInteractive", "-Command", command);
-        }
-        if (shellType == ShellType.BASH) {
-            return List.of(Optional.ofNullable(which("bash")).orElse("/bin/bash"), "-lc", command);
-        }
-        String resolvedCommand = stream ? wrapCommandWithBuffering(command) : command;
-        return List.of("/bin/sh", "-c", resolvedCommand);
-    }
-
-    private List<String> powerShellArgs(String powerShellPath, String command) {
-        return List.of(availablePowerShell(powerShellPath), "-NoProfile", "-NonInteractive", "-Command", command);
-    }
-
-    private boolean looksLikePowerShell(String command) {
-        String lowered = command == null ? "" : command.strip().toLowerCase(Locale.ROOT);
-        if (lowered.isBlank()) {
-            return false;
-        }
-        for (String token : POWERSHELL_TOKENS) {
-            if (lowered.contains(token)) {
-                return true;
-            }
-        }
-        return command.contains("@'") || command.contains("@\"") || PS_VARIABLE_PATTERN.matcher(command).find();
-    }
-
-    private String unwrapPowerShellCommand(String command) {
-        if (command == null || !POWERSHELL_EXECUTABLE_PATTERN.matcher(command).find()) {
-            return null;
-        }
-        String remainder = POWERSHELL_EXECUTABLE_PATTERN.matcher(command).replaceFirst("").strip();
-        java.util.regex.Matcher matcher = POWERSHELL_COMMAND_ARG_PATTERN.matcher(remainder);
-        if (!matcher.find()) {
-            return null;
-        }
-        String script = stripMatchingQuotes(matcher.group("script"));
-        return script.isBlank() ? null : script;
-    }
-
-    private String stripMatchingQuotes(String value) {
-        String stripped = value == null ? "" : value.strip();
-        if (stripped.length() >= 2
-                && stripped.charAt(0) == stripped.charAt(stripped.length() - 1)
-                && (stripped.charAt(0) == '"' || stripped.charAt(0) == '\'')) {
-            return stripped.substring(1, stripped.length() - 1);
-        }
-        return stripped;
-    }
-
-    private boolean looksLikePosix(String command) {
-        for (String segment : splitShellSegments(command == null ? "" : command)) {
-            if (POSIX_COMMANDS.contains(segmentBaseCommand(segment))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private List<String> splitShellSegments(String command) {
-        List<String> segments = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        Character quote = null;
-        int index = 0;
-        while (index < command.length()) {
-            char currentChar = command.charAt(index);
-            if (currentChar == '"' || currentChar == '\'') {
-                if (quote == null) {
-                    quote = currentChar;
-                } else if (quote == currentChar) {
-                    quote = null;
-                }
-            }
-            if (quote == null && index + 1 < command.length()) {
-                String pair = command.substring(index, index + 2);
-                if ("&&".equals(pair) || "||".equals(pair)) {
-                    addSegment(segments, current);
-                    index += 2;
-                    continue;
-                }
-            }
-            if (quote == null && (currentChar == '|' || currentChar == ';'
-                    || currentChar == '\n' || currentChar == '\r')) {
-                addSegment(segments, current);
-                index += 1;
-                continue;
-            }
-            current.append(currentChar);
-            index += 1;
-        }
-        addSegment(segments, current);
-        return segments;
-    }
-
-    private void addSegment(List<String> segments, StringBuilder current) {
-        String segment = current.toString().strip();
-        if (!segment.isBlank()) {
-            segments.add(segment);
-        }
-        current.setLength(0);
-    }
-
-    private String segmentBaseCommand(String segment) {
-        String trimmed = segment.strip();
-        if (trimmed.isEmpty()) {
-            return "";
-        }
-        String firstToken = firstShellToken(trimmed);
-        String unquoted = stripMatchingQuotes(firstToken);
-        int slash = Math.max(unquoted.lastIndexOf('/'), unquoted.lastIndexOf('\\'));
-        String base = (slash >= 0 ? unquoted.substring(slash + 1) : unquoted).toLowerCase(Locale.ROOT);
-        return base.endsWith(".exe") ? base.substring(0, base.length() - 4) : base;
-    }
-
-    private String firstShellToken(String value) {
-        char quote = 0;
-        StringBuilder token = new StringBuilder();
-        for (int index = 0; index < value.length(); index += 1) {
-            char currentChar = value.charAt(index);
-            if ((currentChar == '"' || currentChar == '\'') && quote == 0) {
-                quote = currentChar;
-                token.append(currentChar);
-                continue;
-            }
-            if (currentChar == quote) {
-                quote = 0;
-                token.append(currentChar);
-                continue;
-            }
-            if (quote == 0 && Character.isWhitespace(currentChar)) {
-                break;
-            }
-            token.append(currentChar);
-        }
-        return token.toString();
-    }
-
-    private String normalizeWindowsPathsForBash(String command) {
-        java.util.regex.Matcher quotedMatcher = QUOTED_WINDOWS_PATH_PATTERN.matcher(command);
-        StringBuffer quotedBuffer = new StringBuffer();
-        while (quotedMatcher.find()) {
-            String replacement = quotedMatcher.group(1) + quotedMatcher.group(2).replace("\\", "/")
-                    + quotedMatcher.group(1);
-            quotedMatcher.appendReplacement(quotedBuffer, java.util.regex.Matcher.quoteReplacement(replacement));
-        }
-        quotedMatcher.appendTail(quotedBuffer);
-
-        java.util.regex.Matcher unquotedMatcher = UNQUOTED_WINDOWS_PATH_PATTERN.matcher(quotedBuffer.toString());
-        StringBuffer unquotedBuffer = new StringBuffer();
-        while (unquotedMatcher.find()) {
-            unquotedMatcher.appendReplacement(unquotedBuffer,
-                    java.util.regex.Matcher.quoteReplacement(unquotedMatcher.group(1).replace("\\", "/")));
-        }
-        unquotedMatcher.appendTail(unquotedBuffer);
-        return unquotedBuffer.toString();
-    }
-
-    private String availablePowerShell(String override) {
-        return override == null ? availablePowerShell() : override;
-    }
-
-    private String availablePowerShell() {
-        String pwsh = which("pwsh");
-        return pwsh == null ? "powershell" : pwsh;
-    }
-
-    private String availableUnixShell(ShellType shellType) throws IOException {
-        String name = shellType == ShellType.BASH ? "bash" : "sh";
-        String shell = which(name);
-        if (shell == null) {
-            throw new IOException("shell '" + shellType.value() + "' is not available on this system");
-        }
-        return shell;
-    }
-
-    private String availableBash(boolean allowWsl, String override) {
-        if (override != null) {
-            return override;
-        }
-        String gitBash = availableGitBash();
-        if (gitBash != null) {
-            return gitBash;
-        }
-        String resolved = which("bash");
-        if (resolved != null && (allowWsl || !isWslBashPath(resolved))) {
-            return resolved;
-        }
-        return null;
-    }
-
-    private String availableSh(String override) {
-        if (override != null) {
-            return override;
-        }
-        String gitBash = availableGitBash();
-        if (gitBash != null) {
-            Path shPath = Path.of(gitBash).getParent().getParent().resolve("usr").resolve("bin").resolve("sh.exe");
-            if (Files.isRegularFile(shPath)) {
-                return shPath.toString();
-            }
-        }
-        return which("sh");
-    }
-
-    private String availableGitBash() {
-        if (!isWindows()) {
-            return null;
-        }
-        for (Path candidate : gitBashCandidates()) {
-            if (Files.isRegularFile(candidate)) {
-                return candidate.toString();
-            }
-        }
-        return null;
-    }
-
-    private List<Path> gitBashCandidates() {
-        List<Path> candidates = new ArrayList<>();
-        for (String envName : List.of("GIT_BASH", "GIT_BASH_PATH")) {
-            String envValue = System.getenv(envName);
-            if (envValue != null && !envValue.isBlank()) {
-                candidates.add(Path.of(envValue));
-            }
-        }
-        for (String root : new HashSet<>(List.of(
-                Optional.ofNullable(System.getenv("ProgramFiles")).orElse(""),
-                Optional.ofNullable(System.getenv("ProgramFiles(x86)")).orElse(""),
-                Optional.ofNullable(System.getenv("LocalAppData"))
-                        .map(value -> Path.of(value).resolve("Programs").toString()).orElse("")
-        ))) {
-            if (!root.isBlank()) {
-                candidates.add(Path.of(root).resolve("Git").resolve("bin").resolve("bash.exe"));
-            }
-        }
-        String gitPath = which("git");
-        if (gitPath != null) {
-            Path gitExe = Path.of(gitPath);
-            candidates.add(gitExe.getParent().getParent().resolve("bin").resolve("bash.exe"));
-        }
-        return candidates;
-    }
-
-    private boolean isWslBashPath(String path) {
-        String normalized = Path.of(path).toAbsolutePath().normalize().toString().toLowerCase(Locale.ROOT);
-        String systemRoot = Optional.ofNullable(System.getenv("SystemRoot")).orElse("C:\\Windows")
-                .toLowerCase(Locale.ROOT);
-        String systemBash = Path.of(systemRoot).resolve("System32").resolve("bash.exe")
-                .normalize().toString().toLowerCase(Locale.ROOT);
-        return normalized.equals(systemBash) || normalized.contains("\\microsoft\\windowsapps\\bash.exe");
-    }
-
-    private String which(String executable) {
-        String path = System.getenv("PATH");
-        if (path == null || path.isBlank()) {
-            return null;
-        }
-        String suffix = isWindows() ? ".exe" : "";
-        for (String entry : path.split(Pattern.quote(File.pathSeparator))) {
-            Path candidate = Path.of(entry).resolve(executable);
-            if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-                return candidate.toString();
-            }
-            if (isWindows()) {
-                Path exeCandidate = Path.of(entry).resolve(executable + suffix);
-                if (Files.isRegularFile(exeCandidate) && Files.isExecutable(exeCandidate)) {
-                    return exeCandidate.toString();
-                }
-            }
-        }
-        return null;
-    }
-
-    private Path resolveCwd(String cwd) {
-        if (cwd == null || cwd.isBlank()) {
-            return Path.of(Cwd.getCwd()).toAbsolutePath().normalize();
-        }
-        Path target = expandUser(cwd);
-        if (!target.isAbsolute()) {
-            target = Path.of(Cwd.getCwd()).resolve(target);
-        }
-        return target.toAbsolutePath().normalize();
-    }
-
-    private Path expandUser(String path) {
-        if (path == null || !path.startsWith("~")) {
-            return Path.of(path);
-        }
-        String home = System.getProperty("user.home");
-        if (path.equals("~")) {
-            return Path.of(home);
-        }
-        if (path.startsWith("~/") || path.startsWith("~\\")) {
-            return Path.of(home).resolve(path.substring(2));
-        }
-        return Path.of(path);
-    }
-
-    private String checkCommandSafety(String command) {
-        Object config = getRunConfig();
-        if (config instanceof LocalWorkConfig localWorkConfig
-                && localWorkConfig.getDangerousPatterns() != null) {
-            for (String rawPattern : localWorkConfig.getDangerousPatterns()) {
-                if (Pattern.compile(rawPattern, Pattern.CASE_INSENSITIVE).matcher(command).find()) {
-                    return rawPattern;
-                }
-            }
-            return null;
-        }
-        for (DangerousPattern pattern : DEFAULT_DANGEROUS_PATTERNS) {
-            if (pattern.pattern().matcher(command).find()) {
-                return pattern.label();
-            }
-        }
-        return null;
-    }
-
-    private boolean checkAllowlist(String command) {
-        Object config = getRunConfig();
-        if (!(config instanceof LocalWorkConfig localWorkConfig)
-                || localWorkConfig.getShellAllowlist() == null
-                || localWorkConfig.getShellAllowlist().isEmpty()) {
-            return true;
-        }
-        String prefix = command.trim().split("\\s+")[0];
-        return localWorkConfig.getShellAllowlist().stream()
-                .anyMatch(allowed -> prefix.equals(allowed)
-                        || prefix.endsWith(File.separator + allowed)
-                        || prefix.endsWith("/" + allowed)
-                        || prefix.endsWith("\\" + allowed));
-    }
-
-    private void detectAndMitigateTui(String command, Map<String, String> environment) {
-        String enabled = System.getenv().getOrDefault("JW_TUI_DETECTION_ENABLED", "true")
-                .trim()
-                .toLowerCase(Locale.ROOT);
-        if (List.of("0", "false", "no", "off").contains(enabled)) {
-            return;
-        }
-        for (TuiPattern pattern : TUI_PATTERNS) {
-            if (pattern.pattern().matcher(command).find()) {
-                pattern.environment().forEach(environment::putIfAbsent);
-                return;
-            }
+            };
+        } catch (Exception e) {
+            Loggers.SYS_OPERATION.error("Failed to start cmd streaming", e);
+            return Collections.singletonList(
+                buildCmdStreamErrorResult("unexpected error: " + e.getMessage(),
+                    ExecuteCmdChunkData.builder().chunkIndex(0).exitCode(-1).build())
+            ).iterator();
         }
     }
 
-    private String wrapCommandWithBuffering(String command) {
-        if (isWindows()) {
-            return command;
+    /**
+     * executeCmdBackground.
+     * 
+     * @param command command
+     * @param cwd cwd
+     * @param environment environment
+     * @param grace grace
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public ExecuteCmdBackgroundResult executeCmdBackground(String command, String cwd, Map<String, String> environment,
+            double grace, Map<String, Object> options) {
+        Loggers.SYS_OPERATION.info("Start to execute cmd background");
+
+        if (command == null || command.isBlank()) {
+            return buildCmdBackgroundErrorResult("command can not be empty", null);
         }
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("mac")) {
-            return command;
-        }
-        return "stdbuf -oL -eL /bin/sh -c " + shellQuote(command);
-    }
 
-    private String shellQuote(String command) {
-        return "'" + command.replace("'", "'\"'\"'") + "'";
-    }
-
-    private File nullDevice() {
-        return isWindows() ? new File("NUL") : new File("/dev/null");
-    }
-
-    private int effectiveTimeout(Integer timeout) {
-        int requested = timeout == null ? DEFAULT_TIMEOUT_SECONDS : timeout;
-        int max = Integer.parseInt(System.getenv().getOrDefault("JW_EXECUTE_CMD_MAX_TIMEOUT", "600"));
-        return Math.min(requested, max);
-    }
-
-    private int intOption(Map<String, Object> options, String key, int defaultValue) {
-        if (options == null || !options.containsKey(key)) {
-            return defaultValue;
-        }
-        return Integer.parseInt(String.valueOf(options.get(key)));
-    }
-
-    private String stringOption(Map<String, Object> options, String key, String defaultValue) {
-        if (options == null || !options.containsKey(key)) {
-            return defaultValue;
-        }
-        return String.valueOf(options.get(key));
-    }
-
-    private String detectShellEncoding() {
-        return Charset.defaultCharset().name().isBlank() ? DEFAULT_ENCODING : Charset.defaultCharset().name();
-    }
-
-    private ExecuteCmdStreamResult streamResult(StreamEvent event, int chunkIndex) {
-        if (event.getType() == StreamEventType.ERROR) {
-            return shellError("execute_cmd_stream", "execution receive error: " + event.getData(),
-                    ExecuteCmdStreamResult.class, ExecuteCmdChunkData.builder()
-                            .chunkIndex(chunkIndex)
-                            .exitCode(-1)
-                            .build());
-        }
-        if (event.getType() == StreamEventType.EXIT) {
-            return successResult(ExecuteCmdStreamResult.class, "Command executed successfully",
-                    ExecuteCmdChunkData.builder()
-                            .chunkIndex(chunkIndex)
-                            .exitCode((Integer) event.getData())
-                            .build());
-        }
-        String type = event.getType().getValue();
-        return successResult(ExecuteCmdStreamResult.class, "Get " + type + " stream successfully",
-                ExecuteCmdChunkData.builder()
-                        .text(String.valueOf(event.getData()))
-                        .type(type)
-                        .chunkIndex(chunkIndex)
-                        .build());
-    }
-
-    private String registerProcess(Process process) {
-        String sessionId = ShellProcessRegistry.resolveShellSessionId();
-        if (sessionId != null) {
-            ShellProcessRegistry.registerShellProcess(sessionId, process);
-        }
-        return sessionId;
-    }
-
-    private void unregisterProcess(String sessionId, Process process) {
-        if (sessionId != null && process != null) {
-            ShellProcessRegistry.unregisterShellProcess(sessionId, process);
-        }
-    }
-
-    private Integer pidAsInteger(long pid) {
-        return pid > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) pid;
-    }
-
-    private boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-    }
-
-    private String rootMessage(Throwable throwable) {
-        Throwable current = throwable;
-        while (current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
-    }
-
-    private static <T, R extends BaseResult<T>> R successResult(Class<R> resultClass, String message, T data) {
+        Path actualCwd = null;
         try {
-            R result = resultClass.getDeclaredConstructor().newInstance();
-            result.setCode(StatusCode.SUCCESS.getCode());
-            result.setMessage(message);
-            result.setData(data);
-            return result;
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Cannot create result " + resultClass.getName(), exception);
+            actualCwd = resolveCwd(cwd);
+
+            if (!checkAllowlist(command)) {
+                return buildCmdBackgroundErrorResult("command not allowed by allowlist",
+                        ExecuteCmdBackgroundData.builder().command(command).cwd(actualCwd.toString()).build());
+            }
+            String dangerousReason = checkDangerousPatterns(command);
+            if (dangerousReason != null && !dangerousReason.isBlank()) {
+                return buildCmdBackgroundErrorResult(dangerousReason,
+                        ExecuteCmdBackgroundData.builder().command(command).cwd(actualCwd.toString()).build());
+            }
+
+            Map<String, String> env = OperationUtils.prepareEnvironment(environment);
+            ShellType shellType = resolveShellType(options);
+            ProcessBuilder pb = createShellProcessBuilder(command, shellType);
+            pb.directory(actualCwd.toFile());
+            pb.environment().putAll(env);
+            Process process = pb.start();
+
+            long pid = process.pid();
+            if (grace > 0) {
+                try {
+                    Thread.sleep(graceMillis(grace));
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+                if (!process.isAlive()) {
+                    int exitCode = process.exitValue();
+                    return buildCmdBackgroundErrorResult("background command exited early with code " + exitCode,
+                            ExecuteCmdBackgroundData.builder().command(command).cwd(actualCwd.toString()).pid(pid)
+                                    .build());
+                }
+            }
+
+            return ExecuteCmdBackgroundResult.builder().code(StatusCode.SUCCESS.getCode())
+                    .message("Background command started successfully")
+                    .data(ExecuteCmdBackgroundData.builder().command(command).cwd(actualCwd.toString()).pid(pid)
+                            .shellType(shellType.getValue()).build())
+                    .build();
+        } catch (IOException | RuntimeException e) {
+            Loggers.SYS_OPERATION.error("Failed to execute cmd background", e);
+            return buildCmdBackgroundErrorResult("unexpected error: " + e.getMessage(), ExecuteCmdBackgroundData
+                    .builder().command(command).cwd(actualCwd != null ? actualCwd.toString() : "").build());
         }
     }
 
-    private static <T, R> R shellError(String execution, String message, Class<R> resultClass, T data) {
-        return BaseResult.buildOperationErrorResult(
-                StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
-                Map.of("execution", execution, "error_msg", message == null ? "" : message),
-                resultClass,
-                data);
+    // --- Private helpers ---
+
+    /**
+     * graceMillis.
+     * 
+     * @param grace grace
+     * @return the result
+     * @since 0.1.7
+     */
+    private static long graceMillis(double grace) {
+        return Math.max(1L, BigDecimal.valueOf(grace).movePointRight(3).setScale(0, RoundingMode.HALF_UP).longValue());
     }
 
-    private static <T> Flow.Publisher<T> asyncPublisher(Consumer<SubmissionPublisher<T>> emitter) {
-        return subscriber -> {
-            SubmissionPublisher<T> publisher = new SubmissionPublisher<>();
-            publisher.subscribe(subscriber);
-            CompletableFuture.runAsync(() -> {
-                try {
-                    emitter.accept(publisher);
-                    publisher.close();
-                } catch (RuntimeException exception) {
-                    publisher.closeExceptionally(exception);
-                }
-            });
+    /**
+     * Create a ProcessBuilder that runs a command through the system shell.
+     * 
+     * @param command command
+     * @param shellType shellType
+     * @return the result
+     * @since 0.1.7
+     */
+    private ProcessBuilder createShellProcessBuilder(String command, ShellType shellType) {
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        return switch (normalizeShellType(shellType, os)) {
+            case CMD -> new ProcessBuilder("cmd.exe", "/c", command);
+            case POWERSHELL -> new ProcessBuilder("powershell", "-Command", command);
+            case BASH -> new ProcessBuilder("bash", "-lc", command);
+            case SH -> new ProcessBuilder("sh", "-c", command);
+            default -> os.contains("win")
+                    ? new ProcessBuilder("cmd.exe", "/c", command)
+                    : new ProcessBuilder("/bin/sh", "-c", command);
         };
     }
 
-    private record DangerousPattern(Pattern pattern, String label) {
+    /**
+     * normalizeTimeoutSeconds.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @since 0.1.7
+     */
+    private int normalizeTimeoutSeconds(int timeout) {
+        return timeout > 0 ? timeout : DEFAULT_TIMEOUT_SECONDS;
     }
 
-    private record TuiPattern(Pattern pattern, Map<String, String> environment) {
+    /**
+     * Check if command first token is in allowlist.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
+    private boolean checkAllowlist(String command) {
+        if (!(getRunConfig() instanceof LocalWorkConfig config)) {
+            return true;
+        }
+        List<String> allowlist = config.getShellAllowlist();
+        if (allowlist == null || allowlist.isEmpty()) {
+            return true;
+        }
+
+        String cmdPrefix = command.trim().split("\\s+")[0];
+        String separator = File.separator;
+        return allowlist.stream()
+                .anyMatch(isAllowed -> cmdPrefix.equals(isAllowed) || cmdPrefix.endsWith(separator + isAllowed));
+    }
+
+    /**
+     * checkDangerousPatterns.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
+    private String checkDangerousPatterns(String command) {
+        if (!(getRunConfig() instanceof LocalWorkConfig config)) {
+            return null;
+        }
+        List<String> dangerousPatterns = config.getDangerousPatterns();
+        if (dangerousPatterns == null || dangerousPatterns.isEmpty()) {
+            return null;
+        }
+        for (String rawPattern : dangerousPatterns) {
+            if (rawPattern == null || rawPattern.isBlank()) {
+                continue;
+            }
+            if (Pattern.compile(rawPattern, Pattern.CASE_INSENSITIVE).matcher(command).find()) {
+                return "command blocked by dangerous pattern: " + rawPattern;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Resolve working directory, respecting LocalWorkConfig.workDir if set.
+     * 
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
+     */
+    private Path resolveCwd(String cwd) {
+        LocalWorkConfig config = getRunConfig() instanceof LocalWorkConfig localConfig ? localConfig : null;
+        String workDirVal = config != null ? config.getWorkDir() : null;
+        Path baseDir =
+            workDirVal != null ? Path.of(workDirVal).toAbsolutePath() : Path.of(CwdContext.getCwd()).toAbsolutePath();
+
+        if (workDirVal == null) {
+            if (cwd == null || cwd.isBlank()) {
+                return baseDir;
+            }
+            Path raw = Path.of(cwd);
+            return raw.isAbsolute() ? raw.toAbsolutePath() : baseDir.resolve(raw).toAbsolutePath();
+        }
+
+        Path workDir = baseDir;
+        if (cwd == null || cwd.isBlank()) {
+            return workDir;
+        }
+
+        Path target = Path.of(cwd);
+        if (!target.isAbsolute()) {
+            target = workDir.resolve(target);
+        }
+        Path normalized = target.toAbsolutePath().normalize();
+
+        if (config != null && config.isRestrictToSandbox()) {
+            List<Path> sandboxRoots = new ArrayList<>();
+            if (config.getSandboxRoot() != null && !config.getSandboxRoot().isEmpty()) {
+                for (String root : config.getSandboxRoot()) {
+                    if (root != null && !root.isBlank()) {
+                        sandboxRoots.add(Path.of(root).toAbsolutePath().normalize());
+                    }
+                }
+            } else {
+                if (CwdContext.getWorkspace() != null) {
+                    sandboxRoots.add(Path.of(CwdContext.getWorkspace()).toAbsolutePath().normalize());
+                }
+                sandboxRoots.add(Path.of(CwdContext.getProjectRoot()).toAbsolutePath().normalize());
+            }
+
+            boolean isAllowed = sandboxRoots.stream().anyMatch(root -> {
+                try {
+                    return !root.relativize(normalized).startsWith("..");
+                } catch (IllegalArgumentException ex) {
+                    return false;
+                }
+            });
+            if (!isAllowed) {
+                throw new IllegalArgumentException(
+                        "Access denied: cwd " + normalized + " traverses outside " + sandboxRoots);
+            }
+        }
+
+        return normalized;
+    }
+
+    /**
+     * Wrap command with OS-specific buffering wrapper.
+     * 
+     * @param command command
+     * @param shellType shellType
+     * @return the result
+     * @since 0.1.7
+     */
+    private String wrapCommandWithBuffering(String command, ShellType shellType) {
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        ShellType normalized = normalizeShellType(shellType, os);
+        if (os.contains("win") || normalized == ShellType.CMD || normalized == ShellType.POWERSHELL) {
+            return command;
+        } else if (os.contains("mac") || os.contains("darwin")) {
+            return "script -q /dev/null " + command;
+        } else {
+            return "stdbuf -oL -eL " + command;
+        }
+    }
+
+    /**
+     * resolveShellType.
+     * 
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    private ShellType resolveShellType(Map<String, Object> options) {
+        if (options == null) {
+            return ShellType.AUTO;
+        }
+        Object shellType = options.get("shell_type");
+        return shellType == null ? ShellType.AUTO : ShellType.fromString(String.valueOf(shellType));
+    }
+
+    /**
+     * normalizeShellType.
+     * 
+     * @param shellType shellType
+     * @param os os
+     * @return the result
+     * @since 0.1.7
+     */
+    private ShellType normalizeShellType(ShellType shellType, String os) {
+        ShellType normalized = shellType == null ? ShellType.AUTO : shellType;
+        if (os.contains("win")) {
+            return normalized;
+        }
+        if (normalized == ShellType.CMD || normalized == ShellType.POWERSHELL) {
+            return ShellType.AUTO;
+        }
+        return normalized;
+    }
+
+    /**
+     * buildCmdErrorResult.
+     * 
+     * @param errorMsg errorMsg
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
+    private ExecuteCmdResult buildCmdErrorResult(String errorMsg, ExecuteCmdData data) {
+        if (data != null && (data.getExitCode() == null || data.getExitCode() == 0)) {
+            data.setExitCode(-1);
+        }
+        return BaseResult.buildOperationErrorResult(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR, "execute_cmd",
+                errorMsg, ExecuteCmdResult::new, data);
+    }
+
+    /**
+     * buildCmdStreamErrorResult.
+     * 
+     * @param errorMsg errorMsg
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
+    private ExecuteCmdStreamResult buildCmdStreamErrorResult(String errorMsg, ExecuteCmdChunkData data) {
+        if (data != null && (data.getExitCode() == null || data.getExitCode() == 0)) {
+            data.setExitCode(-1);
+        }
+        return BaseResult.buildOperationErrorResult(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
+                "execute_cmd_stream", errorMsg, ExecuteCmdStreamResult::new, data);
+    }
+
+    /**
+     * buildCmdBackgroundErrorResult.
+     * 
+     * @param errorMsg errorMsg
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
+    private ExecuteCmdBackgroundResult buildCmdBackgroundErrorResult(String errorMsg, ExecuteCmdBackgroundData data) {
+        return BaseResult.buildOperationErrorResult(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
+                "execute_cmd_background", errorMsg, ExecuteCmdBackgroundResult::new, data);
+    }
+
+    /**
+     * transformCmdStreamEvent.
+     * 
+     * @param event event
+     * @param chunkIndex chunkIndex
+     * @return the result
+     * @since 0.1.7
+     */
+    private ExecuteCmdStreamResult transformCmdStreamEvent(StreamEvent event, int chunkIndex) {
+        return switch (event.getType()) {
+            case STDOUT, STDERR -> {
+                ExecuteCmdChunkData chunkData = ExecuteCmdChunkData.builder().text(event.getDataAsString())
+                        .type(event.getType().getValue()).chunkIndex(chunkIndex).build();
+                yield ExecuteCmdStreamResult.builder().code(StatusCode.SUCCESS.getCode())
+                        .message("Get " + chunkData.getType() + " stream successfully").data(chunkData).build();
+            }
+            case ERROR -> buildCmdStreamErrorResult("execution receive error: " + event.getDataAsString(),
+                    ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build());
+            case EXIT -> {
+                Integer exitCode = event.getDataAsInt();
+                if (exitCode == null) {
+                    exitCode = -1;
+                }
+                ExecuteCmdChunkData chunkData =
+                    ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(exitCode).build();
+                yield ExecuteCmdStreamResult.builder().code(StatusCode.SUCCESS.getCode())
+                        .message("Command executed successfully").data(chunkData).build();
+            }
+        };
     }
 }

@@ -11,10 +11,12 @@ import lombok.experimental.SuperBuilder;
 import java.util.Map;
 
 /**
- * Workflow streaming event 鈥?for workflow component streaming.
+ * Workflow streaming event — for workflow component streaming.
  * <p>
- * Mirrors Python's {@code WorkflowStreamEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.
+ * Mirrors Python's {@code WorkflowStreamEvent} which extends {@code StreamEvent}
+ * with workflow-specific fields.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -26,11 +28,22 @@ public class WorkflowStreamEvent extends StreamEvent {
     private String componentName;
     private String componentTypeStr;
 
+    /**
+     * WorkflowStreamEvent.
+     * 
+     * @since 0.1.7
+     */
     public WorkflowStreamEvent() {
         super();
         setModuleType(ModuleType.WORKFLOW_COMPONENT);
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         super.addFieldsToMap(map);
@@ -41,5 +54,3 @@ public class WorkflowStreamEvent extends StreamEvent {
         putIfNotNull(map, "component_type_str", componentTypeStr);
     }
 }
-
-

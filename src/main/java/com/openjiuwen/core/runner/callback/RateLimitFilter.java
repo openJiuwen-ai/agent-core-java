@@ -8,65 +8,82 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
- * Mirrors Python's {@code RateLimitFilter} in
- * {@code openjiuwen/core/runner/callback/filters.py}.
+ * Filter to limit callback execution rate.
+ * <p>
+ * Prevents callbacks from executing too frequently within a time window.
+ * Thread-safe implementation.
+ * 
+ * @since 0.1.7
  */
 public class RateLimitFilter extends EventFilter {
-
     private final int maxCalls;
-
     private final double timeWindow;
 
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Deque<Double>> callTimes = new ConcurrentHashMap<>();
 
+    /**
+     * RateLimitFilter.
+     * 
+     * @param maxCalls maxCalls
+     * @param timeWindow timeWindow
+     * @since 0.1.7
+     */
     public RateLimitFilter(int maxCalls, double timeWindow) {
         this(maxCalls, timeWindow, "RateLimit");
     }
 
+    /**
+     * RateLimitFilter.
+     * 
+     * @param maxCalls maxCalls
+     * @param timeWindow timeWindow
+     * @param name name
+     * @since 0.1.7
+     */
     public RateLimitFilter(int maxCalls, double timeWindow, String name) {
         super(name);
         this.maxCalls = maxCalls;
         this.timeWindow = timeWindow;
     }
 
-    public synchronized FilterResult filter(
-            String event,
-            CallbackInfo callback,
-            Object[] args,
-            Map<String, Object> kwargs
-    ) {
-        return filterByName(event, callback == null ? "<null-callback>" : callback.getCallbackDisplayName());
-    }
-
+    /**
+     * filter.
+     * 
+     * @param event event
+     * @param callback callback
+     * @param args args
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public synchronized FilterResult filter(
-            String event,
-            Function<Map<String, Object>, Object> callback,
-            Object[] args,
-            Map<String, Object> kwargs
-    ) {
-        return filterByName(event, callbackName(callback));
-    }
-
-    private FilterResult filterByName(String event, String callbackDisplayName) {
+    public synchronized FilterResult filter(String event, CallbackInfo callback, Object[] args,
+            Map<String, Object> kwargs) {
         double currentTime = System.currentTimeMillis() / 1000.0;
-        String key = event + ":" + callbackDisplayName;
-        Deque<Double> times = callTimes.computeIfAbsent(key, unused -> new ArrayDeque<>());
+        String key = event + ":" + callback.getCallbackDisplayName();
 
+        Deque<Double> times = callTimes.computeIfAbsent(key, k -> new ArrayDeque<>());
+
+        // Remove expired timestamps
         while (!times.isEmpty() && currentTime - times.peekFirst() > timeWindow) {
-            times.removeFirst();
+            times.pollFirst();
         }
 
+        // Check rate limit
         if (times.size() >= maxCalls) {
-            return FilterResult.skipResult(
-                    "Rate limit exceeded: " + maxCalls + " calls per " + timeWindow + "s"
-            );
+            return FilterResult.skipResult("Rate limit exceeded: " + maxCalls + " calls per " + timeWindow + "s");
         }
 
+        // Record this call
         times.addLast(currentTime);
+
         return FilterResult.continueResult();
     }
 }

@@ -4,21 +4,17 @@
 
 package com.openjiuwen.core.controller.schema;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
-
 /**
  * Intent type enumeration.
  * <p>
  * Defines all intent types that users may express, used by the controller
  * to identify user requests and route them to appropriate processing logic.
  * <p>
- * Mirrors Python's {@code IntentType} in
- * {@code openjiuwen/core/controller/schema/intent.py}.
+ * Mirrors Python's {@code IntentType(Enum)}.
+ * 
+ * @since 0.1.7
  */
 public enum IntentType {
-
-    /** Execute new task / interrupt executing tasks and execute new task */
     CREATE_TASK("create_task"),
 
     /** Pause executing task */
@@ -51,16 +47,24 @@ public enum IntentType {
         this.value = value;
     }
 
-    @JsonValue
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
-    @JsonCreator
+    /**
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static IntentType fromValue(String value) {
-        if (value == null) {
-            return null;
-        }
         for (IntentType type : values()) {
             if (type.value.equals(value)) {
                 return type;
@@ -69,6 +73,12 @@ public enum IntentType {
         throw new IllegalArgumentException("Unknown IntentType: " + value);
     }
 
+    /**
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String toString() {
         return value;

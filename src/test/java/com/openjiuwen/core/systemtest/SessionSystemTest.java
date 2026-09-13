@@ -7,7 +7,7 @@ package com.openjiuwen.core.systemtest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-import com.openjiuwen.core.session.WorkflowSession;
+import com.openjiuwen.core.session.WorkflowSessionApi;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -24,10 +24,10 @@ import java.util.UUID;
 @Tag("system-test")
 class SessionSystemTest {
     @Test
-    @DisplayName("WorkflowSession creation with session ID")
+    @DisplayName("WorkflowSessionApi creation with session ID")
     void testWorkflowSessionCreation() {
         String sessionId = UUID.randomUUID().toString();
-        WorkflowSession session = new WorkflowSession(null, sessionId, Map.of());
+        WorkflowSessionApi session = new WorkflowSessionApi(null, sessionId, Map.of());
 
         assertNotNull(session);
         assertEquals(sessionId, session.getSessionId());
@@ -36,26 +36,26 @@ class SessionSystemTest {
     }
 
     @Test
-    @DisplayName("WorkflowSession auto-generated session ID")
+    @DisplayName("WorkflowSessionApi auto-generated session ID")
     void testWorkflowSessionAutoId() {
-        WorkflowSession session = new WorkflowSession(null, null, null);
+        WorkflowSessionApi session = new WorkflowSessionApi(null, null, null);
         assertNotNull(session.getSessionId(), "Session ID should be auto-generated");
         System.out.println("[Session AutoId] SessionId: " + session.getSessionId());
     }
 
     @Test
-    @DisplayName("WorkflowSession with string-only constructor")
+    @DisplayName("WorkflowSessionApi with string-only constructor")
     void testWorkflowSessionStringConstructor() {
         String sessionId = "test-session-123";
-        WorkflowSession session = new WorkflowSession(sessionId);
+        WorkflowSessionApi session = new WorkflowSessionApi(sessionId);
         assertEquals(sessionId, session.getSessionId());
     }
 
     @Test
     @DisplayName("Multiple sessions have independent IDs")
     void testMultipleSessions() {
-        WorkflowSession s1 = new WorkflowSession(null, null, null);
-        WorkflowSession s2 = new WorkflowSession(null, null, null);
+        WorkflowSessionApi s1 = new WorkflowSessionApi(null, null, null);
+        WorkflowSessionApi s2 = new WorkflowSessionApi(null, null, null);
 
         assertNotNull(s1.getSessionId());
         assertNotNull(s2.getSessionId());
@@ -67,10 +67,10 @@ class SessionSystemTest {
     }
 
     @Test
-    @DisplayName("WorkflowSession with environment variables")
+    @DisplayName("WorkflowSessionApi with environment variables")
     void testWorkflowSessionWithEnvs() {
         Map<String, Object> envs = Map.of("DEBUG", "true", "MAX_RETRIES", 3);
-        WorkflowSession session = new WorkflowSession(null, "env-session", envs);
+        WorkflowSessionApi session = new WorkflowSessionApi(null, "env-session", envs);
 
         assertEquals("env-session", session.getSessionId());
         assertNotNull(session.getEnvs());

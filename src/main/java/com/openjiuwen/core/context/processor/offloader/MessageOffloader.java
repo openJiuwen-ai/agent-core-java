@@ -7,429 +7,458 @@ package com.openjiuwen.core.context.processor.offloader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.ContextUtils;
-import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
-import com.openjiuwen.core.context.schema.OffloadMessage;
-import com.openjiuwen.core.context.schema.OffloadMessages;
+import com.openjiuwen.core.context.schema.OffloadMixin;
+import com.openjiuwen.core.context.token.TokenCounter;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.nio.file.Path;
+import java.nio.file.FileSystems;
+import java.nio.file.InvalidPathException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.regex.Pattern;
 
 /**
- * Trims and offloads large context messages when configured count or token thresholds are exceeded.
- *
- * <p>Mirrors Python's {@code MessageOffloader} in
- * {@code openjiuwen/core/context_engine/processor/offloader/message_offloader.py}.</p>
+ * Offloads large messages by trimming their content and storing the originals
+ * in the offload buffer.
+ * <p>
+ * Mirrors Python's {@code MessageOffloader} from
+ * {@code processor/offloader/message_offloader.py}.
+ * 
+ * @since 0.1.7
  */
 public class MessageOffloader extends ContextProcessor {
-    public static final String OMIT_STRING = "...";
+    private static final String OMIT_STRING = "...";
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(MessageOffloader.class);
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    static {
-        ContextEngine.registerProcessor("MessageOffloader", MessageOffloader.class);
-    }
-
-    private final MessageOffloaderConfig config;
-
-    public MessageOffloader(Object config) {
-        this(asConfig(config));
-    }
-
+    /**
+     * MessageOffloader.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     public MessageOffloader(MessageOffloaderConfig config) {
-        this(config == null ? new MessageOffloaderConfig() : config, true);
-    }
-
-    private MessageOffloader(MessageOffloaderConfig config, boolean ignored) {
         super(config);
-        this.config = config;
         validateConfig();
     }
 
-    public MessageOffloaderConfig getConfig() {
-        return config;
-    }
-
+    /**
+     * triggerAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
-                                                                            List<BaseMessage> messagesToAdd,
-                                                                            boolean force,
-                                                                            Map<String, Object> kwargs) {
-        List<BaseMessage> contextMessages = new ArrayList<>(context.getMessages());
-        int contextSize = contextMessages.size();
-        List<BaseMessage> incoming = messagesToAdd == null ? List.of() : new ArrayList<>(messagesToAdd);
-        contextMessages.addAll(incoming);
-
-        OffloadResult offloadResult = offloadLargeMessages(contextMessages, context, kwargs);
-        List<BaseMessage> processedMessages = offloadResult.messages();
-        int splitIndex = Math.min(contextSize, processedMessages.size());
-        List<BaseMessage> processedContextMessages = new ArrayList<>(processedMessages.subList(0, splitIndex));
-        List<BaseMessage> processedMessagesToAdd = new ArrayList<>(
-                processedMessages.subList(splitIndex, processedMessages.size()));
-        context.setMessages(processedContextMessages, true);
-        return CompletableFuture.completedFuture(
-                new SessionModelContext.ProcessResult(offloadResult.event(), processedMessagesToAdd, null));
-    }
-
-    @Override
-    public CompletionStage<Boolean> triggerAddMessages(SessionModelContext context, List<BaseMessage> messagesToAdd,
-                                                       Map<String, Object> kwargs) {
-        List<BaseMessage> allMessages = new ArrayList<>(context == null ? List.of() : context.getMessages());
-        allMessages.addAll(messagesToAdd == null ? List.of() : messagesToAdd);
+    public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
+        MessageOffloaderConfig config = getConfig();
+        List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
+        allMessages.addAll(messagesToAdd);
         int messageSize = allMessages.size();
+
+        // Skip if total length is below the keep-floor
         if (config.getMessagesToKeep() != null && messageSize <= config.getMessagesToKeep()) {
-            return CompletableFuture.completedFuture(false);
+            return false;
         }
 
-        Integer messagesThreshold = config.getMessagesThreshold();
-        if (messagesThreshold != null && messageSize > messagesThreshold) {
+        // Trigger when message count exceeds hard ceiling
+        if (config.getMessagesThreshold() != null && messageSize > config.getMessagesThreshold()) {
             if (!hasOffloadCandidate(allMessages, context)) {
-                return CompletableFuture.completedFuture(false);
+                return false;
             }
-            LOGGER.info("[{} triggered] context messages num {} exceeds threshold of {}",
-                    processorType(), messageSize, messagesThreshold);
-            return CompletableFuture.completedFuture(true);
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context messages num " + messageSize
+                    + " exceeds threshold of " + config.getMessagesThreshold());
+            return true;
         }
 
+        // Fall back to token budget
+        TokenCounter tokenCounter = context.tokenCounter();
         int tokens = 0;
-        if (context != null && context.tokenCounter() != null) {
-            tokens += context.tokenCounter().countTokens(context.getMessages());
-            tokens += context.tokenCounter().countTokens(messagesToAdd == null ? List.of() : messagesToAdd);
+        if (tokenCounter != null) {
+            int contextToken = tokenCounter.countMessages(context.getMessages());
+            int addToken = tokenCounter.countMessages(messagesToAdd);
+            tokens = contextToken + addToken;
         }
         if (tokens > config.getTokensThreshold()) {
             if (!hasOffloadCandidate(allMessages, context)) {
-                return CompletableFuture.completedFuture(false);
+                return false;
             }
-            LOGGER.info("[{} triggered] context tokens {} exceeds threshold of {}",
-                    processorType(), tokens, config.getTokensThreshold());
-            return CompletableFuture.completedFuture(true);
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context tokens " + tokens
+                    + " exceeds threshold of " + config.getTokensThreshold());
+            return true;
         }
-        return CompletableFuture.completedFuture(false);
+        return false;
     }
 
+    /**
+     * onAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
+        List<BaseMessage> contextMessages = new ArrayList<>(context.getMessages());
+        contextMessages.addAll(messagesToAdd);
+        int contextSize = context.size();
+
+        OffloadResult result = offloadLargeMessages(contextMessages, context);
+        List<BaseMessage> processedMessages = result.messages;
+
+        List<BaseMessage> newContextMessages = new ArrayList<>(processedMessages.subList(0, contextSize));
+        List<BaseMessage> newMessagesToAdd =
+            new ArrayList<>(processedMessages.subList(contextSize, processedMessages.size()));
+
+        context.setMessages(newContextMessages);
+        return ProcessResult.ofMessages(result.event, newMessagesToAdd);
+    }
+
+    /**
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
+     */
     @Override
     public void loadState(Map<String, Object> state) {
-        // Python implementation is stateless.
+        // stateless
     }
 
+    /**
+     * saveState.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Object> saveState() {
-        return new LinkedHashMap<>();
+        return new HashMap<>();
     }
 
-    OffloadResult offloadLargeMessages(List<BaseMessage> messages, SessionModelContext context,
-                                       Map<String, Object> kwargs) {
-        List<BaseMessage> processedMessages = new ArrayList<>(messages == null ? List.of() : messages);
-        int offloadRange = getOffloadRange(processedMessages);
-        List<Integer> modifiedIndices = new ArrayList<>();
+    // ==================== Protected for subclass override ====================
 
-        for (int index = offloadRange - 1; index >= 0; index--) {
-            BaseMessage message = processedMessages.get(index);
-            if (!shouldOffloadMessage(message, processedMessages, context)) {
+    /**
+     * Offload a single message. Can be overridden by subclasses (e.g., MessageSummaryOffloader).
+     * 
+     * @param message message
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
+    protected BaseMessage offloadMessage(BaseMessage message, ModelContext context) {
+        MessageOffloaderConfig config = getConfig();
+        String content = message.getContentAsString();
+        String trimmedContent = content.substring(0, Math.min(content.length(), config.getTrimSize())) + OMIT_STRING;
+        OffloadTarget offloadTarget = newOffloadTarget(context);
+        Map<String, Object> extraFields = extractExtraFields(message);
+        return offloadMessages(message.getRole(), trimmedContent, List.of(message), context, offloadTarget.handle(),
+                offloadTarget.path() != null ? "filesystem" : "in_memory", offloadTarget.path(), extraFields);
+    }
+
+    /**
+     * Extract extra fields from a message for preservation during offload.
+     * Mirrors Python's {@code message.model_dump()} with role/content removed.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
+     */
+    protected static Map<String, Object> extractExtraFields(BaseMessage message) {
+        Map<String, Object> extraFields = new HashMap<>();
+        if (message.getName() != null) {
+            extraFields.put("name", message.getName());
+        }
+        if (message instanceof ToolMessage toolMsg && toolMsg.getToolCallId() != null) {
+            extraFields.put("tool_call_id", toolMsg.getToolCallId());
+        }
+        if (message instanceof AssistantMessage assistantMsg) {
+            if (assistantMsg.getToolCalls() != null) {
+                extraFields.put("tool_calls", assistantMsg.getToolCalls());
+            }
+            if (assistantMsg.getUsageMetadata() != null) {
+                extraFields.put("usage_metadata", assistantMsg.getUsageMetadata());
+            }
+            if (assistantMsg.getFinishReason() != null) {
+                extraFields.put("finish_reason", assistantMsg.getFinishReason());
+            }
+            if (assistantMsg.getParserContent() != null) {
+                extraFields.put("parser_content", assistantMsg.getParserContent());
+            }
+            if (assistantMsg.getReasoningContent() != null) {
+                extraFields.put("reasoning_content", assistantMsg.getReasoningContent());
+            }
+        }
+        return extraFields;
+    }
+
+    /**
+     * validateConfig.
+     * 
+     * @since 0.1.7
+     */
+    protected void validateConfig() {
+        MessageOffloaderConfig config = getConfig();
+        config.validate();
+        if (config.getTrimSize() >= config.getLargeMessageThreshold()) {
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR, "error_msg",
+                    "trim_size " + config.getTrimSize() + " cannot larger than large_message_threshold "
+                            + config.getLargeMessageThreshold());
+        }
+        if (config.getMessagesToKeep() != null && config.getMessagesThreshold() != null
+                && config.getMessagesToKeep() >= config.getMessagesThreshold()) {
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR, "error_msg",
+                    "messages_to_keep " + config.getMessagesToKeep() + " cannot larger than messages_threshold "
+                            + config.getMessagesThreshold());
+        }
+    }
+
+    // ==================== Private Helpers ====================
+
+    /**
+     * OffloadResult.
+     * 
+     * @param event event
+     * @param messages messages
+     * @since 0.1.7
+     */
+    private record OffloadResult(ContextEvent event, List<BaseMessage> messages) {
+    }
+
+    /**
+     * OffloadTarget.
+     * 
+     * @since 0.1.7
+     */
+    protected record OffloadTarget(String handle, String path) {
+    }
+
+    /**
+     * offloadLargeMessages.
+     * 
+     * @param messages messages
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
+    private OffloadResult offloadLargeMessages(List<BaseMessage> messages, ModelContext context) {
+        List<BaseMessage> processedMessages = new ArrayList<>(messages);
+        int offloadRange = getOffloadRange(messages);
+
+        ContextEvent event = ContextEvent.builder().eventType(processorType()).build();
+
+        for (int idx = offloadRange - 1; idx >= 0; idx--) {
+            BaseMessage msg = processedMessages.get(idx);
+            if (!shouldOffloadMessage(msg, processedMessages, context)) {
                 continue;
             }
-            BaseMessage offloadMessage = offloadMessage(message, context, kwargs).toCompletableFuture().join();
-            processedMessages = ContextUtils.replaceMessages(processedMessages, List.of(offloadMessage), index, index);
-            modifiedIndices.add(index);
+
+            BaseMessage offloadMsg = offloadMessage(msg, context);
+            if (offloadMsg != null) {
+                processedMessages = ContextUtils.replaceMessages(processedMessages, List.of(offloadMsg), idx, idx);
+                event.getMessagesToModify().add(idx);
+            }
         }
 
-        return new OffloadResult(
-                new ContextEvent(processorType(), modifiedIndices, "", null),
-                processedMessages);
+        return new OffloadResult(event, processedMessages);
     }
 
-    CompletionStage<BaseMessage> offloadMessage(BaseMessage message, SessionModelContext context,
-                                                Map<String, Object> kwargs) {
-        String content = (String) message.getContent();
-        String trimmedContent = content.substring(0, Math.min(config.getTrimSize(), content.length())) + OMIT_STRING;
-        Map<String, Object> extraFields = new LinkedHashMap<>(message.modelDump());
-        extraFields.remove("role");
-        extraFields.remove("content");
-        extraFields.remove("offload_type");
-        extraFields.remove("offload_handle");
-        if (kwargs != null) {
-            extraFields.putAll(kwargs);
-        }
-        OffloadTarget target = newOffloadHandleAndPath(context);
-        return offloadMessages(
-                message.getRole(),
-                trimmedContent,
-                List.of(message),
-                context,
-                target.offloadHandle(),
-                "filesystem",
-                target.offloadPath(),
-                extraFields
-        ).thenApply(rawMessage -> wrapOffloadMessage(message, rawMessage, target.offloadHandle(), extraFields));
-    }
-
-    OffloadTarget newOffloadHandleAndPath(SessionModelContext context) {
-        String offloadHandle = UUID.randomUUID().toString().replace("-", "");
-        String sessionId = context == null ? "" : context.sessionId();
-        String workspaceDir = context == null ? "" : context.workspaceDir();
-        String fileName = processorType() + "_" + offloadHandle + ".json";
-        if (workspaceDir != null && !workspaceDir.isBlank()) {
-            return new OffloadTarget(offloadHandle,
-                    Path.of(workspaceDir, "context", sessionId + "_context", "offload", fileName).toString());
-        }
-        return new OffloadTarget(offloadHandle, null);
-    }
-
-    int getOffloadRange(List<BaseMessage> messages) {
-        List<BaseMessage> safeMessages = messages == null ? List.of() : messages;
-        Optional<Integer> lastAiMessageIndex = Optional.empty();
+    /**
+     * getOffloadRange.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
+     */
+    protected int getOffloadRange(List<BaseMessage> messages) {
+        MessageOffloaderConfig config = getConfig();
+        Integer lastAiMsgIndex = null;
         if (config.isKeepLastRound()) {
-            lastAiMessageIndex = ContextUtils.findLastAiMessageWithoutToolCall(safeMessages);
+            lastAiMsgIndex = ContextUtils.findLastAiMessageWithoutToolCall(messages).orElse(null);
         }
-        int keepIndex = config.getMessagesToKeep() == null
-                ? safeMessages.size()
-                : safeMessages.size() - config.getMessagesToKeep();
-        return lastAiMessageIndex.map(index -> Math.min(index, keepIndex)).orElse(keepIndex);
+        int keepIndex =
+            config.getMessagesToKeep() == null ? messages.size() : messages.size() - config.getMessagesToKeep();
+        return lastAiMsgIndex == null ? keepIndex : Math.min(lastAiMsgIndex, keepIndex);
     }
 
-    boolean hasOffloadCandidate(List<BaseMessage> messages, SessionModelContext context) {
+    /**
+     * hasOffloadCandidate.
+     * 
+     * @param messages messages
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
+    protected boolean hasOffloadCandidate(List<BaseMessage> messages, ModelContext context) {
         int offloadRange = getOffloadRange(messages);
-        for (int index = offloadRange - 1; index >= 0; index--) {
-            if (shouldOffloadMessage(messages.get(index), messages, context)) {
+        for (int idx = offloadRange - 1; idx >= 0; idx--) {
+            if (shouldOffloadMessage(messages.get(idx), messages, context)) {
                 return true;
             }
         }
         return false;
     }
 
-    boolean shouldOffloadMessage(BaseMessage message, List<BaseMessage> contextMessages, SessionModelContext context) {
-        if (message == null || !config.getOffloadMessageType().contains(message.getRole())) {
+    /**
+     * shouldOffloadMessage.
+     * 
+     * @param message message
+     * @param contextMessages contextMessages
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
+    protected boolean shouldOffloadMessage(BaseMessage message, List<BaseMessage> contextMessages,
+            ModelContext context) {
+        MessageOffloaderConfig config = getConfig();
+        if (!config.getOffloadMessageType().contains(message.getRole())) {
             return false;
         }
-        if (!(message.getContent() instanceof String content)) {
+        String content = message.getContentAsString();
+        if (content == null || content.length() <= config.getLargeMessageThreshold()) {
             return false;
         }
-        if (content.length() <= config.getLargeMessageThreshold()) {
-            return false;
-        }
-        if (message instanceof OffloadMessage) {
+        if (message instanceof OffloadMixin) {
             return false;
         }
         return !isProtectedToolMessage(message, contextMessages);
     }
 
-    boolean isProtectedToolMessage(BaseMessage message, List<BaseMessage> contextMessages) {
+    /**
+     * isProtectedToolMessage.
+     * 
+     * @param message message
+     * @param contextMessages contextMessages
+     * @return the result
+     * @since 0.1.7
+     */
+    protected boolean isProtectedToolMessage(BaseMessage message, List<BaseMessage> contextMessages) {
         if (!(message instanceof ToolMessage)) {
             return false;
         }
-        Optional<Object> toolCall = resolveToolCallFromMessage(message, contextMessages);
-        if (toolCall.isEmpty()) {
+        MessageOffloaderConfig config = getConfig();
+        List<String> protectedToolNames = config.getProtectedToolNames();
+        if (protectedToolNames == null || protectedToolNames.isEmpty()) {
             return false;
         }
-        String toolName = ContextUtils.extractToolName(toolCall.get()).orElse(null);
-        Map<String, Object> toolArgs = extractToolArgs(toolCall.get());
-        for (String protectedName : config.getProtectedToolNames()) {
-            if (protectedName == null) {
+        ToolCall toolCall = ContextUtils.resolveToolCallFromMessage(message, contextMessages);
+        if (toolCall == null) {
+            return false;
+        }
+        String toolName = ContextUtils.extractToolName(toolCall);
+        Map<String, Object> toolArgs = extractToolArgs(toolCall);
+        for (String protectedTool : protectedToolNames) {
+            if (protectedTool == null || protectedTool.isBlank()) {
                 continue;
             }
-            int separator = protectedName.indexOf(':');
-            if (separator >= 0) {
-                String protectedTool = protectedName.substring(0, separator);
-                String protectedPattern = protectedName.substring(separator + 1);
-                if (protectedTool.equals(toolName) && matchPattern(toolArgs, protectedPattern)) {
+            int separatorIndex = protectedTool.indexOf(':');
+            if (separatorIndex >= 0) {
+                String protectedName = protectedTool.substring(0, separatorIndex);
+                String protectedPattern = protectedTool.substring(separatorIndex + 1);
+                if (protectedName.equals(toolName) && matchPattern(toolArgs, protectedPattern)) {
                     return true;
                 }
-            } else if (protectedName.equals(toolName)) {
+                continue;
+            }
+            if (protectedTool.equals(toolName)) {
                 return true;
             }
         }
         return false;
     }
 
-    Optional<Object> resolveToolCallFromMessage(BaseMessage message, List<BaseMessage> contextMessages) {
-        return ContextUtils.resolveToolCallFromMessage(message, contextMessages == null ? List.of() : contextMessages);
+    /**
+     * newOffloadTarget.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
+    protected OffloadTarget newOffloadTarget(ModelContext context) {
+        String offloadHandle = UUID.randomUUID().toString().replace("-", "");
+        String workspaceDir = context.workspaceDir();
+        if (workspaceDir == null || workspaceDir.isBlank()) {
+            return new OffloadTarget(offloadHandle, null);
+        }
+        String fileName = processorType() + "_" + offloadHandle + ".json";
+        String offloadPath = java.nio.file.Path
+                .of(workspaceDir, "context", context.sessionId() + "_context", "offload", fileName).toString();
+        return new OffloadTarget(offloadHandle, offloadPath);
     }
 
-    Optional<String> resolveToolNameFromMessage(BaseMessage message, List<BaseMessage> contextMessages) {
-        return ContextUtils.resolveToolNameFromMessage(message, contextMessages == null ? List.of() : contextMessages);
+    /**
+     * extractToolArgs.
+     * 
+     * @param toolCall toolCall
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Map<String, Object> extractToolArgs(ToolCall toolCall) {
+        if (toolCall == null || toolCall.getArguments() == null || toolCall.getArguments().isBlank()) {
+            return Collections.emptyMap();
+        }
+        try {
+            return MAPPER.readValue(toolCall.getArguments(), new TypeReference<>() {
+            });
+        } catch (JsonProcessingException ignored) {
+            return Collections.emptyMap();
+        }
     }
 
-    static Map<String, Object> extractToolArgs(Object toolCall) {
-        if (toolCall instanceof ToolCall call) {
-            return parseArgs(call.getArguments());
-        }
-        if (toolCall instanceof Map<?, ?> rawMap) {
-            Map<String, Object> map = toStringObjectMap(rawMap);
-            Object function = map.get("function");
-            if (function instanceof Map<?, ?> functionMap) {
-                Map<String, Object> normalizedFunction = toStringObjectMap(functionMap);
-                Object args = normalizedFunction.get("arguments");
-                Map<String, Object> parsedArgs = parseArgs(args);
-                if (!parsedArgs.isEmpty()) {
-                    return parsedArgs;
-                }
-            }
-            Map<String, Object> parsedArgs = parseArgs(map.get("arguments"));
-            if (!parsedArgs.isEmpty()) {
-                return parsedArgs;
-            }
-        }
-
-        Optional<Object> function = readProperty(toolCall, "function");
-        Optional<Object> args = function.flatMap(value -> readProperty(value, "arguments"));
-        if (args.isEmpty()) {
-            args = readProperty(toolCall, "arguments");
-        }
-        return args.map(MessageOffloader::parseArgs).orElseGet(LinkedHashMap::new);
-    }
-
-    static boolean matchPattern(Map<String, Object> args, String pattern) {
-        if (args == null || pattern == null) {
+    /**
+     * matchPattern.
+     * 
+     * @param args args
+     * @param pattern pattern
+     * @return the result
+     * @since 0.1.7
+     */
+    private static boolean matchPattern(Map<String, Object> args, String pattern) {
+        if (args == null || args.isEmpty() || pattern == null || pattern.isBlank()) {
             return false;
         }
         for (Object value : args.values()) {
-            if (value instanceof String text && wildcardMatches(text, pattern)) {
+            if (value instanceof String stringValue && globMatches(stringValue, pattern)) {
                 return true;
             }
         }
         return false;
     }
 
-    private void validateConfig() {
-        if (config.getTrimSize() >= config.getLargeMessageThreshold()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.CONTEXT_EXECUTION_ERROR,
-                    "error_msg",
-                    "trim_size " + config.getTrimSize() + " cannot larger than large_message_threshold "
-                            + config.getLargeMessageThreshold());
-        }
-        if (config.getMessagesToKeep() != null
-                && config.getMessagesThreshold() != null
-                && config.getMessagesToKeep() >= config.getMessagesThreshold()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.CONTEXT_EXECUTION_ERROR,
-                    "error_msg",
-                    "messages_to_keep " + config.getMessagesToKeep()
-                            + " cannot larger than messages_threshold " + config.getMessagesThreshold());
-        }
-    }
-
-    private BaseMessage wrapOffloadMessage(BaseMessage source, BaseMessage rawMessage, String fallbackHandle,
-                                           Map<String, Object> kwargs) {
-        Map<String, Object> metadata = rawMessage == null || rawMessage.getMetadata() == null
-                ? Map.of()
-                : rawMessage.getMetadata();
-        String offloadHandle = stringValue(metadata.get("offload_handle"), fallbackHandle);
-        String offloadType = stringValue(metadata.get("offload_type"), "in_memory");
-        Map<String, Object> safeKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
-        if ("tool".equals(source.getRole()) && source instanceof ToolMessage toolMessage) {
-            safeKwargs.putIfAbsent("tool_call_id", toolMessage.getToolCallId());
-        }
-        return OffloadMessages.createOffloadMessage(
-                source.getRole(),
-                rawMessage == null ? "" : rawMessage.getContentAsString(),
-                offloadHandle,
-                offloadType,
-                safeKwargs);
-    }
-
-    private static Map<String, Object> parseArgs(Object args) {
-        if (args instanceof Map<?, ?> argsMap) {
-            return toStringObjectMap(argsMap);
-        }
-        if (args instanceof String argsText && !argsText.isBlank()) {
-            try {
-                return JSON_MAPPER.readValue(argsText, new TypeReference<LinkedHashMap<String, Object>>() {
-                });
-            } catch (JsonProcessingException ignored) {
-                return new LinkedHashMap<>();
-            }
-        }
-        return new LinkedHashMap<>();
-    }
-
-    private static Map<String, Object> toStringObjectMap(Map<?, ?> map) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        map.forEach((key, value) -> result.put(String.valueOf(key), value));
-        return result;
-    }
-
-    private static Optional<Object> readProperty(Object target, String name) {
-        if (target == null || name == null || name.isBlank()) {
-            return Optional.empty();
-        }
-        String getter = "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1);
+    /**
+     * globMatches.
+     * 
+     * @param value value
+     * @param pattern pattern
+     * @return the result
+     * @since 0.1.7
+     */
+    private static boolean globMatches(String value, String pattern) {
         try {
-            Method method = target.getClass().getMethod(getter);
-            return Optional.ofNullable(method.invoke(target));
-        } catch (ReflectiveOperationException ignored) {
-        }
-        try {
-            Field field = target.getClass().getField(name);
-            return Optional.ofNullable(field.get(target));
-        } catch (ReflectiveOperationException ignored) {
-            return Optional.empty();
-        }
-    }
-
-    private static boolean wildcardMatches(String text, String pattern) {
-        return Pattern.matches(toWildcardRegex(pattern), text);
-    }
-
-    private static String toWildcardRegex(String pattern) {
-        StringBuilder regex = new StringBuilder("^");
-        for (int index = 0; index < pattern.length(); index++) {
-            char ch = pattern.charAt(index);
-            if (ch == '*') {
-                regex.append(".*");
-            } else if (ch == '?') {
-                regex.append('.');
-            } else if ("\\.[]{}()+-^$|".indexOf(ch) >= 0) {
-                regex.append('\\').append(ch);
-            } else {
-                regex.append(ch);
-            }
-        }
-        regex.append('$');
-        return regex.toString();
-    }
-
-    private static String stringValue(Object value, String fallback) {
-        return value == null ? fallback : String.valueOf(value);
-    }
-
-    private static MessageOffloaderConfig asConfig(Object config) {
-        if (config == null) {
-            return new MessageOffloaderConfig();
-        }
-        if (config instanceof MessageOffloaderConfig messageOffloaderConfig) {
-            return messageOffloaderConfig;
-        }
-        throw new IllegalArgumentException("MessageOffloader requires MessageOffloaderConfig");
-    }
-
-    record OffloadTarget(String offloadHandle, String offloadPath) {
-    }
-
-    record OffloadResult(ContextEvent event, List<BaseMessage> messages) {
-        OffloadResult {
-            messages = messages == null ? List.of() : new ArrayList<>(messages);
+            return FileSystems.getDefault().getPathMatcher("glob:" + pattern).matches(java.nio.file.Path.of(value));
+        } catch (InvalidPathException ignored) {
+            return false;
         }
     }
 }

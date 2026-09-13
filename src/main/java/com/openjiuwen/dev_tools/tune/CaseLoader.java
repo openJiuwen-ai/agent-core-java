@@ -7,17 +7,26 @@ package com.openjiuwen.dev_tools.tune;
 import java.util.List;
 
 /**
- * Legacy package alias for {@link com.openjiuwen.dev_tools.tune.dataset.CaseLoader}.
- *
- * <p>Mirrors Python's {@code CaseLoader} in
- * {@code openjiuwen/dev_tools/tune/dataset/case_loader.py}.</p>
+ * Legacy alias for {@code com.openjiuwen.dev_tools.tune.dataset.CaseLoader}.
+ * 
+ * @since 0.1.7
  */
 public class CaseLoader extends com.openjiuwen.dev_tools.tune.dataset.CaseLoader {
-
+    /**
+     * CaseLoader.
+     * 
+     * @since 0.1.7
+     */
     public CaseLoader() {
-        super(List.of());
+        super();
     }
 
+    /**
+     * CaseLoader.
+     * 
+     * @param cases cases
+     * @since 0.1.7
+     */
     public CaseLoader(List<Case> cases) {
         super(cases);
     }

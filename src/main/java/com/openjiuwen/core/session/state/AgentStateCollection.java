@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.session.state;
@@ -10,22 +10,33 @@ import java.util.Map;
 /**
  * Agent state collection managing global and agent state partitions.
  * <p>
- * Mirrors Python's {@code StateCollection} in
- * {@code openjiuwen/core/session/state/agent_state.py}.
- * </p>
+ * Mirrors Python's {@code openjiuwen.core.session.state.agent_state.StateCollection}.
+ * 
+ * @since 0.1.7
  */
 public class AgentStateCollection implements State {
-
     private final InMemoryStateLike globalState;
     private final InMemoryStateLike agentState;
-    private final Map<String, Object> traceState;
+    private Map<String, Object> traceState;
 
+    /**
+     * AgentStateCollection.
+     * 
+     * @since 0.1.7
+     */
     public AgentStateCollection() {
         this.globalState = new InMemoryStateLike();
         this.agentState = new InMemoryStateLike();
         this.traceState = new HashMap<>();
     }
 
+    /**
+     * get.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object get(Object key) {
         if (key == null) {
@@ -34,21 +45,46 @@ public class AgentStateCollection implements State {
         return agentState.get(key);
     }
 
+    /**
+     * update.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
     public void update(Map<String, Object> data) {
         agentState.update(data);
     }
 
+    /**
+     * updateTrace.
+     * 
+     * @param span span
+     * @since 0.1.7
+     */
     @Override
     public void updateTrace(Object span) {
-        // Python implementation is a no-op.
+        // Placeholder for trace updates
     }
 
+    /**
+     * updateGlobal.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
     public void updateGlobal(Map<String, Object> data) {
         globalState.update(data);
     }
 
+    /**
+     * getGlobal.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object getGlobal(Object key) {
         if (key == null) {
@@ -57,6 +93,12 @@ public class AgentStateCollection implements State {
         return globalState.get(key);
     }
 
+    /**
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Object> getState() {
         Map<String, Object> result = new HashMap<>();
@@ -65,21 +107,47 @@ public class AgentStateCollection implements State {
         return result;
     }
 
+    /**
+     * setState.
+     * 
+     * @param state state
+     * @since 0.1.7
+     */
     @Override
     public void setState(Map<String, Object> state) {
         if (state == null) {
             return;
         }
-        Object global = state.get(State.GLOBAL_STATE_KEY);
-        if (global instanceof Map<?, ?> globalMap) {
-            globalState.setState(castMap(globalMap));
+        Object gs = state.get(State.GLOBAL_STATE_KEY);
+        if (gs instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> gsMap = (Map<String, Object>) gs;
+            globalState.setState(gsMap);
         }
-        Object agent = state.get(State.AGENT_STATE_KEY);
-        if (agent instanceof Map<?, ?> agentMap) {
-            agentState.setState(castMap(agentMap));
+        Object as = state.get(State.AGENT_STATE_KEY);
+        if (as instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> asMap = (Map<String, Object>) as;
+            agentState.setState(asMap);
         }
     }
 
+    /**
+     * Get the internal global state object.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public InMemoryStateLike getGlobalStateLike() {
+        return globalState;
+    }
+
+    /**
+     * dump.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Object> dump() {
         Map<String, Object> result = new HashMap<>();
@@ -87,14 +155,5 @@ public class AgentStateCollection implements State {
         result.put("agent_state", agentState.getState());
         result.put("trace_state", traceState);
         return result;
-    }
-
-    public InMemoryStateLike getGlobalStateLike() {
-        return globalState;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> castMap(Object value) {
-        return (Map<String, Object>) value;
     }
 }

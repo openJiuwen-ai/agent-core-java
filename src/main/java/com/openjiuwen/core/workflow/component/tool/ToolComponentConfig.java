@@ -12,8 +12,9 @@ import lombok.EqualsAndHashCode;
 /**
  * Configuration for the Tool workflow component.
  * <p>
- * Mirrors Python's {@code ToolComponentConfig} in
- * {@code openjiuwen/core/workflow/components/tool/tool_comp.py}.
+ * Mirrors Python's {@code ToolComponentConfig}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

@@ -10,10 +10,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Bundle of root CLI options.
- *
- * <p>Mirrors Python's {@code CLIOptions} in
- * {@code openjiuwen/harness/cli/cli.py}.</p>
+ * Public class CLIOptions used by the Java parity implementation.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -26,15 +25,7 @@ public class CLIOptions {
     private String apiBase;
     private String remote;
     @Builder.Default
-    private boolean verbose = false;
+    private boolean isVerbose = false;
     private String workspace;
     private String tenantId;
-
-    public boolean isVerbose() {
-        return verbose;
-    }
-
-    public void setVerbose(boolean verbose) {
-        this.verbose = verbose;
-    }
 }

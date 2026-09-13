@@ -13,32 +13,38 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 
 /**
- * Mirrors Python's {@code SimpleTripleExtractor} compatibility surface in
- * {@code openjiuwen/core/retrieval/indexing/processor/extractor/triple_extractor.py}.
+ * Lightweight local triple extractor based on sentence tokenization.
+ * 
+ * @since 0.1.7
  */
 public class SimpleTripleExtractor extends Extractor {
-
     private static final Pattern SENTENCE_SPLIT = Pattern.compile("(?<=[.!?。！？])\\s+");
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * extract.
+     * 
+     * @param chunks chunks
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public CompletableFuture<List<Triple>> extract(List<TextChunk> chunks) {
-        return CompletableFuture.completedFuture(extract(chunks, Map.of()));
-    }
-
     public List<Triple> extract(List<TextChunk> chunks, Map<String, Object> options) {
         List<Triple> triples = new ArrayList<>();
         if (chunks == null) {
             return triples;
         }
         for (TextChunk chunk : chunks) {
-            if (chunk == null || chunk.getText() == null) {
-                continue;
-            }
             String[] sentences = SENTENCE_SPLIT.split(chunk.getText());
             for (String sentence : sentences) {
                 String trimmed = sentence.trim();
@@ -56,16 +62,25 @@ public class SimpleTripleExtractor extends Extractor {
                 metadata.put("doc_id", chunk.getDocId());
                 metadata.put("chunk_id", chunk.getId());
                 metadata.put("triple", serializeTriple(subject, predicate, object));
-                triples.add(new Triple(subject, predicate, object, metadata));
+                triples.add(new Triple(subject, predicate, object, null, metadata));
             }
         }
         return triples;
     }
 
+    /**
+     * serializeTriple.
+     * 
+     * @param subject subject
+     * @param predicate predicate
+     * @param object object
+     * @return the result
+     * @since 0.1.7
+     */
     private static String serializeTriple(String subject, String predicate, String object) {
         try {
             return MAPPER.writeValueAsString(List.of(subject, predicate, object));
-        } catch (JsonProcessingException exception) {
+        } catch (JsonProcessingException e) {
             return "[\"" + subject + "\",\"" + predicate + "\",\"" + object + "\"]";
         }
     }

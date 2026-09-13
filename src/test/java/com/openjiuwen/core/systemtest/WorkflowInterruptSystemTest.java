@@ -1,13 +1,20 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.WorkflowSession;
+import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.constants.SessionConstants;
@@ -31,15 +38,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 @Tag("system-test")
 class WorkflowInterruptSystemTest {
-
     private record NestedInteractiveWorkflow(Workflow outerWorkflow, Workflow innerWorkflow) {
     }
 
@@ -90,10 +90,8 @@ class WorkflowInterruptSystemTest {
         Store graphStore = checkpointer.graphStore();
 
         try {
-            WorkflowOutput interrupted = workflow.invoke(
-                    Map.of("prompt", "Need user input"),
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput interrupted = workflow.invoke(Map.of("prompt", "Need user input"),
+                    new WorkflowSessionApi(null, sessionId, Map.of()), null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, interrupted.getState());
             List<?> chunks = assertInstanceOf(List.class, interrupted.getResult());
@@ -101,24 +99,22 @@ class WorkflowInterruptSystemTest {
 
             OutputSchema interactionChunk = assertInstanceOf(OutputSchema.class, chunks.get(0));
             assertEquals(Constant.INTERACTION, interactionChunk.getType());
-            InteractionOutput interactionOutput = assertInstanceOf(
-                    InteractionOutput.class, interactionChunk.getPayload());
+            InteractionOutput interactionOutput =
+                assertInstanceOf(InteractionOutput.class, interactionChunk.getPayload());
             assertEquals("ask", interactionOutput.getId());
 
-            assertTrue(graphStore.get(sessionId, workflow.getCard().getId()).toCompletableFuture().join().isPresent());
+            assertTrue(graphStore.get(sessionId, workflow.getCard().getId()).isPresent());
             assertTrue(checkpointer.sessionExists(sessionId));
 
             InteractiveInput resumeInputs = new InteractiveInput();
             resumeInputs.update("ask", Map.of("answer", "done"));
 
-            WorkflowOutput resumed = workflow.invoke(
-                    resumeInputs,
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput resumed =
+                workflow.invoke(resumeInputs, new WorkflowSessionApi(null, sessionId, Map.of()), null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, resumed.getState());
             assertEquals(Map.of("answer", "done"), resumed.getResult());
-            assertTrue(graphStore.get(sessionId, workflow.getCard().getId()).toCompletableFuture().join().isEmpty());
+            assertTrue(graphStore.get(sessionId, workflow.getCard().getId()).isEmpty());
             assertFalse(checkpointer.sessionExists(sessionId));
             assertEquals(1, startCount.get(), "resume should continue from checkpoint instead of restarting");
         } finally {
@@ -135,20 +131,14 @@ class WorkflowInterruptSystemTest {
         Checkpointer checkpointer = CheckpointerFactory.getCheckpointer();
 
         try {
-            WorkflowOutput firstRun = workflow.invoke(
-                    Map.of("prompt", "Need user input"),
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput firstRun = workflow.invoke(Map.of("prompt", "Need user input"),
+                    new WorkflowSessionApi(null, sessionId, Map.of()), null);
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, firstRun.getState());
             assertEquals(1, startCount.get());
 
-            WorkflowOutput restartedRun = workflow.invoke(
-                    Map.of("prompt", "Need user input"),
-                    new WorkflowSession(
-                            null,
-                            sessionId,
-                            Map.of(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, true)),
-                    null);
+            WorkflowOutput restartedRun =
+                workflow.invoke(Map.of("prompt", "Need user input"), new WorkflowSessionApi(null, sessionId,
+                        Map.of(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, true)), null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, restartedRun.getState());
             assertEquals(2, startCount.get(), "force delete should re-run the workflow from the start");
@@ -173,39 +163,35 @@ class WorkflowInterruptSystemTest {
         String nestedNamespace = outerWorkflowId + ":sub:1";
 
         try {
-            WorkflowOutput interrupted = workflow.invoke(
-                    Map.of("prompt", "Need nested user input"),
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput interrupted = workflow.invoke(Map.of("prompt", "Need nested user input"),
+                    new WorkflowSessionApi(null, sessionId, Map.of()), null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, interrupted.getState());
             List<?> chunks = assertInstanceOf(List.class, interrupted.getResult());
             OutputSchema interactionChunk = assertInstanceOf(OutputSchema.class, chunks.get(0));
-            InteractionOutput interactionOutput = assertInstanceOf(
-                    InteractionOutput.class, interactionChunk.getPayload());
+            InteractionOutput interactionOutput =
+                assertInstanceOf(InteractionOutput.class, interactionChunk.getPayload());
             assertEquals("sub.ask", interactionOutput.getId());
 
-            assertTrue(graphStore.get(sessionId, outerWorkflowId).toCompletableFuture().join().isPresent());
-            assertTrue(graphStore.get(sessionId, nestedNamespace).toCompletableFuture().join().isPresent(),
+            assertTrue(graphStore.get(sessionId, outerWorkflowId).isPresent());
+            assertTrue(graphStore.get(sessionId, nestedNamespace).isPresent(),
                     "nested graph state should be saved under the parent namespace");
-            assertTrue(graphStore.get(sessionId, innerWorkflowId).toCompletableFuture().join().isEmpty(),
+            assertTrue(graphStore.get(sessionId, innerWorkflowId).isEmpty(),
                     "nested graph state should not be saved under the inner workflow card id");
 
             InteractiveInput resumeInputs = new InteractiveInput();
             resumeInputs.update("sub.ask", Map.of("answer", "nested-done"));
 
-            WorkflowOutput resumed = workflow.invoke(
-                    resumeInputs,
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput resumed =
+                workflow.invoke(resumeInputs, new WorkflowSessionApi(null, sessionId, Map.of()), null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, resumed.getState());
             assertEquals(Map.of("answer", "nested-done"), resumed.getResult());
             assertEquals(1, outerStartCount.get(), "outer workflow should resume instead of restarting");
             assertEquals(1, innerStartCount.get(), "inner workflow should resume instead of restarting");
-            assertTrue(graphStore.get(sessionId, outerWorkflowId).toCompletableFuture().join().isEmpty());
-            assertTrue(graphStore.get(sessionId, nestedNamespace).toCompletableFuture().join().isEmpty());
-            assertTrue(graphStore.get(sessionId, innerWorkflowId).toCompletableFuture().join().isEmpty());
+            assertTrue(graphStore.get(sessionId, outerWorkflowId).isEmpty());
+            assertTrue(graphStore.get(sessionId, nestedNamespace).isEmpty());
+            assertTrue(graphStore.get(sessionId, innerWorkflowId).isEmpty());
         } finally {
             checkpointer.release(sessionId);
         }
@@ -220,17 +206,13 @@ class WorkflowInterruptSystemTest {
         Checkpointer checkpointer = CheckpointerFactory.getCheckpointer();
 
         try {
-            WorkflowOutput interrupted = workflow.invoke(
-                    Map.of("prompt", "Need raw input"),
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput interrupted = workflow.invoke(Map.of("prompt", "Need raw input"),
+                    new WorkflowSessionApi(null, sessionId, Map.of()), null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, interrupted.getState());
 
-            WorkflowOutput resumed = workflow.invoke(
-                    new InteractiveInput("done"),
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput resumed =
+                workflow.invoke(new InteractiveInput("done"), new WorkflowSessionApi(null, sessionId, Map.of()), null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, resumed.getState());
             assertEquals(Map.of("answer", "done"), resumed.getResult());
@@ -256,40 +238,36 @@ class WorkflowInterruptSystemTest {
         String nestedNamespace = bodyNamespace + ":sub:1";
 
         try {
-            WorkflowOutput interrupted = workflow.invoke(
-                    Map.of("prompt", "Need loop nested input"),
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput interrupted = workflow.invoke(Map.of("prompt", "Need loop nested input"),
+                    new WorkflowSessionApi(null, sessionId, Map.of()), null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, interrupted.getState());
             List<?> chunks = assertInstanceOf(List.class, interrupted.getResult());
             OutputSchema interactionChunk = assertInstanceOf(OutputSchema.class, chunks.get(0));
-            InteractionOutput interactionOutput = assertInstanceOf(
-                    InteractionOutput.class, interactionChunk.getPayload());
+            InteractionOutput interactionOutput =
+                assertInstanceOf(InteractionOutput.class, interactionChunk.getPayload());
             assertEquals("loop.sub.ask", interactionOutput.getId());
 
-            assertTrue(graphStore.get(sessionId, outerWorkflowId).toCompletableFuture().join().isPresent());
-            assertTrue(graphStore.get(sessionId, loopNamespace).toCompletableFuture().join().isPresent());
-            assertTrue(graphStore.get(sessionId, bodyNamespace).toCompletableFuture().join().isPresent());
-            assertTrue(graphStore.get(sessionId, nestedNamespace).toCompletableFuture().join().isPresent(),
+            assertTrue(graphStore.get(sessionId, outerWorkflowId).isPresent());
+            assertTrue(graphStore.get(sessionId, loopNamespace).isPresent());
+            assertTrue(graphStore.get(sessionId, bodyNamespace).isPresent());
+            assertTrue(graphStore.get(sessionId, nestedNamespace).isPresent(),
                     "deep nested graph state should be saved under the composed parent namespace");
 
             InteractiveInput resumeInputs = new InteractiveInput();
             resumeInputs.update(interactionOutput.getId(), Map.of("answer", "nested-loop-done"));
 
-            WorkflowOutput resumed = workflow.invoke(
-                    resumeInputs,
-                    new WorkflowSession(null, sessionId, Map.of()),
-                    null);
+            WorkflowOutput resumed =
+                workflow.invoke(resumeInputs, new WorkflowSessionApi(null, sessionId, Map.of()), null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, resumed.getState());
             assertEquals(Map.of("answer", "nested-loop-done"), resumed.getResult());
             assertEquals(1, outerStartCount.get(), "outer workflow should resume instead of restarting");
             assertEquals(1, innerStartCount.get(), "inner workflow should resume inside the loop body");
-            assertTrue(graphStore.get(sessionId, outerWorkflowId).toCompletableFuture().join().isEmpty());
-            assertTrue(graphStore.get(sessionId, loopNamespace).toCompletableFuture().join().isEmpty());
-            assertTrue(graphStore.get(sessionId, bodyNamespace).toCompletableFuture().join().isEmpty());
-            assertTrue(graphStore.get(sessionId, nestedNamespace).toCompletableFuture().join().isEmpty());
+            assertTrue(graphStore.get(sessionId, outerWorkflowId).isEmpty());
+            assertTrue(graphStore.get(sessionId, loopNamespace).isEmpty());
+            assertTrue(graphStore.get(sessionId, bodyNamespace).isEmpty());
+            assertTrue(graphStore.get(sessionId, nestedNamespace).isEmpty());
         } finally {
             checkpointer.release(sessionId);
         }
@@ -297,12 +275,9 @@ class WorkflowInterruptSystemTest {
 
     private static Workflow buildInteractiveWorkflow(AtomicInteger startCount) {
         Workflow workflow = new Workflow();
-        workflow.setStartComp("start", new RecordingStartComponent(startCount),
-                Map.of("prompt", "${prompt}"), null);
-        workflow.addWorkflowComp("ask", new InteractiveAnswerComponent(),
-                Map.of("prompt", "${start.prompt}"), null);
-        workflow.setEndComp("end", new PassthroughComponent(),
-                Map.of("answer", "${ask.answer}"), null);
+        workflow.setStartComp("start", new RecordingStartComponent(startCount), Map.of("prompt", "${prompt}"), null);
+        workflow.addWorkflowComp("ask", new InteractiveAnswerComponent(), Map.of("prompt", "${start.prompt}"), null);
+        workflow.setEndComp("end", new PassthroughComponent(), Map.of("answer", "${ask.answer}"), null);
         workflow.addConnection("start", "ask");
         workflow.addConnection("ask", "end");
         return workflow;
@@ -310,75 +285,59 @@ class WorkflowInterruptSystemTest {
 
     private static Workflow buildRawInteractiveWorkflow(AtomicInteger startCount) {
         Workflow workflow = new Workflow();
-        workflow.setStartComp("start", new RecordingStartComponent(startCount),
-                Map.of("prompt", "${prompt}"), null);
-        workflow.addWorkflowComp("ask", new RawInteractiveAnswerComponent(),
-                Map.of("prompt", "${start.prompt}"), null);
-        workflow.setEndComp("end", new PassthroughComponent(),
-                Map.of("answer", "${ask.answer}"), null);
+        workflow.setStartComp("start", new RecordingStartComponent(startCount), Map.of("prompt", "${prompt}"), null);
+        workflow.addWorkflowComp("ask", new RawInteractiveAnswerComponent(), Map.of("prompt", "${start.prompt}"), null);
+        workflow.setEndComp("end", new PassthroughComponent(), Map.of("answer", "${ask.answer}"), null);
         workflow.addConnection("start", "ask");
         workflow.addConnection("ask", "end");
         return workflow;
     }
 
-    private static NestedInteractiveWorkflow buildNestedInteractiveWorkflow(
-            AtomicInteger outerStartCount, AtomicInteger innerStartCount) {
+    private static NestedInteractiveWorkflow buildNestedInteractiveWorkflow(AtomicInteger outerStartCount,
+            AtomicInteger innerStartCount) {
         Workflow innerWorkflow = new Workflow();
         innerWorkflow.setStartComp("inner_start", new RecordingStartComponent(innerStartCount),
                 Map.of("prompt", "${prompt}"), null);
         innerWorkflow.addWorkflowComp("ask", new InteractiveAnswerComponent(),
                 Map.of("prompt", "${inner_start.prompt}"), null);
-        innerWorkflow.setEndComp("inner_end", new PassthroughComponent(),
-                Map.of("answer", "${ask.answer}"), null);
+        innerWorkflow.setEndComp("inner_end", new PassthroughComponent(), Map.of("answer", "${ask.answer}"), null);
         innerWorkflow.addConnection("inner_start", "ask");
         innerWorkflow.addConnection("ask", "inner_end");
 
         Workflow outerWorkflow = new Workflow();
-        outerWorkflow.setStartComp("start", new RecordingStartComponent(outerStartCount),
-                Map.of("prompt", "${prompt}"), null);
+        outerWorkflow.setStartComp("start", new RecordingStartComponent(outerStartCount), Map.of("prompt", "${prompt}"),
+                null);
         outerWorkflow.addWorkflowComp("sub", new SubWorkflowComponentImpl(innerWorkflow),
                 Map.of("prompt", "${start.prompt}"), null);
-        outerWorkflow.setEndComp("end", new PassthroughComponent(),
-                Map.of("answer", "${sub.answer}"), null);
+        outerWorkflow.setEndComp("end", new PassthroughComponent(), Map.of("answer", "${sub.answer}"), null);
         outerWorkflow.addConnection("start", "sub");
         outerWorkflow.addConnection("sub", "end");
         return new NestedInteractiveWorkflow(outerWorkflow, innerWorkflow);
     }
 
-    private static NestedInteractiveWorkflow buildLoopNestedInteractiveWorkflow(
-            AtomicInteger outerStartCount, AtomicInteger innerStartCount) {
+    private static NestedInteractiveWorkflow buildLoopNestedInteractiveWorkflow(AtomicInteger outerStartCount,
+            AtomicInteger innerStartCount) {
         Workflow innerWorkflow = new Workflow();
         innerWorkflow.setStartComp("inner_start", new RecordingStartComponent(innerStartCount),
                 Map.of("prompt", "${prompt}"), null);
         innerWorkflow.addWorkflowComp("ask", new InteractiveAnswerComponent(),
                 Map.of("prompt", "${inner_start.prompt}"), null);
-        innerWorkflow.setEndComp("inner_end", new PassthroughComponent(),
-                Map.of("answer", "${ask.answer}"), null);
+        innerWorkflow.setEndComp("inner_end", new PassthroughComponent(), Map.of("answer", "${ask.answer}"), null);
         innerWorkflow.addConnection("inner_start", "ask");
         innerWorkflow.addConnection("ask", "inner_end");
 
         LoopGroup loopGroup = new LoopGroup();
-        loopGroup.addWorkflowComp(
-                "sub",
-                new SubWorkflowComponentImpl(innerWorkflow),
-                null,
-                Map.of("prompt", "${start.prompt}"),
-                null,
-                null,
-                null,
-                null);
-        loopGroup.startComp("sub");
-        loopGroup.endComp("sub");
+        loopGroup.addWorkflowComp("sub", new SubWorkflowComponentImpl(innerWorkflow), null,
+                Map.of("prompt", "${start.prompt}"), null, null, null, null);
+        loopGroup.startNodes(List.of("sub"));
+        loopGroup.endNodes("sub");
 
         Workflow outerWorkflow = new Workflow();
-        outerWorkflow.setStartComp("start", new RecordingStartComponent(outerStartCount),
-                Map.of("prompt", "${prompt}"), null);
-        outerWorkflow.addWorkflowComp("loop",
-                new LoopComponentImpl(loopGroup, Map.of("answers", "${sub.answer}")),
-                Map.of("loop_type", "number", "loop_number", 1),
+        outerWorkflow.setStartComp("start", new RecordingStartComponent(outerStartCount), Map.of("prompt", "${prompt}"),
                 null);
-        outerWorkflow.setEndComp("end", new PassthroughComponent(),
-                Map.of("answer", "${loop.answers[0]}"), null);
+        outerWorkflow.addWorkflowComp("loop", new LoopComponentImpl(loopGroup, Map.of("answers", "${sub.answer}")),
+                Map.of("loop_type", "number", "loop_number", 1), null);
+        outerWorkflow.setEndComp("end", new PassthroughComponent(), Map.of("answer", "${loop.answers[0]}"), null);
         outerWorkflow.addConnection("start", "loop");
         outerWorkflow.addConnection("loop", "end");
         return new NestedInteractiveWorkflow(outerWorkflow, innerWorkflow);

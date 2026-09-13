@@ -7,48 +7,37 @@ package com.openjiuwen.core.session.interaction;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 
-import java.lang.reflect.InvocationTargetException;
-
 /**
- * Simple agent interaction helper.
- *
- * <p>Mirrors Python's {@code SimpleAgentInteraction} in
- * {@code openjiuwen/core/session/interaction/interaction.py}.</p>
+ * Simple agent interaction that interrupts via checkpointer.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.interaction.interaction.SimpleAgentInteraction}.
+ * 
+ * @since 0.1.7
  */
 public class SimpleAgentInteraction {
+    private final BaseSession agentSession;
 
-    private final BaseSession session;
-
-    public SimpleAgentInteraction(BaseSession session) {
-        this.session = session;
+    /**
+     * SimpleAgentInteraction.
+     * 
+     * @param agentSession agentSession
+     * @since 0.1.7
+     */
+    public SimpleAgentInteraction(BaseSession agentSession) {
+        this.agentSession = agentSession;
     }
 
-    public Object waitUserInputs(Object value) {
-        interruptAgentExecute(session);
-        throw new AgentInterrupt(value == null ? null : String.valueOf(value));
-    }
-
-    private static void interruptAgentExecute(BaseSession session) {
-        if (session == null || session.checkpointer() == null) {
-            return;
-        }
-        Object checkpointer = session.checkpointer();
+    /**
+     * Wait for user inputs by interrupting agent execution.
+     * 
+     * @param message the interrupt message
+     * @since 0.1.7
+     */
+    public void waitUserInputs(String message) {
+        Object checkpointer = agentSession.checkpointer();
         if (checkpointer instanceof Checkpointer typedCheckpointer) {
-            typedCheckpointer.interruptAgentExecute(session);
-            return;
+            typedCheckpointer.interruptAgentExecute(agentSession);
         }
-        try {
-            checkpointer.getClass()
-                    .getMethod("interruptAgentExecute", BaseSession.class)
-                    .invoke(checkpointer, session);
-        } catch (NoSuchMethodException | IllegalAccessException ignored) {
-            // Missing checkpointer hooks must not mask the interaction interrupt itself.
-        } catch (InvocationTargetException exception) {
-            Throwable target = exception.getTargetException();
-            if (target instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException(target);
-        }
+        throw new AgentInterrupt(message);
     }
 }

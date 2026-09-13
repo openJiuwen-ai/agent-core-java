@@ -5,13 +5,17 @@
 package com.openjiuwen.core.runner.callback;
 
 /**
- * Mirrors Python's {@code HookType} in
- * {@code openjiuwen/core/runner/callback/enums.py}.
+ * Types of hooks that can be registered for lifecycle events.
+ * 
+ * @since 0.1.7
  */
 public enum HookType {
     BEFORE("before"),
+    /** Executed after event processing. */
     AFTER("after"),
+    /** Executed when an error occurs. */
     ERROR("error"),
+    /** Executed during cleanup phase. */
     CLEANUP("cleanup");
 
     private final String value;
@@ -20,6 +24,12 @@ public enum HookType {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }

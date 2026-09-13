@@ -10,153 +10,274 @@ import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
 /**
  * Configuration card for system operations.
- *
- * <p>Mirrors Python's {@code SysOperationCard} in
- * {@code openjiuwen/core/sys_operation/sys_operation.py}.</p>
+ * <p>
+ * Mirrors Python's {@code SysOperationCard} in {@code sys_operation/sys_operation.py}.
+ * <p>
+ * Usage:
+ * 
+ * <pre>
+ * SysOperationCard card = SysOperationCard.builder().id("sys_op").mode(OperationMode.LOCAL)
+ *         .workConfig(LocalWorkConfig.builder().workDir("/tmp/test").build()).build();
+ * // Generate tool IDs
+ * String toolId = SysOperationCard.generateToolId("sys_op", "fs", "readFile");
+ * // Use ToolIdProxy for convenience
+ * String readToolId = card.fs().toolId("readFile");
+ * </pre>
+ * 
+ * @since 0.1.7
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class SysOperationCard extends BaseCard {
+    private OperationMode mode;
 
-    private OperationMode mode = OperationMode.LOCAL;
+    /** Local work config (required when mode is LOCAL). */
     private LocalWorkConfig workConfig;
+
+    /** Sandbox gateway config (required when mode is SANDBOX). */
     private SandboxGatewayConfig gatewayConfig;
 
-    public SysOperationCard() {
-        super();
-    }
-
-    public SysOperationCard(String id, OperationMode mode, LocalWorkConfig workConfig) {
-        super(id, "", "");
-        setMode(mode);
-        this.workConfig = workConfig;
-    }
-
-    public OperationMode getMode() {
-        return mode;
-    }
-
-    public void setMode(OperationMode mode) {
-        this.mode = mode != null ? mode : OperationMode.LOCAL;
-    }
-
-    public void setMode(String mode) {
-        if (mode != null && mode.isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
-                    "error_msg",
-                    "mode must be one of [local, sandbox], current value: " + mode
-            );
+    /**
+     * Validate that mode is a valid OperationMode.
+     * 
+     * @param modeValue string value to validate
+     * @return validated OperationMode
+     * @since 0.1.7
+     */
+    public static OperationMode validateMode(String modeValue) {
+        try {
+            return OperationMode.fromString(modeValue);
+        } catch (IllegalArgumentException e) {
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR, "error_msg",
+                    "mode must be one of [local, sandbox], current value: " + modeValue);
         }
-        OperationMode parsed = OperationMode.fromValue(mode);
-        if (mode != null && !parsed.value().equalsIgnoreCase(mode.trim())) {
-            throw ErrorHelper.buildError(
-                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
-                    "error_msg",
-                    "mode must be one of [local, sandbox], current value: " + mode
-            );
-        }
-        this.mode = parsed;
     }
 
-    public LocalWorkConfig getWorkConfig() {
-        return workConfig;
-    }
-
-    public void setWorkConfig(LocalWorkConfig workConfig) {
-        this.workConfig = workConfig;
-    }
-
-    public SandboxGatewayConfig getGatewayConfig() {
-        return gatewayConfig;
-    }
-
-    public void setGatewayConfig(SandboxGatewayConfig gatewayConfig) {
-        this.gatewayConfig = gatewayConfig;
-    }
-
-    public ToolIdProxy getFs() {
+    /**
+     * Get the ToolIdProxy for file system operations.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public ToolIdProxy fs() {
         return new ToolIdProxy(getId(), "fs");
     }
 
-    public ToolIdProxy getShell() {
+    /**
+     * Get the ToolIdProxy for shell operations.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public ToolIdProxy shell() {
         return new ToolIdProxy(getId(), "shell");
     }
 
-    public ToolIdProxy getCode() {
+    /**
+     * Get the ToolIdProxy for code operations.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public ToolIdProxy code() {
         return new ToolIdProxy(getId(), "code");
     }
 
-    public ToolIdProxy operation(String name) {
-        return new ToolIdProxy(getId(), name);
+    /**
+     * Get a ToolIdProxy for a custom operation type.
+     * 
+     * @param opType operation type name
+     * @return the proxy
+     * @since 0.1.7
+     */
+    public ToolIdProxy proxy(String opType) {
+        return new ToolIdProxy(getId(), opType);
     }
 
+    /**
+     * Centralized tool ID generation for SysOperation methods.
+     * 
+     * @param cardId card identifier
+     * @param opType operation type (e.g., "fs", "shell", "code")
+     * @param methodName method name
+     * @return formatted tool ID: "{cardId}.{opType}.{methodName}"
+     * @since 0.1.7
+     */
     public static String generateToolId(String cardId, String opType, String methodName) {
         return cardId + "." + opType + "." + methodName;
     }
 
-    public ToolIdProxy fs() {
-        return getFs();
+    /**
+     * getMode.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public OperationMode getMode() {
+        return mode;
     }
 
-    public ToolIdProxy shell() {
-        return getShell();
+    /**
+     * setMode.
+     * 
+     * @param mode mode
+     * @since 0.1.7
+     */
+    public void setMode(OperationMode mode) {
+        this.mode = mode;
     }
 
-    public ToolIdProxy code() {
-        return getCode();
+    /**
+     * getWorkConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public LocalWorkConfig getWorkConfig() {
+        return workConfig;
     }
 
-    public ToolIdProxy proxy(String opType) {
-        return operation(opType);
+    /**
+     * setWorkConfig.
+     * 
+     * @param workConfig workConfig
+     * @since 0.1.7
+     */
+    public void setWorkConfig(LocalWorkConfig workConfig) {
+        this.workConfig = workConfig;
     }
 
-    public static OperationMode validateMode(String modeValue) {
-        return OperationMode.fromString(modeValue);
+    /**
+     * getGatewayConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public SandboxGatewayConfig getGatewayConfig() {
+        return gatewayConfig;
     }
 
+    /**
+     * setGatewayConfig.
+     * 
+     * @param gatewayConfig gatewayConfig
+     * @since 0.1.7
+     */
+    public void setGatewayConfig(SandboxGatewayConfig gatewayConfig) {
+        this.gatewayConfig = gatewayConfig;
+    }
+
+    /**
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static Builder builder() {
         return new Builder();
     }
 
-    public static final class Builder {
-        private String id;
-        private String name = "";
-        private String description = "";
-        private OperationMode mode = OperationMode.LOCAL;
+    /**
+     * Builder.
+     * 
+     * @since 0.1.7
+     */
+    public static class Builder extends BaseCard.Builder {
+        private OperationMode mode;
         private LocalWorkConfig workConfig;
         private SandboxGatewayConfig gatewayConfig;
 
+        /**
+         * id.
+         * 
+         * @param id id
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
         public Builder id(String id) {
-            this.id = id;
+            super.id(id);
             return this;
         }
 
+        /**
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
         public Builder name(String name) {
-            this.name = name;
+            super.name(name);
             return this;
         }
 
+        /**
+         * description.
+         * 
+         * @param description description
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
         public Builder description(String description) {
-            this.description = description;
+            super.description(description);
             return this;
         }
 
+        /**
+         * mode.
+         * 
+         * @param mode mode
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder mode(OperationMode mode) {
             this.mode = mode;
             return this;
         }
 
+        /**
+         * workConfig.
+         * 
+         * @param workConfig workConfig
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder workConfig(LocalWorkConfig workConfig) {
             this.workConfig = workConfig;
             return this;
         }
 
+        /**
+         * gatewayConfig.
+         * 
+         * @param gatewayConfig gatewayConfig
+         * @return the result
+         * @since 0.1.7
+         */
         public Builder gatewayConfig(SandboxGatewayConfig gatewayConfig) {
             this.gatewayConfig = gatewayConfig;
             return this;
         }
 
+        /**
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
+        @Override
         public SysOperationCard build() {
             SysOperationCard card = new SysOperationCard();
             card.setId(id);

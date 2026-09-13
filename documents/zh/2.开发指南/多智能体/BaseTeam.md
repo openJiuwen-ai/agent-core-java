@@ -59,7 +59,7 @@ GroupConfig config = new GroupConfig()
 import com.openjiuwen.core.multi_agent.BaseGroup;
 import com.openjiuwen.core.multi_agent.GroupConfig;
 import com.openjiuwen.core.multi_agent.schema.GroupCard;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSessionApiApi;
 import com.openjiuwen.core.single_agent.BaseAgent;
 import java.util.Iterator;
 import java.util.List;

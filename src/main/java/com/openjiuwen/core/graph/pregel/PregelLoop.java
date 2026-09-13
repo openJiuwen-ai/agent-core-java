@@ -4,36 +4,66 @@
 
 package com.openjiuwen.core.graph.pregel;
 
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.PendingNode;
 import com.openjiuwen.core.graph.store.Store;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 
 /**
- * Executes one Pregel graph through super-step barriers.
- *
- * <p>Mirrors Python's {@code PregelLoop} in
- * {@code openjiuwen/core/graph/pregel/engine.py}.</p>
+ * Pregel execution loop implementing the BSP (Bulk Synchronous Parallel) model.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.pregel.engine.PregelLoop}.
+ * 
+ * @since 0.1.7
  */
 public class PregelLoop {
+    private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private final Pregel graph;
     private final ChannelManager manager;
     private final PregelConfig config;
     private final Store saver;
-    private final Map<String, Integer> nodeVersion = new LinkedHashMap<>();
-    private final Map<String, PendingNode> retryPendingNodes = new LinkedHashMap<>();
-    private int step;
-    private int maxStep;
+
+    private int step = 0;
+    private int maxStep = 0;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> activeNodes = new ArrayList<>();
     private TaskExecutorPool executor;
 
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private Map<String, PendingNode> retryPendingNodes = new HashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private final Map<String, Integer> nodeVersion = new HashMap<>();
+
+    /**
+     * PregelLoop.
+     * 
+     * @param graph graph
+     * @param config config
+     * @since 0.1.7
+     */
     public PregelLoop(Pregel graph, PregelConfig config) {
         this.graph = graph;
         this.manager = new ChannelManager(graph.getChannels());
@@ -42,88 +72,50 @@ public class PregelLoop {
     }
 
     /**
-     * Initialize the loop from persisted graph state or by triggering the initial node.
+     * Initialize the Pregel loop, restoring state if available.
+     * 
+     * @since 0.1.7
      */
     public void init() {
         executor = new TaskExecutorPool(config);
         maxStep = config.getRecursionLimit();
 
         GraphStoreState state = null;
-        if (hasText(config.getSessionId()) && hasText(config.getNs()) && saver != null) {
-            Optional<GraphStoreState> stored = saver.get(config.getSessionId(), config.getNs())
-                    .toCompletableFuture()
-                    .join();
-            state = stored.orElse(null);
+        if (config.getSessionId() != null && config.getNs() != null && saver != null) {
+            Optional<GraphStoreState> opt = saver.get(config.getSessionId(), config.getNs());
+            state = opt.orElse(null);
         }
 
         if (isResume(state)) {
+            // Restore barrier channel
             manager.restore(state.getChannelValues());
-            nodeVersion.clear();
+            // Restore loop node version
             nodeVersion.putAll(state.getNodeVersion());
+            // Restore step
             step = state.getStep();
             maxStep = state.getStep() + config.getRecursionLimit();
-            for (Message message : state.getPendingBuffer()) {
-                manager.bufferMessage(message);
+            // Restore pending buffer messages
+            for (Message msg : state.getPendingBuffer()) {
+                manager.bufferMessage(msg);
             }
-            retryPendingNodes.clear();
-            retryPendingNodes.putAll(state.getPendingNode());
-            return;
-        }
-
-        manager.bufferMessage(new TriggerMessage(graph.getInitial(), graph.getInitial()));
-        manager.flush();
-    }
-
-    /**
-     * Run a single super-step.
-     *
-     * @return {@code true} when another step may be available, {@code false} when the graph ended
-     * @throws Exception when a node, router, or save operation fails
-     */
-    public boolean runStep() throws Exception {
-        try {
-            return doRunStep();
-        } catch (Exception error) {
-            Exception propagated = publicInterruptValue(error);
-            if (!(propagated instanceof GraphInterrupt)) {
-                Loggers.GRAPH.error("Failed to run graph super-step[{}]", step);
+            // Pending nodes for retry
+            if (state.getPendingNode() != null) {
+                retryPendingNodes = new HashMap<>(state.getPendingNode());
             }
-            saveStateOnError(propagated);
-            throw propagated;
+        } else {
+            // Trigger start node
+            manager.bufferMessage(new TriggerMessage(graph.getInitial(), graph.getInitial()));
+            manager.flush();
         }
-    }
-
-    public int getStep() {
-        return step;
-    }
-
-    public int getMaxStep() {
-        return maxStep;
-    }
-
-    public PregelConfig getConfig() {
-        return config;
-    }
-
-    public ChannelManager getManager() {
-        return manager;
-    }
-
-    public List<String> getActiveNodes() {
-        return new ArrayList<>(activeNodes);
-    }
-
-    public Map<String, Integer> getNodeVersion() {
-        return new LinkedHashMap<>(nodeVersion);
-    }
-
-    TaskExecutorPool getExecutor() {
-        return executor;
     }
 
     /**
      * Shut down the internal task executor, releasing the worker threads held by this loop.
-     * Safe to call once after the loop has finished (normally or exceptionally); idempotent.
+     * <p>
+     * Safe to call once after the loop has finished (whether normally or exceptionally).
+     * Idempotent: subsequent calls are no-ops.
+     *
+     * @since 0.1.14
      */
     public void shutdown() {
         if (executor != null) {
@@ -132,107 +124,177 @@ public class PregelLoop {
         }
     }
 
-    private boolean doRunStep() throws Exception {
-        Loggers.GRAPH.debug("Start to run graph super-step[{}]", step);
-        List<PregelNode> tasksToRun = new ArrayList<>();
+    /**
+     * Execute one super-step of the Pregel computation.
+     * 
+     * @return true if more steps should follow, false if done
+     * @throws Exception on execution failure
+     * @since 0.1.7
+     */
+    public boolean runStep() throws Exception {
+        try {
+            return doRunStep();
+        } catch (CancellationException e) {
+            throw e;
+        } catch (GraphInterrupt e) {
+            saveStateOnError(e);
+            throw e;
+        } catch (Exception e) {
+            logger.error("Failed to run graph super-step[{}], ns={}, sessionId={}", step, config.getNs(),
+                    config.getSessionId(), e);
+            saveStateOnError(e);
+            throw e;
+        }
+    }
 
+    /**
+     * getStep.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public int getStep() {
+        return step;
+    }
+
+    /**
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public PregelConfig getConfig() {
+        return config;
+    }
+
+    /**
+     * getActiveNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<String> getActiveNodes() {
+        return activeNodes;
+    }
+
+    /**
+     * doRunStep.
+     * 
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    private boolean doRunStep() throws Exception {
+        throwIfInterrupted();
+        logger.debug("Start to run graph super-step[{}], ns={}, sessionId={}", step, config.getNs(),
+                config.getSessionId());
+
+        // 1. Determine tasks for this round
         if (!retryPendingNodes.isEmpty()) {
             activeNodes = new ArrayList<>(retryPendingNodes.keySet());
             retryPendingNodes.clear();
         } else {
             List<String> readyNodes = manager.getReadyNodes();
             activeNodes = new ArrayList<>();
-            for (String nodeName : readyNodes) {
-                if (graph.getNodes().containsKey(nodeName) && !PregelConstants.END.equals(nodeName)) {
-                    activeNodes.add(nodeName);
-                    nodeVersion.merge(nodeName, 1, Integer::sum);
+            for (String n : readyNodes) {
+                if (graph.getNodes().containsKey(n) && !PregelConstants.END.equals(n)) {
+                    activeNodes.add(n);
+                    nodeVersion.merge(n, 1, Integer::sum);
                 }
             }
         }
 
         if (activeNodes.isEmpty()) {
             if (manager.isEmpty()) {
-                return false;
+                return false; // End
             }
-
             manager.flush();
             step++;
             return true;
         }
 
         if (step > maxStep) {
-            throw new IllegalStateException("Recursion limit of " + maxStep + " reached at step " + step);
+            throw new StackOverflowError(
+                    "Recursion limit of " + maxStep + " reached at step " + step + " ns: " + config.getNs() + ".");
         }
 
+        List<PregelNode> tasksToRun = new ArrayList<>();
         for (String name : activeNodes) {
             manager.consume(name);
-            PregelNode node = graph.getNodes().get(name);
-            if (node != null) {
-                tasksToRun.add(node);
-            }
+            tasksToRun.add(graph.getNodes().get(name));
         }
 
+        // 2. Execute tasks
         for (PregelNode node : tasksToRun) {
             executor.submit(node, nodeVersion.getOrDefault(node.getName(), 0));
         }
 
-        executor.waitAll();
+        try {
+            executor.waitAll();
+        } catch (java.util.concurrent.CancellationException e) {
+            executor.cancelAll();
+            throw e;
+        }
+        throwIfInterrupted();
 
-        for (Message message : executor.getSucceedMessages()) {
-            manager.bufferMessage(message);
+        // 3. Summarize results
+        for (Message msg : executor.getSucceedMessages()) {
+            manager.bufferMessage(msg);
         }
         manager.flush();
         executor.clear();
 
+        // Hook: after-step callback
         if (graph.getAfterStep() != null) {
             graph.getAfterStep().accept(this);
         }
+
         step++;
         return true;
     }
 
+    /**
+     * throwIfInterrupted.
+     * 
+     * @since 0.1.7
+     */
+    private static void throwIfInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("Pregel loop cancelled");
+        }
+    }
+
+    /**
+     * saveStateOnError.
+     * 
+     * @param exception exception
+     * @since 0.1.7
+     */
     private void saveStateOnError(Exception exception) {
-        Loggers.GRAPH.debug("Failed to run graph super-step[{}], caused by save state", step);
-        if (!hasText(config.getSessionId()) || !hasText(config.getNs()) || saver == null) {
+        if (config.getSessionId() == null || config.getNs() == null || saver == null) {
             return;
         }
-
         List<Message> pendingBuffer = new ArrayList<>(manager.getBuffer());
-        Map<String, PendingNode> pendingNode = new LinkedHashMap<>();
+        Map<String, PendingNode> pendingNode = new HashMap<>();
         if (executor != null) {
             pendingBuffer.addAll(executor.getSucceedMessages());
-            pendingNode.putAll(executor.getFailed());
+            pendingNode = executor.getFailed();
         }
-
-        GraphStoreState errorState = GraphStoreState.create(
-                config.getNs(),
-                step,
-                manager.snapshot(),
-                pendingBuffer,
-                pendingNode,
-                nodeVersion
-        );
-        saver.save(config.getSessionId(), config.getNs(), errorState)
-                .toCompletableFuture()
-                .join();
+        GraphStoreState errorState = GraphStoreState.create(config.getNs(), step, manager.snapshot(), pendingBuffer,
+                pendingNode, new HashMap<>(nodeVersion));
+        saver.save(config.getSessionId(), config.getNs(), errorState);
     }
 
+    /**
+     * isResume.
+     * 
+     * @param state state
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isResume(GraphStoreState state) {
-        return state != null
-                && (!state.getPendingNode().isEmpty()
-                || !state.getPendingBuffer().isEmpty()
-                || !state.getChannelValues().isEmpty());
-    }
-
-    private static boolean hasText(String value) {
-        return value != null && !value.isBlank();
-    }
-
-    private static Exception publicInterruptValue(Exception error) {
-        if (!(error instanceof GraphInterrupt interrupt) || !(interrupt.getValue() instanceof List<?> values)
-                || values.size() <= 1 || values.stream().anyMatch(Interrupt.class::isInstance)) {
-            return error;
-        }
-        return new GraphInterrupt(values.get(0));
+        return state != null && ((state.getPendingNode() != null && !state.getPendingNode().isEmpty())
+                || (state.getPendingBuffer() != null && !state.getPendingBuffer().isEmpty())
+                || (state.getChannelValues() != null && !state.getChannelValues().isEmpty()));
     }
 }

@@ -4,78 +4,64 @@
 
 package com.openjiuwen.extensions.store.db;
 
-import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
-import com.openjiuwen.core.foundation.store.BaseDbStore;
-
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.util.concurrent.CompletableFuture;
+import com.openjiuwen.core.foundation.store.db.DefaultDbStore;
+import com.openjiuwen.spi.store.BaseDbStore;
 
 import javax.sql.DataSource;
 
 /**
- * GaussDB database store implementation.
- *
- * <p>Mirrors Python's {@code openjiuwen/extensions/store/db/gauss_db_store.py}.
- *
- * This class wraps a DataSource for GaussDB database operations.
+ * Java baseline for the Python GaussDbStore extension.
+ * <p>
+ * The current Java version reuses JDBC/DataSource semantics and keeps the
+ * explicit GaussDB entry point so callers do not need to fall back to the
+ * generic DefaultDbStore type.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class GaussDbStore extends BaseDbStore<DataSource> {
-
-    private static final java.util.concurrent.Executor IO_EXECUTOR =
-            OpenJiuwenExecutors.newBoundedModulePool("gauss-db-store-io", true);
-
     private final DataSource dataSource;
 
     /**
-     * Initialize GaussDbStore with a DataSource.
-     *
-     * @param dataSource The DataSource instance for GaussDB connections.
+     * GaussDbStore.
+     * 
+     * @param dataSource dataSource
+     * @since 0.1.7
      */
     public GaussDbStore(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
     /**
-     * Get a database connection.
-     *
-     * @return Database connection.
-     * @throws SQLException If connection fails.
+     * GaussDbStore.
+     * 
+     * @param jdbcUrl jdbcUrl
+     * @since 0.1.7
      */
-    public Connection getConnection() throws SQLException {
-        if (dataSource == null) {
-            throw new SQLException("DataSource is null");
-        }
-        return dataSource.getConnection();
+    public GaussDbStore(String jdbcUrl) {
+        this(new DefaultDbStore(jdbcUrl).getEngine());
     }
 
     /**
-     * Get a database connection asynchronously.
-     *
-     * @return CompletableFuture with connection.
+     * GaussDbStore.
+     * 
+     * @param jdbcUrl jdbcUrl
+     * @param username username
+     * @param password password
+     * @since 0.1.7
      */
-    public CompletableFuture<Connection> getConnectionAsync() {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                if (dataSource == null) {
-                    return null;
-                }
-                return dataSource.getConnection();
-            } catch (SQLException e) {
-                throw new RuntimeException("Failed to get GaussDB connection", e);
-            }
-        }, IO_EXECUTOR);
+    public GaussDbStore(String jdbcUrl, String username, String password) {
+        this(new DefaultDbStore(jdbcUrl, username, password).getEngine());
     }
 
+    /**
+     * getEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public DataSource getAsyncEngine() {
+    public DataSource getEngine() {
         return dataSource;
-    }
-
-    /**
-     * Close the store (cleanup resources).
-     */
-    public void close() {
-        // DataSource cleanup handled externally
     }
 }

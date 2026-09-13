@@ -6,56 +6,59 @@ package com.openjiuwen.core.common.clients;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Mirrors Python's {@code BaseClient} in
- * {@code openjiuwen/core/common/clients/client_registry.py}.
+ * Base class for common clients.
+ * 
+ * @since 0.1.7
  */
-public class BaseClient {
+public abstract class BaseClient implements AutoCloseable {
+    private final Map<String, Object> config;
 
-    private Map<String, Object> config;
-
-    public BaseClient() {
+    /**
+     * BaseClient.
+     * 
+     * @since 0.1.7
+     */
+    protected BaseClient() {
         this(Map.of());
     }
 
-    public BaseClient(Map<String, Object> kwargs) {
-        initialize(kwargs);
+    /**
+     * BaseClient.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
+    protected BaseClient(Map<String, ?> config) {
+        this.config = new LinkedHashMap<>();
+        if (config != null) {
+            config.forEach((key, value) -> {
+                if (key != null) {
+                    this.config.put(key, value);
+                }
+            });
+        }
     }
 
-    public static String getClientName() {
-        return null;
-    }
-
-    public static String getClientType() {
-        return "common";
-    }
-
-    public void initialize(Map<String, Object> kwargs) {
-        this.config = kwargs != null ? new LinkedHashMap<>(kwargs) : new LinkedHashMap<>();
-    }
-
+    /**
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> getConfig() {
-        return config;
+        return new LinkedHashMap<>(config);
     }
 
-    public CompletableFuture<Boolean> close() {
-        return CompletableFuture.completedFuture(Boolean.TRUE);
-    }
-
-    public BaseClient enter() {
-        return this;
-    }
-
-    public CompletableFuture<Void> exit(Throwable excType, Throwable excVal, Object excTb) {
-        return close().thenApply(ignored -> null);
-    }
-
-    public Map<String, Object> getMetadata() {
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("client_name", getClientName());
-        metadata.put("client_type", getClientType());
-        return metadata;
+    /**
+     * close.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    @Override
+    public void close() throws Exception {
+        // Default no-op.
     }
 }

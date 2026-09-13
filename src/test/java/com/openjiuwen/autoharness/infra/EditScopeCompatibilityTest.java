@@ -1,18 +1,17 @@
+
 package com.openjiuwen.autoharness.infra;
 
-import com.openjiuwen.auto_harness.infra.EditScope;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.sysop.cwd.CwdContext;
+
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class EditScopeCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -21,17 +20,14 @@ class EditScopeCompatibilityTest {
         CwdContext.reset();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void normalizeRepoPathShouldReturnRepoRelativePathsInsideProjectRoot() {
         Path projectRoot = tempDir.resolve("repo");
         Path nested = projectRoot.resolve("openjiuwen/harness/cli/README.md");
         CwdContext.initCwd(projectRoot.toString(), projectRoot.toString(), null, null);
 
-        assertThat(EditScope.normalizeRepoPath(nested.toString()))
-                .isEqualTo("openjiuwen/harness/cli/README.md");
-        assertThat(EditScope.normalizeRepoPath("./tests/unit_tests/sample.py"))
-                .isEqualTo("tests/unit_tests/sample.py");
+        assertThat(EditScope.normalizeRepoPath(nested.toString())).isEqualTo("openjiuwen/harness/cli/README.md");
+        assertThat(EditScope.normalizeRepoPath("./tests/unit_tests/sample.py")).isEqualTo("tests/unit_tests/sample.py");
     }
 
     @Test

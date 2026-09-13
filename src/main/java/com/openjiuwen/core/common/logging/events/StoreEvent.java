@@ -12,9 +12,8 @@ import java.util.Map;
 
 /**
  * Data store related event.
- *
- * <p>Mirrors Python's {@code StoreEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -23,16 +22,25 @@ public class StoreEvent extends BaseLogEvent {
     private String tableName;
     private Integer dataNum;
 
+    /**
+     * StoreEvent.
+     * 
+     * @since 0.1.7
+     */
     public StoreEvent() {
         super();
         setModuleType(ModuleType.STORE);
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "table_name", tableName);
         putIfNotNull(map, "data_num", dataNum);
     }
 }
-
-

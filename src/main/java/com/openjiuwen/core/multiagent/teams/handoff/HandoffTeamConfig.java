@@ -4,37 +4,22 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.multiagent.TeamConfig;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
 /**
- * Full configuration for a handoff team.
- *
- * <p>Mirrors Python's {@code HandoffTeamConfig} in
- * {@code openjiuwen/core/multi_agent/teams/handoff/handoff_config.py}.</p>
+ * Public class HandoffTeamConfig used by the Java parity implementation.
+ * 
+ * @since 0.1.7
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class HandoffTeamConfig extends TeamConfig {
-
-    @JsonProperty("handoff")
     private HandoffConfig handoff = new HandoffConfig();
-
-    public HandoffTeamConfig() {
-        super();
-    }
-
-    public HandoffTeamConfig(HandoffConfig handoff) {
-        this.handoff = handoff == null ? new HandoffConfig() : handoff;
-    }
-
-    public HandoffConfig getHandoff() {
-        return handoff;
-    }
-
-    public void setHandoff(HandoffConfig handoff) {
-        this.handoff = handoff == null ? new HandoffConfig() : handoff;
-    }
 }

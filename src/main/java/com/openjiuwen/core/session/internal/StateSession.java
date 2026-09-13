@@ -5,105 +5,170 @@
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.state.SessionStateAccess;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamWriter;
-import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 import java.util.Map;
 
 /**
- * State-delegating session wrapper.
- *
- * <p>Mirrors Python's {@code StateSession} in
- * {@code openjiuwen/core/session/internal/wrapper.py}.</p>
+ * Abstract session providing state and stream delegation to the inner session.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.session.internal.wrapper.StateSession}.
+ * 
+ * @since 0.1.7
  */
 public abstract class StateSession extends WrappedSession {
-
-    private final SessionStateAccess stateOverride;
-
-    protected StateSession(BaseSession innerSession) {
-        this(innerSession, null);
+    /**
+     * StateSession.
+     * 
+     * @param inner inner
+     * @since 0.1.7
+     */
+    protected StateSession(BaseSession inner) {
+        super(inner);
     }
 
-    protected StateSession(BaseSession innerSession, SessionStateAccess stateOverride) {
-        super(innerSession);
-        this.stateOverride = stateOverride;
-    }
-
+    /**
+     * executableId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String executableId() {
-        Object value = invokeZeroArg(innerSession, "executableId");
-        return value == null ? innerSession.sessionId() : String.valueOf(value);
+        if (inner instanceof NodeSession) {
+            return ((NodeSession) inner).executableId();
+        }
+        return inner.sessionId();
     }
 
+    /**
+     * sessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String sessionId() {
-        return innerSession.sessionId();
+        return inner.sessionId();
     }
 
-    @Override
-    public SessionStateAccess state() {
-        return stateOverride == null ? innerSession.state() : stateOverride;
-    }
-
+    /**
+     * updateState.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
     public void updateState(Map<String, Object> data) {
-        state().update(data);
+        if (inner.state() != null) {
+            inner.state().update(data);
+        }
     }
 
+    /**
+     * getState.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object getState(Object key) {
-        return state().get(key);
+        if (inner.state() != null) {
+            return inner.state().get(key);
+        }
+        return null;
     }
 
+    /**
+     * updateGlobalState.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
     public void updateGlobalState(Map<String, Object> data) {
-        state().updateGlobal(data);
+        if (inner.state() != null) {
+            inner.state().updateGlobal(data);
+        }
     }
 
+    /**
+     * getGlobalState.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object getGlobalState(Object key) {
-        return state().getGlobal(key);
+        if (inner.state() != null) {
+            return inner.state().getGlobal(key);
+        }
+        return null;
     }
 
+    /**
+     * streamWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public StreamWriter<?> streamWriter() {
-        StreamWriterManager manager = innerSession.streamWriterManager();
-        return manager == null ? null : manager.getOutputWriter();
+        if (inner.streamWriterManager() != null) {
+            return inner.streamWriterManager().getOutputWriter();
+        }
+        return null;
     }
 
+    /**
+     * customWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public StreamWriter<?> customWriter() {
-        StreamWriterManager manager = innerSession.streamWriterManager();
-        return manager == null ? null : manager.getCustomWriter();
+        if (inner.streamWriterManager() != null) {
+            return inner.streamWriterManager().getCustomWriter();
+        }
+        return null;
     }
 
+    /**
+     * writeStream.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeStream(Object data) {
-        StreamWriter writer = (StreamWriter) streamWriter();
+        StreamWriter<?> writer = streamWriter();
         if (writer != null) {
             writer.write(data);
         }
     }
 
+    /**
+     * writeCustomStream.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeCustomStream(Map<String, Object> data) {
-        StreamWriter writer = (StreamWriter) customWriter();
+        StreamWriter<?> writer = customWriter();
         if (writer != null) {
             writer.write(data);
+            return;
         }
-    }
-
-    private static Object invokeZeroArg(Object target, String methodName) {
-        if (target == null) {
-            return null;
-        }
-        try {
-            return target.getClass().getMethod(methodName).invoke(target);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
+        StreamWriter<?> outputWriter = streamWriter();
+        if (outputWriter != null) {
+            outputWriter.write(new OutputSchema("custom", 0, data));
         }
     }
 }

@@ -9,103 +9,104 @@ import com.openjiuwen.core.session.BaseSession;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code Graph} in
- * {@code openjiuwen/core/graph/base.py}.
+ * Abstract graph definition with node/edge management and compilation.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.base.Graph}.
+ * 
+ * @since 0.1.7
  */
-public class Graph {
-
+public abstract class Graph {
     /**
-     * Python's base implementation is {@code pass}.
-     *
-     * @param nodeId node identifier
-     * @return null, matching Python's implicit {@code None}
+     * startNode.
+     * 
+     * @param nodeId nodeId
+     * @return the result
+     * @since 0.1.7
      */
     public Graph startNode(String nodeId) {
-        return null;
+        return this;
     }
 
     /**
-     * Python's base implementation is {@code pass}.
-     *
-     * @param nodeId node identifier
-     * @return null, matching Python's implicit {@code None}
+     * Set the end node for the graph.
+     * 
+     * @param nodeId the end node identifier
+     * @return this graph
+     * @since 0.1.7
      */
     public Graph endNode(String nodeId) {
-        return null;
+        return this;
     }
 
     /**
-     * Python's base implementation is {@code pass}.
-     *
-     * @param nodeId node identifier
-     * @param node executable node
-     * @param waitForAll whether to wait for all upstream nodes
-     * @return null, matching Python's implicit {@code None}
+     * Add a node to the graph.
+     * 
+     * @param nodeId the node identifier
+     * @param node the executable for this node
+     * @param waitForAll if true, this node must wait for all predecessors (barrier semantics)
+     * @return this graph
+     * @since 0.1.7
      */
-    public Graph addNode(String nodeId, Executable<?, ?> node, boolean waitForAll) {
-        return null;
-    }
+    public abstract Graph addNode(String nodeId, Executable<?, ?> node, boolean waitForAll);
 
     /**
-     * Default overload matching Python's keyword default {@code wait_for_all=False}.
-     *
-     * @param nodeId node identifier
-     * @param node executable node
-     * @return null, matching Python's implicit {@code None}
+     * Add a node to the graph (no barrier, default).
+     * 
+     * @param nodeId the node identifier
+     * @param node the executable for this node
+     * @return this graph
+     * @since 0.1.7
      */
     public Graph addNode(String nodeId, Executable<?, ?> node) {
         return addNode(nodeId, node, false);
     }
 
     /**
-     * Python accepts either a string source node or a list of string source nodes.
-     *
-     * @param sourceNodeId source node id or list of source node ids
-     * @param targetNodeId target node identifier
-     * @return null, matching Python's implicit {@code None}
+     * Add an edge from one or more source nodes to a target node.
+     * 
+     * @param sourceNodeId single string or list of strings for source nodes
+     * @param targetNodeId the target node identifier
+     * @return this graph
+     * @since 0.1.7
      */
-    public Graph addEdge(Object sourceNodeId, String targetNodeId) {
-        return null;
-    }
+    public abstract Graph addEdge(Object sourceNodeId, String targetNodeId);
 
     /**
-     * Python accepts any router object.
-     *
-     * @param sourceNodeId source node identifier
-     * @param router router object
-     * @return null, matching Python's implicit {@code None}
+     * Add conditional edges from a source node using a router.
+     * 
+     * @param sourceNodeId the source node identifier
+     * @param router router function for conditional branching
+     * @return this graph
+     * @since 0.1.7
      */
-    public Graph addConditionalEdges(String sourceNodeId, Object router) {
-        return null;
-    }
+    public abstract Graph addConditionalEdges(String sourceNodeId, Object router);
 
     /**
-     * Python's base implementation is {@code pass}.
-     *
+     * Compile the graph into an executable form.
+     * 
      * @param session execution session
-     * @param kwargs keyword-style options
-     * @return null, matching Python's implicit {@code None}
+     * @return an executable graph
+     * @since 0.1.7
+     */
+    public abstract ExecutableGraph<?, ?> compile(BaseSession session);
+
+    /**
+     * Compile the graph into an executable form with additional keyword arguments.
+     * 
+     * @param session execution session
+     * @param kwargs additional arguments (e.g. "context" for ModelContext)
+     * @return an executable graph
+     * @since 0.1.7
      */
     public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
-        return null;
+        return compile(session);
     }
 
     /**
-     * Compile without keyword-style options.
-     *
-     * @param session execution session
-     * @return null, matching Python's implicit {@code None}
+     * Get the nodes in this graph.
+     * 
+     * @return a map of node IDs to executables
+     * @since 0.1.7
      */
-    public ExecutableGraph<?, ?> compile(BaseSession session) {
-        return compile(session, Map.of());
-    }
-
-    /**
-     * Python's base implementation is {@code pass}.
-     *
-     * @return null, matching Python's implicit {@code None}
-     */
-    public Map<String, Executable<?, ?>> getNodes() {
-        return null;
-    }
+    public abstract Map<String, Executable<?, ?>> getNodes();
 }

@@ -1,3 +1,4 @@
+
 package com.openjiuwen.core.multiagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -12,45 +13,34 @@ import com.openjiuwen.core.multiagent.teams.handoff.HandoffSignal;
 import com.openjiuwen.core.multiagent.teams.handoff.HandoffTeam;
 import com.openjiuwen.core.multiagent.teams.handoff.HandoffTeamConfig;
 import com.openjiuwen.core.multiagent.teams.handoff.HandoffTool;
-import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
-/**
- * Compatibility coverage for the merged multiagent handoff API (Python-parity shape).
- */
 class HandoffCompatibilityTest {
-
     @Test
     void handoffConfigShouldPreserveDefaultsAndRoutes() {
         HandoffRoute route = new HandoffRoute("a", "b");
-        HandoffConfig config = new HandoffConfig();
-        config.setRoutes(List.of(route));
+        HandoffConfig config = HandoffConfig.builder().routes(List.of(route)).build();
         HandoffTeamConfig teamConfig = new HandoffTeamConfig(config);
 
         assertThat(config.getMaxHandoffs()).isEqualTo(10);
-        assertThat(config.getRoutes()).hasSize(1);
-        assertThat(config.getRoutes().get(0).getSource()).isEqualTo("a");
-        assertThat(config.getRoutes().get(0).getTarget()).isEqualTo("b");
+        assertThat(config.getRoutes()).containsExactly(route);
         assertThat(teamConfig.getHandoff()).isSameAs(config);
     }
 
     @Test
     void handoffRequestShouldExposeSessionId() {
-        AgentTeamSession session = new AgentTeamSession("sid-123", null, "team");
-        HandoffRequest request = new HandoffRequest("hello", null, session);
+        AgentGroupSessionApi session = new AgentGroupSessionApi("sid-123");
+        HandoffRequest request = HandoffRequest.builder().inputMessage("hello").session(session).build();
 
         assertThat(request.getSessionId()).isEqualTo("sid-123");
         assertThat(request.getHistory()).isEmpty();
@@ -58,17 +48,14 @@ class HandoffCompatibilityTest {
 
     @Test
     void handoffSignalShouldExtractNestedPayload() {
-        HandoffSignal signal = HandoffSignal.extractHandoffSignal(
-                Map.of("output", Map.of(
-                        HandoffSignal.HANDOFF_TARGET_KEY, "billing",
-                        HandoffSignal.HANDOFF_MESSAGE_KEY, "ctx",
-                        HandoffSignal.HANDOFF_REASON_KEY, "needs specialist")))
-                .orElse(null);
+        HandoffSignal signal =
+            HandoffSignal.extract(Map.of("output", Map.of(HandoffSignal.HANDOFF_TARGET_KEY, "billing",
+                    HandoffSignal.HANDOFF_MESSAGE_KEY, "ctx", HandoffSignal.HANDOFF_REASON_KEY, "needs specialist")));
 
         assertThat(signal).isNotNull();
-        assertThat(signal.getTarget()).isEqualTo("billing");
-        assertThat(signal.getMessage()).contains("ctx");
-        assertThat(signal.getReason()).contains("needs specialist");
+        assertThat(signal.target()).isEqualTo("billing");
+        assertThat(signal.message()).isEqualTo("ctx");
+        assertThat(signal.reason()).isEqualTo("needs specialist");
     }
 
     @Test
@@ -76,7 +63,7 @@ class HandoffCompatibilityTest {
         HandoffTool tool = new HandoffTool("billing");
         @SuppressWarnings("unchecked")
         Map<String, Object> payload =
-                (Map<String, Object>) tool.invoke(Map.of("reason", "needs billing", "message", "carry context"));
+            (Map<String, Object>) tool.invoke(Map.of("reason", "needs billing", "message", "carry context"));
 
         assertThat(payload).containsEntry(HandoffSignal.HANDOFF_TARGET_KEY, "billing");
         assertThat(payload).containsEntry(HandoffSignal.HANDOFF_REASON_KEY, "needs billing");
@@ -85,18 +72,17 @@ class HandoffCompatibilityTest {
 
     @Test
     void handoffOrchestratorShouldRespectRoutesAndSnapshot() {
-        HandoffConfig config = new HandoffConfig();
-        config.setRoutes(List.of(new HandoffRoute("a", "b")));
-        config.setMaxHandoffs(2);
+        HandoffConfig config =
+            HandoffConfig.builder().routes(List.of(new HandoffRoute("a", "b"))).maxHandoffs(2).build();
         HandoffOrchestrator orchestrator = new HandoffOrchestrator("a", List.of("a", "b", "c"), config);
 
-        assertThat(orchestrator.requestHandoff("b").join()).isTrue();
-        assertThat(orchestrator.requestHandoff("c").join()).isFalse();
+        assertThat(orchestrator.requestHandoff("b")).isTrue();
+        assertThat(orchestrator.requestHandoff("c")).isFalse();
 
-        AgentTeamSession session = new AgentTeamSession("handoff-session", null, "team");
+        AgentGroupSessionApi session = new AgentGroupSessionApi("handoff-session");
         orchestrator.saveToSession(session);
         HandoffOrchestrator restored =
-                HandoffOrchestrator.restoreFromSession(session, "a", List.of("a", "b", "c"), config);
+            HandoffOrchestrator.restoreFromSession(session, "a", List.of("a", "b", "c"), config);
 
         assertThat(restored.getCurrentAgentId()).isEqualTo("b");
         assertThat(restored.getHandoffCount()).isEqualTo(1);
@@ -104,45 +90,41 @@ class HandoffCompatibilityTest {
 
     @Test
     void handoffTeamShouldTransferControlAcrossAgents() {
-        TeamCard card = new TeamCard("handoff-team", "handoff-team", "");
-        HandoffConfig handoff = new HandoffConfig();
-        handoff.setStartAgent(agentCard("triage"));
-        handoff.setRoutes(List.of(new HandoffRoute("triage", "billing")));
+        TeamCard card = new TeamCard();
+        card.setId("handoff-team");
+        card.setName("handoff-team");
+        HandoffConfig handoff = HandoffConfig.builder().startAgent(agentCard("triage"))
+                .routes(List.of(new HandoffRoute("triage", "billing"))).build();
         HandoffTeam team = new HandoffTeam(card, new HandoffTeamConfig(handoff));
         team.addAgent(agentCard("triage"),
                 () -> new StaticAgent("triage",
-                        Map.of(HandoffSignal.HANDOFF_TARGET_KEY, "billing",
-                                HandoffSignal.HANDOFF_REASON_KEY, "needs billing",
-                                HandoffSignal.HANDOFF_MESSAGE_KEY, "invoice")));
+                        Map.of(HandoffSignal.HANDOFF_TARGET_KEY, "billing", HandoffSignal.HANDOFF_REASON_KEY,
+                                "needs billing", HandoffSignal.HANDOFF_MESSAGE_KEY, "invoice")));
         team.addAgent(agentCard("billing"), () -> new StaticAgent("billing", Map.of("result", "billing:invoice")));
 
-        Object result = team.invoke(Map.of("query", "pay"), new AgentTeamSession("handoff-team-session", null, "handoff-team"))
-                .toCompletableFuture()
-                .join();
+        Object result = team.invoke(Map.of("query", "pay"), new AgentGroupSessionApi("handoff-team-session"));
 
         assertThat(result).isEqualTo(Map.of("result", "billing:invoice"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void handoffTeamShouldRejectDisallowedRoute() {
-        TeamCard card = new TeamCard("handoff-team", "handoff-team", "");
-        HandoffConfig handoff = new HandoffConfig();
-        handoff.setStartAgent(agentCard("triage"));
-        handoff.setRoutes(List.of(new HandoffRoute("triage", "support")));
+        TeamCard card = new TeamCard();
+        card.setId("handoff-team");
+        card.setName("handoff-team");
+        HandoffConfig handoff = HandoffConfig.builder().startAgent(agentCard("triage"))
+                .routes(List.of(new HandoffRoute("triage", "support"))).build();
         HandoffTeam team = new HandoffTeam(card, new HandoffTeamConfig(handoff));
         team.addAgent(agentCard("triage"),
                 () -> new StaticAgent("triage", Map.of(HandoffSignal.HANDOFF_TARGET_KEY, "billing")));
         team.addAgent(agentCard("billing"), () -> new StaticAgent("billing", Map.of("result", "done")));
 
-        assertThatThrownBy(() -> team.invoke("pay", new AgentTeamSession("handoff-team-session", null, "handoff-team"))
-                .toCompletableFuture()
-                .join())
+        assertThatThrownBy(() -> team.invoke("pay", new AgentGroupSessionApi("handoff-team-session")))
                 .isInstanceOf(RuntimeException.class);
     }
 
     private static AgentCard agentCard(String id) {
-        return new AgentCard(id, id, id);
+        return AgentCard.builder().id(id).name(id).description(id).build();
     }
 
     private static final class StaticAgent extends BaseAgent {
@@ -164,17 +146,12 @@ class HandoffCompatibilityTest {
         }
 
         @Override
-        public Object invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, Session session) {
             return output;
         }
 
         @Override
-        public Object invoke(Object inputs, AgentSession session) {
-            return output;
-        }
-
-        @Override
-        public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
+        public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
             return List.of(output).iterator();
         }
     }

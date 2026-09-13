@@ -6,52 +6,66 @@ package com.openjiuwen.core.session;
 
 /**
  * Thread-local holder for the currently executing session.
+ * <p>
+ * This mirrors Python's session context behaviour closely enough for tools and rails that need
+ * access to the active session without receiving it explicitly.
+ * 
+ * @since 0.1.7
  */
 public final class SessionContextHolder {
+    private static final ThreadLocal<Session> CURRENT_SESSION = new ThreadLocal<Session>();
 
-    private static final ThreadLocal<Object> CURRENT_SESSION = new ThreadLocal<>();
-
+    /**
+     * SessionContextHolder.
+     * 
+     * @since 0.1.7
+     */
     private SessionContextHolder() {
     }
 
-    public static Object getCurrentSession() {
+    /**
+     * Return the session currently bound to the executing thread.
+     * 
+     * @return current session, or null when none is bound
+     * @since 0.1.7
+     */
+    public static Session getCurrentSession() {
         return CURRENT_SESSION.get();
     }
 
-    public static <T> T getCurrentSession(Class<T> sessionType) {
-        Object session = CURRENT_SESSION.get();
-        if (session == null) {
-            return null;
-        }
-        return sessionType.cast(session);
-    }
-
-    public static void setCurrentSession(Object session) {
+    /**
+     * Bind a session to the executing thread.
+     * 
+     * @param session session to bind
+     * @since 0.1.7
+     */
+    public static void setCurrentSession(Session session) {
         if (session == null) {
             CURRENT_SESSION.remove();
-        } else {
-            CURRENT_SESSION.set(session);
+            return;
         }
+        CURRENT_SESSION.set(session);
     }
 
+    /**
+     * Clear the session bound to the executing thread.
+     * 
+     * @since 0.1.7
+     */
     public static void clearCurrentSession() {
         CURRENT_SESSION.remove();
     }
 
-    public static void restoreCurrentSession(Object session) {
+    /**
+     * Restore a previously captured session binding.
+     *
+     * @param session previous session, or null when the previous state was unbound
+     */
+    public static void restoreCurrentSession(Session session) {
+        if (session == null) {
+            clearCurrentSession();
+            return;
+        }
         setCurrentSession(session);
-    }
-
-    public static String resolveSessionId(Object session) {
-        if (session instanceof AgentSessionApi agentSession) {
-            return agentSession.getSessionId();
-        }
-        if (session instanceof BaseSession baseSession) {
-            return baseSession.getSessionId();
-        }
-        if (session instanceof NodeSessionApi nodeSession) {
-            return nodeSession.getSessionId();
-        }
-        return null;
     }
 }

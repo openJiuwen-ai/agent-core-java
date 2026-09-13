@@ -4,139 +4,101 @@
 
 package com.openjiuwen.core.context.processor.offloader;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
-import java.util.ArrayList;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.util.List;
-import java.util.Set;
 
 /**
- * Configuration for {@link MessageSummaryOffloader}.
- *
- * <p>Mirrors Python's {@code MessageSummaryOffloaderConfig} in
- * {@code openjiuwen/core/context_engine/processor/offloader/message_summary_offloader.py}.</p>
+ * Configuration for adaptive summary offloading.
+ * <p>
+ * Mirrors Python's {@code MessageSummaryOffloaderConfig}.
+ * 
+ * @since 0.1.7
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class MessageSummaryOffloaderConfig {
-    private static final Set<String> VALID_ROLES = Set.of("user", "assistant", "tool");
+    private Integer messagesThreshold;
 
-    @JsonProperty("large_message_threshold")
+    @Builder.Default
+    private int tokensThreshold = 20000;
+
+    @Builder.Default
     private int largeMessageThreshold = 1000;
 
-    @JsonProperty("offload_message_type")
+    @Builder.Default
+    /**
+     * List.of.
+     * 
+     * @since 0.1.7
+     */
     private List<String> offloadMessageType = List.of("tool");
 
-    @JsonProperty("protected_tool_names")
+    @Builder.Default
+    /**
+     * List.of.
+     * 
+     * @since 0.1.7
+     */
     private List<String> protectedToolNames = List.of("reload_original_context_messages");
+
+    private Integer messagesToKeep;
+
+    @Builder.Default
+    private boolean keepLastRound = true;
 
     private ModelRequestConfig model;
 
-    @JsonProperty("model_client")
     private ModelClientConfig modelClient;
 
-    @JsonProperty("summary_max_tokens")
+    @Builder.Default
     private int summaryMaxTokens = 900;
 
-    @JsonProperty("enable_precise_step")
+    @Builder.Default
     private boolean enablePreciseStep = false;
 
-    @JsonProperty("step_summary_max_context_messages")
+    @Builder.Default
     private int stepSummaryMaxContextMessages = 8;
 
-    @JsonProperty("content_max_chars_for_compression")
+    @Builder.Default
     private int contentMaxCharsForCompression = 200000;
 
-    public int getLargeMessageThreshold() {
-        return largeMessageThreshold;
-    }
-
-    public void setLargeMessageThreshold(int largeMessageThreshold) {
-        validateGt(largeMessageThreshold, "large_message_threshold");
-        this.largeMessageThreshold = largeMessageThreshold;
-    }
-
-    public List<String> getOffloadMessageType() {
-        return new ArrayList<>(offloadMessageType);
-    }
-
-    public void setOffloadMessageType(List<String> offloadMessageType) {
-        if (offloadMessageType == null) {
-            throw new IllegalArgumentException("offload_message_type must not be null");
+    /**
+     * validate.
+     * 
+     * @since 0.1.7
+     */
+    public void validate() {
+        if (messagesThreshold != null && messagesThreshold <= 0) {
+            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
         }
-        for (String role : offloadMessageType) {
-            if (!VALID_ROLES.contains(role)) {
-                throw new IllegalArgumentException("offload_message_type contains unsupported role: " + role);
-            }
+        if (tokensThreshold <= 0) {
+            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
         }
-        this.offloadMessageType = new ArrayList<>(offloadMessageType);
-    }
-
-    public List<String> getProtectedToolNames() {
-        return new ArrayList<>(protectedToolNames);
-    }
-
-    public void setProtectedToolNames(List<String> protectedToolNames) {
-        if (protectedToolNames == null) {
-            throw new IllegalArgumentException("protected_tool_names must not be null");
+        if (largeMessageThreshold <= 0) {
+            throw new IllegalArgumentException("largeMessageThreshold must be > 0, got " + largeMessageThreshold);
         }
-        this.protectedToolNames = new ArrayList<>(protectedToolNames);
-    }
-
-    public ModelRequestConfig getModel() {
-        return model;
-    }
-
-    public void setModel(ModelRequestConfig model) {
-        this.model = model;
-    }
-
-    public ModelClientConfig getModelClient() {
-        return modelClient;
-    }
-
-    public void setModelClient(ModelClientConfig modelClient) {
-        this.modelClient = modelClient;
-    }
-
-    public int getSummaryMaxTokens() {
-        return summaryMaxTokens;
-    }
-
-    public void setSummaryMaxTokens(int summaryMaxTokens) {
-        validateGt(summaryMaxTokens, "summary_max_tokens");
-        this.summaryMaxTokens = summaryMaxTokens;
-    }
-
-    public boolean isEnablePreciseStep() {
-        return enablePreciseStep;
-    }
-
-    public void setEnablePreciseStep(boolean enablePreciseStep) {
-        this.enablePreciseStep = enablePreciseStep;
-    }
-
-    public int getStepSummaryMaxContextMessages() {
-        return stepSummaryMaxContextMessages;
-    }
-
-    public void setStepSummaryMaxContextMessages(int stepSummaryMaxContextMessages) {
-        validateGt(stepSummaryMaxContextMessages, "step_summary_max_context_messages");
-        this.stepSummaryMaxContextMessages = stepSummaryMaxContextMessages;
-    }
-
-    public int getContentMaxCharsForCompression() {
-        return contentMaxCharsForCompression;
-    }
-
-    public void setContentMaxCharsForCompression(int contentMaxCharsForCompression) {
-        validateGt(contentMaxCharsForCompression, "content_max_chars_for_compression");
-        this.contentMaxCharsForCompression = contentMaxCharsForCompression;
-    }
-
-    private static void validateGt(int value, String fieldName) {
-        if (value <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be > 0");
+        if (messagesToKeep != null && messagesToKeep <= 0) {
+            throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+        }
+        if (summaryMaxTokens <= 0) {
+            throw new IllegalArgumentException("summaryMaxTokens must be > 0, got " + summaryMaxTokens);
+        }
+        if (stepSummaryMaxContextMessages <= 0) {
+            throw new IllegalArgumentException(
+                    "stepSummaryMaxContextMessages must be > 0, got " + stepSummaryMaxContextMessages);
+        }
+        if (contentMaxCharsForCompression <= 0) {
+            throw new IllegalArgumentException(
+                    "contentMaxCharsForCompression must be > 0, got " + contentMaxCharsForCompression);
         }
     }
 }

@@ -5,6 +5,7 @@
 package com.openjiuwen.core.common.logging.events;
 
 import com.openjiuwen.core.common.schema.BaseCard;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.SuperBuilder;
@@ -13,9 +14,8 @@ import java.util.Map;
 
 /**
  * Runner event.
- *
- * <p>Mirrors Python's {@code RunnerEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -31,10 +31,21 @@ public class RunnerEvent extends BaseLogEvent {
     private Object tag;
     private BaseCard card;
 
+    /**
+     * RunnerEvent.
+     * 
+     * @since 0.1.7
+     */
     public RunnerEvent() {
         super();
     }
 
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "runner_id", runnerId);
@@ -48,5 +59,3 @@ public class RunnerEvent extends BaseLogEvent {
         putIfNotNull(map, "card", card);
     }
 }
-
-

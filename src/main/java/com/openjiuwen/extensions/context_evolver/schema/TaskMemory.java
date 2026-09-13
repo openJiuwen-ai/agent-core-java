@@ -172,7 +172,7 @@ public class TaskMemory {
      */
     public VectorNode toVectorNode() {
         String normalizedContent = content != null ? content : "";
-        String contentHash = SchemaUtils.md5Hex(normalizedContent);
+        String contentHash = SchemaUtils.sha256Hex(normalizedContent);
         String nodeId = "task_" + workspaceId + "_" + contentHash;
 
         String embeddingContent = "When to use: " + whenToUse + "\n\nContent: " + normalizedContent;

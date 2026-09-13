@@ -12,9 +12,8 @@ import java.util.Map;
 
 /**
  * Workflow related event.
- *
- * <p>Mirrors Python's {@code WorkflowEvent} in
- * {@code openjiuwen/core/common/logging/events.py}.</p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -34,18 +33,22 @@ public class WorkflowEvent extends BaseLogEvent {
     private Map<String, Object> outputData;
     private Double executionTimeMs;
 
+    /**
+     * WorkflowEvent.
+     * 
+     * @since 0.1.7
+     */
     public WorkflowEvent() {
         super();
         setModuleType(ModuleType.WORKFLOW);
     }
 
-    public void setComponentId(String componentId) {
-        this.componentId = componentId;
-        setModuleType(componentId != null && !componentId.isBlank()
-            ? ModuleType.WORKFLOW_COMPONENT
-            : ModuleType.WORKFLOW);
-    }
-
+    /**
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
+     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "workflow_id", workflowId);
@@ -63,5 +66,3 @@ public class WorkflowEvent extends BaseLogEvent {
         putIfNotNull(map, "execution_time_ms", executionTimeMs);
     }
 }
-
-

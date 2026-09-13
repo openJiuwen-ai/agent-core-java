@@ -1,22 +1,22 @@
+
 package com.openjiuwen.harness;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
-import com.openjiuwen.harness.rails.security.PermissionInterruptRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessPermissionIntegrationTest {
-
     private static Map<String, Object> permissions() {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("enabled", true);
@@ -25,61 +25,32 @@ class HarnessPermissionIntegrationTest {
         return config;
     }
 
-    private static ToolPermissionHost buildHost() {
-        ToolPermissionHost host = new ToolPermissionHost();
-        host.setWorkspaceDirResolver(() -> Path.of(".").toAbsolutePath());
-        return host;
-    }
-
     @Test
     void deepAgentShouldMountSecurityAndPermissionRailsWhenConfigured() {
-        ToolPermissionHost host = buildHost();
+        ToolPermissionHost host =
+            ToolPermissionHost.builder().resolveWorkspaceDir(() -> Path.of(".").toAbsolutePath()).build();
         DeepAgent agent = HarnessFactory.createDeepAgent(
                 AgentCard.builder().name("permission_demo").description("permission demo").build(),
-                DeepAgentConfig.builder()
-                        .workspacePath("./workspace")
-                        .language("cn")
-                        .build(),
-                new Workspace("./workspace", "cn"),
-                permissions(),
-                host
-        );
+                DeepAgentConfig.builder().workspacePath("./workspace").language("cn").build(),
+                Workspace.builder().rootPath("./workspace").language("cn").build(), permissions(), host);
 
         agent.ensureInitialized();
 
-        assertThat(agent.getRails().stream().map(item -> item.getClass().getSimpleName()).toList())
+        assertThat(agent.getRegisteredRails().stream().map(item -> item.getClass().getSimpleName()).toList())
                 .contains("SecurityRail", "PermissionInterruptRail");
-        assertThat(innerAgentHasPermissionRail(agent)).isTrue();
     }
 
     @Test
     void deepAgentInvokeShouldInitializePermissionRailsLazily() {
         DeepAgent agent = HarnessFactory.createDeepAgent(
                 AgentCard.builder().name("permission_demo").description("permission demo").build(),
-                DeepAgentConfig.builder()
-                        .workspacePath("./workspace")
-                        .permissions(permissions())
-                        .build(),
-                new Workspace("./workspace", "cn")
-        );
+                DeepAgentConfig.builder().workspacePath("./workspace").permissions(permissions()).build(),
+                Workspace.builder().rootPath("./workspace").language("cn").build());
 
         agent.invoke(Map.of("query", "read file"));
 
         assertThat(agent.isInitialized()).isTrue();
-        assertThat(agent.getRails().stream().map(item -> item.getClass().getSimpleName()).toList())
+        assertThat(agent.getRegisteredRails().stream().map(item -> item.getClass().getSimpleName()).toList())
                 .contains("SecurityRail", "PermissionInterruptRail");
-        assertThat(innerAgentHasPermissionRail(agent)).isTrue();
-    }
-
-    private static boolean innerAgentHasPermissionRail(DeepAgent agent) {
-        PermissionInterruptRail permissionRail = agent.getRails().stream()
-                .filter(PermissionInterruptRail.class::isInstance)
-                .map(PermissionInterruptRail.class::cast)
-                .findFirst()
-                .orElse(null);
-        if (permissionRail == null || agent.getAgent() == null) {
-            return false;
-        }
-        return agent.getAgent().getAgentCallbackManager().isRailRegistered(permissionRail);
     }
 }

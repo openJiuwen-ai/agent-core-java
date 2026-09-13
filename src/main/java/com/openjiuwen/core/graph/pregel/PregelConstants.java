@@ -5,22 +5,95 @@
 package com.openjiuwen.core.graph.pregel;
 
 /**
- * Mirrors Python's constant module in
- * {@code openjiuwen/core/graph/pregel/constants.py}.
+ * Constants for the Pregel graph execution engine.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.pregel.constants}.
+ * 
+ * @since 0.1.7
  */
 public final class PregelConstants {
-    public static final String START = "__start__";
-    public static final String END = "__end__";
-    public static final int MAX_RECURSIVE_LIMIT = 10000;
-    public static final String TASK_STATUS_INTERRUPT = "__interrupt__";
-    public static final String TASK_STATUS_ERROR = "__error__";
-    public static final String NS_SEPARATOR = ":";
-    public static final String NS_REPLACE_CHAR = "#";
-    public static final String NS = "ns";
-    public static final String PARENT_NS = "parent_ns";
-    public static final String SESSION_ID = "session_id";
-    public static final String RECURSION_LIMIT = "recursion_limit";
-
+    /**
+     * PregelConstants.
+     * 
+     * @since 0.1.7
+     */
     private PregelConstants() {
     }
+
+    /**
+     * START.
+     * 
+     * @since 0.1.7
+     */
+    public static final String START = "__start__";
+
+    /**
+     * END.
+     * 
+     * @since 0.1.7
+     */
+    public static final String END = "__end__";
+
+    /**
+     * MAX_RECURSIVE_LIMIT.
+     * 
+     * @since 0.1.7
+     */
+    public static final int MAX_RECURSIVE_LIMIT = 10000;
+
+    /**
+     * TASK_STATUS_INTERRUPT.
+     * 
+     * @since 0.1.7
+     */
+    public static final String TASK_STATUS_INTERRUPT = "__interrupt__";
+
+    /**
+     * TASK_STATUS_ERROR.
+     * 
+     * @since 0.1.7
+     */
+    public static final String TASK_STATUS_ERROR = "__error__";
+
+    /**
+     * NS_SEPARATOR.
+     * 
+     * @since 0.1.7
+     */
+    public static final String NS_SEPARATOR = ":";
+
+    /**
+     * NS_REPLACE_CHAR.
+     * 
+     * @since 0.1.7
+     */
+    public static final String NS_REPLACE_CHAR = "#";
+
+    /**
+     * NS.
+     * 
+     * @since 0.1.7
+     */
+    public static final String NS = "ns";
+
+    /**
+     * PARENT_NS.
+     * 
+     * @since 0.1.7
+     */
+    public static final String PARENT_NS = "parent_ns";
+
+    /**
+     * SESSION_ID.
+     * 
+     * @since 0.1.7
+     */
+    public static final String SESSION_ID = "session_id";
+
+    /**
+     * RECURSION_LIMIT.
+     * 
+     * @since 0.1.7
+     */
+    public static final String RECURSION_LIMIT = "recursion_limit";
 }

@@ -8,14 +8,11 @@ import com.openjiuwen.core.controller.legacy.IntentDetectionController;
 import com.openjiuwen.core.controller.legacy.config.ReasonerConfig;
 import com.openjiuwen.core.controller.legacy.event.Event;
 import com.openjiuwen.core.controller.legacy.task.Task;
-import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.Session;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Minimal legacy reasoner composed of an intent detector and a planner.
@@ -45,12 +42,8 @@ public class AgentReasoner {
      * @return the result
      * @since 0.1.7
      */
-    public CompletionStage<List<IntentDetectionController.Intent>> detect(Event event, AgentSessionApi session) {
-        if (intentDetector == null) {
-            return java.util.concurrent.CompletableFuture.completedFuture(List.of());
-        }
-        return intentDetector.processMessage(event)
-                .thenApply(tasks -> List.of());
+    public IntentDetectionController.Intent detect(Event event, Session session) {
+        return intentDetector != null ? intentDetector.detect(event, session, config) : null;
     }
 
     /**
@@ -61,10 +54,7 @@ public class AgentReasoner {
      * @return the result
      * @since 0.1.7
      */
-    public CompletionStage<List<Task>> plan(IntentDetectionController.Intent intent, AgentSessionApi session) {
-        if (planner == null) {
-            return java.util.concurrent.CompletableFuture.completedFuture(List.of());
-        }
-        return planner.processMessage(null);
+    public Task plan(IntentDetectionController.Intent intent, Session session) {
+        return planner != null ? planner.plan(intent, session) : null;
     }
 }

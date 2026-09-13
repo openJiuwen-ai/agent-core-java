@@ -4,54 +4,61 @@
 
 package com.openjiuwen.core.sysop.config;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Sandbox gateway configuration.
+ * Remote sandbox gateway connection configuration.
  * <p>
- * Mirrors Python's {@code SandboxGatewayConfig} in
- * {@code openjiuwen/core/sys_operation/config.py}.
+ * Mirrors Python's {@code SandboxGatewayConfig} in {@code sys_operation/config.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class SandboxGatewayConfig {
-
     @Builder.Default
-    private SandboxIsolationConfig isolation = new SandboxIsolationConfig();
+    private SandboxIsolationConfig isolation = SandboxIsolationConfig.builder().build();
 
-    @JsonProperty("launcher_config")
+    /** Launcher/runtime acquisition configuration. */
     private SandboxLauncherConfig launcherConfig;
 
+    /** Unified timeout in seconds for sandbox readiness/invoke operations. */
     @Builder.Default
-    @JsonProperty("timeout_seconds")
     private int timeoutSeconds = 30;
 
+    /** Remote sandbox gateway service endpoint. */
     @Builder.Default
-    @JsonProperty("auth_headers")
-    private Map<String, String> authHeaders = new LinkedHashMap<>();
-
-    @Builder.Default
-    @JsonProperty("auth_query_params")
-    private Map<String, String> authQueryParams = new LinkedHashMap<>();
-
-    /** Legacy compatibility: gateway base URL used by profiles/clients. */
-    @Builder.Default
-    @JsonProperty("gateway_url")
     private String gatewayUrl = "";
 
-    /** Legacy compatibility: free-form params (root_path, shell_allowlist, etc.). */
+    /**
+     * Global request parameters.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
-    @JsonProperty("params")
-    private Map<String, Object> params = new LinkedHashMap<>();
+    private Map<String, Object> params = new HashMap<>();
+
+    /**
+     * Authentication HTTP headers.
+     * 
+     * @since 0.1.7
+     */
+    @Builder.Default
+    private Map<String, String> authHeaders = new HashMap<>();
+
+    /**
+     * Authentication query parameters.
+     * 
+     * @since 0.1.7
+     */
+    @Builder.Default
+    private Map<String, String> authQueryParams = new HashMap<>();
 }

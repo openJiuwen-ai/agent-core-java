@@ -4,39 +4,84 @@
 
 package com.openjiuwen.core.sysop.local;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.util.Objects;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.Instant;
 
 /**
- * Mirrors Python's {@code StreamEvent} in
- * {@code openjiuwen/core/sys_operation/local/utils.py}.
+ * Data model for process stream events.
+ * <p>
+ * Mirrors Python's {@code StreamEvent} in {@code local/utils.py}.
+ * <p>
+ * Fields:
+ * <ul>
+ * <li>{@code type} — Event type (STDOUT/STDERR/EXIT/ERROR)</li>
+ * <li>{@code data} — Payload: text for stdout/stderr/error, exit code string for exit</li>
+ * <li>{@code timestamp} — UTC instant when the event was created</li>
+ * </ul>
+ * 
+ * @since 0.1.7
  */
-public final class StreamEvent {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class StreamEvent {
+    private StreamEventType type;
 
-    private final StreamEventType type;
-    private final Object data;
-    private final OffsetDateTime timestamp;
+    /**
+     * Event payload data with type dependent on event type:
+     * <ul>
+     * <li>stdout/stderr = text output {@code String}</li>
+     * <li>exit = integer exit code ({@code Integer})</li>
+     * <li>error = error message {@code String}</li>
+     * </ul>
+     * <p>
+     * Mirrors Python's {@code data: Union[str, int]}.
+     */
+    private Object data;
 
-    public StreamEvent(StreamEventType type, Object data, OffsetDateTime timestamp) {
-        this.type = Objects.requireNonNull(type, "type");
-        this.data = data;
-        this.timestamp = timestamp != null ? timestamp : OffsetDateTime.now(ZoneOffset.UTC);
+    /**
+     * UTC timestamp when the event was created.
+     * 
+     * @since 0.1.7
+     */
+    @Builder.Default
+    private Instant timestamp = Instant.now();
+
+    /**
+     * Get data as String.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public String getDataAsString() {
+        return data != null ? data.toString() : null;
     }
 
-    public StreamEvent(StreamEventType type, Object data) {
-        this(type, data, OffsetDateTime.now(ZoneOffset.UTC));
-    }
-
-    public StreamEventType getType() {
-        return type;
-    }
-
-    public Object getData() {
-        return data;
-    }
-
-    public OffsetDateTime getTimestamp() {
-        return timestamp;
+    /**
+     * Get data as Integer (for EXIT events).
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Integer getDataAsInt() {
+        if (data instanceof Integer i) {
+            return i;
+        }
+        if (data instanceof Number n) {
+            return n.intValue();
+        }
+        if (data instanceof String s) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 }

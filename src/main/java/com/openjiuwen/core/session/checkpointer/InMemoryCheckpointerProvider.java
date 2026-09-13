@@ -17,6 +17,7 @@ import java.util.Map;
  * @since 0.1.7
  */
 public final class InMemoryCheckpointerProvider implements CheckpointerProvider {
+    private static final Checkpointer INSTANCE = new InMemoryCheckpointer();
 
     /**
      * Returns the in-memory checkpointer type name.
@@ -30,14 +31,14 @@ public final class InMemoryCheckpointerProvider implements CheckpointerProvider 
     }
 
     /**
-     * Returns the shared in-memory checkpointer used by {@link CheckpointerFactory}.
-     *
+     * Creates or returns the shared in-memory checkpointer instance.
+     * 
      * @param conf the configuration map (ignored for in-memory implementation)
      * @return the shared InMemoryCheckpointer instance
      * @since 0.1.7
      */
     @Override
     public Checkpointer create(Map<String, Object> conf) {
-        return CheckpointerFactory.defaultInMemoryCheckpointer();
+        return INSTANCE;
     }
 }
