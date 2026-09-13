@@ -5,7 +5,7 @@
 package com.openjiuwen.agent_teams.prompts;
 
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
-import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 
 import java.nio.file.Files;
@@ -51,12 +51,12 @@ public final class TeamPlanMode {
     }
 
     public static String buildTeamPlanModePromptTemplate(String language) {
-        String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(language);
+        String resolvedLanguage = SystemPromptBuilder.resolveLanguage(language);
         return String.valueOf(PromptLoader.loadTemplate("team_plan_mode", resolvedLanguage).getContent()).strip();
     }
 
     public static String getTeamPlanModePrompt(String language) {
-        String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(language);
+        String resolvedLanguage = SystemPromptBuilder.resolveLanguage(language);
         return "en".equals(resolvedLanguage) ? TEAM_PLAN_MODE_PROMPT_EN : TEAM_PLAN_MODE_PROMPT_CN;
     }
 
@@ -66,7 +66,7 @@ public final class TeamPlanMode {
             String language
     ) {
         Path planPath = agent == null ? null : agent.getPlanFilePath(session);
-        String lang = "en".equals(HarnessPromptsPackage.resolveLanguage(language)) ? "en" : "cn";
+        String lang = "en".equals(SystemPromptBuilder.resolveLanguage(language)) ? "en" : "cn";
         return ENTER_PLAN_MODE_MESSAGES.getOrDefault(
                 statusKey(lang, planPath != null),
                 "你尚未调用 enter_plan_mode。请立即调用它作为你的第一个操作。"
@@ -79,7 +79,7 @@ public final class TeamPlanMode {
             String language
     ) {
         Path planPath = agent == null ? null : agent.getPlanFilePath(session);
-        String lang = "en".equals(HarnessPromptsPackage.resolveLanguage(language)) ? "en" : "cn";
+        String lang = "en".equals(SystemPromptBuilder.resolveLanguage(language)) ? "en" : "cn";
         if (planPath == null) {
             return NO_PLAN_MESSAGES.getOrDefault(lang, "暂无 plan 文件。请先调用 enter_plan_mode 创建。");
         }
@@ -105,7 +105,7 @@ public final class TeamPlanMode {
             PlanFileProvider agent,
             PlanSession session
     ) {
-        String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(language);
+        String resolvedLanguage = SystemPromptBuilder.resolveLanguage(language);
         String content = buildTeamPlanModePrompt(
                 resolvedLanguage,
                 buildEnterPlanModeStatus(agent, session, resolvedLanguage),

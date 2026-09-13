@@ -128,33 +128,33 @@ class ToolMetadataRegistryTest {
 
     @Test
     void allBuiltinProvidersPassValidation() {
-        assertThatCode(HarnessPromptToolsPackage::validateAllToolProviders)
+        assertThatCode(ToolMetadataRegistry::validateAllToolProviders)
                 .doesNotThrowAnyException();
     }
 
     @Test
     void buildToolCardReturnsCorrectCard() {
-        ToolCard card = HarnessPromptToolsPackage.buildToolCard("bash", "BashTool", "cn");
+        ToolCard card = ToolMetadataRegistry.buildToolCard("bash", "BashTool", "cn");
 
         assertThat(card.getId()).startsWith("BashTool_");
         assertThat(card.getName()).isEqualTo("bash");
-        assertThat(card.getDescription()).isEqualTo(HarnessPromptToolsPackage.getToolDescription("bash", "cn"));
-        assertThat(card.getInputParams()).isEqualTo(HarnessPromptToolsPackage.getToolInputParams("bash", "cn"));
+        assertThat(card.getDescription()).isEqualTo(ToolMetadataRegistry.getToolDescription("bash", "cn"));
+        assertThat(card.getInputParams()).isEqualTo(ToolMetadataRegistry.getToolInputParams("bash", "cn"));
     }
 
     @Test
     void buildToolCardReturnsCorrectPowerShellCard() {
-        ToolCard card = HarnessPromptToolsPackage.buildToolCard("powershell", "PowerShellTool", "en");
+        ToolCard card = ToolMetadataRegistry.buildToolCard("powershell", "PowerShellTool", "en");
 
         assertThat(card.getId()).startsWith("PowerShellTool_");
         assertThat(card.getName()).isEqualTo("powershell");
-        assertThat(card.getDescription()).isEqualTo(HarnessPromptToolsPackage.getToolDescription("powershell", "en"));
-        assertThat(card.getInputParams()).isEqualTo(HarnessPromptToolsPackage.getToolInputParams("powershell", "en"));
+        assertThat(card.getDescription()).isEqualTo(ToolMetadataRegistry.getToolDescription("powershell", "en"));
+        assertThat(card.getInputParams()).isEqualTo(ToolMetadataRegistry.getToolInputParams("powershell", "en"));
     }
 
     @Test
     void buildToolCardUsesAgentIdWhenProvided() {
-        ToolCard card = HarnessPromptToolsPackage.buildToolCard("bash", "BashTool", "cn", "test_agent_123");
+        ToolCard card = ToolMetadataRegistry.buildToolCard("bash", "BashTool", "cn", "test_agent_123");
 
         assertThat(card.getId()).isEqualTo("BashTool_test_agent_123");
         assertThat(card.getName()).isEqualTo("bash");
@@ -162,15 +162,15 @@ class ToolMetadataRegistryTest {
 
     @Test
     void buildToolCardSupportsEnglishLanguage() {
-        ToolCard card = HarnessPromptToolsPackage.buildToolCard("code", "CodeTool", "en");
+        ToolCard card = ToolMetadataRegistry.buildToolCard("code", "CodeTool", "en");
 
-        assertThat(card.getDescription()).isEqualTo(HarnessPromptToolsPackage.getToolDescription("code", "en"));
-        assertThat(card.getInputParams()).isEqualTo(HarnessPromptToolsPackage.getToolInputParams("code", "en"));
+        assertThat(card.getDescription()).isEqualTo(ToolMetadataRegistry.getToolDescription("code", "en"));
+        assertThat(card.getInputParams()).isEqualTo(ToolMetadataRegistry.getToolInputParams("code", "en"));
     }
 
     @Test
     void buildToolCardUnknownToolRaises() {
-        assertThatThrownBy(() -> HarnessPromptToolsPackage.buildToolCard("nonexistent", "X", "cn"))
+        assertThatThrownBy(() -> ToolMetadataRegistry.buildToolCard("nonexistent", "X", "cn"))
                 .isInstanceOf(NoSuchElementException.class);
     }
 
@@ -178,9 +178,9 @@ class ToolMetadataRegistryTest {
     void registerValidProviderAddsItToRegistry() {
         ToolMetadataProvider provider = new ValidProvider();
 
-        HarnessPromptToolsPackage.registerToolProvider(provider);
+        ToolMetadataRegistry.registerToolProvider(provider);
 
-        assertThat(HarnessPromptToolsPackage.getToolDescription("test_valid", "cn")).isEqualTo("测试工具");
+        assertThat(ToolMetadataRegistry.getToolDescription("test_valid", "cn")).isEqualTo("测试工具");
     }
 
     @Test
@@ -197,22 +197,22 @@ class ToolMetadataRegistryTest {
             }
         };
 
-        assertThatThrownBy(() -> HarnessPromptToolsPackage.registerToolProvider(provider))
+        assertThatThrownBy(() -> ToolMetadataRegistry.registerToolProvider(provider))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> HarnessPromptToolsPackage.getToolDescription("bad_reg", "cn"))
+        assertThatThrownBy(() -> ToolMetadataRegistry.getToolDescription("bad_reg", "cn"))
                 .isInstanceOf(NoSuchElementException.class);
     }
 
     @Test
     void getToolDescriptionUnknownRaises() {
-        assertThatThrownBy(() -> HarnessPromptToolsPackage.getToolDescription("no_such_tool", "cn"))
+        assertThatThrownBy(() -> ToolMetadataRegistry.getToolDescription("no_such_tool", "cn"))
                 .isInstanceOf(NoSuchElementException.class)
                 .hasMessageContaining("not registered");
     }
 
     @Test
     void getToolInputParamsUnknownRaises() {
-        assertThatThrownBy(() -> HarnessPromptToolsPackage.getToolInputParams("no_such_tool", "cn"))
+        assertThatThrownBy(() -> ToolMetadataRegistry.getToolInputParams("no_such_tool", "cn"))
                 .isInstanceOf(NoSuchElementException.class)
                 .hasMessageContaining("not registered");
     }

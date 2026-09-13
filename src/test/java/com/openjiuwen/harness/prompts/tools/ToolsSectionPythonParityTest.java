@@ -23,8 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ToolsSectionPythonParityTest {
     @Test
     void returnsNoneWhenNoDescriptions() {
-        assertNull(HarnessPromptToolsPackage.buildToolsSection((Map<String, String>) null, "cn"));
-        assertNull(HarnessPromptToolsPackage.buildToolsSection(Map.of(), "cn"));
+        assertNull(ToolMetadataRegistry.buildToolsSection((Map<String, String>) null, "cn"));
+        assertNull(ToolMetadataRegistry.buildToolsSection(Map.of(), "cn"));
     }
 
     @Test
@@ -33,7 +33,7 @@ class ToolsSectionPythonParityTest {
         descriptions.put("todo_create", "Create todos");
         descriptions.put("todo_list", "List todos");
 
-        PromptSection section = HarnessPromptToolsPackage.buildToolsSection(descriptions, "cn");
+        PromptSection section = ToolMetadataRegistry.buildToolsSection(descriptions, "cn");
 
         assertNotNull(section);
         assertEquals(SectionName.TOOLS, section.getName());
@@ -45,7 +45,7 @@ class ToolsSectionPythonParityTest {
 
     @Test
     void enLanguage() {
-        PromptSection section = HarnessPromptToolsPackage.buildToolsSection(Map.of("search", "Search the web"), "en");
+        PromptSection section = ToolMetadataRegistry.buildToolsSection(Map.of("search", "Search the web"), "en");
 
         assertNotNull(section);
         String rendered = section.render("en");
@@ -55,7 +55,7 @@ class ToolsSectionPythonParityTest {
 
     @Test
     void cnLanguageHeader() {
-        PromptSection section = HarnessPromptToolsPackage.buildToolsSection(Map.of("tool1", "desc1"), "cn");
+        PromptSection section = ToolMetadataRegistry.buildToolsSection(Map.of("tool1", "desc1"), "cn");
 
         assertNotNull(section);
         assertTrue(section.render("cn").contains("可用工具"));

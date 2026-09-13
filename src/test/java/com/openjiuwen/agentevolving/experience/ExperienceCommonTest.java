@@ -68,13 +68,6 @@ class ExperienceCommonTest {
     }
 
     @Test
-    void internalExperienceLifecycleTypesAreNotPublicContracts() {
-        assertFalse(ExperiencePackage.EXPORTED_SYMBOLS.contains("LocalApplyPreview"));
-        assertFalse(ExperiencePackage.EXPORTED_SYMBOLS.contains("PendingCommitResult"));
-        assertFalse(ExperiencePackage.EXPORTED_SYMBOLS.contains("RebuildRequest"));
-    }
-
-    @Test
     void experienceApplyResultOkIgnoresRejectionsButNotPendingRecords() {
         assertTrue(new ExperienceApplyResult("skill-a", 1, 1, 0, List.of(), Map.of()).isOk());
         assertFalse(new ExperienceApplyResult("skill-a", 1, 0, 1, List.of(), Map.of()).isOk());

@@ -22,6 +22,14 @@ public final class QueryLanguageRegistry {
     private QueryLanguageRegistry() {
     }
 
+    /**
+     * Registers the built-in query languages that Python registers from the query package.
+     */
+    public static void registerBuiltinLanguages() {
+        registerDatabaseQueryLanguage("milvus", MilvusQueryLanguage.MILVUS_DEF, true);
+        registerDatabaseQueryLanguage("chroma", ChromaQueryLanguage.CHROMA_DEF, true);
+    }
+
     public static void registerDatabaseQueryLanguage(String name, QueryLanguageDefinition definition) {
         registerDatabaseQueryLanguage(name, definition, false);
     }

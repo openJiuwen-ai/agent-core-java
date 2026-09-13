@@ -6,7 +6,7 @@ package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
+import com.openjiuwen.harness.prompts.tools.ToolMetadataRegistry;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +31,7 @@ public class ListMcpResourcesTool extends AbstractHarnessTool {
     }
 
     public ListMcpResourcesTool(String language, String agentId) {
-        this(HarnessPromptToolsPackage.buildToolCard(
+        this(ToolMetadataRegistry.buildToolCard(
                         "list_mcp_resources",
                         "ListMcpResourcesTool",
                         normalizeLanguage(language),

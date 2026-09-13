@@ -8,7 +8,7 @@ import com.openjiuwen.auto_harness.experience.ExperienceStore;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.Experience;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
+import com.openjiuwen.harness.prompts.tools.ToolMetadataRegistry;
 import com.openjiuwen.harness.prompts.tools.ToolMetadataProvider;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -35,7 +35,7 @@ public class ExperienceSearchTool extends Tool {
 
     static {
         METADATA_PROVIDER.validate();
-        HarnessPromptToolsPackage.registerToolProvider(METADATA_PROVIDER);
+        ToolMetadataRegistry.registerToolProvider(METADATA_PROVIDER);
     }
 
     private final String experienceDir;
@@ -80,8 +80,8 @@ public class ExperienceSearchTool extends Tool {
         return new ToolCard(
                 TOOL_ID_PREFIX + "_" + suffix,
                 TOOL_NAME,
-                HarnessPromptToolsPackage.getToolDescription(TOOL_NAME, language),
-                HarnessPromptToolsPackage.getToolInputParams(TOOL_NAME, language)
+                ToolMetadataRegistry.getToolDescription(TOOL_NAME, language),
+                ToolMetadataRegistry.getToolInputParams(TOOL_NAME, language)
         );
     }
 

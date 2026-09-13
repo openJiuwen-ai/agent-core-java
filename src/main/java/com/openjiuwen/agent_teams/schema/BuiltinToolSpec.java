@@ -27,7 +27,7 @@ public class BuiltinToolSpec {
     }
 
     public Object build(String language, String toolId) {
-        return DeepAgentSpecPackage.buildTool(type, params, language, toolId);
+        return DeepAgentSpecRegistry.buildTool(type, params, language, toolId);
     }
 
     public String getType() {

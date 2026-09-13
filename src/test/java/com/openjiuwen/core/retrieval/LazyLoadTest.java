@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.retrieval;
 
-import com.openjiuwen.core.retrieval.indexing.processor.parser.ParserPackage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -93,14 +92,30 @@ class LazyLoadTest {
     }
 
     @Test
-    void parserLoadCopiesParserPackageAllIntoCache() {
+    void parserLoadCopiesParserSymbolsIntoCache() {
         Object loaded = LazyLoad.lazyLoad("AutoFileParser");
 
         assertCachedClassName(
                 loaded,
                 "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoFileParser"
         );
-        for (String name : ParserPackage.all()) {
+        for (String name : List.of(
+                "AutoFileParser",
+                "AutoLinkParser",
+                "AutoParser",
+                "ExcelParser",
+                "HTMLFileParser",
+                "Parser",
+                "JSONParser",
+                "PDFParser",
+                "TxtMdParser",
+                "WebPageParser",
+                "WordParser",
+                "WeChatArticleParser",
+                "ImageParser",
+                "parse_wechat_article_url",
+                "parse_web_page_url"
+        )) {
             assertTrue(LazyLoad.LAZY_IMPORT_CACHE.containsKey(name), name);
         }
         assertCachedClassNameIfPresent(

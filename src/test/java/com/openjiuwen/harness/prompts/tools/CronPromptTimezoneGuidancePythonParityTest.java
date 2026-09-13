@@ -44,7 +44,7 @@ class CronPromptTimezoneGuidancePythonParityTest {
 
     @Test
     void buildToolCardExposesTimezoneGuidance() {
-        ToolCard card = HarnessPromptToolsPackage.buildToolCard("cron", "cron_test", "cn");
+        ToolCard card = ToolMetadataRegistry.buildToolCard("cron", "cron_test", "cn");
 
         assertThat(card.getName()).isEqualTo("cron");
         assertThat(card.getDescription()).contains("schedule.at");

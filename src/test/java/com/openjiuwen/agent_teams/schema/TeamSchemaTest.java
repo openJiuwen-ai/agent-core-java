@@ -115,11 +115,4 @@ class TeamSchemaTest {
         assertThat(runtime.getDbConfig()).containsEntry("db_type", "memory");
         assertThat(runtime.getCliAgent()).isEqualTo("codex");
     }
-
-    @Test
-    void packageFacadeListsTeamModuleExports() {
-        assertThat(TeamSchemaPackage.PYTHON_MODULE).isEqualTo("openjiuwen/agent_teams/schema/team.py");
-        assertThat(TeamSchemaPackage.EXPORTED_SYMBOLS)
-                .contains("MemberOpResult", "TeamRole", "BridgeMemberSpec", "TeamRuntimeContext");
-    }
 }

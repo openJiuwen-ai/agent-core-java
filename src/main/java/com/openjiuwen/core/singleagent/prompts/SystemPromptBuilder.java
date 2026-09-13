@@ -91,4 +91,24 @@ public class SystemPromptBuilder {
     protected List<PromptSection> getSectionsForBuild() {
         return new ArrayList<>(sections.values());
     }
+
+    /**
+     * Resolve the effective prompt language from config, then {@code AGENT_PROMPT_LANGUAGE}.
+     *
+     * @param configLanguage configured language, may be {@code null}
+     * @return a supported language code
+     */
+    public static String resolveLanguage(String configLanguage) {
+        return resolveLanguage(configLanguage, System.getenv("AGENT_PROMPT_LANGUAGE"));
+    }
+
+    static String resolveLanguage(String configLanguage, String environmentLanguage) {
+        if (configLanguage != null && SUPPORTED_LANGUAGES.contains(configLanguage)) {
+            return configLanguage;
+        }
+        if (environmentLanguage != null && SUPPORTED_LANGUAGES.contains(environmentLanguage)) {
+            return environmentLanguage;
+        }
+        return DEFAULT_LANGUAGE;
+    }
 }

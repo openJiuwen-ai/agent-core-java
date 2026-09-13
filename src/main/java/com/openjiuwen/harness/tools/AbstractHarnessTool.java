@@ -6,7 +6,7 @@ package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
+import com.openjiuwen.harness.prompts.tools.ToolMetadataRegistry;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -41,13 +41,13 @@ public abstract class AbstractHarnessTool extends Tool {
         Map<String, Object> inputParams = emptySchema();
         String resolvedLanguage = language == null || language.isBlank() ? "en" : language;
         try {
-            resolvedDescription = HarnessPromptToolsPackage.getToolDescription(id, resolvedLanguage);
-            inputParams = HarnessPromptToolsPackage.getToolInputParams(id, resolvedLanguage);
+            resolvedDescription = ToolMetadataRegistry.getToolDescription(id, resolvedLanguage);
+            inputParams = ToolMetadataRegistry.getToolInputParams(id, resolvedLanguage);
         } catch (NoSuchElementException | IllegalArgumentException | IllegalStateException
                 | NullPointerException ignoredById) {
             try {
-                resolvedDescription = HarnessPromptToolsPackage.getToolDescription(name, resolvedLanguage);
-                inputParams = HarnessPromptToolsPackage.getToolInputParams(name, resolvedLanguage);
+                resolvedDescription = ToolMetadataRegistry.getToolDescription(name, resolvedLanguage);
+                inputParams = ToolMetadataRegistry.getToolInputParams(name, resolvedLanguage);
             } catch (NoSuchElementException | IllegalArgumentException | IllegalStateException
                     | NullPointerException ignoredByName) {
                 // Some internal helper tools intentionally have no prompt metadata provider.
