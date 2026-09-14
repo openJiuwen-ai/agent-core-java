@@ -5,8 +5,10 @@
 package com.openjiuwen.core.common.concurrent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,11 @@ class BoundedModuleExecutorGateTest {
     private static final String PREGEL_MAX_PROPERTY = "openjiuwen.executor.pregel-task.max-size";
 
     private final List<ExecutorService> executorsToClose = new ArrayList<>();
+
+    @BeforeEach
+    void requirePlatformThreadRuntime() {
+        assumeFalse(VirtualThreadSupport.isSupported(), "Bounded platform pool gates only apply to JDK 17");
+    }
 
     @AfterEach
     void tearDown() {

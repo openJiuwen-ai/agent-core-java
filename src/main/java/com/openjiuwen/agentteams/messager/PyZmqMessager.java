@@ -324,8 +324,8 @@ public class PyZmqMessager implements Messager {
         startFuture = new CompletableFuture<>();
         stopFuture = new CompletableFuture<>();
         String threadSuffix = THREAD_NAME_UNSAFE.matcher(localNodeId).replaceAll("-");
-        ioExecutor = OpenJiuwenExecutors.newBoundedModulePool(
-                "agent-team-pyzmq-" + threadSuffix, 1, 1, true);
+        ioExecutor = OpenJiuwenExecutors.newSingleThreadExecutor(
+                "agent-team-pyzmq-" + threadSuffix, true);
         ioExecutor.execute(this::runIoLoop);
     }
 

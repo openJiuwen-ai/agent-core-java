@@ -92,8 +92,8 @@ public class ReActAgent extends BaseAgent {
     private static final int STREAM_CHUNK_SIZE = 200;
 
     /**
-     * Stream execution pool. All stream requests share this bounded module pool so that
-     * concurrency is capped and bursts are buffered rather than spawning unbounded threads.
+     * Stream execution pool. JDK 17 uses the bounded platform pool, while JDK 21 uses
+     * one virtual thread per stream task without executor-level concurrency limits.
      */
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
