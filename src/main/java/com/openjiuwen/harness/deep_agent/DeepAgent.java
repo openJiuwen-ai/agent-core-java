@@ -902,12 +902,12 @@ public class DeepAgent implements AutoCloseable {
             }
             effectiveSession.preRun(normalized);
             if (session != null) {
-                copySessionState(session, effectiveSession);
+                mergeSessionState(session, effectiveSession);
             }
             Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
             effectiveSession.postRun();
             if (session != null) {
-                copySessionState(effectiveSession, session);
+                replaceSessionState(effectiveSession, session);
                 session.copyRunState(effectiveSession);
             }
             return result;
@@ -1030,7 +1030,7 @@ public class DeepAgent implements AutoCloseable {
         }
         effectiveSession.preRun(normalized);
         if (session != null) {
-            copySessionState(session, effectiveSession);
+            mergeSessionState(session, effectiveSession);
         }
         if (config.isEnableTaskLoop()) {
             return streamTaskLoop(normalized, effectiveSession, session);
@@ -1077,7 +1077,7 @@ public class DeepAgent implements AutoCloseable {
                     try {
                         // 关闭流前先传播状态，避免 Runner 收到 EOF 后保存到旧的外层状态。
                         if (session != null) {
-                            copySessionState(effectiveSession, session);
+                            replaceSessionState(effectiveSession, session);
                         }
                     } finally {
                         // postRun 执行：关 emitter + checkpoint 落盘（POST_DONE 未拷，CAS 不跳过）。
@@ -1109,7 +1109,7 @@ public class DeepAgent implements AutoCloseable {
             // postRun 执行：关 emitter + checkpoint 落盘。
             effectiveSession.postRun();
             if (session != null) {
-                copySessionState(effectiveSession, session);
+                replaceSessionState(effectiveSession, session);
                 // 拷回 runState，让 Runner 的 postRun 也被 CAS 跳过（省 1 写）。
                 session.copyRunState(effectiveSession);
             }
@@ -1845,8 +1845,8 @@ public class DeepAgent implements AutoCloseable {
             innerSession.withTenantContext(ctx);
         }
         innerSession.preRun(effectiveInputs);
-        copySessionState(session, innerSession);
-        // copySessionState 可能覆盖 inner session state，重新注入 task_id 以确保下游可见
+        mergeSessionState(session, innerSession);
+        // mergeSessionState 可能覆盖 inner session state，重新注入 task_id 以确保下游可见
         if (taskId != null) {
             innerSession.updateState(java.util.Map.of("task_id", taskId));
         }
@@ -1882,7 +1882,7 @@ public class DeepAgent implements AutoCloseable {
                         session.writeStream(outputSchema);
                     }
                 });
-        copySessionState(innerSession, session);
+        replaceSessionState(innerSession, session);
         Map<String, Object> result = extractFinalStreamResult(streamItems);
         List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
         if (!normalizedChunks.isEmpty()) {
@@ -1892,14 +1892,14 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * copySessionState.
+     * Merge source session state into a downstream session before execution.
      * 
      * @param source source
      * @param target target
      * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    private void copySessionState(AgentSessionApi source, AgentSessionApi target) {
+    private void mergeSessionState(AgentSessionApi source, AgentSessionApi target) {
         if (source == null || target == null) {
             return;
         }
@@ -1912,6 +1912,20 @@ public class DeepAgent implements AutoCloseable {
         if (agentState instanceof Map) {
             target.getInner().state().update((Map<String, Object>) agentState);
         }
+    }
+
+    /**
+     * Replace an upstream session with the authoritative state produced by a completed downstream execution.
+     *
+     * @param source completed downstream session
+     * @param target upstream session receiving the final state
+     * @since 0.1.15
+     */
+    private void replaceSessionState(AgentSessionApi source, AgentSessionApi target) {
+        if (source == null || target == null) {
+            return;
+        }
+        target.getInner().state().setState(source.getInner().state().getState());
     }
 
     /**
