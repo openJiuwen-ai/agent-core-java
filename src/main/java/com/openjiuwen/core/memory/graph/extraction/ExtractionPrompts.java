@@ -15,7 +15,8 @@ import com.openjiuwen.core.foundation.store.graph.Relation;
 import com.openjiuwen.core.memory.config.EpisodeType;
 import com.openjiuwen.core.memory.graph.extraction.prompts.ThreadSafePromptManager;
 import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.EntityExtractionPromptBase;
-import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.EntityExtractionPromptsPackage;
+import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.EntityExtractionPromptChinese;
+import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.EntityExtractionPromptEnglish;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -339,7 +340,8 @@ public final class ExtractionPrompts {
     }
 
     private static void registerLanguages() {
-        EntityExtractionPromptsPackage.registerLanguages();
+        EntityExtractionPromptChinese.registerLanguage();
+        EntityExtractionPromptEnglish.registerLanguage();
     }
 
     private static List<Map<String, Object>> entityMaps(List<Entity> entities) {

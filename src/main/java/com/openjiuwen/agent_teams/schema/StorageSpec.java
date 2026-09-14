@@ -31,7 +31,7 @@ public class StorageSpec {
     }
 
     public Object build() {
-        return TeamBlueprintPackage.buildStorage(type, params);
+        return TeamBlueprintRegistry.buildStorage(type, params);
     }
 
     public String getType() {

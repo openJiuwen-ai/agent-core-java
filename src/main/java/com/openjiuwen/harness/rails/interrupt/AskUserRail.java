@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
-import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.tools.AskUserTool;
 
@@ -42,7 +42,7 @@ public class AskUserRail extends BaseInterruptRail {
         if (agent == null) {
             return;
         }
-        String language = HarnessPromptsPackage.resolveLanguage(
+        String language = SystemPromptBuilder.resolveLanguage(
                 agent.deepConfig() == null ? null : agent.deepConfig().getLanguage());
         String agentId = agent.getCard() == null ? null : agent.getCard().getId();
         askUserTool = new AskUserTool(language, agentId);

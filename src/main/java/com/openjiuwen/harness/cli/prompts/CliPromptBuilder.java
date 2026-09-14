@@ -5,7 +5,6 @@
 package com.openjiuwen.harness.cli.prompts;
 
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
-import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
 import com.openjiuwen.harness.prompts.PromptMode;
 import com.openjiuwen.harness.prompts.SystemPromptBuilder;
 
@@ -109,7 +108,7 @@ public final class CliPromptBuilder {
     }
 
     public static String buildSystemPrompt(String cwd, String model, String provider, String language) {
-        String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(language);
+        String resolvedLanguage = SystemPromptBuilder.resolveLanguage(language);
         SystemPromptBuilder builder = new SystemPromptBuilder(resolvedLanguage, PromptMode.FULL);
         builder.addSection(new PromptSection(
                 "environment",

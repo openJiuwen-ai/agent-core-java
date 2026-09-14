@@ -8,9 +8,9 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
-import com.openjiuwen.harness.lsp.HarnessLspPackage;
 import com.openjiuwen.harness.lsp.InitializeOptions;
 import com.openjiuwen.harness.lsp.InitializeResult;
+import com.openjiuwen.harness.lsp.core.LspDiagnosticRegistry;
 import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import com.openjiuwen.harness.lsp.core.utils.FileUriUtils;
 import com.openjiuwen.harness.tools.ToolOutput;
@@ -143,7 +143,7 @@ public class LspRail extends DeepAgentRail {
 
     @Override
     public void beforeModelCall(CallbackContext ctx) {
-        ctx.put("lsp_diagnostics", HarnessLspPackage.getPendingLspDiagnostics(maxPerFile, maxTotal));
+        ctx.put("lsp_diagnostics", LspDiagnosticRegistry.getInstance().getAndClear(maxPerFile, maxTotal));
     }
 
     @Override
@@ -204,7 +204,7 @@ public class LspRail extends DeepAgentRail {
     }
 
     protected CompletableFuture<InitializeResult> doInitializeLsp(InitializeOptions initializeOptions) {
-        return HarnessLspPackage.initializeLsp(initializeOptions);
+        return CompletableFuture.completedFuture(LSPServerManager.initialize(initializeOptions));
     }
 
     public CompletableFuture<Void> asyncShutdownLsp() {
@@ -217,7 +217,8 @@ public class LspRail extends DeepAgentRail {
     }
 
     protected CompletableFuture<Void> doShutdownLsp() {
-        return HarnessLspPackage.shutdownLsp();
+        LSPServerManager.shutdown();
+        return CompletableFuture.completedFuture(null);
     }
 
     private InitializeOptions buildEffectiveOptions() {

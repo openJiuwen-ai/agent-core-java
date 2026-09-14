@@ -8,7 +8,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
-import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
+import com.openjiuwen.harness.prompts.tools.ToolMetadataRegistry;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -53,7 +53,7 @@ class AskUserRailInitTest {
         Tool tool = agent.getTools().get("ask_user");
         assertThat(tool).isInstanceOf(com.openjiuwen.harness.tools.AskUserTool.class);
         assertThat(tool.getCard().getDescription())
-                .isEqualTo(HarnessPromptToolsPackage.getToolDescription("ask_user", "en"));
+                .isEqualTo(ToolMetadataRegistry.getToolDescription("ask_user", "en"));
     }
 
     private static AgentCard uniqueCard(String prefix) {

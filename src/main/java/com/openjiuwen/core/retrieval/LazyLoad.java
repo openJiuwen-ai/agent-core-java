@@ -4,8 +4,6 @@
 
 package com.openjiuwen.core.retrieval;
 
-import com.openjiuwen.core.retrieval.indexing.processor.parser.ParserPackage;
-
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -99,6 +97,10 @@ public final class LazyLoad {
         initializeCache();
     }
 
+
+    private static final Map<String, String> PARSER_JAVA_SYMBOLS = parserJavaSymbols();
+    private static final Map<String, String> RETRIEVAL_JAVA_SYMBOLS = retrievalJavaSymbols();
+
     private LazyLoad() {
     }
 
@@ -119,8 +121,8 @@ public final class LazyLoad {
     }
 
     public static void loadParser() {
-        for (String name : ParserPackage.all()) {
-            putCache(name, resolveJavaSymbol(ParserPackage.javaSymbolNameFor(name)));
+        for (Map.Entry<String, String> entry : PARSER_JAVA_SYMBOLS.entrySet()) {
+            putCache(entry.getKey(), resolveJavaSymbol(entry.getValue()));
         }
     }
 
@@ -168,7 +170,7 @@ public final class LazyLoad {
 
     private static void loadRetrievalSymbols(List<String> names) {
         for (String name : names) {
-            putCache(name, resolveJavaSymbol(RetrievalPackage.javaSymbolNameFor(name)));
+            putCache(name, resolveJavaSymbol(RETRIEVAL_JAVA_SYMBOLS.get(name)));
         }
     }
 
@@ -220,6 +222,143 @@ public final class LazyLoad {
             return parameterCompare;
         }
         return left.toGenericString().compareTo(right.toGenericString());
+    }
+
+
+    private static Map<String, String> parserJavaSymbols() {
+        Map<String, String> javaSymbols = new LinkedHashMap<>();
+        javaSymbols.put("AutoFileParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoFileParser");
+        javaSymbols.put("AutoLinkParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoLinkParser");
+        javaSymbols.put("AutoParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoParser");
+        javaSymbols.put("ExcelParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.ExcelParser");
+        javaSymbols.put("HTMLFileParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.HTMLFileParser");
+        javaSymbols.put("Parser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.Parser");
+        javaSymbols.put("JSONParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.JsonParser");
+        javaSymbols.put("PDFParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.PDFParser");
+        javaSymbols.put("TxtMdParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.TxtMdParser");
+        javaSymbols.put("WebPageParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.WebPageParser");
+        javaSymbols.put("WordParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.WordParser");
+        javaSymbols.put("WeChatArticleParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.WeChatArticleParser");
+        javaSymbols.put("ImageParser",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.ImageParser");
+        javaSymbols.put("parse_wechat_article_url",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.WeChatArticleParser#parseWechatArticleUrl");
+        javaSymbols.put("parse_web_page_url",
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.WebPageParser#parseWebPageUrl");
+        return Collections.unmodifiableMap(javaSymbols);
+    }
+
+    private static Map<String, String> retrievalJavaSymbols() {
+        Map<String, String> symbols = new LinkedHashMap<>();
+        symbols.put("KnowledgeBaseConfig", "com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig");
+        symbols.put("RetrievalConfig", "com.openjiuwen.core.retrieval.common.RetrievalConfig");
+        symbols.put("IndexConfig", "com.openjiuwen.core.retrieval.common.IndexConfig");
+        symbols.put("VectorStoreConfig", "com.openjiuwen.core.retrieval.common.VectorStoreConfig");
+        symbols.put("EmbeddingConfig", "com.openjiuwen.core.retrieval.common.EmbeddingConfig");
+        symbols.put("RerankerConfig", "com.openjiuwen.core.retrieval.common.RerankerConfig");
+        symbols.put("Document", "com.openjiuwen.core.retrieval.common.Document");
+        symbols.put("MultimodalDocument", "com.openjiuwen.core.retrieval.common.MultimodalDocument");
+        symbols.put("TextChunk", "com.openjiuwen.core.retrieval.common.TextChunk");
+        symbols.put("MultiKBRetrievalResult", "com.openjiuwen.core.retrieval.common.MultiKBRetrievalResult");
+        symbols.put("RetrievalResult", "com.openjiuwen.core.retrieval.common.RetrievalResult");
+        symbols.put("SearchResult", "com.openjiuwen.core.retrieval.common.SearchResult");
+        symbols.put("Triple", "com.openjiuwen.core.retrieval.common.Triple");
+        symbols.put("TripleBeam", "com.openjiuwen.core.retrieval.common.TripleBeam");
+        symbols.put("TripleMemory", "com.openjiuwen.core.retrieval.common.TripleMemory");
+        symbols.put("BaseCallback", "com.openjiuwen.core.retrieval.common.BaseCallback");
+        symbols.put("TqdmCallback", "com.openjiuwen.core.retrieval.common.TqdmCallback");
+        symbols.put("Embedding", "com.openjiuwen.core.retrieval.embedding.Embedding");
+        symbols.put("APIEmbedding", "com.openjiuwen.core.retrieval.embedding.APIEmbedding");
+        symbols.put("Reranker", "com.openjiuwen.core.retrieval.reranker.Reranker");
+        symbols.put("VectorStore", "com.openjiuwen.core.retrieval.vector_store.VectorStore");
+        symbols.put("create_vector_store",
+                "com.openjiuwen.core.retrieval.vector_store.VectorStoreFactory#createVectorStore");
+        symbols.put("Indexer", "com.openjiuwen.core.retrieval.indexing.indexer.Indexer");
+        symbols.put("Processor", "com.openjiuwen.core.retrieval.indexing.processor.Processor");
+        symbols.put("Chunker", "com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker");
+        symbols.put("Extractor", "com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor");
+        symbols.put("Splitter", "com.openjiuwen.core.retrieval.indexing.processor.splitter.Splitter");
+        symbols.put("SentenceSplitter", "com.openjiuwen.core.retrieval.indexing.processor.splitter.SentenceSplitter");
+        symbols.put("TextSplitter", "com.openjiuwen.core.retrieval.indexing.processor.chunker.TextSplitter");
+        symbols.put("CharSplitter", "com.openjiuwen.core.retrieval.indexing.processor.chunker.CharSplitter");
+        symbols.put("IndexSentenceSplitter",
+                "com.openjiuwen.core.retrieval.indexing.processor.chunker.IndexSentenceSplitter");
+        symbols.put("TextPreprocessor", "com.openjiuwen.core.retrieval.indexing.processor.chunker.TextPreprocessor");
+        symbols.put("WhitespaceNormalizer",
+                "com.openjiuwen.core.retrieval.indexing.processor.chunker.WhitespaceNormalizer");
+        symbols.put("URLEmailRemover", "com.openjiuwen.core.retrieval.indexing.processor.chunker.URLEmailRemover");
+        symbols.put("SpecialCharacterNormalizer",
+                "com.openjiuwen.core.retrieval.indexing.processor.chunker.SpecialCharacterNormalizer");
+        symbols.put("PreprocessingPipeline",
+                "com.openjiuwen.core.retrieval.indexing.processor.chunker.PreprocessingPipeline");
+        symbols.put("TextChunker", "com.openjiuwen.core.retrieval.indexing.processor.chunker.TextChunker");
+        symbols.put("CharChunker", "com.openjiuwen.core.retrieval.indexing.processor.chunker.CharChunker");
+        symbols.put("HybridChunker", "com.openjiuwen.core.retrieval.indexing.processor.chunker.HybridChunker");
+        symbols.put("get_chunker",
+                "com.openjiuwen.core.retrieval.indexing.processor.chunker.ChunkerRegistry#getChunker");
+        symbols.put("register_chunker",
+                "com.openjiuwen.core.retrieval.indexing.processor.chunker.ChunkerRegistry#registerChunker");
+        symbols.put("TokenizerChunker", "com.openjiuwen.core.retrieval.indexing.processor.chunker.TokenizerChunker");
+        symbols.put("TripleExtractor", "com.openjiuwen.core.retrieval.indexing.processor.extractor.TripleExtractor");
+        symbols.put("Retriever", "com.openjiuwen.core.retrieval.retriever.Retriever");
+        symbols.put("VectorRetriever", "com.openjiuwen.core.retrieval.retriever.VectorRetriever");
+        symbols.put("SparseRetriever", "com.openjiuwen.core.retrieval.retriever.SparseRetriever");
+        symbols.put("HybridRetriever", "com.openjiuwen.core.retrieval.retriever.HybridRetriever");
+        symbols.put("GraphRetriever", "com.openjiuwen.core.retrieval.retriever.GraphRetriever");
+        symbols.put("AgenticRetriever", "com.openjiuwen.core.retrieval.retriever.AgenticRetriever");
+        symbols.put("ConfigManager", "com.openjiuwen.core.retrieval.utils.ConfigManager");
+        symbols.put("rrf_fusion", "com.openjiuwen.core.retrieval.utils.FusionUtils#rrfFusionRetrieval");
+        symbols.put("deduplicate", "com.openjiuwen.core.retrieval.utils.CommonUtils#deduplicate");
+        symbols.put("MilvusAUTO", "com.openjiuwen.core.foundation.store.vector_fields.MilvusAUTO");
+        symbols.put("MilvusFLAT", "com.openjiuwen.core.foundation.store.vector_fields.MilvusFLAT");
+        symbols.put("MilvusHNSW", "com.openjiuwen.core.foundation.store.vector_fields.MilvusHNSW");
+        symbols.put("MilvusIVF", "com.openjiuwen.core.foundation.store.vector_fields.MilvusIVF");
+        symbols.put("MilvusSCANN", "com.openjiuwen.core.foundation.store.vector_fields.MilvusSCANN");
+        symbols.put("MilvusVectorStore", "com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore");
+        symbols.put("MilvusIndexer", "com.openjiuwen.core.retrieval.indexing.indexer.MilvusIndexer");
+        symbols.put("ChromaIndexer", "com.openjiuwen.core.retrieval.indexing.indexer.ChromaIndexer");
+        symbols.put("ChromaVectorStore", "com.openjiuwen.core.retrieval.vector_store.ChromaVectorStore");
+        symbols.put("ChromaVectorField", "com.openjiuwen.core.foundation.store.vector_fields.ChromaVectorField");
+        symbols.put("OpenAIEmbedding", "com.openjiuwen.core.retrieval.embedding.OpenAIEmbedding");
+        symbols.put("VLLMEmbedding", "com.openjiuwen.core.retrieval.embedding.VLLMEmbedding");
+        symbols.put("DashscopeEmbedding", "com.openjiuwen.core.retrieval.embedding.DashscopeEmbedding");
+        symbols.put("parse_base64_embedding",
+                "com.openjiuwen.core.retrieval.embedding.EmbeddingUtils#parseBase64Embedding");
+        symbols.put("StandardReranker", "com.openjiuwen.core.retrieval.reranker.StandardReranker");
+        symbols.put("ChatReranker", "com.openjiuwen.core.retrieval.reranker.ChatReranker");
+        symbols.put("DashscopeReranker", "com.openjiuwen.core.retrieval.reranker.DashscopeReranker");
+        symbols.put("AutoFileParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoFileParser");
+        symbols.put("AutoLinkParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoLinkParser");
+        symbols.put("AutoParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoParser");
+        symbols.put("ExcelParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.ExcelParser");
+        symbols.put("Parser", "com.openjiuwen.core.retrieval.indexing.processor.parser.Parser");
+        symbols.put("JSONParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.JsonParser");
+        symbols.put("PDFParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.PDFParser");
+        symbols.put("ImageParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.ImageParser");
+        symbols.put("TxtMdParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.TxtMdParser");
+        symbols.put("WebPageParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.WebPageParser");
+        symbols.put("WeChatArticleParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.WeChatArticleParser");
+        symbols.put("WordParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.WordParser");
+        symbols.put("KnowledgeBase", "com.openjiuwen.core.retrieval.KnowledgeBase");
+        symbols.put("SimpleKnowledgeBase", "com.openjiuwen.core.retrieval.SimpleKnowledgeBase");
+        symbols.put("GraphKnowledgeBase", "com.openjiuwen.core.retrieval.GraphKnowledgeBase");
+        symbols.put("retrieve_multi_kb", "com.openjiuwen.core.retrieval.SimpleKnowledgeBase#retrieveMultiKb");
+        symbols.put("retrieve_multi_kb_with_source",
+                "com.openjiuwen.core.retrieval.SimpleKnowledgeBase#retrieveMultiKbWithSource");
+        symbols.put("QueryRewriter", "com.openjiuwen.core.retrieval.query_rewriter.QueryRewriter");
+        return Collections.unmodifiableMap(symbols);
     }
 
     private static List<String> concat(List<String>... lists) {

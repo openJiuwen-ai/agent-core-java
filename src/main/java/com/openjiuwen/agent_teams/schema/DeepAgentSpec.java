@@ -7,7 +7,7 @@ package com.openjiuwen.agent_teams.schema;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.AgentCard;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 
@@ -121,7 +121,7 @@ public class DeepAgentSpec extends AgentConfigurator.DeepAgentSpec {
     public DeepAgentBuildConfig build() {
         TeamModelConfig modelConfig = getModel();
         Model llmModel = modelConfig == null ? null : modelConfig.build();
-        String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(getLanguage());
+        String resolvedLanguage = SystemPromptBuilder.resolveLanguage(getLanguage());
         Workspace workspace = workspaceSpec == null ? null : workspaceSpec.build();
         List<Object> resolvedRails = rails == null ? null : rails.stream()
                 .map(rail -> rail.build(resolvedLanguage, workspace))

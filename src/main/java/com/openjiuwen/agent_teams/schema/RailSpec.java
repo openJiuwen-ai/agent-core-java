@@ -29,7 +29,7 @@ public class RailSpec {
     }
 
     public Object build(String language, Workspace workspace) {
-        return DeepAgentSpecPackage.buildRail(type, params, language, workspace);
+        return DeepAgentSpecRegistry.buildRail(type, params, language, workspace);
     }
 
     public String getType() {

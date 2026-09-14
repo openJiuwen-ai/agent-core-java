@@ -5,16 +5,10 @@
 package com.openjiuwen.batch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
-import com.openjiuwen.agentevolving.trajectory.TrajectoryPackage;
 import com.openjiuwen.agent_teams.memory.TeamMemoryConfig;
 import com.openjiuwen.core.foundation.store.EmbeddingConfig;
 import com.openjiuwen.core.foundation.store.base_reranker.Document;
 import com.openjiuwen.core.foundation.store.base_reranker.RerankerConfig;
-import com.openjiuwen.core.foundation.store.kv.KvStorePackage;
-import com.openjiuwen.core.foundation.store.query.QueryExpr;
-import com.openjiuwen.core.foundation.store.query.QueryPackage;
-import com.openjiuwen.core.graph.store.GraphStorePackage;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.InMemoryStore;
 import com.openjiuwen.core.graph.store.PendingNode;
@@ -28,7 +22,6 @@ import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamWriter;
-import com.openjiuwen.extensions.context_evolver.core.context.ContextPackage;
 import com.openjiuwen.harness.lsp.core.LspServerInstance;
 import com.openjiuwen.harness.lsp.core.LspServerState;
 import com.openjiuwen.harness.lsp.core.ScopedLspServerConfig;
@@ -50,28 +43,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class Batch0050FocusedTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    @Test
-    void trajectoryPackageExportsExpectedSymbols() {
-        assertThat(TrajectoryPackage.PYTHON_MODULE)
-                .isEqualTo("openjiuwen/agent_evolving/trajectory/__init__.py");
-        assertThat(TrajectoryPackage.LLM_CALL_DETAIL).isSameAs(LLMCallDetail.class);
-        assertThat(TrajectoryPackage.EXPORTED_SYMBOLS)
-                .contains("TrajectoryBuilder", "TrajectoryStore", "aggregate_member_trajectories");
-    }
-
-    @Test
-    void packageBridgeConstantsMatchPythonModules() {
-        assertThat(GraphStorePackage.PYTHON_MODULE).isEqualTo("openjiuwen/core/graph/store/__init__.py");
-        assertThat(KvStorePackage.PYTHON_MODULE).isEqualTo("openjiuwen/core/foundation/store/kv/__init__.py");
-        assertThat(ContextPackage.PYTHON_MODULE)
-                .isEqualTo("openjiuwen/extensions/context_evolver/core/context/__init__.py");
-        assertThat(QueryPackage.PYTHON_MODULE)
-                .isEqualTo("openjiuwen/core/foundation/store/query/__init__.py");
-        assertThat(QueryPackage.EXPORTED_SYMBOLS).contains("register_database_query_language");
-        assertThat(QueryExpr.isLanguageRegistered("milvus")).isTrue();
-        assertThat(QueryExpr.isLanguageRegistered("chroma")).isTrue();
-    }
 
     @Test
     void teamMemoryConfigResolvePrefersExplicitEmbeddingConfig() {

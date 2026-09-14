@@ -26,7 +26,7 @@ public final class GraphStoreFactory {
     private static final Map<String, Class<?>> CLASS_MAP = new LinkedHashMap<>();
     private static final ReentrantLock THREAD_LOCK = new ReentrantLock();
     private static final String DEFAULT_MILVUS_SUPPORT_CLASS =
-            "com.openjiuwen.core.foundation.store.graph.milvus.MilvusGraphStorePackage";
+            "com.openjiuwen.core.foundation.store.graph.milvus.MilvusGraphSupport";
     private static String milvusSupportClass = DEFAULT_MILVUS_SUPPORT_CLASS;
 
     static {
