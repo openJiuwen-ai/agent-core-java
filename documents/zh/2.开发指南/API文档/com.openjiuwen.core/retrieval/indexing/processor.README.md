@@ -1,6 +1,6 @@
 # processor
 
-`com.openjiuwen.core.retrieval.indexing.processor` 提供 indexing 处理链中的基础处理器抽象，并拆分出 chunker、extractor、parser、splitter 四类子能力。
+`com.openjiuwen.retrieval.indexing.processor` 提供 indexing 处理链中的基础处理器抽象，并拆分出 chunker、extractor、parser、splitter 四类子能力。
 
 ## 类型
 

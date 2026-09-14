@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.TripleMemory
+# com.openjiuwen.retrieval.common.TripleMemory
 
 ## 类 TripleMemory
 

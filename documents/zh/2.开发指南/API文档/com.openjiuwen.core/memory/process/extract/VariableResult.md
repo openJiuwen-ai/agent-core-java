@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.process.extract.VariableResult
+# com.openjiuwen.memory.process.extract.VariableResult
 
 ## 类 VariableResult
 

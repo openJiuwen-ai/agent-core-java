@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.reranker.LexicalReranker
+# com.openjiuwen.retrieval.reranker.LexicalReranker
 
 ## 类 LexicalReranker
 

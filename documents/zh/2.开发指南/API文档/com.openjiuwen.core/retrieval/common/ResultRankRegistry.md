@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.ResultRankRegistry
+# com.openjiuwen.retrieval.common.ResultRankRegistry
 
 ## 类 ResultRankRegistry
 

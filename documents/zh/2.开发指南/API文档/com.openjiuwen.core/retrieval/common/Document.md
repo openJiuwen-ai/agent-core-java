@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.Document
+# com.openjiuwen.retrieval.common.Document
 
 ## 类 Document
 
@@ -37,7 +37,7 @@ public class Document extends com.openjiuwen.core.foundation.store.base_reranker
 
 ## 说明
 
-- 这是 `com.openjiuwen.core.retrieval.common` 包下的 Document，不是 `base_reranker` 包的基础类文档页。
+- 这是 `com.openjiuwen.retrieval.common` 包下的 Document，不是 `base_reranker` 包的基础类文档页。
 - Java 实现保留 Python 侧 `id_` 的对外语义，同时使用 Java getter/setter 与 Jackson 注解承接序列化字段。
 - `metadata` 是动态字典边界，Java 类型保留为 `Map<String, Object>`。
 - 构造方法负责必填文本校验、空白 `id` 默认值和 metadata 入参复制；对象创建后的继承 setter 按基础模型行为直接赋值。

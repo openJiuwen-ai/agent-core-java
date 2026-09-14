@@ -1,4 +1,4 @@
-# com.openjiuwen.core.workflow.component.resource.KnowledgeRetrievalExecutable
+# com.openjiuwen.retrieval.workflow.component.resource.KnowledgeRetrievalExecutable
 
 ## 类 KnowledgeRetrievalExecutable
 

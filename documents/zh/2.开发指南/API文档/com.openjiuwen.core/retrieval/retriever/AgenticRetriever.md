@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.retriever.AgenticRetriever
+# com.openjiuwen.retrieval.retriever.AgenticRetriever
 
 ## 类 AgenticRetriever
 

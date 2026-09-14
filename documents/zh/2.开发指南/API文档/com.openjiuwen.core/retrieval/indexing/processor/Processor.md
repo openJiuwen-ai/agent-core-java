@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.Processor
+# com.openjiuwen.retrieval.indexing.processor.Processor
 
 ## 接口 Processor
 

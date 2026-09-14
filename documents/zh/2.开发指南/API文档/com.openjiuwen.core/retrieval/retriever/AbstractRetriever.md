@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.retriever.AbstractRetriever
+# com.openjiuwen.retrieval.retriever.AbstractRetriever
 
 ## 类 AbstractRetriever
 

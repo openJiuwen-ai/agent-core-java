@@ -1,6 +1,6 @@
 # operation
 
-`com.openjiuwen.core.memory.migration.operation` 定义迁移操作的公共抽象、注册容器以及 SQL、向量库、KV 三类后端可复用的具体操作对象。
+`com.openjiuwen.memory.migration.operation` 定义迁移操作的公共抽象、注册容器以及 SQL、向量库、KV 三类后端可复用的具体操作对象。
 
 ## 核心类型
 

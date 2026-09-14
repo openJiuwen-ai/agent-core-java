@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.AutoParser
+# com.openjiuwen.retrieval.indexing.processor.parser.AutoParser
 
 ## 类 AutoParser
 

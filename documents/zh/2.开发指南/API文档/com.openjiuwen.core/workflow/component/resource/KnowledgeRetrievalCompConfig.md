@@ -1,4 +1,4 @@
-# com.openjiuwen.core.workflow.component.resource.KnowledgeRetrievalCompConfig
+# com.openjiuwen.retrieval.workflow.component.resource.KnowledgeRetrievalCompConfig
 
 ## 类 KnowledgeRetrievalCompConfig
 

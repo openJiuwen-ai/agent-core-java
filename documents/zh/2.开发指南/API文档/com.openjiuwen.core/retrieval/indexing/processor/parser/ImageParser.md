@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.ImageParser
+# com.openjiuwen.retrieval.indexing.processor.parser.ImageParser
 
 ## 类 ImageParser
 

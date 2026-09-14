@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.MultimodalDocument
+# com.openjiuwen.retrieval.common.MultimodalDocument
 
 ## 类 MultimodalDocument
 

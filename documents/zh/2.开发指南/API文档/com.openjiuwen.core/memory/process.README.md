@@ -1,6 +1,6 @@
 # process
 
-`com.openjiuwen.core.memory.process` 汇总记忆处理流程相关子包；当前任务范围内的公开能力主要来自 `extract` 子包。
+`com.openjiuwen.memory.process` 汇总记忆处理流程相关子包；当前任务范围内的公开能力主要来自 `extract` 子包。
 
 ## 子包
 

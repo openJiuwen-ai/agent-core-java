@@ -1,6 +1,6 @@
 ﻿# prompt
 
-`com.openjiuwen.core.memory.prompt` 提供记忆相关提示词模板的加载与变量替换能力，供更新判定、记忆提取等流程生成模型输入。
+`com.openjiuwen.memory.prompt` 提供记忆相关提示词模板的加载与变量替换能力，供更新判定、记忆提取等流程生成模型输入。
 
 ## 核心类型
 

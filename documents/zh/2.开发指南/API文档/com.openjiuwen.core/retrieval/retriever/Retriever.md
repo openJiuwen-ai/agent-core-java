@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.retriever.Retriever
+# com.openjiuwen.retrieval.retriever.Retriever
 
 ## 接口 Retriever
 

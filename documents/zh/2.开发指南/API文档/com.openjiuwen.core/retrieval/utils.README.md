@@ -1,6 +1,6 @@
 # utils
 
-`com.openjiuwen.core.retrieval.utils` 提供配置读写、检索结果融合、通用去重与带重试的 HTTP JSON POST 工具。
+`com.openjiuwen.retrieval.utils` 提供配置读写、检索结果融合、通用去重与带重试的 HTTP JSON POST 工具。
 
 ## 类型
 

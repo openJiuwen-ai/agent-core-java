@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.PreprocessingPipeline
+# com.openjiuwen.retrieval.indexing.processor.chunker.PreprocessingPipeline
 
 ## 类 PreprocessingPipeline
 

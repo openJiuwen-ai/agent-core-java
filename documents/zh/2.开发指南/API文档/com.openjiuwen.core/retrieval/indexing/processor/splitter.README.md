@@ -1,6 +1,6 @@
 # splitter
 
-`com.openjiuwen.core.retrieval.indexing.processor.splitter` 提供直接从 `Document` 生成 `TextChunk` 的切分能力，重点关注句子边界和 token 窗口控制。
+`com.openjiuwen.retrieval.indexing.processor.splitter` 提供直接从 `Document` 生成 `TextChunk` 的切分能力，重点关注句子边界和 token 窗口控制。
 
 ## 类型
 

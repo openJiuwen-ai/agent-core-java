@@ -1,6 +1,6 @@
 # parser
 
-`com.openjiuwen.core.retrieval.indexing.processor.parser` 负责把本地文件或网页链接转换为 `Document`。该包覆盖文本、表格、图片、网页与自动路由入口。
+`com.openjiuwen.retrieval.indexing.processor.parser` 负责把本地文件或网页链接转换为 `Document`。该包覆盖文本、表格、图片、网页与自动路由入口。
 
 ## 类型
 

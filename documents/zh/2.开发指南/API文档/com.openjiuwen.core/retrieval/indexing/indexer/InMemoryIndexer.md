@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.indexer.InMemoryIndexer
+# com.openjiuwen.retrieval.indexing.indexer.InMemoryIndexer
 
 ## 类 InMemoryIndexer
 

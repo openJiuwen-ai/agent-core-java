@@ -1,6 +1,6 @@
 # common
 
-`com.openjiuwen.core.retrieval.common` 提供 retrieval 领域的公共配置对象、结果模型、排序配置、异常与参数校验工具。
+`com.openjiuwen.retrieval.common` 提供 retrieval 领域的公共配置对象、结果模型、排序配置、异常与参数校验工具。
 
 ## 类型
 

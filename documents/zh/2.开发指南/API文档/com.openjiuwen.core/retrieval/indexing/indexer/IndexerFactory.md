@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.indexer.IndexerFactory
+# com.openjiuwen.retrieval.indexing.indexer.IndexerFactory
 
 ## 类 IndexerFactory
 

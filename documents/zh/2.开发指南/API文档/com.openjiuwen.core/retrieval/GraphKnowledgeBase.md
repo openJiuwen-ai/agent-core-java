@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.GraphKnowledgeBase
+# com.openjiuwen.retrieval.GraphKnowledgeBase
 
 ## 类 GraphKnowledgeBase
 

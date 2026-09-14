@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.migrator.KvMigrator
+# com.openjiuwen.memory.migration.migrator.KvMigrator
 
 ## 类 KvMigrator
 

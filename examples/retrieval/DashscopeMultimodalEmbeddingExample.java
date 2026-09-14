@@ -6,7 +6,7 @@ package examples.retrieval;
 
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.MultimodalDocument;
-import com.openjiuwen.core.retrieval.embedding.DashscopeEmbedding;
+import com.openjiuwen.retrieval.embedding.DashscopeEmbedding;
 
 import java.nio.file.Path;
 import java.util.List;

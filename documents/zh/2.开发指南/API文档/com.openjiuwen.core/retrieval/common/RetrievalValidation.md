@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.RetrievalValidation
+# com.openjiuwen.retrieval.common.RetrievalValidation
 
 ## 类 RetrievalValidation
 
