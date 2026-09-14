@@ -49,7 +49,6 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.lang.reflect.Constructor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -57,11 +56,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * HarnessConfigBuilder.
@@ -70,16 +71,18 @@ import java.util.function.Function;
  */
 public final class HarnessConfigBuilder {
     /**
-     * Trusted class prefix.
-     * <p>
-     * Package resources reference tool and rail implementation classes by name and
-     * load them reflectively. Loading is restricted to classes within the
-     * application's own namespace so that untrusted classes cannot be loaded and
-     * executed via static initializers.
+     * Package tool factories registered by the host application.
      *
-     * @since 0.1.7
+     * @since 0.1.15
      */
-    private static final String TRUSTED_CLASS_PREFIX = "com.openjiuwen.";
+    private static final Map<String, Function<Path, ?>> PACKAGE_TOOL_FACTORIES = new ConcurrentHashMap<>();
+
+    /**
+     * Package rail factories registered by the host application.
+     *
+     * @since 0.1.15
+     */
+    private static final Map<String, Supplier<?>> PACKAGE_RAIL_FACTORIES = new ConcurrentHashMap<>();
 
     private static final Map<String, Function<Path, List<Object>>> BUILTIN_TOOLS = new LinkedHashMap<>();
 
@@ -104,6 +107,20 @@ public final class HarnessConfigBuilder {
      * @since 0.1.7
      */
     private static final Map<String, HarnessRailProvider> RAIL_ENTRY_POINTS = new ConcurrentHashMap<>();
+
+    /**
+     * Logical provider names associated with concrete tool classes.
+     *
+     * @since 0.1.15
+     */
+    private static final Map<Class<?>, String> TOOL_CLASS_TO_ENTRY_POINT = new ConcurrentHashMap<>();
+
+    /**
+     * Logical provider names associated with concrete rail classes.
+     *
+     * @since 0.1.15
+     */
+    private static final Map<Class<?>, String> RAIL_CLASS_TO_ENTRY_POINT = new ConcurrentHashMap<>();
 
     /**
      * ConcurrentHashMap<>.
@@ -197,7 +214,24 @@ public final class HarnessConfigBuilder {
      * @since 0.1.7
      */
     public static void registerToolProvider(HarnessToolProvider provider) {
-        TOOL_ENTRY_POINTS.put(provider.name(), provider);
+        Objects.requireNonNull(provider, "provider");
+        TOOL_ENTRY_POINTS.put(requireProviderName(provider.name(), "tool"), provider);
+    }
+
+    /**
+     * Registers a logical provider and associates it with the class written by
+     * {@link #generateHarnessConfigYaml(AgentCard, String, List, List, String, Integer, Double)}.
+     *
+     * @param toolClass tool class created by the provider
+     * @param provider provider
+     * @since 0.1.15
+     */
+    public static void registerToolProvider(Class<?> toolClass, HarnessToolProvider provider) {
+        Objects.requireNonNull(toolClass, "toolClass");
+        Objects.requireNonNull(provider, "provider");
+        String name = requireProviderName(provider.name(), "tool");
+        TOOL_ENTRY_POINTS.put(name, provider);
+        TOOL_CLASS_TO_ENTRY_POINT.put(toolClass, name);
     }
 
     /**
@@ -207,7 +241,52 @@ public final class HarnessConfigBuilder {
      * @since 0.1.7
      */
     public static void registerRailProvider(HarnessRailProvider provider) {
-        RAIL_ENTRY_POINTS.put(provider.name(), provider);
+        Objects.requireNonNull(provider, "provider");
+        RAIL_ENTRY_POINTS.put(requireProviderName(provider.name(), "rail"), provider);
+    }
+
+    /**
+     * Registers a logical provider and associates it with the class written by
+     * {@link #generateHarnessConfigYaml(AgentCard, String, List, List, String, Integer, Double)}.
+     *
+     * @param railClass rail class created by the provider
+     * @param provider provider
+     * @since 0.1.15
+     */
+    public static void registerRailProvider(Class<?> railClass, HarnessRailProvider provider) {
+        Objects.requireNonNull(railClass, "railClass");
+        Objects.requireNonNull(provider, "provider");
+        String name = requireProviderName(provider.name(), "rail");
+        RAIL_ENTRY_POINTS.put(name, provider);
+        RAIL_CLASS_TO_ENTRY_POINT.put(railClass, name);
+    }
+
+    /**
+     * Registers an exact class factory for a legacy {@code type: package} tool resource.
+     * The YAML module and class name must resolve to this exact registered class name.
+     *
+     * @param toolClass tool class created by the factory
+     * @param factory host-controlled factory
+     * @since 0.1.15
+     */
+    public static void registerPackageToolFactory(Class<?> toolClass, Function<Path, ?> factory) {
+        Objects.requireNonNull(toolClass, "toolClass");
+        Objects.requireNonNull(factory, "factory");
+        PACKAGE_TOOL_FACTORIES.put(toolClass.getName(), factory);
+    }
+
+    /**
+     * Registers an exact class factory for a legacy {@code type: package} rail resource.
+     * The YAML module and class name must resolve to this exact registered class name.
+     *
+     * @param railClass rail class created by the factory
+     * @param factory host-controlled factory
+     * @since 0.1.15
+     */
+    public static void registerPackageRailFactory(Class<?> railClass, Supplier<?> factory) {
+        Objects.requireNonNull(railClass, "railClass");
+        Objects.requireNonNull(factory, "factory");
+        PACKAGE_RAIL_FACTORIES.put(railClass.getName(), factory);
     }
 
     /**
@@ -351,7 +430,7 @@ public final class HarnessConfigBuilder {
                 }
                 rails.add(factory.apply(workspaceRoot, spec));
             } else if ("package".equals(type)) {
-                rails.add(instantiateNoArgs(spec.getModule(), spec.getClassName()));
+                rails.add(instantiateRail(spec.getModule(), spec.getClassName()));
             } else if ("entry_point".equals(type)) {
                 rails.add(resolveRailEntryPoint(spec.getName()));
             } else {
@@ -1030,53 +1109,45 @@ public final class HarnessConfigBuilder {
      * @since 0.1.7
      */
     private static Object instantiateTool(String module, String className, Path workspaceRoot) {
-        String qualifiedName = module + "." + className;
-        if (!isTrustedClass(qualifiedName)) {
-            throw new IllegalArgumentException("Tool class is not trusted: " + qualifiedName);
+        String qualifiedName = qualifiedResourceName(module, className, "tool");
+        Function<Path, ?> factory = PACKAGE_TOOL_FACTORIES.get(qualifiedName);
+        if (factory == null) {
+            throw new IllegalArgumentException("Package tool factory is not registered: " + qualifiedName);
         }
-        try {
-            Class<?> type = Class.forName(qualifiedName);
-            try {
-                Constructor<?> ctor = type.getConstructor(String.class);
-                return ctor.newInstance(workspaceRoot.toString());
-            } catch (NoSuchMethodException ignored) {
-                return instantiateNoArgs(module, className);
-            }
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalArgumentException("Cannot instantiate tool " + qualifiedName, ex);
-        }
+        return requireCreatedResource(factory.apply(workspaceRoot), "tool", qualifiedName);
     }
 
     /**
-     * instantiateNoArgs.
+     * instantiateRail.
      * 
      * @param module module
      * @param className className
      * @return the result
      * @since 0.1.7
      */
-    private static Object instantiateNoArgs(String module, String className) {
-        String qualifiedName = module + "." + className;
-        if (!isTrustedClass(qualifiedName)) {
-            throw new IllegalArgumentException("Class is not trusted: " + qualifiedName);
+    private static Object instantiateRail(String module, String className) {
+        String qualifiedName = qualifiedResourceName(module, className, "rail");
+        Supplier<?> factory = PACKAGE_RAIL_FACTORIES.get(qualifiedName);
+        if (factory == null) {
+            throw new IllegalArgumentException("Package rail factory is not registered: " + qualifiedName);
         }
-        try {
-            Class<?> type = Class.forName(qualifiedName);
-            return type.getDeclaredConstructor().newInstance();
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalArgumentException("Cannot instantiate " + qualifiedName, ex);
-        }
+        return requireCreatedResource(factory.get(), "rail", qualifiedName);
     }
 
     /**
-     * isTrustedClass.
+     * qualifiedResourceName.
      *
-     * @param qualifiedName qualifiedName
+     * @param module module
+     * @param className className
+     * @param resourceType resourceType
      * @return the result
-     * @since 0.1.7
+     * @since 0.1.15
      */
-    private static boolean isTrustedClass(String qualifiedName) {
-        return qualifiedName != null && qualifiedName.startsWith(TRUSTED_CLASS_PREFIX);
+    private static String qualifiedResourceName(String module, String className, String resourceType) {
+        if (module == null || module.isBlank() || className == null || className.isBlank()) {
+            throw new IllegalArgumentException("Package " + resourceType + " requires module and class");
+        }
+        return module + "." + className;
     }
 
     /**
@@ -1090,12 +1161,12 @@ public final class HarnessConfigBuilder {
     private static Object resolveToolEntryPoint(String name, Path workspaceRoot) {
         HarnessToolProvider provider = TOOL_ENTRY_POINTS.get(name);
         if (provider != null) {
-            return provider.create(workspaceRoot);
+            return createToolFromProvider(name, provider, workspaceRoot);
         }
         for (HarnessToolProvider loaded : ServiceLoader.load(HarnessToolProvider.class)) {
             if (loaded.name().equals(name)) {
                 TOOL_ENTRY_POINTS.put(name, loaded);
-                return loaded.create(workspaceRoot);
+                return createToolFromProvider(name, loaded, workspaceRoot);
             }
         }
         throw new IllegalArgumentException("Harness tool entry point not found: " + name);
@@ -1111,15 +1182,75 @@ public final class HarnessConfigBuilder {
     private static Object resolveRailEntryPoint(String name) {
         HarnessRailProvider provider = RAIL_ENTRY_POINTS.get(name);
         if (provider != null) {
-            return provider.create();
+            return createRailFromProvider(name, provider);
         }
         for (HarnessRailProvider loaded : ServiceLoader.load(HarnessRailProvider.class)) {
             if (loaded.name().equals(name)) {
                 RAIL_ENTRY_POINTS.put(name, loaded);
-                return loaded.create();
+                return createRailFromProvider(name, loaded);
             }
         }
         throw new IllegalArgumentException("Harness rail entry point not found: " + name);
+    }
+
+    /**
+     * createToolFromProvider.
+     *
+     * @param name name
+     * @param provider provider
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.15
+     */
+    private static Object createToolFromProvider(String name, HarnessToolProvider provider, Path workspaceRoot) {
+        Object tool = requireCreatedResource(provider.create(workspaceRoot), "tool provider", name);
+        TOOL_CLASS_TO_ENTRY_POINT.putIfAbsent(tool.getClass(), name);
+        return tool;
+    }
+
+    /**
+     * createRailFromProvider.
+     *
+     * @param name name
+     * @param provider provider
+     * @return the result
+     * @since 0.1.15
+     */
+    private static Object createRailFromProvider(String name, HarnessRailProvider provider) {
+        Object rail = requireCreatedResource(provider.create(), "rail provider", name);
+        RAIL_CLASS_TO_ENTRY_POINT.putIfAbsent(rail.getClass(), name);
+        return rail;
+    }
+
+    /**
+     * requireCreatedResource.
+     *
+     * @param resource resource
+     * @param resourceType resourceType
+     * @param name name
+     * @return the result
+     * @since 0.1.15
+     */
+    private static Object requireCreatedResource(Object resource, String resourceType, String name) {
+        if (resource == null) {
+            throw new IllegalArgumentException(resourceType + " returned null: " + name);
+        }
+        return resource;
+    }
+
+    /**
+     * requireProviderName.
+     *
+     * @param name name
+     * @param resourceType resourceType
+     * @return the result
+     * @since 0.1.15
+     */
+    private static String requireProviderName(String name, String resourceType) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Harness " + resourceType + " provider name must not be blank");
+        }
+        return name;
     }
 
     /**
@@ -1142,14 +1273,33 @@ public final class HarnessConfigBuilder {
                     builtinGroups.add(group);
                 }
             } else {
-                extras.add(HarnessConfig.ToolResourceSchema.builder().type("package")
-                        .module(tool.getClass().getPackageName()).className(tool.getClass().getSimpleName()).build());
+                extras.add(toExternalToolSpec(tool));
             }
         }
         if (!builtinGroups.isEmpty()) {
             extras.add(0, HarnessConfig.ToolResourceSchema.builder().type("builtin").names(builtinGroups).build());
         }
         return extras;
+    }
+
+    /**
+     * toExternalToolSpec.
+     *
+     * @param tool tool
+     * @return the result
+     * @since 0.1.15
+     */
+    private static HarnessConfig.ToolResourceSchema toExternalToolSpec(Object tool) {
+        Objects.requireNonNull(tool, "tool");
+        String entryPoint = TOOL_CLASS_TO_ENTRY_POINT.get(tool.getClass());
+        if (entryPoint != null) {
+            return HarnessConfig.ToolResourceSchema.builder().type("entry_point").name(entryPoint).build();
+        }
+        if (PACKAGE_TOOL_FACTORIES.containsKey(tool.getClass().getName())) {
+            return HarnessConfig.ToolResourceSchema.builder().type("package")
+                    .module(tool.getClass().getPackageName()).className(tool.getClass().getSimpleName()).build();
+        }
+        throw new IllegalArgumentException("External harness tool is not registered: " + tool.getClass().getName());
     }
 
     /**
@@ -1170,11 +1320,30 @@ public final class HarnessConfigBuilder {
                 specs.add(HarnessConfig.RailResourceSchema.builder().type("builtin").name(name)
                         .config(toRailConfig(rail)).build());
             } else {
-                specs.add(HarnessConfig.RailResourceSchema.builder().type("package")
-                        .module(rail.getClass().getPackageName()).className(rail.getClass().getSimpleName()).build());
+                specs.add(toExternalRailSpec(rail));
             }
         }
         return specs;
+    }
+
+    /**
+     * toExternalRailSpec.
+     *
+     * @param rail rail
+     * @return the result
+     * @since 0.1.15
+     */
+    private static HarnessConfig.RailResourceSchema toExternalRailSpec(Object rail) {
+        Objects.requireNonNull(rail, "rail");
+        String entryPoint = RAIL_CLASS_TO_ENTRY_POINT.get(rail.getClass());
+        if (entryPoint != null) {
+            return HarnessConfig.RailResourceSchema.builder().type("entry_point").name(entryPoint).build();
+        }
+        if (PACKAGE_RAIL_FACTORIES.containsKey(rail.getClass().getName())) {
+            return HarnessConfig.RailResourceSchema.builder().type("package")
+                    .module(rail.getClass().getPackageName()).className(rail.getClass().getSimpleName()).build();
+        }
+        throw new IllegalArgumentException("External harness rail is not registered: " + rail.getClass().getName());
     }
 
     /**
