@@ -68,10 +68,28 @@ public class TaskManager {
 
     /**
      * ReentrantLock.
-     * 
+     *
      * @since 0.1.7
      */
     private final ReentrantLock lock = new ReentrantLock();
+
+    /**
+     * Listener invoked (outside the internal lock) after new tasks are added.
+     *
+     * @since 0.1.15
+     */
+    private volatile Runnable taskAddedListener;
+
+    /**
+     * Registers a listener invoked after new tasks are added. Enables
+     * event-driven scheduling instead of relying solely on periodic scans.
+     *
+     * @param listener listener to invoke after task additions; null clears it
+     * @since 0.1.15
+     */
+    public void setTaskAddedListener(Runnable listener) {
+        this.taskAddedListener = listener;
+    }
 
     /**
      * TaskManager.
@@ -196,6 +214,7 @@ public class TaskManager {
      * @since 0.1.7
      */
     public void addTask(List<Task> taskList) {
+        boolean added = false;
         lock.lock();
         try {
             for (Task t : taskList) {
@@ -216,9 +235,31 @@ public class TaskManager {
                 } else {
                     rootTasks.add(t.getTaskId());
                 }
+                added = true;
             }
         } finally {
             lock.unlock();
+        }
+        if (added) {
+            fireTaskAdded();
+        }
+    }
+
+    /**
+     * Notifies the registered task-added listener. Invoked outside the internal
+     * lock so listener failures cannot corrupt task state.
+     *
+     * @since 0.1.15
+     */
+    private void fireTaskAdded() {
+        Runnable listener = taskAddedListener;
+        if (listener == null) {
+            return;
+        }
+        try {
+            listener.run();
+        } catch (RuntimeException ex) {
+            // Listener failures must not fail the addTask call
         }
     }
 

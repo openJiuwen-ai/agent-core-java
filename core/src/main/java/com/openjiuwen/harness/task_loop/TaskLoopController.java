@@ -144,6 +144,43 @@ public class TaskLoopController {
     }
 
     /**
+     * Blocks until the session's active round resolves (completion, failure,
+     * interaction, or abort) or the timeout elapses.
+     *
+     * <p>Replaces sleep-polling waiters: the thread parks on a condition
+     * variable and is woken by resolveCompletion/abort. Rechecks
+     * waitRoundCompletion on every wake, so the result semantics are
+     * unchanged.</p>
+     *
+     * @param sessionId sessionId
+     * @param timeoutMs maximum time to wait in milliseconds; non-positive returns immediately
+     * @return the resolved result, or {@code null} when the timeout elapsed
+     * @since 0.1.15
+     */
+    public Map<String, Object> awaitRoundResolution(String sessionId, long timeoutMs) {
+        SessionState state = state(sessionId);
+        if (timeoutMs <= 0) {
+            return waitRoundCompletion(sessionId);
+        }
+        long startNanos = System.nanoTime();
+        try {
+            state.awaitRoundResolution(timeoutMs);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return Map.of("error", "interrupted");
+        }
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+        Map<String, Object> result = waitRoundCompletion(sessionId);
+        if (result != null && result.containsKey("error")
+                && "completion_timeout".equals(result.get("error"))
+                && elapsedMs < timeoutMs) {
+            // Woken but round still active (spurious wake or signal race): re-wait
+            return awaitRoundResolution(sessionId, timeoutMs - elapsedMs);
+        }
+        return result;
+    }
+
+    /**
      * resolveCompletion.
      * 
      * @param completedRound completedRound
@@ -172,6 +209,7 @@ public class TaskLoopController {
         }
         state.lastResult = result == null ? Map.of("status", "completed") : Map.copyOf(result);
         state.isRoundActive = false;
+        state.signalRoundResolved();
         return state.lastResult;
     }
 
@@ -225,6 +263,7 @@ public class TaskLoopController {
         SessionState state = state(sessionId);
         state.lastResult = Map.of("status", "aborted", "reason", reason == null ? "abort" : reason);
         state.isRoundActive = false;
+        state.signalRoundResolved();
     }
 
     /**
@@ -477,8 +516,55 @@ public class TaskLoopController {
         private volatile Map<String, Object> lastResult;
 
         /**
+         * Signals round-state transitions (resolveCompletion/abort) to waiters.
+         *
+         * @since 0.1.15
+         */
+        private final java.util.concurrent.locks.Lock conditionLock =
+                new java.util.concurrent.locks.ReentrantLock();
+        private final java.util.concurrent.locks.Condition roundResolved = conditionLock.newCondition();
+
+        /**
+         * Wakes all threads blocked in awaitRoundResolution.
+         *
+         * @since 0.1.15
+         */
+        private void signalRoundResolved() {
+            conditionLock.lock();
+            try {
+                roundResolved.signalAll();
+            } finally {
+                conditionLock.unlock();
+            }
+        }
+
+        /**
+         * Blocks until the round state changes or the timeout elapses.
+         *
+         * @param timeoutMs timeout in milliseconds; non-positive returns immediately
+         * @return remaining timeout in nanoseconds (<= 0 when elapsed)
+         * @since 0.1.15
+         */
+        private long awaitRoundResolution(long timeoutMs)
+                throws InterruptedException {
+            long remainingNanos = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+            conditionLock.lock();
+            try {
+                while (remainingNanos > 0) {
+                    remainingNanos = roundResolved.awaitNanos(remainingNanos);
+                    if (!isRoundActive) {
+                        return remainingNanos;
+                    }
+                }
+            } finally {
+                conditionLock.unlock();
+            }
+            return remainingNanos;
+        }
+
+        /**
          * SessionState.
-         * 
+         *
          * @param queues queues
          * @since 0.1.7
          */

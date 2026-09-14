@@ -283,13 +283,25 @@ public class TaskLoopEventHandler extends EventHandler {
 
     /**
      * waitCompletion.
-     * 
+     *
      * @param sessionId sessionId
      * @return the result
      * @since 0.1.7
      */
     public Map<String, Object> waitCompletion(String sessionId) {
         return controller.waitRoundCompletion(sessionId);
+    }
+
+    /**
+     * Blocks until the session's active round resolves or the timeout elapses.
+     *
+     * @param sessionId sessionId
+     * @param timeoutMs maximum time to wait in milliseconds
+     * @return the resolved result, or {@code null} when the timeout elapsed
+     * @since 0.1.15
+     */
+    public Map<String, Object> awaitCompletion(String sessionId, long timeoutMs) {
+        return controller.awaitRoundResolution(sessionId, timeoutMs);
     }
 
     /**

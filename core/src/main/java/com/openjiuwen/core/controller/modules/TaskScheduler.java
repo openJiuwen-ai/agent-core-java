@@ -78,6 +78,15 @@ public class TaskScheduler {
     private ScheduledExecutorService scheduler;
 
     /**
+     * Serializes wakeup-triggered schedule scans so a burst of addTask calls
+     * results in at most one immediate scan instead of N.
+     *
+     * @since 0.1.15
+     */
+    private final java.util.concurrent.atomic.AtomicBoolean wakeupPending =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
      * Running tasks: taskId -> RunningTaskEntry (executor + future).
      * 
      * @since 0.1.7
@@ -633,7 +642,39 @@ public class TaskScheduler {
         scheduler = OpenJiuwenExecutors.newScheduledThreadPool("task-scheduler", 1, true);
         long intervalMs = (long) (config.getScheduleInterval() * 1000);
         schedulerFuture = scheduler.scheduleWithFixedDelay(this::scheduleLoop, 0, intervalMs, TimeUnit.MILLISECONDS);
+        taskManager.setTaskAddedListener(this::wakeup);
         Loggers.CONTROLLER.info("TaskScheduler started");
+    }
+
+    /**
+     * Requests an immediate schedule scan, coalescing concurrent requests.
+     *
+     * <p>Runs the scan asynchronously on the scheduler thread so the addTask
+     * caller (e.g. an SSE pump thread) is never blocked by task startup.
+     * The periodic {@code scheduleWithFixedDelay} scan remains as a safety
+     * net for tasks that become schedulable without a listener trigger.</p>
+     *
+     * @since 0.1.15
+     */
+    public void wakeup() {
+        if (!running || scheduler == null) {
+            return;
+        }
+        if (!wakeupPending.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            scheduler.execute(() -> {
+                wakeupPending.set(false);
+                try {
+                    scheduleLoop();
+                } catch (RuntimeException ex) {
+                    Loggers.CONTROLLER.error("Wakeup schedule scan failed: {}", ex.getMessage());
+                }
+            });
+        } catch (RuntimeException ex) {
+            wakeupPending.set(false);
+        }
     }
 
     /**
@@ -647,6 +688,7 @@ public class TaskScheduler {
             return;
         }
         running = false;
+        taskManager.setTaskAddedListener(null);
 
         // Cancel all running tasks
         lock.lock();

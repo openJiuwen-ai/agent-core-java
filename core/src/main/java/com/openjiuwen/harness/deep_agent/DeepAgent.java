@@ -1753,17 +1753,13 @@ public class DeepAgent implements AutoCloseable {
         String sessionId = session != null ? session.getSessionId() : TaskLoopController.DEFAULT_SESSION_ID;
         LoopCoordinator coordinator = coordinatorForSession(session);
         while (System.nanoTime() < deadline) {
-            Map<String, Object> result = eventHandler.waitCompletion(sessionId);
-            if (!"completion_timeout".equals(result.get("error"))) {
+            long remainingMillis = TimeUnit.NANOSECONDS.toMillis(Math.max(1L, deadline - System.nanoTime()));
+            Map<String, Object> result = eventHandler.awaitCompletion(sessionId, remainingMillis);
+            if (result != null && !"completion_timeout".equals(result.get("error"))) {
                 return result;
             }
             if (coordinator.isAborted()) {
                 return Map.of("status", "aborted", "task_id", taskId);
-            }
-            try {
-                Thread.sleep(25L);
-            } catch (InterruptedException ex) {
-                return Map.of("error", "interrupted", "task_id", taskId);
             }
         }
         return Map.of("error", "completion_timeout", "task_id", taskId);
