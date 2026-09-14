@@ -64,6 +64,7 @@ import org.mockito.Mockito;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +75,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 class HarnessCompatibilityTest {
     private static final String HARNESS_INTERRUPT_PROVIDER = "HarnessInterruptRegression";
+    private static final String OBSOLETE_STATE_KEY = "obsolete_state";
     private static final AtomicBoolean HARNESS_INTERRUPT_FACTORY_REGISTERED = new AtomicBoolean(false);
 
     HarnessCompatibilityTest() {
@@ -360,12 +362,56 @@ class HarnessCompatibilityTest {
         return new LocalFunction(card, (inputs, kwargs) -> {
             Session session = (Session) kwargs.get("session");
             if (session != null) {
-                session.updateState(
-                        Map.of("tool_saw_session", Boolean.TRUE, "tool_session_id", session.getSessionId()));
+                Map<String, Object> stateUpdates = new HashMap<>();
+                stateUpdates.put(OBSOLETE_STATE_KEY, null);
+                stateUpdates.put("tool_saw_session", Boolean.TRUE);
+                stateUpdates.put("tool_session_id", session.getSessionId());
+                session.updateState(stateUpdates);
             }
             String response = String.valueOf(inputs.get("response"));
             return "response=" + response + ",session=" + (session != null ? session.getSessionId() : "null");
         });
+    }
+
+    private static DeepAgent createInterruptStateRegressionAgent(List<List<BaseMessage>> modelCalls)
+            throws Exception {
+        Tool askUserTool = createHarnessAskUserTool();
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                AgentCard.builder().id("harness-interrupt-agent").name("harness-interrupt-agent")
+                        .description("interrupt state regression agent").build(),
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(4)
+                        .tools(List.of(askUserTool)).rails(List.of(new HarnessAskUserInterruptRail())).build(),
+                null);
+        agent.ensureInitialized();
+
+        Model model = Mockito.mock(Model.class);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> interruptStateRegressionAnswer(invocation.getArgument(0), modelCalls));
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    AssistantMessage answer =
+                        interruptStateRegressionAnswer(invocation.getArgument(0), modelCalls);
+                    return List.<AssistantMessageChunk>of(AssistantMessageChunk.builder()
+                            .content(answer.getContent()).toolCalls(answer.getToolCalls()).build()).iterator();
+                });
+        agent.getAgent().setLlm(model);
+        return agent;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static AssistantMessage interruptStateRegressionAnswer(Object rawMessages,
+            List<List<BaseMessage>> modelCalls) {
+        List<BaseMessage> messages = new ArrayList<>((List<BaseMessage>) rawMessages);
+        modelCalls.add(messages);
+        BaseMessage last = messages.get(messages.size() - 1);
+        if ("user".equals(last.getRole()) && "begin interrupt".equals(last.getContentAsString())) {
+            return AssistantMessage.builder().content("")
+                    .toolCalls(List.of(ToolCall.builder().id("ask-user-call").name("ask_user")
+                            .arguments("{\"question\":\"Please provide your name\"}").build()))
+                    .build();
+        }
+        return AssistantMessage.builder().content("FINAL:" + last.getRole() + ":" + last.getContentAsString())
+                .build();
     }
 
     private static OutputSchema findInteractionChunk(List<Object> chunks) {
@@ -823,6 +869,87 @@ class HarnessCompatibilityTest {
 
         assertThat(chunks).isNotEmpty();
         assertStreamEventuallyAnswers(chunks, "stream scheduled round");
+    }
+
+    @Test
+    void completedInterruptResumeShouldNotAffectNextRequestInSameSession() throws Exception {
+        String sessionId = "harness-interrupt-session";
+        List<List<BaseMessage>> modelCalls = Collections.synchronizedList(new ArrayList<>());
+        DeepAgent agent = createInterruptStateRegressionAgent(modelCalls);
+
+        List<Object> firstTurn = collect(Runner.runAgentStreaming(agent,
+                Map.of("query", "begin interrupt", "conversation_id", sessionId), null, null,
+                List.of(StreamMode.OUTPUT)));
+        assertThat(firstTurn).isNotEmpty();
+        AgentSessionApi interrupted = AgentSessionApi.create(sessionId, null, agent.getCard());
+        interrupted.preRun(Map.of("query", "interrupt checkpoint probe"));
+        assertThat(interrupted.getState(ToolInterruptionState.INTERRUPTION_KEY))
+                .isInstanceOf(ToolInterruptionState.class);
+
+        InteractiveInput resumeInput = new InteractiveInput();
+        resumeInput.update("ask-user-call", "Alice");
+        AgentSessionApi directResumeSession = AgentSessionApi.create(sessionId, null, agent.getCard());
+        directResumeSession.updateState(Map.of(OBSOLETE_STATE_KEY, "stale"));
+        collect(agent.stream(
+                Map.of("query", resumeInput, "conversation_id", sessionId), directResumeSession,
+                List.of(StreamMode.OUTPUT)));
+        assertThat(directResumeSession.getState(OBSOLETE_STATE_KEY)).isNull();
+        assertThat(directResumeSession.getState("tool_saw_session")).isEqualTo(Boolean.TRUE);
+        List<BaseMessage> resumedModelCall = modelCalls.get(modelCalls.size() - 1);
+        BaseMessage resumedToolMessage = resumedModelCall.get(resumedModelCall.size() - 1);
+        assertThat(resumedToolMessage.getRole()).isEqualTo("tool");
+        assertThat(resumedToolMessage.getContentAsString()).contains("Alice");
+
+        AgentSessionApi restored = AgentSessionApi.create(sessionId, null, agent.getCard());
+        restored.preRun(Map.of("query", "checkpoint probe"));
+        assertThat(restored.getState(ToolInterruptionState.INTERRUPTION_KEY)).isNull();
+        assertThat(restored.getState(OBSOLETE_STATE_KEY)).isNull();
+
+        collect(Runner.runAgentStreaming(agent,
+                Map.of("query", "brand new question", "conversation_id", sessionId), null, null,
+                List.of(StreamMode.OUTPUT)));
+
+        List<BaseMessage> thirdTurnModelCall = modelCalls.get(modelCalls.size() - 1);
+        BaseMessage lastMessage = thirdTurnModelCall.get(thirdTurnModelCall.size() - 1);
+        assertThat(lastMessage.getRole()).isEqualTo("user");
+        assertThat(lastMessage.getContentAsString()).isEqualTo("brand new question");
+
+        collect(Runner.runAgentStreaming(agent,
+                Map.of("query", "begin interrupt", "conversation_id", sessionId), null, null,
+                List.of(StreamMode.OUTPUT)));
+        AgentSessionApi interruptedAgain = AgentSessionApi.create(sessionId, null, agent.getCard());
+        interruptedAgain.preRun(Map.of("query", "second interrupt checkpoint probe"));
+        assertThat(interruptedAgain.getState(ToolInterruptionState.INTERRUPTION_KEY))
+                .isInstanceOf(ToolInterruptionState.class);
+    }
+
+    @Test
+    void completedInterruptResumeShouldClearStateWhenCallerSessionIsReused() throws Exception {
+        String sessionId = "harness-interrupt-session";
+        List<List<BaseMessage>> modelCalls = Collections.synchronizedList(new ArrayList<>());
+        DeepAgent agent = createInterruptStateRegressionAgent(modelCalls);
+        AgentSessionApi reusedSession = AgentSessionApi.create(sessionId, null, agent.getCard());
+
+        Runner.runAgent(agent, Map.of("query", "begin interrupt", "conversation_id", sessionId), reusedSession,
+                null, null);
+        assertThat(reusedSession.getState(ToolInterruptionState.INTERRUPTION_KEY))
+                .isInstanceOf(ToolInterruptionState.class);
+
+        InteractiveInput resumeInput = new InteractiveInput();
+        resumeInput.update("ask-user-call", "Alice");
+        reusedSession.updateState(Map.of(OBSOLETE_STATE_KEY, "stale"));
+        Runner.runAgent(agent, Map.of("query", resumeInput, "conversation_id", sessionId), reusedSession, null,
+                null);
+        assertThat(reusedSession.getState(ToolInterruptionState.INTERRUPTION_KEY)).isNull();
+        assertThat(reusedSession.getState(OBSOLETE_STATE_KEY)).isNull();
+        assertThat(reusedSession.getState("tool_saw_session")).isEqualTo(Boolean.TRUE);
+
+        Runner.runAgent(agent, Map.of("query", "brand new question", "conversation_id", sessionId), reusedSession,
+                null, null);
+        List<BaseMessage> thirdTurnModelCall = modelCalls.get(modelCalls.size() - 1);
+        BaseMessage lastMessage = thirdTurnModelCall.get(thirdTurnModelCall.size() - 1);
+        assertThat(lastMessage.getRole()).isEqualTo("user");
+        assertThat(lastMessage.getContentAsString()).isEqualTo("brand new question");
     }
 
     @Test
