@@ -298,8 +298,6 @@ public class TaskLoopEventHandler extends EventHandler {
      * @param sessionId sessionId
      * @param timeoutMs maximum time to wait in milliseconds
      * @return the resolved result, or {@code null} when the timeout elapsed
-     * @throws InterruptedException never thrown by this implementation; the delegate
-     *         catches it internally and returns an error map
      * @since 0.1.15
      */
     public Map<String, Object> awaitCompletion(String sessionId, long timeoutMs) {

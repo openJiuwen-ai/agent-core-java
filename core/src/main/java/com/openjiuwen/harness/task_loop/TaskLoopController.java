@@ -155,8 +155,6 @@ public class TaskLoopController {
      * @param sessionId sessionId
      * @param timeoutMs maximum time to wait in milliseconds; non-positive returns immediately
      * @return the resolved result, or {@code null} when the timeout elapsed
-     * @throws InterruptedException recorded in javadoc for the interrupt-aware wait; the method
-     *         catches it internally, restores the interrupt flag and returns an error map
      * @since 0.1.15
      */
     public Map<String, Object> awaitRoundResolution(String sessionId, long timeoutMs) {
@@ -527,6 +525,16 @@ public class TaskLoopController {
         private final java.util.concurrent.locks.Condition roundResolved = conditionLock.newCondition();
 
         /**
+         * SessionState.
+         *
+         * @param queues queues
+         * @since 0.1.7
+         */
+        private SessionState(LoopQueues queues) {
+            this.queues = queues;
+        }
+
+        /**
          * Wakes all threads blocked in awaitRoundResolution.
          *
          * @since 0.1.15
@@ -566,16 +574,6 @@ public class TaskLoopController {
                 conditionLock.unlock();
             }
             return remainingNanos;
-        }
-
-        /**
-         * SessionState.
-         *
-         * @param queues queues
-         * @since 0.1.7
-         */
-        private SessionState(LoopQueues queues) {
-            this.queues = queues;
         }
     }
 }
