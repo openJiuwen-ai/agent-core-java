@@ -22,6 +22,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.core.multiagent.BaseTeam;
 import com.openjiuwen.core.multiagent.team_runtime.TeamRuntime;
 import com.openjiuwen.core.multitenant.TenantContext;
@@ -744,6 +745,13 @@ public final class Runner {
                         }
                         return result;
                     }
+                    if (prepared.agent() instanceof DeepAgent deepAgent) {
+                        Object result = deepAgent.invoke(asStringObjectMap(inputs));
+                        if (prepared.agentSessionFacade() != null) {
+                            prepared.agentSessionFacade().postRun();
+                        }
+                        return result;
+                    }
                     if (isDuckTypedAgent(prepared.agent())) {
                         Object result = invokeDuckTypedAgent(prepared.agent(), inputs, prepared.agentSession(), context);
                         if (prepared.agentSessionFacade() != null) {
@@ -793,6 +801,11 @@ public final class Runner {
                     } else if (prepared.agent() instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
                         iterator = legacyAgent.stream(
                                 asStringObjectMap(inputs), prepared.agentSession(), effectiveModes);
+                        if (prepared.agentSessionFacade() != null) {
+                            iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
+                        }
+                    } else if (prepared.agent() instanceof DeepAgent deepAgent) {
+                        iterator = deepAgent.stream(asStringObjectMap(inputs), effectiveModes);
                         if (prepared.agentSessionFacade() != null) {
                             iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
                         }
