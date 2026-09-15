@@ -545,6 +545,10 @@ public class TaskLoopController {
          *
          * @param timeoutMs timeout in milliseconds; non-positive returns immediately
          * @return remaining timeout in nanoseconds (<= 0 when elapsed)
+         * @throws InterruptedException when the waiting thread is interrupted while parked
+         *         on the condition; the lock is released per {@link java.util.concurrent.locks.Condition#awaitNanos}
+         *         contract, the exception propagates to the caller (TaskLoopController
+         *         catches it, restores the interrupt flag and returns an error map)
          * @since 0.1.15
          */
         private long awaitRoundResolution(long timeoutMs)
