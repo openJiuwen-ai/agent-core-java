@@ -7,9 +7,12 @@ package com.openjiuwen.extensions.store.kv;
 import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
 
+import redis.clients.jedis.AbstractPipeline;
 import redis.clients.jedis.ConnectionPool;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.UnifiedJedis;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.resps.ScanResult;
 import redis.clients.jedis.util.JedisClusterCRC16;
@@ -297,7 +300,11 @@ public class RedisStore extends BaseKVStore {
     @Override
     public KVStorePipeline pipeline() {
         return new KVStorePipeline(operations -> {
-            List<Object> results = new ArrayList<>(operations.size());
+            List<Object> results = executePipelineBatch(operations);
+            if (results != null) {
+                return results;
+            }
+            results = new ArrayList<>(operations.size());
             for (Object[] operation : operations) {
                 String action = String.valueOf(operation[0]);
                 String key = operation.length > 1 ? String.valueOf(operation[1]) : "";
@@ -314,6 +321,122 @@ public class RedisStore extends BaseKVStore {
             }
             return results;
         });
+    }
+
+    /**
+     * Executes queued pipeline operations over a single Redis connection when the client
+     * is a unified Jedis instance (covers Jedis, JedisPooled and other pooled clients),
+     * so the batch costs one connection borrow and one network round-trip instead of one
+     * per operation. Each operation maps to exactly one Redis command, so replies align
+     * 1:1 with operations. Returns {@code null} when the fast path is unavailable,
+     * letting the caller fall back to per-operation execution.
+     *
+     * @param operations queued pipeline operations
+     * @return results in operation order, or {@code null} when no real pipeline is available
+     * @since 0.1.16
+     */
+    private List<Object> executePipelineBatch(List<Object[]> operations) {
+        if (operations.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (!(redisClient instanceof UnifiedJedis unifiedJedis)) {
+            return null;
+        }
+        AbstractPipeline pipeline = unifiedJedis.pipelined();
+        if (!(pipeline instanceof Pipeline nativePipeline)) {
+            // UnifiedJedis.pipelined() returns AbstractPipeline; only the Pipeline
+            // subclass exposes syncAndReturnAll() with per-command replies.
+            try {
+                pipeline.close();
+            } catch (Exception ignored) {
+                // best-effort cleanup; per-op fallback follows
+            }
+            return null;
+        }
+        try {
+            for (Object[] operation : operations) {
+                String action = String.valueOf(operation[0]);
+                String key = operation.length > 1 ? String.valueOf(operation[1]) : "";
+                switch (action) {
+                    case "set" -> {
+                        Integer expiry = extractExpiry(operation);
+                        Object value = operation.length > 2 ? operation[2] : null;
+                        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+                        byte[] valueBytes = toBytes(value);
+                        if (expiry != null && expiry > 0) {
+                            nativePipeline.setex(keyBytes, expiry, valueBytes);
+                        } else {
+                            nativePipeline.set(keyBytes, valueBytes);
+                        }
+                    }
+                    case "get" -> nativePipeline.get(key.getBytes(StandardCharsets.UTF_8));
+                    case "isExists" -> nativePipeline.exists(key);
+                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + action);
+                }
+            }
+            List<Object> replies = nativePipeline.syncAndReturnAll();
+            if (replies == null || replies.size() != operations.size()) {
+                throw new IllegalStateException("Pipeline reply count mismatch: ops=" + operations.size()
+                        + ", replies=" + (replies == null ? 0 : replies.size()));
+            }
+            List<Object> results = new ArrayList<>(replies.size());
+            int replyIndex = 0;
+            for (Object[] operation : operations) {
+                String action = String.valueOf(operation[0]);
+                switch (action) {
+                    case "set" -> results.add(null);
+                    case "get" -> results.add(normalizeGetReply(replies.get(replyIndex++)));
+                    case "isExists" -> results.add(asBoolean(replies.get(replyIndex++)));
+                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + action);
+                }
+            }
+            return results;
+        } catch (Exception e) {
+            logger.warn("Real pipeline batch failed, falling back to per-op execution: {}", e.getMessage());
+            return null;
+        } finally {
+            try {
+                pipeline.close();
+            } catch (Exception e) {
+                logger.debug("Failed to close pipeline: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Encodes a pipeline SET value as bytes: byte[] passes through, other values are
+     * UTF-8 encoded.
+     *
+     * @param value value to encode
+     * @return encoded bytes
+     * @since 0.1.16
+     */
+    private static byte[] toBytes(Object value) {
+        if (value instanceof byte[] bytes) {
+            return bytes;
+        }
+        return String.valueOf(value).getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Normalizes a pipeline GET reply, mirroring the string-vs-binary preference of
+     * {@link #getValuePreferringBinaryKey}: Java-serialization payloads (0xACED magic)
+     * stay as bytes, and any payload that does not round-trip losslessly through UTF-8
+     * stays as bytes too, so only genuine text is decoded to String.
+     *
+     * @param reply raw GET reply (byte[] or null)
+     * @return String for losslessly decodable text, byte[] otherwise
+     * @since 0.1.16
+     */
+    private static Object normalizeGetReply(Object reply) {
+        if (!(reply instanceof byte[] bytes)) {
+            return reply;
+        }
+        if (bytes.length >= 2 && bytes[0] == (byte) 0xAC && bytes[1] == (byte) 0xED) {
+            return bytes;
+        }
+        String text = new String(bytes, StandardCharsets.UTF_8);
+        return Arrays.equals(text.getBytes(StandardCharsets.UTF_8), bytes) ? text : bytes;
     }
 
     /**
