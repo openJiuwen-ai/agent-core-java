@@ -81,6 +81,16 @@ public class TaskManager {
     private volatile Runnable taskAddedListener;
 
     /**
+     * TaskManager.
+     *
+     * @param config config
+     * @since 0.1.7
+     */
+    public TaskManager(ControllerConfig config) {
+        this.config = config;
+    }
+
+    /**
      * Registers a listener invoked after new tasks are added. Enables
      * event-driven scheduling instead of relying solely on periodic scans.
      *
@@ -89,16 +99,6 @@ public class TaskManager {
      */
     public void setTaskAddedListener(Runnable listener) {
         this.taskAddedListener = listener;
-    }
-
-    /**
-     * TaskManager.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
-    public TaskManager(ControllerConfig config) {
-        this.config = config;
     }
 
     /**
@@ -214,7 +214,7 @@ public class TaskManager {
      * @since 0.1.7
      */
     public void addTask(List<Task> taskList) {
-        boolean added = false;
+        boolean isAdded = false;
         lock.lock();
         try {
             for (Task t : taskList) {
@@ -235,12 +235,12 @@ public class TaskManager {
                 } else {
                     rootTasks.add(t.getTaskId());
                 }
-                added = true;
+                isAdded = true;
             }
         } finally {
             lock.unlock();
         }
-        if (added) {
+        if (isAdded) {
             fireTaskAdded();
         }
     }
