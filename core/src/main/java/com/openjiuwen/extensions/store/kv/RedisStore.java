@@ -344,62 +344,94 @@ public class RedisStore extends BaseKVStore {
         }
         AbstractPipeline pipeline = unifiedJedis.pipelined();
         if (!(pipeline instanceof Pipeline nativePipeline)) {
-            // UnifiedJedis.pipelined() returns AbstractPipeline; only the Pipeline
-            // subclass exposes syncAndReturnAll() with per-command replies.
-            try {
-                pipeline.close();
-            } catch (Exception ignored) {
-                // best-effort cleanup; per-op fallback follows
-            }
+            closeQuietly(pipeline);
             return null;
         }
         try {
-            for (Object[] operation : operations) {
-                String action = String.valueOf(operation[0]);
-                String key = operation.length > 1 ? String.valueOf(operation[1]) : "";
-                switch (action) {
-                    case "set" -> {
-                        Integer expiry = extractExpiry(operation);
-                        Object value = operation.length > 2 ? operation[2] : null;
-                        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
-                        byte[] valueBytes = toBytes(value);
-                        if (expiry != null && expiry > 0) {
-                            nativePipeline.setex(keyBytes, expiry, valueBytes);
-                        } else {
-                            nativePipeline.set(keyBytes, valueBytes);
-                        }
-                    }
-                    case "get" -> nativePipeline.get(key.getBytes(StandardCharsets.UTF_8));
-                    case "isExists" -> nativePipeline.exists(key);
-                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + action);
-                }
-            }
+            enqueueOperations(nativePipeline, operations);
             List<Object> replies = nativePipeline.syncAndReturnAll();
-            if (replies == null || replies.size() != operations.size()) {
-                throw new IllegalStateException("Pipeline reply count mismatch: ops=" + operations.size()
-                        + ", replies=" + (replies == null ? 0 : replies.size()));
-            }
-            List<Object> results = new ArrayList<>(replies.size());
-            int replyIndex = 0;
-            for (Object[] operation : operations) {
-                String action = String.valueOf(operation[0]);
-                switch (action) {
-                    case "set" -> results.add(null);
-                    case "get" -> results.add(normalizeGetReply(replies.get(replyIndex++)));
-                    case "isExists" -> results.add(asBoolean(replies.get(replyIndex++)));
-                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + action);
-                }
-            }
-            return results;
+            return mapRepliesToOperations(replies, operations);
         } catch (Exception e) {
             logger.warn("Real pipeline batch failed, falling back to per-op execution: {}", e.getMessage());
             return null;
         } finally {
-            try {
-                pipeline.close();
-            } catch (Exception e) {
-                logger.debug("Failed to close pipeline: {}", e.getMessage());
+            closeQuietly(pipeline);
+        }
+    }
+
+    /**
+     * Queues each operation on the native pipeline; SET with a positive expiry becomes a
+     * single SETEX command so TTL is applied atomically with the write.
+     *
+     * @param nativePipeline pipeline accepting queued commands
+     * @param operations queued pipeline operations
+     * @since 0.1.16
+     */
+    private static void enqueueOperations(Pipeline nativePipeline, List<Object[]> operations) {
+        for (Object[] operation : operations) {
+            String action = String.valueOf(operation[0]);
+            String key = operation.length > 1 ? String.valueOf(operation[1]) : "";
+            switch (action) {
+                case "set" -> {
+                    Integer expiry = extractExpiry(operation);
+                    Object value = operation.length > 2 ? operation[2] : null;
+                    byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+                    byte[] valueBytes = toBytes(value);
+                    if (expiry != null && expiry > 0) {
+                        nativePipeline.setex(keyBytes, expiry, valueBytes);
+                    } else {
+                        nativePipeline.set(keyBytes, valueBytes);
+                    }
+                }
+                case "get" -> nativePipeline.get(key.getBytes(StandardCharsets.UTF_8));
+                case "isExists" -> nativePipeline.exists(key);
+                default -> throw new IllegalArgumentException("Unsupported pipeline op: " + action);
             }
+        }
+    }
+
+    /**
+     * Aligns pipeline replies with operations 1:1 (enforced by count check) and normalizes
+     * each reply to the type the per-operation path would return.
+     *
+     * @param replies raw replies from {@code syncAndReturnAll()}
+     * @param operations queued pipeline operations
+     * @return results in operation order
+     * @since 0.1.16
+     */
+    private static List<Object> mapRepliesToOperations(List<Object> replies, List<Object[]> operations) {
+        if (replies == null || replies.size() != operations.size()) {
+            throw new IllegalStateException("Pipeline reply count mismatch: ops=" + operations.size()
+                    + ", replies=" + (replies == null ? 0 : replies.size()));
+        }
+        List<Object> results = new ArrayList<>(replies.size());
+        int replyIndex = 0;
+        for (Object[] operation : operations) {
+            String action = String.valueOf(operation[0]);
+            switch (action) {
+                case "set" -> results.add(null);
+                case "get" -> results.add(normalizeGetReply(replies.get(replyIndex++)));
+                case "isExists" -> results.add(asBoolean(replies.get(replyIndex++)));
+                default -> throw new IllegalArgumentException("Unsupported pipeline op: " + action);
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Closes a pipeline, swallowing close failures (best-effort cleanup).
+     *
+     * @param pipeline pipeline to close, may be null
+     * @since 0.1.16
+     */
+    private static void closeQuietly(AbstractPipeline pipeline) {
+        if (pipeline == null) {
+            return;
+        }
+        try {
+            pipeline.close();
+        } catch (Exception e) {
+            logger.debug("Failed to close pipeline: {}", e.getMessage());
         }
     }
 
@@ -664,7 +696,7 @@ public class RedisStore extends BaseKVStore {
      * @return the result
      * @since 0.1.7
      */
-    private Integer extractExpiry(Object[] operation) {
+    private static Integer extractExpiry(Object[] operation) {
         if (operation.length <= 3 || operation[3] == null) {
             return null;
         }
@@ -1054,7 +1086,7 @@ public class RedisStore extends BaseKVStore {
      * @return the result
      * @since 0.1.7
      */
-    private boolean asBoolean(Object value) {
+    private static boolean asBoolean(Object value) {
         if (value == null) {
             return false;
         }
