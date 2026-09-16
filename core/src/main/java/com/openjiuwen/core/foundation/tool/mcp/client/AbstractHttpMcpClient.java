@@ -11,7 +11,6 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -33,6 +32,9 @@ import java.util.concurrent.atomic.AtomicLong;
 abstract class AbstractHttpMcpClient implements McpClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final long DEFAULT_CONNECT_TIMEOUT_SECONDS = 10L;
+
+    /** Fallback request timeout in seconds for non-positive timeout arguments. */
+    private static final float DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0f;
 
     /**
      * config.
@@ -126,8 +128,9 @@ abstract class AbstractHttpMcpClient implements McpClient {
             this.connected = true;
             try {
                 callRpc("initialize", Map.of("protocolVersion", "2024-11-05", "clientInfo",
-                        Map.of("name", "agent-core-java", "version", "0.1.7"), "capabilities", Map.of()), timeout);
-                sendNotification("notifications/initialized", Map.of(), timeout);
+                        Map.of("name", "agent-core-java", "version", "0.1.7"), "capabilities", Map.of()),
+                        resolveDiscoveryTimeout(timeout));
+                sendNotification("notifications/initialized", Map.of(), resolveDiscoveryTimeout(timeout));
                 return true;
             } catch (InterruptedException e) {
                 this.connected = false;
@@ -170,7 +173,7 @@ abstract class AbstractHttpMcpClient implements McpClient {
      */
     @Override
     public List<Object> listTools(float timeout) throws Exception {
-        Map<String, Object> result = callRpc("tools/list", Map.of(), timeout);
+        Map<String, Object> result = callRpc("tools/list", Map.of(), resolveDiscoveryTimeout(timeout));
         List<Object> tools = new ArrayList<>();
         for (Map<String, Object> item : asListOfMaps(result.get("tools"))) {
             tools.add(toToolCard(item));
@@ -370,7 +373,11 @@ abstract class AbstractHttpMcpClient implements McpClient {
      * Empty response bodies are treated as an empty map (typical for notifications).
      *
      * @param requestBody JSON-RPC request or notification payload
-     * @param timeout request timeout in seconds; {@link McpServerConfig#NO_TIMEOUT} disables the request timeout
+     * @param timeout request timeout in seconds; a positive value bounds the request, any
+     *        non-positive value (including {@link McpServerConfig#NO_TIMEOUT}) disables the
+     *        request timeout — baseline semantics. Discovery-family callers resolve a
+     *        bounded value through {@link #resolveDiscoveryTimeout(float)} before dispatch
+     *        (the sentinel is never passed through to discovery RPCs).
      * @return parsed response body as a map, or empty map when the body is blank
      * @throws IOException when serialization, HTTP I/O, or JSON parse fails
      * @throws InterruptedException when the HTTP call is interrupted
@@ -381,9 +388,8 @@ abstract class AbstractHttpMcpClient implements McpClient {
         HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(withAuthQuery(config.getServerPath())))
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers
                         .ofString(MAPPER.writeValueAsString(requestBody), StandardCharsets.UTF_8));
-        if (Float.compare(timeout, McpServerConfig.NO_TIMEOUT) != 0 && timeout > 0) {
-            long timeoutMillis = BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(1000L)).longValue();
-            builder.timeout(Duration.ofMillis(timeoutMillis));
+        if (timeout > 0f) {
+            builder.timeout(Duration.ofMillis((long) (timeout * 1000f)));
         }
         for (Map.Entry<String, String> entry : config.getAuthHeaders().entrySet()) {
             builder.header(entry.getKey(), entry.getValue());
@@ -397,6 +403,24 @@ abstract class AbstractHttpMcpClient implements McpClient {
         }
         return MAPPER.readValue(body, new TypeReference<>() {
         });
+    }
+
+    /**
+     * Resolves the bounded timeout for discovery-family RPCs (initialize,
+     * notifications/initialized, tools/list): a positive timeout is used
+     * as-is; any non-positive value (including the
+     * {@link McpServerConfig#NO_TIMEOUT} sentinel) falls back to the 30s
+     * client default (bounded discovery and the connect-side guard).
+     * resources/list and the execution-family
+     * RPCs (tools/call, resources/read) keep the baseline sentinel
+     * semantics and never pass through this resolver.
+     *
+     * @param timeout caller-supplied timeout in seconds
+     * @return the bounded timeout in seconds, always positive
+     * @since 0.1.16
+     */
+    private static float resolveDiscoveryTimeout(float timeout) {
+        return timeout > 0f ? timeout : DEFAULT_REQUEST_TIMEOUT_SECONDS;
     }
 
     /**

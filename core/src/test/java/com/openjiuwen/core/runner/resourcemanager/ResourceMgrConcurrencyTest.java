@@ -337,6 +337,10 @@ class ResourceMgrConcurrencyTest {
         McpClient client = mock(McpClient.class);
         when(client.connect(org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyFloat())).thenReturn(true);
+        // the registration/refresh discovery RPC always passes
+        // the bounded timeout overload.
+        when(client.listTools(org.mockito.ArgumentMatchers.anyFloat()))
+                .thenReturn(new ArrayList<>(cards));
         when(client.listTools()).thenReturn(new ArrayList<>(cards));
         return new ToolMgr() {
             @Override

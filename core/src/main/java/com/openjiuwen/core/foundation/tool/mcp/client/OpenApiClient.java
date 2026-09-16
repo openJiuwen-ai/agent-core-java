@@ -126,7 +126,9 @@ public class OpenApiClient implements McpClient {
      * 
      * @param toolName toolName
      * @param arguments arguments
-     * @param timeout timeout
+     * @param timeout timeout in seconds; a positive value bounds the request, any
+     *        non-positive value (including {@link McpServerConfig#NO_TIMEOUT})
+     *        disables the request timeout — baseline semantics
      * @return the result
      * @throws Exception Exception
      * @since 0.1.7

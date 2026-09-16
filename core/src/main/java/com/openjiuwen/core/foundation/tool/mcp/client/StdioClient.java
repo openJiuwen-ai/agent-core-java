@@ -50,6 +50,9 @@ public class StdioClient implements McpClient {
     private static final Set<String> DEFAULT_ALLOWED_COMMAND_NAMES = Set.of(
             "java", "java.exe", "python", "python.exe", "python3", "python3.exe");
 
+    /** Fallback request timeout in seconds for non-positive timeout arguments. */
+    private static final float DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0f;
+
     private final McpServerConfig config;
 
     /**
@@ -111,7 +114,7 @@ public class StdioClient implements McpClient {
         this.stdout = new BufferedInputStream(process.getInputStream());
         this.stdin = new BufferedOutputStream(process.getOutputStream());
         startStderrDrainer();
-        long deadlineMs = computeDeadlineMs(timeout);
+        long deadlineMs = computeDeadlineMs(resolveDiscoveryTimeout(timeout));
         try {
             request("initialize",
                     Map.of("protocolVersion", "2024-11-05", "clientInfo",
@@ -250,7 +253,7 @@ public class StdioClient implements McpClient {
      */
     @Override
     public List<Object> listTools(float timeout) throws Exception {
-        long deadlineMs = computeDeadlineMs(timeout);
+        long deadlineMs = computeDeadlineMs(resolveDiscoveryTimeout(timeout));
         Map<String, Object> result = request("tools/list", Map.of(), deadlineMs);
         List<Object> tools = new ArrayList<>();
         Object rawTools = result.get("tools");
@@ -487,10 +490,33 @@ public class StdioClient implements McpClient {
     }
 
     /**
+     * Resolves the bounded timeout for discovery-family RPCs (initialize,
+     * tools/list): a positive timeout is used as-is; any non-positive value
+     * (including the {@link McpServerConfig#NO_TIMEOUT} sentinel) falls
+     * back to the 30s client default, bounding discovery. resources/list
+     * and the execution-family RPCs
+     * (tools/call, resources/read) keep the baseline sentinel semantics
+     * and never pass through this resolver.
+     *
+     * @param timeout caller-supplied timeout in seconds
+     * @return the bounded timeout in seconds, always positive
+     * @since 0.1.16
+     */
+    private static float resolveDiscoveryTimeout(float timeout) {
+        return timeout > 0f ? timeout : DEFAULT_REQUEST_TIMEOUT_SECONDS;
+    }
+
+    /**
      * computeDeadlineMs.
-     * 
-     * @param timeout timeout
-     * @return the result
+     *
+     * <p>Baseline semantics: the {@link McpServerConfig#NO_TIMEOUT} sentinel
+     * disables deadline enforcement (0); a positive timeout becomes an
+     * absolute deadline; any other non-positive value falls back to the 30s
+     * default.
+     *
+     * @param timeout caller-supplied timeout in seconds
+     * @return absolute deadline in epoch milliseconds, or 0 when the
+     *         sentinel disables deadline enforcement
      * @since 0.1.7
      */
     private static long computeDeadlineMs(float timeout) {
@@ -506,7 +532,7 @@ public class StdioClient implements McpClient {
 
     /**
      * checkDeadline.
-     * 
+     *
      * @param deadlineMs deadlineMs
      * @throws SocketTimeoutException SocketTimeoutException
      * @since 0.1.7

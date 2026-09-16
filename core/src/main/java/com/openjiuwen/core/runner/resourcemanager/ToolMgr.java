@@ -4,12 +4,15 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpClientFactory;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerAlreadyRegisteredError;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfigConflictError;
 import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 
@@ -19,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -221,33 +225,140 @@ public class ToolMgr {
         // ResourceMgr/DeepAgent entry points already do, so a config that
         // skipped normalization stays registerable.
         serverConfig.normalizeServerId();
-        if (mcpServerResources.containsKey(serverConfig.getServerId())) {
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
-                    String.valueOf(serverConfig), "reason", "server_id is already exist");
+        // Fast path (former containsKey guard): an established
+        // entry means this call lost before building any connection; the
+        // dispatch keeps equivalent and conflicting attempts separable.
+        McpServerResource established = mcpServerResources.get(serverConfig.getServerId());
+        if (established != null) {
+            throw registrationError(established.config(), serverConfig);
         }
         McpClient client = createClient(serverConfig);
+        connectClient(client, serverConfig);
+        // Placeholder claim: connecting is the slow step and stays outside
+        // the claim, then exactly one registration wins the server slot.
+        McpServerResource placeholder = new McpServerResource(serverConfig, client, List.of(),
+                System.currentTimeMillis(), expiryTime);
+        McpServerResource prev = mcpServerResources.putIfAbsent(serverConfig.getServerId(), placeholder);
+        if (prev != null) {
+            // Loser: recycle own connection, then dispatch by connection
+            // equivalence — the facade re-tags equivalents into the
+            // winner's entry, conflicts stay visibly reportable.
+            disconnectQuietly(client, serverConfig.getServerId());
+            throw registrationError(prev.config(), serverConfig);
+        }
         try {
-            float connectTimeoutSec =
-                serverConfig.getConnectTimeoutSeconds() != null && serverConfig.getConnectTimeoutSeconds() > 0
-                    ? serverConfig.getConnectTimeoutSeconds().floatValue() : 30f;
-            boolean isConnected = client.connect(1, connectTimeoutSec);
-            if (!isConnected) {
-                throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_CONNECTION_ERROR, "server_config",
-                        String.valueOf(serverConfig), "reason", "");
-            }
             List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime);
-            // A config without server_name (possible from user YAML) keeps the
-            // legacy HashMap-era behavior: registration succeeds, the server
-            // is addressable by server_id, and the name index simply does not
-            // track it — ConcurrentHashMap rejects null keys, so guard here.
-            if (serverConfig.getServerName() != null) {
-                mcpServerNameToIds.computeIfAbsent(serverConfig.getServerName(), k -> new CopyOnWriteArrayList<>())
-                        .add(serverConfig.getServerId());
-            }
+            indexServerName(serverConfig);
             return results;
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
-                    String.valueOf(serverConfig), "reason", e.getMessage());
+            // Winner failure rollback: drop the placeholder (only
+            // while the slot still holds it) and recycle the connection so
+            // a retry starts clean; the surfaced failure keeps its cause.
+            rollbackFailedWinner(placeholder, client, serverConfig.getServerId());
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, null, null, e,
+                    Map.of("server_config", serverConfig.toMaskedDescription(), "reason",
+                            e.getMessage() != null ? e.getMessage() : "add tool server failed"));
+        }
+    }
+
+    /**
+     * Connects the freshly created client with the baseline timeout guard
+     * (configured positive value or the 30s fallback). A failed handshake
+     * recycles the partially-connected client before surfacing the
+     * cause-preserving failure, so no transport state leaks.
+     *
+     * @param client the client created for this registration attempt
+     * @param serverConfig the config used for error context and the timeout
+     * @throws Exception the wrapped add failure or the connection error
+     * @since 0.1.16
+     */
+    private void connectClient(McpClient client, McpServerConfig serverConfig) throws Exception {
+        Double configured = serverConfig.getConnectTimeoutSeconds();
+        float connectTimeoutSec = configured != null && configured > 0 ? configured.floatValue() : 30f;
+        boolean isConnected;
+        try {
+            isConnected = client.connect(1, connectTimeoutSec);
+        } catch (Exception e) {
+            disconnectQuietly(client, serverConfig.getServerId());
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, null, null, e,
+                    Map.of("server_config", serverConfig.toMaskedDescription(), "reason",
+                            e.getMessage() != null ? e.getMessage() : "connect failed"));
+        }
+        if (!isConnected) {
+            disconnectQuietly(client, serverConfig.getServerId());
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_CONNECTION_ERROR, "server_config",
+                    serverConfig.toMaskedDescription(), "reason", "");
+        }
+    }
+
+    /**
+     * Dispatches the recognizable registration error for an occupied server
+     * slot: equivalent connection semantics yield the already-registered
+     * error the facade converts into a re-tag reuse; anything else is a
+     * visible config conflict that never silently merges two servers.
+     *
+     * @param existing the config held by the registration that won
+     * @param attempted the config of the losing attempt
+     * @return the error to throw for the losing attempt
+     * @since 0.1.16
+     */
+    private static BaseError registrationError(McpServerConfig existing, McpServerConfig attempted) {
+        if (existing.sameConnectionAs(attempted)) {
+            return new McpServerAlreadyRegisteredError(attempted.getServerId(), existing);
+        }
+        return new McpServerConfigConflictError(attempted.getServerId(), existing, attempted);
+    }
+
+    /**
+     * Best-effort connection recycle on registration failure paths: the
+     * primary error (loser dispatch or winner rollback) must not be masked
+     * by a failing disconnect, so cleanup failures only log.
+     *
+     * @param client the client whose connection is recycled
+     * @param serverId the server id used for log context
+     * @since 0.1.16
+     */
+    private void disconnectQuietly(McpClient client, String serverId) {
+        try {
+            client.disconnect();
+        } catch (Exception e) {
+            logger.warn("failed to disconnect MCP client during registration cleanup, server_id={}", serverId, e);
+        }
+    }
+
+    /**
+     * Rolls back a winner whose discovery failed: the placeholder is
+     * removed only while the slot still maps to it — a concurrent refresh
+     * may legitimately have replaced it with a live resource on the same
+     * client, and that entry keeps the connection. The connection is
+     * recycled exactly when the placeholder itself is dropped.
+     *
+     * @param placeholder the placeholder this registration claimed
+     * @param client the client created for this registration attempt
+     * @param serverId the claimed server id
+     * @since 0.1.16
+     */
+    private void rollbackFailedWinner(McpServerResource placeholder, McpClient client, String serverId) {
+        if (!mcpServerResources.remove(serverId, placeholder)) {
+            return;
+        }
+        disconnectQuietly(client, serverId);
+    }
+
+    /**
+     * Adds the server id to the name index. A config without server_name
+     * (possible from user YAML) keeps the legacy HashMap-era behavior:
+     * registration succeeds, the server is addressable by server_id, and
+     * the name index simply does not track it — ConcurrentHashMap rejects
+     * null keys, so guard here.
+     *
+     * @param serverConfig the successfully registered server config
+     * @since 0.1.16
+     */
+    private void indexServerName(McpServerConfig serverConfig) {
+        if (serverConfig.getServerName() != null) {
+            mcpServerNameToIds.computeIfAbsent(serverConfig.getServerName(), k -> new CopyOnWriteArrayList<>())
+                    .add(serverConfig.getServerId());
         }
     }
 
@@ -534,7 +645,10 @@ public class ToolMgr {
      */
     private List<McpToolCard> innerRefreshMcpTools(McpClient client, McpServerConfig serverConfig, Double expiryTime)
             throws Exception {
-        List<Object> rawCards = client.listTools();
+        // Bounded discovery RPC: callTimeoutSeconds when
+        // positive, else the 30s fallback — the NO_TIMEOUT sentinel never
+        // reaches the client on the registration/refresh paths.
+        List<Object> rawCards = client.listTools(discoveryTimeout(serverConfig));
         List<McpToolCard> mcpCards = new ArrayList<>();
         if (rawCards != null) {
             for (Object raw : rawCards) {
@@ -547,12 +661,47 @@ public class ToolMgr {
         for (McpToolCard card : mcpCards) {
             String toolId = generateMcpToolId(serverConfig.getServerId(), serverConfig.getServerName(), card.getName());
             card.setId(toolId);
-            addTool(toolId, new McpTool(client, card));
+            addTool(toolId, new McpTool(client, card, executionCallTimeout(serverConfig)));
             mcpIds.add(toolId);
         }
-        mcpServerResources.put(serverConfig.getServerId(), new McpServerResource(serverConfig, client,
-                new ArrayList<>(mcpIds), System.currentTimeMillis(), expiryTime));
+        // Placeholder update: replace the entry only while it
+        // still maps to this client — the registration winner refreshes
+        // its own placeholder and the read path refreshes the entry it
+        // read; a slot owned by another registration is never overwritten.
+        McpServerResource refreshed = new McpServerResource(serverConfig, client, new ArrayList<>(mcpIds),
+                System.currentTimeMillis(), expiryTime);
+        mcpServerResources.computeIfPresent(serverConfig.getServerId(),
+                (serverId, current) -> current.client() == client ? refreshed : current);
         return mcpCards;
+    }
+
+    /**
+     * Resolves the bounded timeout for the discovery RPC: the configured
+     * positive callTimeoutSeconds or the 30s fallback.
+     *
+     * @param serverConfig the config whose call timeout applies
+     * @return the timeout in seconds passed to the client
+     * @since 0.1.16
+     */
+    private static float discoveryTimeout(McpServerConfig serverConfig) {
+        Double callTimeout = serverConfig.getCallTimeoutSeconds();
+        return callTimeout != null && callTimeout > 0 ? callTimeout.floatValue() : 30f;
+    }
+
+    /**
+     * Resolves the configured execution timeout for MCP tool calls: a
+     * positive callTimeoutSeconds is passed through so long-running
+     * tools honor the server configuration; any other value keeps the
+     * {@link McpServerConfig#NO_TIMEOUT} sentinel, which preserves the
+     * baseline unbounded execution semantics (only the discovery RPC is bounded; see {@link #discoveryTimeout}).
+     *
+     * @param serverConfig the config whose call timeout applies
+     * @return the timeout in seconds passed to the client
+     * @since 0.1.16
+     */
+    private static float executionCallTimeout(McpServerConfig serverConfig) {
+        Double callTimeout = serverConfig.getCallTimeoutSeconds();
+        return callTimeout != null && callTimeout > 0 ? callTimeout.floatValue() : McpServerConfig.NO_TIMEOUT;
     }
 
     /**

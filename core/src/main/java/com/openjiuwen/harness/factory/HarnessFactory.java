@@ -4,8 +4,12 @@
 
 package com.openjiuwen.harness.factory;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.OperationMode;
@@ -58,7 +62,12 @@ public final class HarnessFactory {
 
     /**
      * createDeepAgent.
-     * 
+     *
+     * <p>Generates the instance-unique owner token before enriching the
+     * config so every global registration performed during creation (the
+     * default sys_operation, configured tool instances) is claimed under
+     * the same ownership key.</p>
+     *
      * @param card card
      * @param config config
      * @param workspace workspace
@@ -69,10 +78,11 @@ public final class HarnessFactory {
         AgentCard effectiveCard =
             card != null ? card : AgentCard.builder().name("deep_agent").description("DeepAgent instance").build();
         ensureCardIdentity(effectiveCard);
-        DeepAgentConfig effectiveConfig = enrichConfig(effectiveCard, config, workspace);
+        String ownerToken = newOwnerToken(effectiveCard);
+        DeepAgentConfig effectiveConfig = enrichConfig(effectiveCard, config, workspace, ownerToken);
         Workspace effectiveWorkspace = resolveWorkspace(effectiveConfig, workspace);
-        registerToolInstances(effectiveConfig.getTools());
-        DeepAgent agent = new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace);
+        registerToolInstances(effectiveConfig.getTools(), ownerToken);
+        DeepAgent agent = new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace, ownerToken);
         injectKvStore(agent, effectiveConfig);
         return agent;
     }
@@ -122,19 +132,20 @@ public final class HarnessFactory {
 
     /**
      * enrichConfig.
-     * 
+     *
      * @param card card
      * @param config config
      * @param workspace workspace
+     * @param ownerToken owner token claiming the created entries
      * @return the result
      * @since 0.1.7
      */
-    private static DeepAgentConfig enrichConfig(AgentCard card, DeepAgentConfig config, Workspace workspace) {
+    private static DeepAgentConfig enrichConfig(AgentCard card, DeepAgentConfig config, Workspace workspace,
+            String ownerToken) {
         DeepAgentConfig source = config != null ? config : DeepAgentConfig.builder().build();
         Workspace effectiveWorkspace = resolveWorkspace(source, workspace);
         String language = resolveLanguage(source.getLanguage(), effectiveWorkspace);
 
-        List<Object> rails = new ArrayList<>(source.getRails() != null ? source.getRails() : List.of());
         List<Object> subagents = new ArrayList<>(source.getSubagents() != null ? source.getSubagents() : List.of());
         List<Object> tools = new ArrayList<>(source.getTools() != null ? source.getTools() : List.of());
 
@@ -142,44 +153,8 @@ public final class HarnessFactory {
             injectGeneralPurposeSubagent(subagents, language, source, tools);
         }
 
-        addDefaultRailIfAbsent(rails, SecurityRail.class, SecurityRail::new);
-        if (source.isTaskPlanningEnabled()) {
-            addDefaultRailIfAbsent(rails, TaskPlanningRail.class, TaskPlanningRail::new);
-        }
-        if (source.isTaskLoopEnabled()) {
-            addDefaultRailIfAbsent(rails, TaskCompletionRail.class, TaskCompletionRail::new);
-        }
-        if (hasConfiguredSkills(source) || source.isEnableSkillDiscovery()) {
-            addSkillUseRailIfAbsent(rails, source);
-        }
-        if (!subagents.isEmpty()) {
-            if (source.isAsyncSubagentEnabled()) {
-                addDefaultRailIfAbsent(rails, SessionRail.class, SessionRail::new);
-            } else {
-                addDefaultRailIfAbsent(rails, SubagentRail.class, SubagentRail::new);
-            }
-        }
-
-        SysOperation sysOperation = source.getSysOperation();
-        if (sysOperation == null) {
-            String sysOpId = (card.getName() == null || card.getName().isBlank() ? "deep_agent" : card.getName()) + "_"
-                    + card.getId();
-            Object registered = Runner.resourceMgr().getSysOperation(sysOpId, null, TagMatchStrategy.ALL);
-            if (registered instanceof SysOperation existing) {
-                sysOperation = existing;
-            } else {
-                SysOperationCard sysOperationCard =
-                    SysOperationCard.builder().id(sysOpId).name(sysOpId).mode(OperationMode.LOCAL)
-                            .workConfig(LocalWorkConfig.builder().workDir(effectiveWorkspace.root().toString())
-                                    .restrictToSandbox(source.isRestrictToWorkDir()).build())
-                            .build();
-                Runner.resourceMgr().addSysOperation(sysOperationCard, card.getId());
-                Object added = Runner.resourceMgr().getSysOperation(sysOpId, null, TagMatchStrategy.ALL);
-                sysOperation = added instanceof SysOperation addedSysOperation
-                        ? addedSysOperation
-                        : new SysOperation(sysOperationCard);
-            }
-        }
+        List<Object> rails = populateDefaultRails(source, subagents);
+        SysOperation sysOperation = resolveSysOperation(card, source, effectiveWorkspace, ownerToken);
 
         return DeepAgentConfig.builder().systemPrompt(source.getSystemPrompt()).maxIterations(source.getMaxIterations())
                 .shouldFailTaskOnToolError(source.isShouldFailTaskOnToolError())
@@ -208,6 +183,97 @@ public final class HarnessFactory {
                 .todoStorageType(source.getTodoStorageType())
                 .sessionStoreType(source.getSessionStoreType())
                 .kvStoreConfig(source.getKvStoreConfig()).build();
+    }
+
+    /**
+     * populateDefaultRails.
+     *
+     * <p>Seeds the working rail list from the configured rails and ensures
+     * the defaults: the security rail is always present; the planning,
+     * completion, and skill rails follow their toggles or configured
+     * skills; a session or plain subagent rail is ensured once subagents
+     * exist.</p>
+     *
+     * @param source source
+     * @param subagents subagents
+     * @return the result
+     * @since 0.1.16
+     */
+    private static List<Object> populateDefaultRails(DeepAgentConfig source, List<Object> subagents) {
+        List<Object> rails = new ArrayList<>(source.getRails() != null ? source.getRails() : List.of());
+        addDefaultRailIfAbsent(rails, SecurityRail.class, SecurityRail::new);
+        if (source.isTaskPlanningEnabled()) {
+            addDefaultRailIfAbsent(rails, TaskPlanningRail.class, TaskPlanningRail::new);
+        }
+        if (source.isTaskLoopEnabled()) {
+            addDefaultRailIfAbsent(rails, TaskCompletionRail.class, TaskCompletionRail::new);
+        }
+        if (hasConfiguredSkills(source) || source.isEnableSkillDiscovery()) {
+            addSkillUseRailIfAbsent(rails, source);
+        }
+        if (!subagents.isEmpty()) {
+            if (source.isAsyncSubagentEnabled()) {
+                addDefaultRailIfAbsent(rails, SessionRail.class, SessionRail::new);
+            } else {
+                addDefaultRailIfAbsent(rails, SubagentRail.class, SubagentRail::new);
+            }
+        }
+        return rails;
+    }
+
+    /**
+     * resolveSysOperation.
+     *
+     * <p>Registers the default sys_operation card under the owner token
+     * (idempotent: an equivalent existing entry is reused and claimed —
+     * the first registrant's work binding stays effective — while a
+     * conflicting definition fails fast) and returns the registered
+     * instance.</p>
+     *
+     * @param card card
+     * @param source source
+     * @param workspace workspace
+     * @param ownerToken owner token claiming the entry
+     * @return the result
+     * @since 0.1.16
+     */
+    private static SysOperation resolveSysOperation(AgentCard card, DeepAgentConfig source, Workspace workspace,
+            String ownerToken) {
+        SysOperation configured = source.getSysOperation();
+        if (configured != null) {
+            return configured;
+        }
+        String sysOpId = sysOperationId(card);
+        SysOperationCard sysOperationCard = SysOperationCard.builder().id(sysOpId).name(sysOpId)
+                .mode(OperationMode.LOCAL)
+                .workConfig(LocalWorkConfig.builder().workDir(workspace.root().toString())
+                        .restrictToSandbox(source.isRestrictToWorkDir()).build())
+                .build();
+        Result<SysOperationCard> added =
+                Runner.resourceMgr().addSysOperation(sysOperationCard, card.getId(), ownerToken);
+        throwIfAddResourceFailed(added, sysOpId);
+        Object registered = Runner.resourceMgr().getSysOperation(sysOpId, null, TagMatchStrategy.ALL);
+        if (registered instanceof SysOperation existing) {
+            return existing;
+        }
+        return new SysOperation(sysOperationCard);
+    }
+
+    /**
+     * sysOperationId.
+     *
+     * <p>Single source of truth for the default sys-operation id derived
+     * from the agent card; {@code DeepAgent.destroy} uses the same formula
+     * to release the ownership claimed at creation.</p>
+     *
+     * @param card card the sys operation is derived from
+     * @return the default sys-operation id
+     * @since 0.1.16
+     */
+    public static String sysOperationId(AgentCard card) {
+        String name = card != null && card.getName() != null && !card.getName().isBlank() ? card.getName()
+                : "deep_agent";
+        return name + "_" + (card != null ? card.getId() : null);
     }
 
     /**
@@ -266,11 +332,16 @@ public final class HarnessFactory {
 
     /**
      * registerToolInstances.
-     * 
+     *
+     * <p>Registers each tool instance globally under the owner token
+     * (idempotent: an equivalent existing entry is reused and claimed, a
+     * conflicting definition fails fast).</p>
+     *
      * @param tools tools
+     * @param ownerToken owner token claiming each entry
      * @since 0.1.7
      */
-    private static void registerToolInstances(List<Object> tools) {
+    private static void registerToolInstances(List<Object> tools, String ownerToken) {
         if (tools == null) {
             return;
         }
@@ -278,9 +349,8 @@ public final class HarnessFactory {
             if (!(tool instanceof Tool toolInstance)) {
                 continue;
             }
-            if (Runner.resourceMgr().getTool(toolInstance.getCard().getId()) == null) {
-                Runner.resourceMgr().addTool(toolInstance, "harness");
-            }
+            Result<ToolCard> added = Runner.resourceMgr().addTool(toolInstance, "harness", ownerToken);
+            throwIfAddResourceFailed(added, toolInstance.getCard().getId());
         }
     }
 
@@ -384,7 +454,7 @@ public final class HarnessFactory {
 
     /**
      * hasConfiguredSkills.
-     * 
+     *
      * @param source source
      * @return the result
      * @since 0.1.7
@@ -392,5 +462,42 @@ public final class HarnessFactory {
     private static boolean hasConfiguredSkills(DeepAgentConfig source) {
         return (source.getSkillDirectories() != null && !source.getSkillDirectories().isEmpty())
                 || (source.getSkills() != null && !source.getSkills().isEmpty());
+    }
+
+    /**
+     * newOwnerToken.
+     *
+     * <p>Generates the instance-unique owner token used as the ownership
+     * key for global resource registration. Must be called after
+     * {@link #ensureCardIdentity(AgentCard)} so the prefix is stable.</p>
+     *
+     * @param card card used for the token prefix
+     * @return the result
+     * @since 0.1.16
+     */
+    private static String newOwnerToken(AgentCard card) {
+        return card.getId() + "#" + UUID.randomUUID();
+    }
+
+    /**
+     * throwIfAddResourceFailed.
+     *
+     * <p>Throws when a ResourceMgr add result is an error.</p>
+     *
+     * @param result add result returned by ResourceMgr
+     * @param resourceId resource id used for error context
+     * @since 0.1.16
+     */
+    private static void throwIfAddResourceFailed(Result<?> result, String resourceId) {
+        if (!result.isError()) {
+            return;
+        }
+        Exception error = result.getError();
+        if (error instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        String reason = error != null && error.getMessage() != null ? error.getMessage() : "add resource failed";
+        throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR, null, null, error,
+                Map.of("card", resourceId, "reason", reason));
     }
 }

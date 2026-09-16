@@ -19,10 +19,11 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.SessionContextHolder;
@@ -830,12 +831,8 @@ public class ReActAgent extends BaseAgent {
             getAbilityManager().registerSessionTool(
                     session != null ? session.getSessionId() : null, contextReloader);
             String agentTag = getCard() != null ? getCard().getId() : null;
-            Object existing = agentTag != null && !agentTag.isBlank()
-                    ? Runner.resourceMgr().getTool(contextReloader.getCard().getId(), agentTag, TagMatchStrategy.ALL)
-                    : Runner.resourceMgr().getTool(contextReloader.getCard().getId());
-            if (existing == null) {
-                Runner.resourceMgr().addTool(contextReloader, agentTag);
-            }
+            Result<ToolCard> added = Runner.resourceMgr().addTool(contextReloader, agentTag, getOwnerToken());
+            throwIfAddResourceFailed(added, contextReloader.getCard().getId());
         } else {
             getAbilityManager().remove(contextReloader.getCard().getName());
         }
