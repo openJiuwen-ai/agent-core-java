@@ -87,7 +87,10 @@ public class ResourceMgr {
      * (hasResource probe, registry write, idToCard put, tagResource) of
      * innerAddResource and innerRemoveResources so registration and removal
      * sequences never interleave in each other's intermediate states. Read
-     * paths stay lock-free (weakly consistent container reads).
+     * paths never take this lock (weakly consistent container reads); the
+     * MCP read-time refresh path falls under the ToolMgr per-server slot
+     * lock instead and may briefly block during a registration, bounded
+     * by the discovery RPC.
      *
      * @since 0.1.16
      */
@@ -120,7 +123,7 @@ public class ResourceMgr {
         if (tag != null) {
             validateTag(tag);
         }
-        return innerAddResource(card.getId(), agentGroup, card, tag, "group");
+        return innerAddResource(new ResourceRegistration(card.getId(), agentGroup, card, tag, "group"));
     }
 
     /**
@@ -167,7 +170,7 @@ public class ResourceMgr {
         if (tag != null) {
             validateTag(tag);
         }
-        return innerAddResource(card.getId(), agent, card, tag, "agent");
+        return innerAddResource(new ResourceRegistration(card.getId(), agent, card, tag, "agent"));
     }
 
     /**
@@ -185,7 +188,9 @@ public class ResourceMgr {
         }
         List<Result<AgentCard>> results = new ArrayList<>();
         for (AgentEntry entry : agents) {
-            results.add(innerAddResource(entry.card().getId(), entry.provider(), entry.card(), tag, "agent"));
+            results.add(innerAddResource(
+                    new ResourceRegistration(entry.card().getId(), entry.provider(), entry.card(), tag,
+                            "agent")));
         }
         return results;
     }
@@ -245,7 +250,7 @@ public class ResourceMgr {
         if (tag != null) {
             validateTag(tag);
         }
-        return innerAddResource(card.getId(), workflow, card, tag, "workflow");
+        return innerAddResource(new ResourceRegistration(card.getId(), workflow, card, tag, "workflow"));
     }
 
     /**
@@ -263,7 +268,9 @@ public class ResourceMgr {
         }
         List<Result<WorkflowCard>> results = new ArrayList<>();
         for (WorkflowEntry entry : workflows) {
-            results.add(innerAddResource(entry.card().getId(), entry.provider(), entry.card(), tag, "workflow"));
+            results.add(innerAddResource(
+                    new ResourceRegistration(entry.card().getId(), entry.provider(), entry.card(), tag,
+                            "workflow")));
         }
         return results;
     }
@@ -358,7 +365,8 @@ public class ResourceMgr {
             validateTag(tag);
         }
         Object ownerKey = owner != null ? owner : tag;
-        return innerAddResource(tool.getCard().getId(), tool, tool.getCard(), tag, "tool", ownerKey);
+        return innerAddResource(new ResourceRegistration(tool.getCard().getId(), tool, tool.getCard(), tag, "tool",
+                    ownerKey));
     }
 
     /**
@@ -415,7 +423,8 @@ public class ResourceMgr {
         Object ownerKey = owner != null ? owner : tag;
         List<Result<ToolCard>> results = new ArrayList<>();
         for (Tool tool : tools) {
-            results.add(innerAddResource(tool.getCard().getId(), tool, tool.getCard(), tag, "tool", ownerKey));
+            results.add(innerAddResource(
+                    new ResourceRegistration(tool.getCard().getId(), tool, tool.getCard(), tag, "tool", ownerKey)));
         }
         return results;
     }
@@ -439,7 +448,8 @@ public class ResourceMgr {
             if (refresh) {
                 refreshExistingResourceIfNeeded(tool.getCard().getId(), tag);
             }
-            results.add(innerAddResource(tool.getCard().getId(), tool, tool.getCard(), tag, "tool", tag));
+            results.add(innerAddResource(
+                    new ResourceRegistration(tool.getCard().getId(), tool, tool.getCard(), tag, "tool", tag)));
         }
         return results;
     }
@@ -500,7 +510,7 @@ public class ResourceMgr {
         if (tag != null) {
             validateTag(tag);
         }
-        return innerAddResource(modelId, model, null, tag, "model");
+        return innerAddResource(new ResourceRegistration(modelId, model, null, tag, "model"));
     }
 
     /**
@@ -521,7 +531,7 @@ public class ResourceMgr {
         }
         List<Result<String>> results = new ArrayList<>();
         for (ModelEntry entry : models) {
-            results.add(innerAddResource(entry.id(), entry.provider(), null, tag, "model"));
+            results.add(innerAddResource(new ResourceRegistration(entry.id(), entry.provider(), null, tag, "model")));
         }
         return results;
     }
@@ -678,7 +688,7 @@ public class ResourceMgr {
         if (tag != null) {
             validateTag(tag);
         }
-        return innerAddResource(promptId, template, null, tag, "prompt");
+        return innerAddResource(new ResourceRegistration(promptId, template, null, tag, "prompt"));
     }
 
     /**
@@ -699,7 +709,8 @@ public class ResourceMgr {
         }
         List<Result<String>> results = new ArrayList<>();
         for (PromptEntry entry : prompts) {
-            results.add(innerAddResource(entry.id(), entry.template(), null, tag, "prompt"));
+            results.add(innerAddResource(
+                    new ResourceRegistration(entry.id(), entry.template(), null, tag, "prompt")));
         }
         return results;
     }
@@ -790,8 +801,8 @@ public class ResourceMgr {
         // bound tools when the first registrant releases.
         structureLock.lock();
         try {
-            Result<SysOperationCard> res = innerAddResource(card.getId(), instance, card, tag, "sys_operation",
-                    ownerKey);
+            Result<SysOperationCard> res = innerAddResource(
+                    new ResourceRegistration(card.getId(), instance, card, tag, "sys_operation", ownerKey));
             if (res.isOk() && res.getValue() == card) {
                 registerSysOperationTools(card, instance, tag, ownerKey);
             } else if (res.isOk()) {
@@ -1101,6 +1112,19 @@ public class ResourceMgr {
      */
     public McpServerConfig getMcpServerConfig(String serverId) {
         return resourceRegistry.tool().getMcpServerConfig(serverId);
+    }
+
+    /**
+     * Returns whether the MCP server slot holds a committed (established)
+     * entry — a mid-flight registration placeholder may still roll back and
+     * must not be treated as final by writers.
+     *
+     * @param serverId MCP server identifier
+     * @return {@code true} only when the entry is established
+     * @since 0.1.16
+     */
+    public boolean isMcpServerEstablished(String serverId) {
+        return resourceRegistry.tool().isMcpServerEstablished(serverId);
     }
 
     /**
@@ -1547,22 +1571,6 @@ public class ResourceMgr {
     }
 
     /**
-     * innerAddResource.
-     * 
-     * @param resourceId resourceId
-     * @param resource resource
-     * @param resourceCard resourceCard
-     * @param tag tag
-     * @param resourceType resourceType
-     * @return the result
-     * @since 0.1.7
-     */
-    private <C> Result<C> innerAddResource(String resourceId, Object resource, BaseCard resourceCard, Object tag,
-            String resourceType) {
-        return innerAddResource(resourceId, resource, resourceCard, tag, resourceType, null);
-    }
-
-    /**
      * innerAddResource with the owner token claiming the entry.
      *
      * <p>Runs the full registration sequence (duplicate probe, registry
@@ -1574,25 +1582,22 @@ public class ResourceMgr {
      * definition fails with RESOURCE_ADD_ERROR. A null owner keeps the
      * legacy duplicate failure.</p>
      *
-     * @param resourceId resourceId
-     * @param resource resource
-     * @param resourceCard resourceCard
-     * @param tag tag
-     * @param resourceType resourceType
-     * @param owner owner token claiming the entry (null keeps legacy semantics)
+     * @param registration the registration request (value object)
      * @return the result
-     * @since 0.1.16
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    private <C> Result<C> innerAddResource(String resourceId, Object resource, BaseCard resourceCard, Object tag,
-            String resourceType, Object owner) {
+    private <C> Result<C> innerAddResource(ResourceRegistration registration) {
+        String resourceId = registration.resourceId();
         try {
             structureLock.lock();
             try {
                 if (tagMgr.hasResource(resourceId)) {
-                    return resolveExistingResource(resourceId, resourceCard, resourceType, owner);
+                    return resolveExistingResource(resourceId, registration.resourceCard(),
+                            registration.resourceType(), registration.owner());
                 }
-                switch (resourceType) {
+                Object resource = registration.resource();
+                switch (registration.resourceType()) {
                     case "workflow" ->
                         resourceRegistry.workflow().addWorkflow(resourceId, (Supplier<Workflow>) resource);
                     case "agent" -> resourceRegistry.agent().addAgent(resourceId, (Supplier<Object>) resource);
@@ -1605,20 +1610,22 @@ public class ResourceMgr {
                         resourceRegistry.sysOperation().addSysOperation(resourceId, (SysOperation) resource);
                     default -> {/* no-op */}
                 }
+                BaseCard resourceCard = registration.resourceCard();
                 if (resourceCard != null) {
                     idToCard.put(resourceId, resourceCard);
                 }
-                tagMgr.tagResource(resourceId, tag != null ? tag : Tag.GLOBAL);
+                tagMgr.tagResource(resourceId, registration.tag() != null ? registration.tag() : Tag.GLOBAL);
+                Object owner = registration.owner();
                 if (owner != null) {
                     claimOwnership(resourceId, owner);
                 }
-                logger.info("add resource succeed, id={}, type={}", resourceId, resourceType);
+                logger.info("add resource succeed, id={}, type={}", resourceId, registration.resourceType());
                 return new Ok<>((C) (resourceCard != null ? resourceCard : resourceId));
             } finally {
                 structureLock.unlock();
             }
         } catch (Exception e) {
-            logger.error("add resource failed, id={}, type={}", resourceId, resourceType, e);
+            logger.error("add resource failed, id={}, type={}", resourceId, registration.resourceType(), e);
             return new Error<>(e);
         }
     }
@@ -1912,8 +1919,8 @@ public class ResourceMgr {
         List<SysOperationToolAdapter.ToolEntry> tools = SysOperationToolAdapter.extractTools(card, instance);
         List<String> toolIds = new ArrayList<>();
         for (SysOperationToolAdapter.ToolEntry entry : tools) {
-            innerAddResource(entry.toolId(), entry.localFunction(), entry.localFunction().getCard(), tag, "tool",
-                    owner);
+            innerAddResource(new ResourceRegistration(entry.toolId(), entry.localFunction(),
+                    entry.localFunction().getCard(), tag, "tool", owner));
             toolIds.add(entry.toolId());
         }
         resourceRegistry.tool().addSysOperationTools(card.getId(), toolIds);
@@ -2552,15 +2559,39 @@ public class ResourceMgr {
 
     /**
      * Public record PromptEntry used by the Java parity implementation.
-     * 
+     *
      * @since 0.1.7
      */
     public record PromptEntry(String id, PromptTemplate template) {
     }
 
     /**
+     * Registration request for {@link #innerAddResource}: one
+     * value object replaces the six-parameter signature — the id, the
+     * runtime instance, the identity card, the tag, the typed-registry
+     * discriminator, and the optional owner token. The convenience
+     * constructor keeps the legacy owner-less registration shape.
+     *
+     * @param resourceId resource id used as the registry key
+     * @param resource runtime instance stored by the typed registry
+     * @param resourceCard identity card indexed for lookups, or {@code null}
+     * @param tag tag attached to the entry ({@code null} defaults to global)
+     * @param resourceType typed-registry discriminator
+     * @param owner owner token claiming the entry ({@code null} keeps legacy semantics)
+     * @since 0.1.16
+     */
+    private record ResourceRegistration(String resourceId, Object resource, BaseCard resourceCard, Object tag,
+            String resourceType, Object owner) {
+
+        ResourceRegistration(String resourceId, Object resource, BaseCard resourceCard, Object tag,
+                String resourceType) {
+            this(resourceId, resource, resourceCard, tag, resourceType, null);
+        }
+    }
+
+    /**
      * FindResult.
-     * 
+     *
      * @param ids ids
      * @param isExactMatch isExactMatch
      * @since 0.1.7
