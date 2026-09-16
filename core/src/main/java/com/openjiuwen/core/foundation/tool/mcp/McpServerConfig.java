@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -122,5 +123,47 @@ public class McpServerConfig {
         } else {
             serverId = UUID.randomUUID().toString().replace("-", "");
         }
+    }
+
+    /**
+     * Returns whether {@code other} describes the same connection semantics
+     * as this config: same server id, name, path, and client type (with the
+     * {@code streamable-http} alias normalized). The design converges the
+     * duplicate comparison previously inlined by callers onto this method.
+     *
+     * @param other the candidate config; {@code null} is never equivalent
+     * @return {@code true} when both configs describe the same server connection
+     * @since 0.1.16
+     */
+    public boolean sameConnectionAs(McpServerConfig other) {
+        if (this == other) {
+            return true;
+        }
+        if (other == null) {
+            return false;
+        }
+        return Objects.equals(serverId, other.serverId)
+                && Objects.equals(serverName, other.serverName)
+                && Objects.equals(serverPath, other.serverPath)
+                && Objects.equals(normalizedClientType(), other.normalizedClientType());
+    }
+
+    /**
+     * Connection-facing summary for logs and error messages: identity and
+     * transport fields only. Auth headers and query params are reduced to
+     * their key names so credential values never reach the log.
+     *
+     * @return masked description of this config
+     * @since 0.1.16
+     */
+    public String toMaskedDescription() {
+        return "McpServerConfig(serverId=" + serverId + ", serverName=" + serverName
+                + ", serverPath=" + serverPath + ", clientType=" + clientType
+                + ", authHeaderKeys=" + authHeaders.keySet()
+                + ", authQueryParamKeys=" + authQueryParams.keySet() + ")";
+    }
+
+    private String normalizedClientType() {
+        return "streamable-http".equals(clientType) ? "streamable_http" : clientType;
     }
 }

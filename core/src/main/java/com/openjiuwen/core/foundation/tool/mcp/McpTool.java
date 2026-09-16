@@ -23,19 +23,37 @@ import java.util.Map;
 public class McpTool extends Tool {
     private final McpClient mcpClient;
 
+    private final float callTimeoutSeconds;
+
     /**
-     * Create an MCP tool.
-     * 
+     * Create an MCP tool with the client-layer default execution timeout.
+     *
      * @param mcpClient the MCP client instance
      * @param card the MCP tool card
      * @since 0.1.7
      */
     public McpTool(McpClient mcpClient, McpToolCard card) {
+        this(mcpClient, card, McpServerConfig.NO_TIMEOUT);
+    }
+
+    /**
+     * Create an MCP tool with an explicit execution timeout.
+     *
+     * @param mcpClient the MCP client instance
+     * @param card the MCP tool card
+     * @param callTimeoutSeconds tool execution timeout in seconds; a
+     *        positive value bounds the call, any other value (including the
+     *        {@link McpServerConfig#NO_TIMEOUT} sentinel) keeps the baseline
+     *        unbounded execution semantics
+     * @since 0.1.16
+     */
+    public McpTool(McpClient mcpClient, McpToolCard card, float callTimeoutSeconds) {
         super(card);
         if (mcpClient == null) {
             throw ErrorHelper.buildError(StatusCode.TOOL_MCP_CLIENT_NOT_SUPPORTED, "card", card.toString());
         }
         this.mcpClient = mcpClient;
+        this.callTimeoutSeconds = callTimeoutSeconds;
     }
 
     /**
@@ -56,7 +74,7 @@ public class McpTool extends Tool {
             if (inputParams != null && !inputParams.isEmpty()) {
                 arguments = formatArguments(arguments, inputParams);
             }
-            Object result = mcpClient.callTool(card.getName(), arguments);
+            Object result = mcpClient.callTool(card.getName(), arguments, callTimeoutSeconds);
             return Map.of("result", result);
         } catch (Exception e) {
             String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
