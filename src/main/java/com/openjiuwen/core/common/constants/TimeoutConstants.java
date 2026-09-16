@@ -37,7 +37,7 @@ public final class TimeoutConstants {
     public static final String PROP_PROCESS_JOIN_MS = "openjiuwen.timeout.process-join-ms";
 
     /** Built-in default for blocking-queue waits, in milliseconds. */
-    public static final long DEFAULT_BLOCKING_QUEUE_MS = 60_000L;
+    public static final long DEFAULT_BLOCKING_QUEUE_MS = 600_000L;
 
     /** Built-in default for future waits, in milliseconds. */
     public static final long DEFAULT_FUTURE_MS = 300_000L;
