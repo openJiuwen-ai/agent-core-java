@@ -781,6 +781,11 @@ public class DeepAgent implements AutoCloseable {
      * {@link McpServerAlreadyRegisteredError}, which this method converts
      * into a reuse of the winner's entry — a single caller attempt
      * succeeds even under concurrency.
+     * <p>
+     * Placeholder-window rule: only an established entry is
+     * re-tagged directly; a mid-flight placeholder observation takes the
+     * add path, which waits for the in-flight registration's terminal
+     * state under the server slot lock.
      *
      * @param mcpConfig MCP server config from DeepAgent configuration
      * @since 0.1.14
@@ -788,7 +793,15 @@ public class DeepAgent implements AutoCloseable {
     private void registerOnePendingMcp(McpServerConfig mcpConfig) {
         mcpConfig.normalizeServerId();
         McpServerConfig existing = Runner.resourceMgr().getMcpServerConfig(mcpConfig.getServerId());
-        if (existing == null) {
+        // Placeholder-window rule: only an ESTABLISHED entry is
+        // directly re-taggable — a mid-flight placeholder may still roll
+        // back, and re-tagging it would leave this agent registered
+        // against a server that never came online. A placeholder
+        // observation falls through to the add path, which waits for the
+        // in-flight registration's terminal state under the server slot
+        // lock and then either reuses the committed entry or registers
+        // this config as the fresh winner.
+        if (existing == null || !Runner.resourceMgr().isMcpServerEstablished(mcpConfig.getServerId())) {
             try {
                 addNewPendingMcp(mcpConfig);
             } catch (McpServerAlreadyRegisteredError lostRegistrationRace) {
@@ -804,10 +817,13 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Re-uses the registration that won a lost placeholder race: re-query
-     * the server and re-tag it for this agent. When the winner has meanwhile
-     * rolled its entry back (discovery failed), the fresh registration is
-     * retried exactly once before any further failure propagates.
+     * Re-uses the registration that won a lost race: re-query the server
+     * and re-tag it for this agent. Under the placeholder-window
+     * serialization the loser error only surfaces against a
+     * committed entry, so the re-query normally finds it established; the
+     * roll-back retry stays as the defense for an entry removed between
+     * the dispatch and the re-query, retried exactly once before any
+     * further failure propagates.
      *
      * @param mcpConfig the config whose registration lost the race
      * @since 0.1.16

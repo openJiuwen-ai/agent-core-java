@@ -24,17 +24,22 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Manager for Tool instances, MCP servers, and SysOperation-related tools.
  * <p>
  * Provides registration, lookup, and lifecycle management for tools and MCP servers.
  * MCP client creation is delegated to {@link McpClientFactory} for SPI-based transport selection.
+ * MCP server writes (add/remove/refresh) are serialized per server id by a
+ * slot lock, so no writer can interleave with another writer's placeholder
+ * window.
  * <p>
  * Mirrors Python's {@code ToolMgr} in {@code resources_manager/tool_manager.py}.
- * 
+ *
  * @since 0.1.7
  */
 public class ToolMgr {
@@ -71,6 +76,32 @@ public class ToolMgr {
      * @since 0.1.7
      */
     private final ConcurrentHashMap<String, SysOpToolResource> sysOpResources = new ConcurrentHashMap<>();
+
+    /**
+     * Per-server-id slot locks: one lock serializes the whole
+     * add/remove/refresh write sequence of a single MCP server id, so no
+     * writer can interleave with another writer's placeholder window. The
+     * map only grows with distinct server ids — an entry is never removed,
+     * because deleting a lock while waiters exist would let a freshly
+     * created lock break mutual exclusion.
+     *
+     * @since 0.1.16
+     */
+    private final ConcurrentHashMap<String, ReentrantLock> mcpServerLocks = new ConcurrentHashMap<>();
+
+    /**
+     * Server ids whose registration is currently mid-flight: the
+     * mark distinguishes an entry others may build on (established) from a
+     * placeholder that may still roll back. Writers and the read-time
+     * refresh path treat the mark as a wait signal: both hold the
+     * per-server slot lock and block, bounded by the in-flight discovery
+     * RPC, until the registration reaches a terminal state. Pure reads
+     * that do not refresh keep observing the placeholder (transient
+     * zero-tool window).
+     *
+     * @since 0.1.16
+     */
+    private final Set<String> registeringServers = ConcurrentHashMap.newKeySet();
 
     /**
      * Registers a tool with the given identifier.
@@ -211,7 +242,11 @@ public class ToolMgr {
 
     /**
      * Adds an MCP tool server and connects to it, registering all discovered tools.
-     * 
+     * The registration sequence (claim, discovery, commit or rollback) runs
+     * serialized under the server's slot lock; the losing
+     * connection recycles outside the lock so a blocked disconnect never
+     * stalls same-server writers.
+     *
      * @param serverConfig the configuration for the MCP server
      * @param expiryTime the time in seconds after which the tool list should be refreshed,
      * @return a list of tool cards discovered from the server
@@ -225,27 +260,88 @@ public class ToolMgr {
         // ResourceMgr/DeepAgent entry points already do, so a config that
         // skipped normalization stays registerable.
         serverConfig.normalizeServerId();
-        // Fast path (former containsKey guard): an established
-        // entry means this call lost before building any connection; the
-        // dispatch keeps equivalent and conflicting attempts separable.
+        // Fast path (former containsKey guard): only an
+        // ESTABLISHED entry dispatches without building a connection — a
+        // mid-flight placeholder may still roll back, so an
+        // observer falls through and waits for the slot lock instead.
         McpServerResource established = mcpServerResources.get(serverConfig.getServerId());
-        if (established != null) {
+        if (established != null && !registeringServers.contains(serverConfig.getServerId())) {
             throw registrationError(established.config(), serverConfig);
         }
         McpClient client = createClient(serverConfig);
         connectClient(client, serverConfig);
-        // Placeholder claim: connecting is the slow step and stays outside
-        // the claim, then exactly one registration wins the server slot.
+        // Slot serialization: connecting is the slow step and
+        // stays outside the lock; the claim, discovery, and commit (or
+        // rollback) run as one unit under the server's slot lock, out of
+        // reach of removal and refresh interleavings.
+        ReentrantLock slotLock = serverSlotLock(serverConfig.getServerId());
+        slotLock.lock();
+        List<McpToolCard> results;
+        BaseError loserDispatch = null;
+        try {
+            results = registerServerSlot(client, serverConfig, expiryTime);
+        } catch (McpServerAlreadyRegisteredError | McpServerConfigConflictError dispatch) {
+            loserDispatch = dispatch;
+            results = null;
+        } finally {
+            slotLock.unlock();
+        }
+        if (loserDispatch != null) {
+            // The loser's own connection recycles OUTSIDE the slot lock: a
+            // blocked disconnect must never stall same-server writers.
+            disconnectQuietly(client, serverConfig.getServerId());
+            throw loserDispatch;
+        }
+        return results;
+    }
+
+    /**
+     * Returns the slot lock of one MCP server id. Entries are
+     * never removed: deleting a lock while waiters exist would let a newly
+     * created lock break mutual exclusion, and the map only grows with the
+     * distinct server ids ever registered.
+     *
+     * @param serverId the MCP server identifier, never {@code null}
+     * @return the per-server slot lock
+     * @since 0.1.16
+     */
+    private ReentrantLock serverSlotLock(String serverId) {
+        return mcpServerLocks.computeIfAbsent(serverId, key -> new ReentrantLock());
+    }
+
+    /**
+     * Registration sequence under the server slot lock: the
+     * authoritative occupancy check, the placeholder claim, discovery, and
+     * the commit (or rollback) run as one serialized unit — removal and
+     * refresh can no longer interleave with the placeholder window. A
+     * loser dispatch propagates to the caller, which recycles the losing
+     * connection outside the lock; a winner failure rolls the placeholder
+     * back and recycles before the wrapped error surfaces. The registering
+     * mark distinguishes the mid-flight placeholder from an established
+     * entry for the fast path and the facade pre-query.
+     *
+     * @param client the connected client of this registration attempt
+     * @param serverConfig the config whose server slot is claimed
+     * @param expiryTime the tool-list expiry, or {@code null} for none
+     * @return the discovered tool cards
+     * @since 0.1.16
+     */
+    private List<McpToolCard> registerServerSlot(McpClient client, McpServerConfig serverConfig,
+            Double expiryTime) {
+        // Authoritative dispatch: under the slot lock the observed entry is
+        // a final state — never another registration's mid-flight
+        // placeholder, whose writer still holds the lock.
+        McpServerResource existing = mcpServerResources.get(serverConfig.getServerId());
+        if (existing != null) {
+            throw registrationError(existing.config(), serverConfig);
+        }
         McpServerResource placeholder = new McpServerResource(serverConfig, client, List.of(),
                 System.currentTimeMillis(), expiryTime);
         McpServerResource prev = mcpServerResources.putIfAbsent(serverConfig.getServerId(), placeholder);
         if (prev != null) {
-            // Loser: recycle own connection, then dispatch by connection
-            // equivalence — the facade re-tags equivalents into the
-            // winner's entry, conflicts stay visibly reportable.
-            disconnectQuietly(client, serverConfig.getServerId());
             throw registrationError(prev.config(), serverConfig);
         }
+        registeringServers.add(serverConfig.getServerId());
         try {
             List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime);
             indexServerName(serverConfig);
@@ -258,6 +354,8 @@ public class ToolMgr {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, null, null, e,
                     Map.of("server_config", serverConfig.toMaskedDescription(), "reason",
                             e.getMessage() != null ? e.getMessage() : "add tool server failed"));
+        } finally {
+            registeringServers.remove(serverConfig.getServerId());
         }
     }
 
@@ -328,9 +426,9 @@ public class ToolMgr {
 
     /**
      * Rolls back a winner whose discovery failed: the placeholder is
-     * removed only while the slot still maps to it — a concurrent refresh
-     * may legitimately have replaced it with a live resource on the same
-     * client, and that entry keeps the connection. The connection is
+     * removed only while the slot still maps to it. Under the slot lock
+     * no refresh can displace the placeholder anymore, so the
+     * identity guard stays as defense in depth; the connection is
      * recycled exactly when the placeholder itself is dropped.
      *
      * @param placeholder the placeholder this registration claimed
@@ -465,7 +563,29 @@ public class ToolMgr {
     }
 
     /**
+     * Returns whether the server slot holds a committed (established)
+     * entry. A registration whose discovery is still in flight publishes a
+     * placeholder: pure reads may observe it as a transient zero-tool
+     * window, while writers and the read-time refresh path hold the
+     * per-server slot lock and wait for the registration's terminal
+     * state — the placeholder may still roll back.
+     *
+     * @param serverId the MCP server identifier
+     * @return {@code true} only when the slot holds an established entry
+     * @since 0.1.16
+     */
+    public boolean isMcpServerEstablished(String serverId) {
+        if (serverId == null || serverId.isBlank()) {
+            return false;
+        }
+        return mcpServerResources.containsKey(serverId) && !registeringServers.contains(serverId);
+    }
+
+    /**
      * Removes an MCP tool server and disconnects its client, cleaning up all associated tools.
+     * The removal sequence runs serialized under the server's slot lock,
+     * so it can never pass a mid-flight registration placeholder
+     * and leave the winner's committed tools orphaned.
      * 
      * @param serverId the identifier of the MCP server to remove
      * @param ignoreNotExist whether to silently ignore a non-existent server
@@ -474,6 +594,32 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<String> removeToolServer(String serverId, boolean ignoreNotExist) throws Exception {
+        // A null id removes nothing and never takes the lock.
+        if (serverId == null) {
+            return removeServerSlot(serverId, ignoreNotExist);
+        }
+        ReentrantLock slotLock = serverSlotLock(serverId);
+        slotLock.lock();
+        try {
+            return removeServerSlot(serverId, ignoreNotExist);
+        } finally {
+            slotLock.unlock();
+        }
+    }
+
+    /**
+     * Removal sequence under the server slot lock: the entry
+     * detach, the connection recycle, and the tool/index cleanup run as one
+     * unit, so a concurrent registration can never commit into a slot the
+     * removal already emptied.
+     *
+     * @param serverId the identifier of the MCP server to remove
+     * @param ignoreNotExist whether to silently ignore a non-existent server
+     * @return a list of tool identifiers that were removed
+     * @throws Exception if the server does not exist and {@code ignoreNotExist} is {@code false}
+     * @since 0.1.16
+     */
+    private List<String> removeServerSlot(String serverId, boolean ignoreNotExist) throws Exception {
         Optional<McpServerResource> removed = removeMcpServerResource(serverId);
         if (removed.isEmpty()) {
             if (!ignoreNotExist) {
@@ -593,6 +739,36 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<McpToolCard> refreshToolServer(String serverId, boolean skipNotExist, boolean force) throws Exception {
+        // Slot serialization: a refresh observing a mid-flight
+        // placeholder adopted a client whose registration could still roll
+        // back — the refresh now waits for the registration's terminal
+        // state. A null id finds nothing and never takes the lock.
+        if (serverId == null) {
+            return refreshServerSlot(serverId, skipNotExist, force);
+        }
+        ReentrantLock slotLock = serverSlotLock(serverId);
+        slotLock.lock();
+        try {
+            return refreshServerSlot(serverId, skipNotExist, force);
+        } finally {
+            slotLock.unlock();
+        }
+    }
+
+    /**
+     * Refresh sequence under the server slot lock: the lookup,
+     * the expiry decision, and the re-discovery run against an entry that
+     * cannot change underneath them — never against a placeholder.
+     *
+     * @param serverId the identifier of the MCP server to refresh
+     * @param skipNotExist whether to silently skip if the server does not exist
+     * @param force whether to force a refresh regardless of expiry
+     * @return a list of refreshed tool cards, or an empty list if no refresh was needed
+     * @throws Exception if the server does not exist and {@code skipNotExist} is {@code false}, or if refresh fails
+     * @since 0.1.16
+     */
+    private List<McpToolCard> refreshServerSlot(String serverId, boolean skipNotExist, boolean force)
+            throws Exception {
         Optional<McpServerResource> resource = findMcpServerResource(serverId);
         if (resource.isEmpty()) {
             if (!skipNotExist) {
@@ -620,6 +796,11 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public void release() {
+        // The slot locks and the registering marks are
+        // intentionally not cleared: releasing lock entries while waiters
+        // exist would let freshly created locks break mutual exclusion, and
+        // a stale registering mark only disables the fast path — the next
+        // registration of the same id re-establishes it under the lock.
         for (McpServerResource resource : mcpServerResources.values()) {
             try {
                 resource.client().disconnect();
@@ -661,13 +842,24 @@ public class ToolMgr {
         for (McpToolCard card : mcpCards) {
             String toolId = generateMcpToolId(serverConfig.getServerId(), serverConfig.getServerName(), card.getName());
             card.setId(toolId);
-            addTool(toolId, new McpTool(client, card, executionCallTimeout(serverConfig)));
+            // Slot-owned id namespace: a generated MCP tool id
+            // embeds this server's id and name, so re-discovery replaces
+            // the entry this server already registered instead of
+            // colliding with its own earlier registration — a refresh
+            // after commit stays idempotent. Only a foreign tool squatted
+            // on the generated id stays a visible error.
+            Tool occupied = tools.get(toolId);
+            if (occupied != null && !(occupied instanceof McpTool)) {
+                throw new IllegalArgumentException("already exist tool " + toolId);
+            }
+            tools.put(toolId, new McpTool(client, card, executionCallTimeout(serverConfig)));
             mcpIds.add(toolId);
         }
         // Placeholder update: replace the entry only while it
         // still maps to this client — the registration winner refreshes
         // its own placeholder and the read path refreshes the entry it
-        // read; a slot owned by another registration is never overwritten.
+        // read. Under the per-server slot lock no writer
+        // interleave remains; the client guard stays as defense in depth.
         McpServerResource refreshed = new McpServerResource(serverConfig, client, new ArrayList<>(mcpIds),
                 System.currentTimeMillis(), expiryTime);
         mcpServerResources.computeIfPresent(serverConfig.getServerId(),
