@@ -77,11 +77,7 @@ public final class SandboxLifecycleHelper {
             client.setIdleTimeout(idleTimeoutOpt.orElse(null), idleCheckIntervalOpt.orElse(null));
         }
 
-        Map<String, Object> createOptions = new LinkedHashMap<>(policy != null ? policy : Map.of());
-        if (policyMode != null && !policyMode.isEmpty()) {
-            createOptions.put("policy_mode", policyMode);
-        }
-        String newId = client.createSandbox(createOptions);
+        String newId = client.createSandbox(buildCreateOptions(policy, policyMode));
 
         String sharedKey = baseUrl.replaceAll("/+$", "");
         JiuwenBoxProviderMixin.registerSharedSandboxId(sharedKey, newId);
@@ -102,8 +98,44 @@ public final class SandboxLifecycleHelper {
                 allStaleIds.add(id);
             }
         }
+        deleteStaleSandboxes(client, allStaleIds, newId, lifecycleHook, reason);
 
-        for (String staleId : allStaleIds) {
+        return newId;
+    }
+
+    /**
+     * Builds the sandbox create request body, wrapping the policy map under the policy key
+     * so that appended filesystem policies survive sandbox recreation.
+     *
+     * @param policy the sandbox policy configuration map, may be null
+     * @param policyMode the sandbox policy mode, may be null or empty
+     * @return the create request body containing policy and/or policy_mode entries
+     * @since 0.1.16
+     */
+    private static Map<String, Object> buildCreateOptions(Map<String, Object> policy, String policyMode) {
+        Map<String, Object> createOptions = new LinkedHashMap<>();
+        if (policy != null && !policy.isEmpty()) {
+            createOptions.put("policy", policy);
+        }
+        if (policyMode != null && !policyMode.isEmpty()) {
+            createOptions.put("policy_mode", policyMode);
+        }
+        return createOptions;
+    }
+
+    /**
+     * Deletes stale sandbox instances and fires after_delete lifecycle events for each.
+     *
+     * @param client the jiuwenBox client used to delete sandboxes
+     * @param staleIds the stale sandbox IDs to delete, excluding the newly created one
+     * @param newId the newly created sandbox ID, reported to lifecycle hooks
+     * @param lifecycleHook the lifecycle event callback hook, may be null
+     * @param reason the reason for deletion, reported to lifecycle hooks
+     * @since 0.1.16
+     */
+    private static void deleteStaleSandboxes(JiuwenBoxClient client, List<String> staleIds, String newId,
+            LifecycleHook lifecycleHook, String reason) {
+        for (String staleId : staleIds) {
             try {
                 client.deleteSandbox(staleId);
                 logger.info("[jiuwenbox] deleted stale sandbox {}", staleId);
@@ -118,8 +150,6 @@ public final class SandboxLifecycleHelper {
                 lifecycleHook.onEvent("after_delete", deleteContext);
             }
         }
-
-        return newId;
     }
 
     /**
