@@ -100,10 +100,12 @@ public class ReActAgent extends BaseAgent {
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
-    private ReActAgentConfig config;
-    private ContextEngine contextEngine;
-    private volatile Model llm;
+    private final Object contextEngineLock = new Object();
     private final Object llmLock = new Object();
+    private volatile Model llm;
+    private ReActAgentConfig config;
+    private volatile ContextEngine contextEngine;
+    private ContextEngineConfig appliedContextEngineConfig;
     private SystemPromptBuilder promptBuilder;
     private SystemPromptBuilder systemPromptBuilder;
     private boolean isKvReleaseWarningLogged;
@@ -117,7 +119,9 @@ public class ReActAgent extends BaseAgent {
     public ReActAgent(AgentCard card) {
         super(card);
         this.config = createDefaultConfig();
-        this.contextEngine = new ContextEngine(config.getContextEngineConfig());
+        ContextEngineConfig initialConfig = effectiveContextEngineConfig(config.getContextEngineConfig());
+        this.appliedContextEngineConfig = copyContextEngineConfig(initialConfig);
+        this.contextEngine = new ContextEngine(appliedContextEngineConfig);
         this.llm = null;
         this.promptBuilder = new SystemPromptBuilder();
         this.systemPromptBuilder = this.promptBuilder;
@@ -169,11 +173,7 @@ public class ReActAgent extends BaseAgent {
             this.llm = null;
         }
 
-        // Update context engine if config changed
-        if (!safeEquals(oldConfig.getContextEngineConfig(), newConfig.getContextEngineConfig())) {
-            this.contextEngine = new ContextEngine(newConfig.getContextEngineConfig());
-            this.isKvReleaseWarningLogged = false;
-        }
+        refreshContextEngineIfNeeded();
 
         // Update memory scope if changed
         if (!safeEquals(oldConfig.getMemScopeId(), newConfig.getMemScopeId())) {
@@ -208,7 +208,61 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
-        return contextEngine;
+        return refreshContextEngineIfNeeded();
+    }
+
+    /**
+     * Refresh the context engine when the mutable agent configuration changed.
+     *
+     * @return the active context engine
+     * @since 0.1.15
+     */
+    private ContextEngine refreshContextEngineIfNeeded() {
+        synchronized (contextEngineLock) {
+            ContextEngineConfig currentConfig = effectiveContextEngineConfig(config.getContextEngineConfig());
+            if (safeEquals(appliedContextEngineConfig, currentConfig)) {
+                return contextEngine;
+            }
+            ContextEngineConfig configSnapshot = copyContextEngineConfig(currentConfig);
+            ContextEngine refreshedContextEngine = new ContextEngine(configSnapshot);
+            appliedContextEngineConfig = configSnapshot;
+            contextEngine = refreshedContextEngine;
+            isKvReleaseWarningLogged = false;
+            return contextEngine;
+        }
+    }
+
+    /**
+     * Copy context-engine settings so later in-place mutations remain detectable.
+     *
+     * @param source source configuration
+     * @return an independent configuration snapshot
+     * @since 0.1.15
+     */
+    private static ContextEngineConfig copyContextEngineConfig(ContextEngineConfig source) {
+        Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
+        ContextEngineConfig.ContextEngineConfigBuilder snapshotBuilder =
+                ContextEngineConfig.builder().maxContextMessageNum(source.getMaxContextMessageNum())
+                        .defaultWindowMessageNum(source.getDefaultWindowMessageNum())
+                        .defaultWindowRoundNum(source.getDefaultWindowRoundNum())
+                        .enableKvCacheRelease(source.isEnableKvCacheRelease()).enableReload(source.isEnableReload())
+                        .enableTiktokenCounter(source.isTiktokenCounterEnabled())
+                        .contextWindowTokens(source.getContextWindowTokens()).modelName(source.getModelName());
+        if (modelWindowTokens != null) {
+            snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
+        }
+        return snapshotBuilder.build();
+    }
+
+    /**
+     * Normalize an absent context-engine configuration to the engine defaults.
+     *
+     * @param source configured settings, possibly absent
+     * @return configured settings or an empty default configuration
+     * @since 0.1.15
+     */
+    private static ContextEngineConfig effectiveContextEngineConfig(ContextEngineConfig source) {
+        return source != null ? source : ContextEngineConfig.builder().build();
     }
 
     /**
@@ -810,6 +864,7 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.7
      */
     private ModelContext initContext(Session session) {
+        ContextEngine activeContextEngine = refreshContextEngineIfNeeded();
         ModelContext context;
         if (config.getContextProcessors() != null) {
             // With context processors and token counter
@@ -819,13 +874,13 @@ public class ReActAgent extends BaseAgent {
                     specs.add(spec);
                 }
             }
-            context = contextEngine.createContext(null, session, specs, null, null);
+            context = activeContextEngine.createContext(null, session, specs, null, null);
         } else {
-            context = contextEngine.createContext(null, session);
+            context = activeContextEngine.createContext(null, session);
         }
 
         Tool contextReloader = context.reloaderTool();
-        if (config.getContextEngineConfig().isEnableReload()) {
+        if (appliedContextEngineConfig.isEnableReload()) {
             getAbilityManager().add(contextReloader.getCard());
             getAbilityManager().registerSessionTool(
                     session != null ? session.getSessionId() : null, contextReloader);
