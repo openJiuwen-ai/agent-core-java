@@ -7,6 +7,8 @@ package com.openjiuwen.core.runner.resourcemanager;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.IsolatedActions;
+import com.openjiuwen.core.common.utils.IsolatedActions.IsolatedOutcome;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpClientFactory;
@@ -343,17 +345,22 @@ public class ToolMgr {
         }
         registeringServers.add(serverConfig.getServerId());
         try {
-            List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime);
-            indexServerName(serverConfig);
-            return results;
-        } catch (Exception e) {
-            // Winner failure rollback: drop the placeholder (only
-            // while the slot still holds it) and recycle the connection so
-            // a retry starts clean; the surfaced failure keeps its cause.
-            rollbackFailedWinner(placeholder, client, serverConfig.getServerId());
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, null, null, e,
-                    Map.of("server_config", serverConfig.toMaskedDescription(), "reason",
-                            e.getMessage() != null ? e.getMessage() : "add tool server failed"));
+            IsolatedOutcome<List<McpToolCard>> outcome = IsolatedActions.callIsolated(() -> {
+                List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime);
+                indexServerName(serverConfig);
+                return results;
+            });
+            if (outcome.hasFailure()) {
+                Throwable failure = outcome.failure();
+                // Winner failure rollback: drop the placeholder (only
+                // while the slot still holds it) and recycle the connection so
+                // a retry starts clean; the surfaced failure keeps its cause.
+                rollbackFailedWinner(placeholder, client, serverConfig.getServerId());
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, null, null, failure,
+                        Map.of("server_config", serverConfig.toMaskedDescription(), "reason",
+                                failure.getMessage() != null ? failure.getMessage() : "add tool server failed"));
+            }
+            return outcome.value();
         } finally {
             registeringServers.remove(serverConfig.getServerId());
         }
@@ -373,16 +380,16 @@ public class ToolMgr {
     private void connectClient(McpClient client, McpServerConfig serverConfig) throws Exception {
         Double configured = serverConfig.getConnectTimeoutSeconds();
         float connectTimeoutSec = configured != null && configured > 0 ? configured.floatValue() : 30f;
-        boolean isConnected;
-        try {
-            isConnected = client.connect(1, connectTimeoutSec);
-        } catch (Exception e) {
+        IsolatedOutcome<Boolean> outcome =
+                IsolatedActions.callIsolated(() -> client.connect(1, connectTimeoutSec));
+        if (outcome.hasFailure()) {
+            Throwable failure = outcome.failure();
             disconnectQuietly(client, serverConfig.getServerId());
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, null, null, e,
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, null, null, failure,
                     Map.of("server_config", serverConfig.toMaskedDescription(), "reason",
-                            e.getMessage() != null ? e.getMessage() : "connect failed"));
+                            failure.getMessage() != null ? failure.getMessage() : "connect failed"));
         }
-        if (!isConnected) {
+        if (!outcome.value()) {
             disconnectQuietly(client, serverConfig.getServerId());
             throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_CONNECTION_ERROR, "server_config",
                     serverConfig.toMaskedDescription(), "reason", "");
@@ -417,11 +424,11 @@ public class ToolMgr {
      * @since 0.1.16
      */
     private void disconnectQuietly(McpClient client, String serverId) {
-        try {
+        IsolatedActions.runIsolated(() -> {
             client.disconnect();
-        } catch (Exception e) {
-            logger.warn("failed to disconnect MCP client during registration cleanup, server_id={}", serverId, e);
-        }
+            return null;
+        }).ifPresent(e -> logger.warn(
+                "failed to disconnect MCP client during registration cleanup, server_id={}", serverId, e));
     }
 
     /**
@@ -614,29 +621,24 @@ public class ToolMgr {
      * removal already emptied.
      *
      * @param serverId the identifier of the MCP server to remove
-     * @param ignoreNotExist whether to silently ignore a non-existent server
+     * @param shouldIgnoreMissing whether to silently ignore a non-existent server
      * @return a list of tool identifiers that were removed
-     * @throws Exception if the server does not exist and {@code ignoreNotExist} is {@code false}
+     * @throws Exception if the server does not exist and {@code shouldIgnoreMissing} is {@code false}
      * @since 0.1.16
      */
-    private List<String> removeServerSlot(String serverId, boolean ignoreNotExist) throws Exception {
+    private List<String> removeServerSlot(String serverId, boolean shouldIgnoreMissing) throws Exception {
         Optional<McpServerResource> removed = removeMcpServerResource(serverId);
         if (removed.isEmpty()) {
-            if (!ignoreNotExist) {
+            if (!shouldIgnoreMissing) {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_REMOVE_ERROR, "server_id", serverId,
                         "reason", "server is not exist");
             }
             return Collections.emptyList();
         }
         McpServerResource resource = removed.get();
-        try {
-            resource.client().disconnect();
-        } catch (Exception e) {
-            logger.warn("remove tool server disconnect {}, server_id={}", e.getMessage(), serverId);
-        } finally {
-            innerRemoveMcpTools(resource.toolIds());
-            removeServerIdFromNameIndex(resource, serverId);
-        }
+        disconnectQuietly(resource.client(), serverId);
+        innerRemoveMcpTools(resource.toolIds());
+        removeServerIdFromNameIndex(resource, serverId);
         // Snapshot for consistency with the other list-returning
         // accessors; the resource is already detached from the registry.
         return new ArrayList<>(resource.toolIds());
@@ -761,30 +763,31 @@ public class ToolMgr {
      * cannot change underneath them — never against a placeholder.
      *
      * @param serverId the identifier of the MCP server to refresh
-     * @param skipNotExist whether to silently skip if the server does not exist
-     * @param force whether to force a refresh regardless of expiry
+     * @param shouldSkipMissing whether to silently skip if the server does not exist
+     * @param shouldForce whether to force a refresh regardless of expiry
      * @return a list of refreshed tool cards, or an empty list if no refresh was needed
-     * @throws Exception if the server does not exist and {@code skipNotExist} is {@code false}, or if refresh fails
+     * @throws Exception if the server does not exist and
+     *         {@code shouldSkipMissing} is {@code false}, or if refresh fails
      * @since 0.1.16
      */
-    private List<McpToolCard> refreshServerSlot(String serverId, boolean skipNotExist, boolean force)
+    private List<McpToolCard> refreshServerSlot(String serverId, boolean shouldSkipMissing, boolean shouldForce)
             throws Exception {
         Optional<McpServerResource> resource = findMcpServerResource(serverId);
         if (resource.isEmpty()) {
-            if (!skipNotExist) {
+            if (!shouldSkipMissing) {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_REFRESH_ERROR, "server_id", serverId,
                         "reason", "server is not exist");
             }
             return Collections.emptyList();
         }
         McpServerResource mcpResource = resource.get();
-        boolean needRefresh = force;
-        if (!force && mcpResource.expiryTime() != null) {
+        boolean shouldRefresh = shouldForce;
+        if (!shouldForce && mcpResource.expiryTime() != null) {
             if (System.currentTimeMillis() - mcpResource.lastUpdateTime() >= mcpResource.expiryTime()) {
-                needRefresh = true;
+                shouldRefresh = true;
             }
         }
-        if (needRefresh) {
+        if (shouldRefresh) {
             return innerRefreshMcpTools(mcpResource.client(), mcpResource.config(), mcpResource.expiryTime());
         }
         return Collections.emptyList();
@@ -802,11 +805,7 @@ public class ToolMgr {
         // a stale registering mark only disables the fast path — the next
         // registration of the same id re-establishes it under the lock.
         for (McpServerResource resource : mcpServerResources.values()) {
-            try {
-                resource.client().disconnect();
-            } catch (Exception e) {
-                logger.warn("Failed to disconnect MCP server: {}", e.getMessage());
-            }
+            disconnectQuietly(resource.client(), resource.config().getServerId());
         }
         mcpServerResources.clear();
         mcpServerNameToIds.clear();

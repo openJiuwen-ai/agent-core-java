@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.schema.BaseCard;
+import com.openjiuwen.core.common.utils.IsolatedActions;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.tool.Tool;
@@ -701,10 +702,12 @@ public class ResourceMgr {
         try {
             Result<SysOperationCard> res = innerAddResource(
                     new ResourceRegistration(card.getId(), instance, card, tag, "sys_operation", ownerKey));
-            if (res.isOk() && res.getValue() == card) {
-                registerSysOperationTools(card, instance, tag, ownerKey);
-            } else if (res.isOk()) {
-                claimSysOperationTools(card.getId(), ownerKey);
+            if (res.isOk()) {
+                if (res.getValue() == card) {
+                    registerSysOperationTools(card, instance, tag, ownerKey);
+                } else {
+                    claimSysOperationTools(card.getId(), ownerKey);
+                }
             }
             return res;
         } finally {
@@ -1625,7 +1628,8 @@ public class ResourceMgr {
      * <p>Removes one entry's tag, registry, card, and owner records; must
      * be called while holding {@link #structureLock}. Returns empty for a
      * by-tag removal of a card-less entry, preserving the legacy skip
-     * semantics.</p>
+     * semantics. A single-remove failure is captured into the returned
+     * error result; a by-tag removal only logs it and continues.</p>
      *
      * @param removeId removeId
      * @param resourceType resourceType
@@ -1635,32 +1639,25 @@ public class ResourceMgr {
      */
     @SuppressWarnings("unchecked")
     private <C> Optional<Result<C>> removeResourceEntry(String removeId, String resourceType, boolean isRemoveByTag) {
-        Exception error = null;
-        try {
-            tagMgr.removeResource(removeId);
-            switch (resourceType) {
-                case "workflow" -> resourceRegistry.workflow().removeWorkflow(removeId);
-                case "agent" -> resourceRegistry.agent().removeAgent(removeId);
-                case "group" -> resourceRegistry.agentGroup().removeAgentGroup(removeId);
-                case "model" -> resourceRegistry.model().removeModel(removeId);
-                case "tool" -> resourceRegistry.tool().removeTool(removeId);
-                case "prompt" -> resourceRegistry.prompt().removePrompt(removeId);
-                case "sys_operation" -> resourceRegistry.sysOperation().removeSysOperation(removeId);
-                default -> {/* no-op */}
-            }
-        } catch (Exception e) {
-            if (!isRemoveByTag) {
-                error = e;
-            } else {
-                logger.warn("remove resource entry failed during by-tag removal, id={}, type={}",
-                        removeId, resourceType, e);
-            }
-        }
+        Optional<Throwable> failure = IsolatedActions.runIsolated(() -> {
+            removeRegistryEntry(removeId, resourceType);
+            return null;
+        });
         BaseCard removedCard = idToCard.remove(removeId);
         idToOwners.remove(removeId);
-        if (error != null) {
-            logger.error("remove resource failed, id={}, type={}", removeId, resourceType, error);
-            return Optional.of(new Error<>(error));
+        if (failure.isPresent()) {
+            Throwable thrown = failure.get();
+            if (isRemoveByTag) {
+                logger.warn("remove resource entry failed during by-tag removal, id={}, type={}",
+                        removeId, resourceType, thrown);
+            } else if (thrown instanceof Exception error) {
+                logger.error("remove resource failed, id={}, type={}", removeId, resourceType, error);
+                return Optional.of(new Error<>(error));
+            } else if (thrown instanceof java.lang.Error jvmError) {
+                throw jvmError;
+            } else {
+                throw new IllegalStateException("unexpected removal failure", thrown);
+            }
         }
         if ("tool".equals(resourceType) || "prompt".equals(resourceType)) {
             return Optional.of(new Ok<>((C) removeId));
@@ -1669,6 +1666,30 @@ public class ResourceMgr {
             return Optional.of(new Ok<>((C) removedCard));
         }
         return Optional.empty();
+    }
+
+    /**
+     * Removes one resource's tag records and its type-registry entry.
+     * Unknown types are skipped with a debug trace: the caller-facing
+     * contract already tolerates missing entries.
+     *
+     * @param removeId the identifier of the resource to remove
+     * @param resourceType the registry type of the resource
+     * @since 0.1.16
+     */
+    private void removeRegistryEntry(String removeId, String resourceType) {
+        tagMgr.removeResource(removeId);
+        switch (resourceType) {
+            case "workflow" -> resourceRegistry.workflow().removeWorkflow(removeId);
+            case "agent" -> resourceRegistry.agent().removeAgent(removeId);
+            case "group" -> resourceRegistry.agentGroup().removeAgentGroup(removeId);
+            case "model" -> resourceRegistry.model().removeModel(removeId);
+            case "tool" -> resourceRegistry.tool().removeTool(removeId);
+            case "prompt" -> resourceRegistry.prompt().removePrompt(removeId);
+            case "sys_operation" -> resourceRegistry.sysOperation().removeSysOperation(removeId);
+            default -> logger.debug("skip unknown resource type during removal, id={}, type={}",
+                    removeId, resourceType);
+        }
     }
 
     /**

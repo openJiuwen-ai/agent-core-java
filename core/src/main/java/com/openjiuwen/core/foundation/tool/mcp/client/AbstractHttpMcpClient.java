@@ -11,6 +11,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -389,7 +390,8 @@ abstract class AbstractHttpMcpClient implements McpClient {
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers
                         .ofString(MAPPER.writeValueAsString(requestBody), StandardCharsets.UTF_8));
         if (timeout > 0f) {
-            builder.timeout(Duration.ofMillis((long) (timeout * 1000f)));
+            long timeoutMillis = BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(1000L)).longValue();
+            builder.timeout(Duration.ofMillis(timeoutMillis));
         }
         for (Map.Entry<String, String> entry : config.getAuthHeaders().entrySet()) {
             builder.header(entry.getKey(), entry.getValue());
