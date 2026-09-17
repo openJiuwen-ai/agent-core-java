@@ -1402,7 +1402,7 @@ class HarnessRailsCompatibilityTest {
 
             rail.beforeModelCall(ctx);
 
-            assertThat(agent.getAgent().peekLlm()).isSameAs(fastModel);
+            assertThat(ctx.getDynamicModelId()).isEqualTo("fast");
             assertThat(ctx.getExtra()).containsEntry("task_planning.model_id", "fast");
 
             rail.afterModelCall(ctx);
@@ -1418,7 +1418,8 @@ class HarnessRailsCompatibilityTest {
                     .inputs(ToolCallInputs.builder().toolName("todo_modify").build()).build();
             rail.afterToolCall(refreshCtx);
             rail.beforeModelCall(ctx);
-            assertThat(agent.getAgent().peekLlm()).isNull();
+            assertThat(ctx.getDynamicModelId()).isNotEqualTo("fast");
+            assertThat(ctx.getExtra()).doesNotContainKey("task_planning.model_id");
 
             rail.afterInvoke(ctx);
             assertThat(rail.getUsageRecords()).isEmpty();

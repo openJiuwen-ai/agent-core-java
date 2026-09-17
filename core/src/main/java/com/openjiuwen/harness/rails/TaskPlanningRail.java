@@ -319,7 +319,7 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         if (modelSelection.isEmpty() || todoTool == null || ctx == null || ctx.getSession() == null) {
             return;
         }
-        if (!(ctx.getAgent() instanceof com.openjiuwen.core.singleagent.agents.ReActAgent reactAgent)) {
+        if (!(ctx.getAgent() instanceof com.openjiuwen.core.singleagent.agents.ReActAgent)) {
             return;
         }
         String sessionId = ctx.getSession().getSessionId();

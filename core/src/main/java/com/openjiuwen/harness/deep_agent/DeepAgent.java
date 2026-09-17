@@ -518,7 +518,7 @@ public class DeepAgent implements AutoCloseable {
             return Optional.empty();
         }
         if (modelObj instanceof Model model) {
-            return Optional.of(model.getModelConfig());
+            return Optional.ofNullable(model.getModelConfig());
         }
         if (modelObj instanceof ModelRequestConfig requestConfig) {
             return Optional.of(requestConfig);
