@@ -54,6 +54,7 @@ import java.util.concurrent.TimeUnit;
 public class ContextProcessorRail extends DeepAgentRail {
     private static final String OFFLOAD_SECTION = "offload";
     private static final String DEFAULT_MODEL_KEY = "__default__";
+
     private final boolean isPreset;
     private final List<String> processorKeys;
     private final boolean isSessionMemoryEnabled;

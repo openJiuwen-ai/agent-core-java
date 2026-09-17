@@ -51,6 +51,7 @@ public class AgentCallbackContext {
      * @since 0.1.7
      */
     private Map<String, Object> extra = new HashMap<>();
+
     /**
      * Dynamic model ID for the current request.
      * <p>
