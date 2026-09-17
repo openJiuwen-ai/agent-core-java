@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -85,6 +86,15 @@ public abstract class BaseRedisStorage {
         if (ttl != null && ttl.containsKey(REFRESH_ON_READ)) {
             this.refreshOnRead = Boolean.TRUE.equals(ttl.get(REFRESH_ON_READ));
         }
+    }
+
+    /** Effective expiry parsed with the existing checkpointer conversion rules. */
+    public Duration getEffectiveTtl() {
+        return ttlSeconds == null ? null : Duration.ofSeconds(ttlSeconds);
+    }
+
+    public boolean isRefreshOnRead() {
+        return refreshOnRead;
     }
 
     /**

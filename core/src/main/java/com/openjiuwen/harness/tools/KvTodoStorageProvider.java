@@ -22,8 +22,9 @@ public class KvTodoStorageProvider implements TodoStorageProvider {
 
     @Override
     public TodoStorage create(Map<String, Object> conf) {
+        TodoStorageTtl ttl = TodoStorageTtl.from(conf, null, false);
         if (conf != null && conf.get("sharedKvStore") instanceof BaseKVStore) {
-            return new KvTodoStorage((BaseKVStore) conf.get("sharedKvStore"));
+            return ttl.create((BaseKVStore) conf.get("sharedKvStore"));
         }
         String kvStoreType = "in_memory";
         if (conf != null) {
@@ -37,6 +38,6 @@ public class KvTodoStorageProvider implements TodoStorageProvider {
             kvStoreConf = (Map<String, Object>) conf.get("kvStoreConf");
         }
         BaseKVStore kvStore = KVStoreFactory.create(kvStoreType, kvStoreConf != null ? kvStoreConf : Map.of());
-        return new KvTodoStorage(kvStore);
+        return ttl.create(kvStore);
     }
 }

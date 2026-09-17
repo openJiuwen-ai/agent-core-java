@@ -31,6 +31,7 @@ import redis.clients.jedis.exceptions.JedisException;
 import redis.clients.jedis.util.JedisURIHelper;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -311,6 +312,15 @@ public class RedisCheckpointer extends Checkpointer {
      */
     public RedisStore getRedisStore() {
         return redisStore;
+    }
+
+    /** Exposes the same effective TTL used by the checkpointer's storage classes. */
+    public Duration getEffectiveTtl() {
+        return agentStorage.getEffectiveTtl();
+    }
+
+    public boolean isRefreshOnRead() {
+        return agentStorage.isRefreshOnRead();
     }
 
     /**

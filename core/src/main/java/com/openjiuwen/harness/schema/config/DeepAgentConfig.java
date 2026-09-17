@@ -132,8 +132,8 @@ public class DeepAgentConfig {
     private String tenantDataRoot;
     private java.util.List<String> workspaceSecondaryTiers;
     private java.util.Map<String, java.util.Map<String, Object>> workspaceTierConfigs;
-    @Builder.Default
-    private String todoStorageType = "file";
+    // Null retains the distinction between an omitted type and an explicit "file".
+    private String todoStorageType;
     @Builder.Default
     private String sessionStoreType = "file";
     private Map<String, Object> kvStoreConfig;
@@ -141,6 +141,72 @@ public class DeepAgentConfig {
     private Duration tmpTtl = Duration.ofHours(24);
     @Builder.Default
     private Duration tmpTtlScanInterval = Duration.ofHours(1);
+
+    /** Retains the original all-arguments constructor for existing callers. */
+    public DeepAgentConfig(
+            String systemPrompt,
+            int maxIterations,
+            int maxParallelToolCalls,
+            boolean shouldFailTaskOnToolError,
+            boolean isTaskLoopEnabled,
+            boolean isTaskPlanningEnabled,
+            String language,
+            AgentMode defaultMode,
+            String workspacePath,
+            Double completionTimeout,
+            Map<String, Object> permissions,
+            List<Object> tools,
+            List<Object> rails,
+            List<McpServerConfig> mcps,
+            List<Object> subagents,
+            List<Map<String, Object>> extraPromptSections,
+            List<String> skillDirectories,
+            String skillMode,
+            Object model,
+            Object backend,
+            String promptMode,
+            List<String> skills,
+            boolean enableSkillDiscovery,
+            Map<String, Object> factoryKwargs,
+            boolean isAsyncSubagentEnabled,
+            boolean isGeneralPurposeAgentEnabled,
+            boolean isRestrictToWorkDirEnabled,
+            SysOperation sysOperation,
+            ToolPermissionHost permissionHost,
+            boolean isEnableTenantIsolation,
+            String tenantDataRoot,
+            java.util.List<String> workspaceSecondaryTiers,
+            java.util.Map<String, java.util.Map<String, Object>> workspaceTierConfigs,
+            String todoStorageType,
+            String sessionStoreType,
+            Map<String, Object> kvStoreConfig,
+            Duration tmpTtl,
+            Duration tmpTtlScanInterval) {
+        this(systemPrompt, maxIterations, maxParallelToolCalls, shouldFailTaskOnToolError,
+                isTaskLoopEnabled, isTaskPlanningEnabled, language, defaultMode, workspacePath,
+                completionTimeout, permissions, tools, rails, mcps, subagents, extraPromptSections,
+                skillDirectories, skillMode, model, backend, promptMode, skills, enableSkillDiscovery,
+                factoryKwargs, isAsyncSubagentEnabled, isGeneralPurposeAgentEnabled, isRestrictToWorkDirEnabled,
+                sysOperation, permissionHost, isEnableTenantIsolation, tenantDataRoot, workspaceSecondaryTiers,
+                workspaceTierConfigs, todoStorageType, sessionStoreType, kvStoreConfig, tmpTtl, tmpTtlScanInterval, null);
+    }
+
+    /** Omitted storage keeps the historical public default. */
+    public String getTodoStorageType() {
+        return todoStorageType == null ? "file" : todoStorageType;
+    }
+
+    /** Whether a caller selected a storage type, including explicit file storage. */
+    public boolean isTodoStorageTypeExplicit() {
+        return todoStorageType != null;
+    }
+
+    /**
+     * Optional Todo policy: {@code ttl.default_ttl} is a positive number of minutes;
+     * {@code ttl.refresh_on_read} defaults to false when a policy is supplied.
+     * An absent policy inherits Checkpointer settings only for {@code checkpointer_redis}.
+     */
+    private Map<String, Object> todoStorageConfig;
 
     /**
      * DeepAgentConfigBuilder.

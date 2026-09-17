@@ -20,6 +20,7 @@ public class FileTodoStorageProvider implements TodoStorageProvider {
 
     @Override
     public TodoStorage create(Map<String, Object> conf) {
+        TodoStorageTtl.rejectUnsupported(conf);
         String basePath = null;
         if (conf != null) {
             Object raw = conf.get("basePath");

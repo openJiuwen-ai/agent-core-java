@@ -67,6 +67,7 @@ import com.openjiuwen.harness.task_loop.TaskLoopEventExecutor;
 import com.openjiuwen.harness.task_loop.TaskIterationContext;
 import com.openjiuwen.harness.task_loop.TimeoutEvaluator;
 import com.openjiuwen.harness.tools.SessionToolkit;
+import com.openjiuwen.harness.tools.CheckpointerRedisTodoStorageProvider;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import lombok.Getter;
@@ -1400,6 +1401,15 @@ public class DeepAgent implements AutoCloseable {
     private void applyParentRuntimeFallbacks(DeepAgentConfig childConfig) {
         if (childConfig == null || config == null) {
             return;
+        }
+        if (CheckpointerRedisTodoStorageProvider.TYPE.equals(config.getTodoStorageType())
+                && !childConfig.isTodoStorageTypeExplicit()
+                && (childConfig.getKvStoreConfig() == null || childConfig.getKvStoreConfig().isEmpty())) {
+            childConfig.setTodoStorageType(config.getTodoStorageType());
+            if (childConfig.getTodoStorageConfig() == null || childConfig.getTodoStorageConfig().isEmpty()) {
+                childConfig.setTodoStorageConfig(config.getTodoStorageConfig() == null ? null
+                        : new LinkedHashMap<>(config.getTodoStorageConfig()));
+            }
         }
         if (childConfig.getModel() == null) {
             childConfig.setModel(config.getModel());
