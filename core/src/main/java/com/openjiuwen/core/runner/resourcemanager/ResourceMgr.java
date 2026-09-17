@@ -1747,19 +1747,9 @@ public class ResourceMgr {
         });
         BaseCard removedCard = idToCard.remove(removeId);
         idToOwners.remove(removeId);
-        if (failure.isPresent()) {
-            Throwable thrown = failure.get();
-            if (isRemoveByTag) {
-                logger.warn("remove resource entry failed during by-tag removal, id={}, type={}",
-                        removeId, resourceType, thrown);
-            } else if (thrown instanceof Exception error) {
-                logger.error("remove resource failed, id={}, type={}", removeId, resourceType, error);
-                return Optional.of(new Error<>(error));
-            } else if (thrown instanceof java.lang.Error jvmError) {
-                throw jvmError;
-            } else {
-                throw new IllegalStateException("unexpected removal failure", thrown);
-            }
+        Optional<Result<C>> failureResult = removalFailureResult(removeId, resourceType, isRemoveByTag, failure);
+        if (failureResult.isPresent()) {
+            return failureResult;
         }
         if ("tool".equals(resourceType) || "prompt".equals(resourceType)) {
             return Optional.of(new Ok<>((C) removeId));
@@ -1768,6 +1758,42 @@ public class ResourceMgr {
             return Optional.of(new Ok<>((C) removedCard));
         }
         return Optional.empty();
+    }
+
+    /**
+     * Disposes of the captured removal failure per the caller-facing
+     * contract: a by-tag removal only logs the failure and continues, a
+     * single removal surfaces it as an error result, and non-Exception
+     * throwables propagate after the JVM-error branch.
+     *
+     * @param removeId the identifier of the resource being removed
+     * @param resourceType the registry type of the resource
+     * @param isRemoveByTag whether this removal runs in by-tag mode
+     * @param failure the failure captured by the isolated removal
+     * @param <C> the caller-facing result type
+     * @return the error result to surface, or {@link Optional#empty()}
+     *         when the removal continues with its normal outcome
+     * @since 0.1.16
+     */
+    private <C> Optional<Result<C>> removalFailureResult(String removeId, String resourceType,
+            boolean isRemoveByTag, Optional<Throwable> failure) {
+        if (failure.isEmpty()) {
+            return Optional.empty();
+        }
+        Throwable thrown = failure.get();
+        if (isRemoveByTag) {
+            logger.warn("remove resource entry failed during by-tag removal, id={}, type={}",
+                    removeId, resourceType, thrown);
+            return Optional.empty();
+        }
+        if (thrown instanceof Exception error) {
+            logger.error("remove resource failed, id={}, type={}", removeId, resourceType, error);
+            return Optional.of(new Error<>(error));
+        }
+        if (thrown instanceof java.lang.Error jvmError) {
+            throw jvmError;
+        }
+        throw new IllegalStateException("unexpected removal failure", thrown);
     }
 
     /**
