@@ -359,14 +359,14 @@ public class ReActAgent extends BaseAgent {
      * <p>
      * Resolution priority:
      * <ol>
-     * <li>{@code ctx.dynamicModelId} — if set, resolve via ModelMgr</li>
-     * <li>Fallback config from agent config — construct a new Model</li>
-     * <li>Default model registered in ModelMgr</li>
-     * <li>Fallback: lazily build from config (same as {@link #getLlm()})</li>
+     * <li>{@code ctx.dynamicModelId} — if set, resolve via ModelMgr.resolveModel()</li>
+     * <li>Existing llm instance (set via {@link #setLlm(Model)} or lazy-loaded from config)</li>
+     * <li>If llm is null and no modelClientConfig, resolve via ModelMgr default model</li>
      * </ol>
-     * If {@code resolveModel()} throws any RuntimeException (e.g.
-     * IllegalStateException or BaseError), this method falls back to
-     * {@link #getLlm()}.
+     * When {@code dynamicModelId} is null/blank, this method first checks the existing
+     * {@code llm} field (preserving backward compatibility with {@link #setLlm(Model)}).
+     * If not yet initialized and the agent has no modelClientConfig, it delegates to
+     * {@link #getLlm()} which may throw {@link IllegalStateException}.
      * <p>
      * This method is stateless and thread-safe: it does not modify any instance
      * field, and {@code ModelMgr.resolveModel()} is backed by a
@@ -377,21 +377,38 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.16
      */
     protected Model getLlm(AgentCallbackContext ctx) {
-        // Try ModelMgr first (dynamic or default model)
-        ResourceMgr resourceMgr = Runner.resourceMgr();
-        if (resourceMgr != null) {
-            try {
-                return resourceMgr.resolveModel(
-                    ctx != null ? ctx.getDynamicModelId() : null,
-                    config.getModelClientConfig(),
-                    config.getModelConfigObj()
-                );
-            } catch (RuntimeException e) {
-                // ModelMgr resolution failed (IllegalStateException, BaseError, etc.)
-                // — fall through to lazy load
+        // 1. If a dynamic model ID is specified, resolve via ModelMgr
+        String dynamicModelId = ctx != null ? ctx.getDynamicModelId() : null;
+        if (dynamicModelId != null && !dynamicModelId.isBlank()) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(
+                        dynamicModelId,
+                        config.getModelClientConfig(),
+                        config.getModelConfigObj()
+                    );
+                } catch (RuntimeException e) {
+                    // Dynamic model resolution failed — fall through to existing llm
+                }
             }
         }
-        // Fallback: use the existing lazy-load path
+        // 2. Check existing llm (set via setLlm or already lazy-loaded)
+        if (llm != null) {
+            return llm;
+        }
+        // 3. If no llm and no modelClientConfig, try ModelMgr default model
+        if (config.getModelClientConfig() == null) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(null, null, null);
+                } catch (RuntimeException e) {
+                    // No default model available — fall through to getLlm() which will throw
+                }
+            }
+        }
+        // 4. Fallback: lazy-load from config (may throw if no modelClientConfig)
         return getLlm();
     }
 
