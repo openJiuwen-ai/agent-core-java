@@ -9,6 +9,8 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -399,7 +401,9 @@ public class ResourceMgr {
 
     /**
      * addModel.
-     * 
+     * <p>
+     * Delegates to {@link ModelMgr#addModel(String, Supplier)}.
+     *
      * @param modelId modelId
      * @param model model
      * @param tag tag
@@ -417,7 +421,7 @@ public class ResourceMgr {
 
     /**
      * addModels.
-     * 
+     *
      * @param models models
      * @param tag tag
      * @return the result
@@ -440,7 +444,11 @@ public class ResourceMgr {
 
     /**
      * removeModel.
-     * 
+     * <p>
+     * Delegates to {@link ModelMgr#removeModel(String)} which handles validation
+     * (at least one model must remain), default-model reassignment, and event
+     * publishing via the EventBus.
+     *
      * @param modelId modelId
      * @param tag tag
      * @param tagMatchStrategy tagMatchStrategy
@@ -455,7 +463,7 @@ public class ResourceMgr {
 
     /**
      * getModel.
-     * 
+     *
      * @param modelId modelId
      * @param tag tag
      * @param tagMatchStrategy tagMatchStrategy
@@ -468,13 +476,90 @@ public class ResourceMgr {
 
     /**
      * getModel.
-     * 
+     * <p>
+     * Delegates to {@link ModelMgr#getModel(String)}.
+     *
      * @param modelId modelId
      * @return the result
      * @since 0.1.7
      */
     public Object getModel(String modelId) {
         return innerGetResourcesByProvider(modelId, null, TagMatchStrategy.ALL, "model");
+    }
+
+    /**
+     * Update an existing model, or add it if not already registered.
+     * <p>
+     * Delegates to {@link ModelMgr#updateModel(String, Supplier)}.
+     *
+     * @param modelId model identifier
+     * @param model model supplier
+     * @param tag optional resource tag
+     * @return result containing the modelId
+     * @since 0.1.16
+     */
+    public Result<String> updateModel(String modelId, Supplier<Model> model, Object tag) {
+        validateResourceId(modelId, "model");
+        validateProvider(model, "model");
+        if (tag != null) {
+            validateTag(tag);
+        }
+        resourceRegistry.model().updateModel(modelId, model);
+        return new Ok<>(modelId);
+    }
+
+    /**
+     * List all registered model IDs.
+     * <p>
+     * Delegates to {@link ModelMgr#listModelIds()}.
+     *
+     * @return a list of model IDs
+     * @since 0.1.16
+     */
+    public List<String> listModelIds() {
+        return resourceRegistry.model().listModelIds();
+    }
+
+    /**
+     * Set the default model ID.
+     * <p>
+     * Delegates to {@link ModelMgr#setDefaultModelId(String)}.
+     *
+     * @param modelId the model ID to set as default
+     * @since 0.1.16
+     */
+    public void setDefaultModelId(String modelId) {
+        resourceRegistry.model().setDefaultModelId(modelId);
+    }
+
+    /**
+     * Get the default model ID.
+     * <p>
+     * Delegates to {@link ModelMgr#getDefaultModelId()}.
+     *
+     * @return the default model ID, or null if not set
+     * @since 0.1.16
+     */
+    public String getDefaultModelId() {
+        return resourceRegistry.model().getDefaultModelId();
+    }
+
+    /**
+     * Unified model resolution with priority: dynamicModelId > defaultModel > fallback config.
+     * <p>
+     * Delegates to {@link ModelMgr#resolveModel(String, ModelClientConfig, ModelRequestConfig)}.
+     *
+     * @param dynamicModelId the dynamic model ID for this request, may be null
+     * @param fallbackClientConfig fallback connection config
+     * @param fallbackRequestConfig fallback request config
+     * @return the resolved Model instance
+     * @since 0.1.16
+     */
+    public Model resolveModel(String dynamicModelId,
+                              ModelClientConfig fallbackClientConfig,
+                              ModelRequestConfig fallbackRequestConfig) {
+        return resourceRegistry.model().resolveModel(
+            dynamicModelId, fallbackClientConfig, fallbackRequestConfig);
     }
 
     /**

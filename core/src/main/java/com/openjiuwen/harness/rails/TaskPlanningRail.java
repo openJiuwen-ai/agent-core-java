@@ -90,7 +90,7 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     private TodoTool todoTool;
     private DeepAgent owner;
     private String language = "cn";
-    private Model defaultLlm;
+    private String defaultLlm;
     private boolean isDefaultLlmCaptured;
 
     /**
@@ -333,11 +333,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
                         .findFirst().orElse(null);
             String modelId = inProgress != null ? inProgress.getSelectedModelId() : null;
             if (!isDefaultLlmCaptured) {
-                defaultLlm = reactAgent.peekLlm();
+                defaultLlm = Runner.resourceMgr().getDefaultModelId();
                 isDefaultLlmCaptured = true;
             }
             if (modelId == null || modelId.isBlank()) {
-                reactAgent.setLlm(defaultLlm);
+                // Use default model: clear dynamic model ID so framework falls back to default
+                ctx.setDynamicModelId(defaultLlm);
                 if (ctx.getExtra() != null) {
                     ctx.getExtra().remove(TASK_PLANNING_MODEL_ID);
                 }
@@ -346,12 +347,10 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
             if (!modelSelection.containsKey(modelId)) {
                 return;
             }
-            Object model = Runner.resourceMgr().getModel(modelId);
-            if (model instanceof Model resolvedModel) {
-                reactAgent.setLlm(resolvedModel);
-                if (ctx.getExtra() != null) {
-                    ctx.getExtra().put(TASK_PLANNING_MODEL_ID, modelId);
-                }
+            // Set dynamic model ID on ctx — framework's getLlm(ctx) will resolve it via ModelMgr
+            ctx.setDynamicModelId(modelId);
+            if (ctx.getExtra() != null) {
+                ctx.getExtra().put(TASK_PLANNING_MODEL_ID, modelId);
             }
         } catch (RuntimeException | java.io.IOException ignored) {
             // Model selection is advisory; never fail the model call because todo state is unavailable.
@@ -948,15 +947,15 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         if (!(ctx.getAgent() instanceof com.openjiuwen.core.singleagent.agents.ReActAgent reactAgent)) {
             return "";
         }
-        Model active = reactAgent.peekLlm();
-        if (active == null) {
-            return "";
+        // Check the dynamic model ID set on the context first
+        String dynamicId = ctx.getDynamicModelId();
+        if (dynamicId != null && !dynamicId.isBlank() && modelSelection.containsKey(dynamicId)) {
+            return dynamicId;
         }
-        for (String modelId : modelSelection.keySet()) {
-            Object candidate = Runner.resourceMgr().getModel(modelId);
-            if (Objects.equals(candidate, active)) {
-                return modelId;
-            }
+        // Fall back to default model ID from ModelMgr
+        String defaultId = Runner.resourceMgr().getDefaultModelId();
+        if (defaultId != null && modelSelection.containsKey(defaultId)) {
+            return defaultId;
         }
         return "";
     }

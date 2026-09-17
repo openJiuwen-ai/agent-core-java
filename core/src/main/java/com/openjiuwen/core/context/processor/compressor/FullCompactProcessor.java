@@ -20,6 +20,7 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.Session;
 
 import java.io.IOException;
@@ -134,7 +135,7 @@ public class FullCompactProcessor extends ContextProcessor {
         this.stateReinjector.registerBuilder("plan_mode", "PLAN_MODE",
                 FullCompactProcessorUtil::buildPlanModeReinjectedContent);
         this.model = config.getModel() != null && config.getModelClient() != null
-                ? new Model(config.getModelClient(), config.getModel())
+                ? Runner.resourceMgr().resolveModel(null, config.getModelClient(), config.getModel())
                 : null;
     }
 

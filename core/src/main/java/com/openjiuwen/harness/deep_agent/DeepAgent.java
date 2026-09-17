@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.deep_agent;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -53,6 +54,7 @@ import com.openjiuwen.harness.rails.TaskCompletionRail;
 import com.openjiuwen.harness.rails.TaskIterationRail;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
+import com.openjiuwen.harness.schema.config.ModelConfigEntry;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.security.PermissionFactory;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
@@ -182,6 +184,8 @@ public class DeepAgent implements AutoCloseable {
                         .build();
         this.agent = new ReActAgent(this.card);
         this.currentMode = this.config.getDefaultMode();
+        // Reconcile modelConfigs: register models into ModelMgr and resolve model/backend
+        reconcileModelConfigs();
         this.agent.configure(buildReActAgentConfig());
         Model configuredModel = resolveConfiguredModel();
         if (configuredModel != null) {
@@ -343,6 +347,244 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
+     * Reconcile {@code modelConfigs} with {@code model}/{@code backend} per Issue #74 requirement 5.
+     * <p>
+     * Logic:
+     * <ul>
+     * <li>If model+backend are non-null: validate that modelConfigs contains a matching entry;
+     *     if not, build a ModelConfigEntry from model+backend and add it.</li>
+     * <li>If model+backend are null and modelConfigs is non-empty: take the default entry
+     *     from modelConfigs and assign its modelConfig/modelClient to model/backend.</li>
+     * <li>Register all modelConfigs entries into ModelMgr, and set the default model ID.</li>
+     * </ul>
+     *
+     * @since 0.1.16
+     */
+    private void reconcileModelConfigs() {
+        List<ModelConfigEntry> entries = this.config.getModelConfigs();
+        if (entries == null) {
+            entries = new ArrayList<>();
+            this.config.setModelConfigs(entries);
+        }
+        mergeLegacyModelBackend(entries);
+        if (entries.isEmpty()) {
+            return;
+        }
+        validateAndNormalizeEntries(entries);
+        registerModelsAndSetDefault(entries);
+    }
+
+    /**
+     * Validate modelConfigs entries: modelId uniqueness, default exclusivity.
+     * Blank modelIds are auto-generated from modelName and provider with a warning log.
+     * If no entry is marked default, the first entry becomes default.
+     *
+     * @param entries the model config entries to validate (mutated in place)
+     * @since 0.1.16
+     */
+    private void validateAndNormalizeEntries(List<ModelConfigEntry> entries) {
+        Set<String> seenIds = new HashSet<>();
+        boolean hasDefault = false;
+        for (ModelConfigEntry entry : entries) {
+            if (entry.getModelId() == null || entry.getModelId().isBlank()) {
+                String generatedId = buildModelId(
+                    entry.getModelConfig() != null ? entry.getModelConfig().getModelName() : null,
+                    entry.getModelClient() != null ? entry.getModelClient().getClientProvider() : null);
+                Loggers.AGENT.warning("modelConfigs entry has blank modelId, generated: {}", generatedId);
+                entry.setModelId(generatedId);
+            }
+            if (!seenIds.add(entry.getModelId())) {
+                throw new IllegalArgumentException("duplicate modelId in modelConfigs: " + entry.getModelId());
+            }
+            if (entry.isDefault()) {
+                if (hasDefault) {
+                    throw new IllegalArgumentException("modelConfigs has more than one default entry");
+                }
+                hasDefault = true;
+            }
+        }
+        if (!hasDefault) {
+            entries.get(0).setDefault(true);
+        }
+    }
+
+    /**
+     * If {@code model} and {@code backend} are both non-null, extract their configs and
+     * ensure a corresponding entry exists in {@code entries}. If no matching modelId is
+     * found, a new {@link ModelConfigEntry} is built and appended.
+     *
+     * @param entries the model config entries (mutated: a new entry may be appended)
+     * @since 0.1.16
+     */
+    private void mergeLegacyModelBackend(List<ModelConfigEntry> entries) {
+        Object modelObj = this.config.getModel();
+        Object backendObj = this.config.getBackend();
+        if (modelObj == null || backendObj == null) {
+            return;
+        }
+        ModelRequestConfig modelReqConfig = extractModelRequestConfig(modelObj);
+        ModelClientConfig modelClientConfig = extractModelClientConfig(backendObj);
+
+        String modelId = buildModelId(
+            modelReqConfig != null ? modelReqConfig.getModelName() : null,
+            modelClientConfig != null ? modelClientConfig.getClientProvider() : null);
+
+        boolean found = entries.stream().anyMatch(e -> e.getModelId().equals(modelId));
+        if (!found) {
+            ModelConfigEntry newEntry = ModelConfigEntry.builder()
+                .modelId(modelId)
+                .isDefault(entries.stream().noneMatch(ModelConfigEntry::isDefault))
+                .modelConfig(modelReqConfig)
+                .modelClient(modelClientConfig)
+                .build();
+            entries.add(newEntry);
+        }
+    }
+
+    /**
+     * Register all model config entries into ModelMgr (via ResourceMgr) and set the
+     * default model ID. If {@code model}/{@code backend} are null, they are populated
+     * from the default entry.
+     *
+     * @param entries the validated model config entries
+     * @since 0.1.16
+     */
+    private void registerModelsAndSetDefault(List<ModelConfigEntry> entries) {
+        for (ModelConfigEntry entry : entries) {
+            if (!Runner.resourceMgr().listModelIds().contains(entry.getModelId())) {
+                final ModelConfigEntry e = entry;
+                Runner.resourceMgr().addModel(e.getModelId(), () -> {
+                    ModelClientConfig client = e.getModelClient();
+                    ModelRequestConfig request = e.getModelConfig();
+                    if (client != null && request != null) {
+                        return new Model(client, request);
+                    }
+                    return null;
+                }, Tag.GLOBAL);
+            }
+        }
+        for (ModelConfigEntry entry : entries) {
+            if (entry.isDefault()) {
+                Runner.resourceMgr().setDefaultModelId(entry.getModelId());
+                if (this.config.getModel() == null && this.config.getBackend() == null) {
+                    this.config.setModel(entry.getModelConfig());
+                    this.config.setBackend(entry.getModelClient());
+                }
+                break;
+            }
+        }
+    }
+
+    /**
+     * Build a modelId by concatenating modelName and provider.
+     * Falls back to a generated ID if both are null/blank.
+     *
+     * @param modelName the model name (may be null)
+     * @param provider  the client provider (may be null)
+     * @return the generated modelId
+     * @since 0.1.16
+     */
+    private String buildModelId(String modelName, String provider) {
+        StringBuilder sb = new StringBuilder();
+        if (modelName != null && !modelName.isBlank()) {
+            sb.append(modelName);
+        }
+        if (provider != null && !provider.isBlank()) {
+            if (!sb.isEmpty()) {
+                sb.append("@");
+            }
+            sb.append(provider);
+        }
+        if (sb.isEmpty()) {
+            sb.append("model-").append(Integer.toHexString(System.identityHashCode(this)));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Extract a {@link ModelRequestConfig} from the given model object, mirroring
+     * the type-dispatch logic in {@link #applyModelConfig}.
+     * <p>
+     * Supports: {@link Model}, {@link ModelRequestConfig}, {@code String} (model name),
+     * and {@code Map} (raw config map).
+     *
+     * @param modelObj the model object (may be null)
+     * @return the extracted ModelRequestConfig, or null if not determinable
+     * @since 0.1.16
+     */
+    private ModelRequestConfig extractModelRequestConfig(Object modelObj) {
+        if (modelObj == null) {
+            return null;
+        }
+        if (modelObj instanceof Model model) {
+            return model.getModelConfig();
+        }
+        if (modelObj instanceof ModelRequestConfig requestConfig) {
+            return requestConfig;
+        }
+        if (modelObj instanceof String modelName && !modelName.isBlank()) {
+            return ModelRequestConfig.builder().modelName(modelName).build();
+        }
+        if (modelObj instanceof Map<?, ?> modelMap) {
+            return ModelRequestConfig.builder()
+                .modelName(string(firstPresent(modelMap, new String[]{"model", "model_name", "modelName"})))
+                .temperature(doubleValue(firstPresent(modelMap, new String[]{"temperature"})))
+                .topP(doubleValue(firstPresent(modelMap, new String[]{"top_p", "topP"})))
+                .maxTokens(integerValue(firstPresent(modelMap, new String[]{"max_tokens", "maxTokens"})))
+                .stop(string(firstPresent(modelMap, new String[]{"stop"})))
+                .user(string(firstPresent(modelMap, new String[]{"user"})))
+                .seed(integerValue(firstPresent(modelMap, new String[]{"seed"})))
+                .extraFields(extraFields(modelMap, "model", "model_name", "modelName", "temperature", "top_p",
+                        "topP", "max_tokens", "maxTokens", "stop", "user", "seed"))
+                .build();
+        }
+        return null;
+    }
+
+    /**
+     * Extract a {@link ModelClientConfig} from the given backend object, mirroring
+     * the type-dispatch logic in {@link #applyBackendConfig}.
+     * <p>
+     * Supports: {@link ModelClientConfig}, {@code String} (provider name),
+     * and {@code Map} (raw config map).
+     *
+     * @param backendObj the backend object (may be null)
+     * @return the extracted ModelClientConfig, or null if not determinable
+     * @since 0.1.16
+     */
+    private ModelClientConfig extractModelClientConfig(Object backendObj) {
+        if (backendObj == null) {
+            return null;
+        }
+        if (backendObj instanceof ModelClientConfig clientConfig) {
+            return clientConfig;
+        }
+        if (backendObj instanceof String provider && !provider.isBlank()) {
+            return null;
+        }
+        if (backendObj instanceof Map<?, ?> backendMap) {
+            String provider = string(firstPresent(backendMap, new String[]{"client_provider", "clientProvider",
+                    "model_provider", "modelProvider", "provider", "backend"}));
+            String apiKey = string(firstPresent(backendMap, new String[]{"api_key", "apiKey"}));
+            String apiBase =
+                string(firstPresent(backendMap, new String[]{"api_base", "apiBase", "base_url", "baseUrl"}));
+            if (provider == null || apiKey == null || apiBase == null) {
+                return null;
+            }
+            return ModelClientConfig.builder()
+                .clientId(string(firstPresent(backendMap, new String[]{"client_id", "clientId"})))
+                .clientProvider(provider).apiKey(apiKey).apiBase(apiBase)
+                .timeout(doubleOrDefault(firstPresent(backendMap, new String[]{"timeout"}), 60.0))
+                .maxRetries(intOrDefault(firstPresent(backendMap, new String[]{"max_retries", "maxRetries"}), 3))
+                .verifySsl(
+                        booleanOrDefault(firstPresent(backendMap, new String[]{"verify_ssl", "verifySsl"}), true))
+                .sslCert(string(firstPresent(backendMap, new String[]{"ssl_cert", "sslCert"})))
+                .headers(headers(firstPresent(backendMap, new String[]{"headers"}))).build();
+        }
+        return null;
+    }
+
+    /**
      * resolveConfiguredModel.
      * 
      * @return the result
@@ -359,7 +601,7 @@ public class DeepAgent implements AutoCloseable {
         }
         if (modelConfig instanceof String modelId && !modelId.isBlank()) {
             try {
-                Object isResolved = Runner.resourceMgr().getModel(modelId);
+                Object isResolved = Runner.resourceMgr().resolveModel(modelId, null, null);
                 if (isResolved instanceof Model model) {
                     return model;
                 }
