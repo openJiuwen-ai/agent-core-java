@@ -22,7 +22,6 @@ import java.util.concurrent.FutureTask;
  * @since 0.1.16
  */
 public final class IsolatedActions {
-
     /**
      * IsolatedActions.
      *
@@ -40,7 +39,6 @@ public final class IsolatedActions {
      * @since 0.1.16
      */
     public record IsolatedOutcome<T>(T value, Throwable failure) {
-
         /**
          * Whether the isolated action threw.
          *
