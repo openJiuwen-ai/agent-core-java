@@ -97,13 +97,17 @@ public class CallbackChain {
 
     /**
      * Add callback to the chain.
-     * 
+     *
+     * <p>Synchronized on the chain instance so a concurrent register or
+     * unregister on the same event (which also mutates this chain through
+     * {@link #remove}) can never interleave with the in-place sort.</p>
+     *
      * @param callbackInfo Callback metadata and configuration
      * @param rollbackHandler Optional function to call on rollback
      * @param errorHandler Optional function to call on error
      * @since 0.1.7
      */
-    public void add(CallbackInfo callbackInfo, Consumer<ChainContext> rollbackHandler,
+    public synchronized void add(CallbackInfo callbackInfo, Consumer<ChainContext> rollbackHandler,
             Function<ExceptionContext, Object> errorHandler) {
         callbacks.add(callbackInfo);
         callbacks.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
@@ -118,11 +122,15 @@ public class CallbackChain {
 
     /**
      * Remove callback from the chain.
-     * 
+     *
+     * <p>Synchronized on the chain instance, mirroring {@link #add}, so the
+     * membership scan and the handler-map removals run atomically against
+     * concurrent chain mutations.</p>
+     *
      * @param callback Callback function to remove
      * @since 0.1.7
      */
-    public void remove(Function<Map<String, Object>, Object> callback) {
+    public synchronized void remove(Function<Map<String, Object>, Object> callback) {
         callbacks.removeIf(ci -> ci.getCallback() == callback);
         rollbackHandlers.remove(callback);
         errorHandlers.remove(callback);

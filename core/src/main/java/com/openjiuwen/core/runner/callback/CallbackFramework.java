@@ -326,7 +326,17 @@ public class CallbackFramework {
 
     /**
      * Unregister a callback from an event.
-     * 
+     *
+     * <p>The lookup iteration and the removal run inside a single
+     * {@code synchronized(eventCallbacks)} section on the per-event list, so
+     * a concurrent register or sort on the same event can never interleave
+     * with a partially applied unregister. The cross-structure cleanup
+     * (callback filters, chain members) happens after that section as
+     * independent atomic map operations. Callback <em>execution</em>
+     * remains externally coordinated: unregistering while a chain is
+     * executing on the same event requires caller-side
+     * synchronization.</p>
+     *
      * @param event Event name
      * @param callback Callback to remove
      * @since 0.1.7
@@ -337,16 +347,21 @@ public class CallbackFramework {
             return;
         }
 
-        CallbackInfo toRemove = null;
-        for (CallbackInfo ci : eventCallbacks) {
-            if (ci.getCallback() == callback) {
-                toRemove = ci;
-                break;
+        CallbackInfo toRemove;
+        synchronized (eventCallbacks) {
+            toRemove = null;
+            for (CallbackInfo ci : eventCallbacks) {
+                if (ci.getCallback() == callback) {
+                    toRemove = ci;
+                    break;
+                }
+            }
+            if (toRemove != null) {
+                eventCallbacks.remove(toRemove);
             }
         }
 
         if (toRemove != null) {
-            eventCallbacks.remove(toRemove);
             callbackFilters.remove(callback);
 
             CallbackChain chain = chains.get(event);
@@ -1774,7 +1789,9 @@ public class CallbackFramework {
     private void sortCallbacks(String event) {
         List<CallbackInfo> list = callbacks.get(event);
         if (list != null) {
-            list.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
+            synchronized (list) {
+                list.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
+            }
         }
     }
 
