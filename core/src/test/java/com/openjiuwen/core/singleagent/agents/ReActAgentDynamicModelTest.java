@@ -21,7 +21,6 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.Tag;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
@@ -87,7 +86,7 @@ class ReActAgentDynamicModelTest {
         for (String modelId : registeredModelIds) {
             try {
                 if (Runner.resourceMgr().listModelIds().contains(modelId)) {
-                    Runner.resourceMgr().removeModel(modelId, Tag.GLOBAL, TagMatchStrategy.ALL, true);
+                    Runner.resourceMgr().removeModelForce(modelId, true);
                 }
             } catch (RuntimeException ignored) {
                 // Best effort cleanup

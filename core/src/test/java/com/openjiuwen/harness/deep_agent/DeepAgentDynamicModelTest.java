@@ -22,8 +22,6 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.Tag;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.schema.config.ModelConfigEntry;
@@ -89,7 +87,7 @@ class DeepAgentDynamicModelTest {
         for (String modelId : registeredModelIds) {
             try {
                 if (Runner.resourceMgr().listModelIds().contains(modelId)) {
-                    Runner.resourceMgr().removeModel(modelId, Tag.GLOBAL, TagMatchStrategy.ALL, true);
+                    Runner.resourceMgr().removeModelForce(modelId, true);
                 }
             } catch (RuntimeException ignored) {
                 // Best effort

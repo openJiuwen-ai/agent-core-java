@@ -360,9 +360,14 @@ public class ReActAgent extends BaseAgent {
      * Resolution priority:
      * <ol>
      * <li>{@code ctx.dynamicModelId} — if set, resolve via ModelMgr</li>
+     * <li>Fallback config from agent config — construct a new Model</li>
      * <li>Default model registered in ModelMgr</li>
      * <li>Fallback: lazily build from config (same as {@link #getLlm()})</li>
      * </ol>
+     * If {@code resolveModel()} throws any RuntimeException (e.g.
+     * IllegalStateException or BaseError), this method falls back to
+     * {@link #getLlm()}.
+     * <p>
      * This method is stateless and thread-safe: it does not modify any instance
      * field, and {@code ModelMgr.resolveModel()} is backed by a
      * {@code ConcurrentHashMap}.
@@ -381,8 +386,9 @@ public class ReActAgent extends BaseAgent {
                     config.getModelClientConfig(),
                     config.getModelConfigObj()
                 );
-            } catch (IllegalStateException e) {
-                // ModelMgr has no models and no fallback config — fall through to lazy load
+            } catch (RuntimeException e) {
+                // ModelMgr resolution failed (IllegalStateException, BaseError, etc.)
+                // — fall through to lazy load
             }
         }
         // Fallback: use the existing lazy-load path

@@ -462,6 +462,23 @@ public class ResourceMgr {
     }
 
     /**
+     * Remove a model with force flag, bypassing the "at least one model must
+     * remain" validation. Intended for test cleanup.
+     * <p>
+     * Delegates to {@link ModelMgr#removeModel(String, boolean)}.
+     *
+     * @param modelId the model ID to remove
+     * @param isForce if {@code true}, allow removing the last model
+     * @return the removed supplier, or null if not found
+     * @since 0.1.16
+     */
+    public Supplier<? extends Model> removeModelForce(String modelId, boolean isForce) {
+        tagMgr.removeResource(modelId);
+        idToCard.remove(modelId);
+        return resourceRegistry.model().removeModel(modelId, isForce);
+    }
+
+    /**
      * getModel.
      *
      * @param modelId modelId
@@ -545,7 +562,7 @@ public class ResourceMgr {
     }
 
     /**
-     * Unified model resolution with priority: dynamicModelId > defaultModel > fallback config.
+     * Unified model resolution with priority: dynamicModelId > fallback config > defaultModel.
      * <p>
      * Delegates to {@link ModelMgr#resolveModel(String, ModelClientConfig, ModelRequestConfig)}.
      *

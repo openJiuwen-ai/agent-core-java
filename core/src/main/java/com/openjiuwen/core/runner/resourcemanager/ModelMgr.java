@@ -114,18 +114,43 @@ public class ModelMgr extends AbstractManager<Model> {
      * @since 0.1.7
      */
     public Supplier<? extends Model> removeModel(String modelId) {
-        // Validate: cannot remove the last model
-        if (providers.size() <= 1) {
+        return removeModel(modelId, false);
+    }
+
+    /**
+     * Remove a model with optional force flag.
+     * <p>
+     * When {@code force} is {@code false}, validates that at least one model
+     * remains after removal. When {@code true}, allows removing the last model
+     * (intended for test cleanup). If the removed model was the default, the
+     * first remaining model is automatically set as the new default (or
+     * {@code null} if none remain and {@code isForce} is {@code true}).
+     *
+     * @param modelId the model ID to remove
+     * @param isForce if {@code true}, allow removing the last model
+     * @return the removed supplier, or null if not found
+     * @throws IllegalArgumentException if {@code isForce} is {@code false} and
+     *         removing would leave zero models
+     * @since 0.1.16
+     */
+    public Supplier<? extends Model> removeModel(String modelId, boolean isForce) {
+        // Validate: cannot remove the last model (unless forced)
+        if (!isForce && providers.size() <= 1) {
             throw new IllegalArgumentException(
                 "cannot remove the last model; at least one model must remain");
         }
         Supplier<? extends Model> removed = unregisterResourceProvider(modelId);
         if (removed != null) {
-            // If the default was removed, pick a new default
+            // If the default was removed, pick a new default (or clear if none left)
             if (modelId.equals(defaultModelId)) {
-                String newDefault = providers.keySet().iterator().next();
-                defaultModelId = newDefault;
-                logger.info("default model removed, new default: {}", newDefault);
+                if (!providers.isEmpty()) {
+                    String newDefault = providers.keySet().iterator().next();
+                    defaultModelId = newDefault;
+                    logger.info("default model removed, new default: {}", newDefault);
+                } else {
+                    defaultModelId = null;
+                    logger.info("default model removed, no models remain");
+                }
             }
             eventBus.publish(new ModelRemovedEvent(modelId));
             logger.info("model removed: {}", modelId);
@@ -217,13 +242,14 @@ public class ModelMgr extends AbstractManager<Model> {
     // ── Unified Resolution ─────────────────────────────────────────
 
     /**
-     * Unified model resolution with priority: dynamicModelId > defaultModel > fallback config.
+     * Unified model resolution with priority: dynamicModelId > fallback config > defaultModel.
      * <p>
      * Resolution order:
      * <ol>
      * <li>If {@code dynamicModelId} is non-blank and registered, return that model.</li>
+     * <li>Otherwise, if both fallback configs are non-null, construct a new Model
+     *     from the provided config (preserves caller-supplied config semantics).</li>
      * <li>Otherwise, return the default model if available.</li>
-     * <li>Otherwise, if both fallback configs are non-null, construct a new Model.</li>
      * <li>If none succeed, throw {@link IllegalStateException}.</li>
      * </ol>
      *
@@ -243,21 +269,21 @@ public class ModelMgr extends AbstractManager<Model> {
             if (dynamicModel != null) {
                 return dynamicModel;
             }
-            // Dynamic model not found, fall through to default
+            // Dynamic model not found, fall through to fallback config
         }
 
-        // 2. Try default model
+        // 2. Fallback: construct from config (preserves caller-supplied config semantics)
+        if (fallbackClientConfig != null && fallbackRequestConfig != null) {
+            return new Model(fallbackClientConfig, fallbackRequestConfig);
+        }
+
+        // 3. Try default model (only when no fallback config is provided)
         Optional<Model> defaultModel = getDefaultModel();
         if (defaultModel.isPresent()) {
             return defaultModel.get();
         }
 
-        // 3. Fallback: construct from config
-        if (fallbackClientConfig != null && fallbackRequestConfig != null) {
-            return new Model(fallbackClientConfig, fallbackRequestConfig);
-        }
-
         throw new IllegalStateException("no model available: dynamic model not found ("
-            + dynamicModelId + "), no default model registered, and no fallback config provided");
+            + dynamicModelId + "), no fallback config provided, and no default model registered");
     }
 }
