@@ -22,20 +22,12 @@ import com.openjiuwen.extensions.checkpointer.redis.storage.AgentStorage;
 import com.openjiuwen.extensions.checkpointer.redis.storage.GraphStore;
 import com.openjiuwen.extensions.checkpointer.redis.storage.WorkflowStorage;
 import com.openjiuwen.extensions.store.kv.RedisStore;
+import com.openjiuwen.spi.store.KVStoreFactory;
 
-import redis.clients.jedis.DefaultJedisClientConfig;
-import redis.clients.jedis.HostAndPort;
-import redis.clients.jedis.JedisCluster;
-import redis.clients.jedis.JedisPooled;
-import redis.clients.jedis.exceptions.JedisException;
-import redis.clients.jedis.util.JedisURIHelper;
 
-import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalInt;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -340,7 +332,6 @@ public class RedisCheckpointer extends Checkpointer {
      * @since 0.1.7
      */
     public static final class Provider implements CheckpointerProvider {
-        private static final int MILLIS_PER_SECOND = 1000;
 
         /**
          * typeName.
@@ -362,6 +353,17 @@ public class RedisCheckpointer extends Checkpointer {
          */
         @Override
         public Checkpointer create(Map<String, Object> conf) {
+            if (conf != null && conf.containsKey("kv_store")) {
+                if (conf.containsKey("connection") || conf.containsKey("storeRef")) {
+                    throw new IllegalArgumentException("kv_store conflicts with connection or storeRef");
+                }
+                if (!(conf.get("kv_store") instanceof RedisStore store)) {
+                    throw new IllegalArgumentException("Redis checkpointer requires a RedisStore");
+                }
+                @SuppressWarnings("unchecked")
+                Map<String, Object> ttl = (Map<String, Object>) conf.get("ttl");
+                return new RedisCheckpointer(store, ttl == null ? null : RedisTTLConfig.fromMap(ttl).toMap());
+            }
             RedisCheckpointerConfig config;
             try {
                 config = RedisCheckpointerConfig.fromMap(conf);
@@ -372,91 +374,9 @@ public class RedisCheckpointer extends Checkpointer {
                         e);
             }
 
-            RedisConnectionConfig connection = config.getConnection();
-            Object redisClient = connection.getRedisClient();
-            if (redisClient == null) {
-                redisClient = createUrlClient(connection);
-            }
-
-            return new RedisCheckpointer(new RedisStore(redisClient), config.getTtlMap());
-        }
-
-        private Object createUrlClient(RedisConnectionConfig connection) {
-            String connectionUrl = connection.getConnectionUrl();
-            if (connectionUrl == null) {
-                throw new IllegalArgumentException(
-                        "Either 'redis_client' or 'url' must be provided in connection configuration");
-            }
-
-            try {
-                URI uri = URI.create(connectionUrl);
-                HostAndPort endpoint = JedisURIHelper.getHostAndPort(uri);
-                DefaultJedisClientConfig clientConfig = buildClientConfig(uri, connection.getConnectionArgs());
-                if (connection.isClusterMode()) {
-                    int attempts = clusterAttempts(connection.getConnectionArgs());
-                    return new JedisCluster(Set.of(endpoint), clientConfig, attempts);
-                }
-                return new JedisPooled(endpoint, clientConfig);
-            } catch (IllegalArgumentException | JedisException e) {
-                throw new IllegalArgumentException("Failed to create Redis client. URL: " + connectionUrl
-                        + ", cluster mode: " + connection.isClusterMode(), e);
-            }
-        }
-
-        private DefaultJedisClientConfig buildClientConfig(URI uri, Map<String, Object> connectionArgs) {
-            DefaultJedisClientConfig.Builder builder = DefaultJedisClientConfig.builder()
-                    .database(JedisURIHelper.getDBIndex(uri))
-                    .ssl(JedisURIHelper.isRedisSSLScheme(uri));
-
-            String user = JedisURIHelper.getUser(uri);
-            if (user != null && !user.isBlank()) {
-                builder.user(user);
-            }
-            String password = JedisURIHelper.getPassword(uri);
-            if (password != null && !password.isBlank()) {
-                builder.password(password);
-            }
-
-            OptionalInt connectionTimeout = timeoutMillis(connectionArgs, "socket_connect_timeout");
-            if (connectionTimeout.isPresent()) {
-                builder.connectionTimeoutMillis(connectionTimeout.getAsInt());
-            }
-            OptionalInt socketTimeout = timeoutMillis(connectionArgs, "socket_timeout");
-            if (socketTimeout.isPresent()) {
-                builder.socketTimeoutMillis(socketTimeout.getAsInt());
-            }
-            return builder.build();
-        }
-
-        private OptionalInt timeoutMillis(Map<String, Object> connectionArgs, String key) {
-            Object rawValue = connectionArgs.get(key);
-            if (rawValue == null) {
-                return OptionalInt.empty();
-            }
-            if (!(rawValue instanceof Number number) || number.doubleValue() <= 0) {
-                throw new IllegalArgumentException(key + " must be a positive number of seconds");
-            }
-
-            double timeout = number.doubleValue() * (double) MILLIS_PER_SECOND;
-            if (timeout > Integer.MAX_VALUE) {
-                throw new IllegalArgumentException(key + " is too large");
-            }
-            return OptionalInt.of((int) Math.ceil(timeout));
-        }
-
-        private int clusterAttempts(Map<String, Object> connectionArgs) {
-            Object retryConfig = connectionArgs.get("retry");
-            if (!(retryConfig instanceof Map<?, ?> retry)) {
-                return JedisCluster.DEFAULT_MAX_ATTEMPTS;
-            }
-            Object attempts = retry.get("attempts");
-            if (attempts == null) {
-                return JedisCluster.DEFAULT_MAX_ATTEMPTS;
-            }
-            if (!(attempts instanceof Number number) || number.intValue() <= 0) {
-                throw new IllegalArgumentException("retry.attempts must be a positive integer");
-            }
-            return number.intValue();
+            RedisStore store = (RedisStore) KVStoreFactory.create("redis",
+                    Map.of("connection", conf.get("connection")));
+            return new RedisCheckpointer(store, config.getTtlMap());
         }
     }
 
@@ -477,7 +397,7 @@ public class RedisCheckpointer extends Checkpointer {
          * Retrieve the graph store state for the given session and namespace.
          * 
          * @param sessionId The session ID
-         * @param ns The namespace within the session
+         * @param ns        The namespace within the session
          * @return An Optional containing the GraphStoreState if found, otherwise empty
          * @since 0.1.7
          */
@@ -494,8 +414,8 @@ public class RedisCheckpointer extends Checkpointer {
          * Save the graph store state for the given session and namespace.
          * 
          * @param sessionId The session ID
-         * @param ns The namespace within the session
-         * @param state The graph store state to save
+         * @param ns        The namespace within the session
+         * @param state     The graph store state to save
          * @since 0.1.7
          */
         @Override
@@ -507,7 +427,7 @@ public class RedisCheckpointer extends Checkpointer {
          * Delete the graph store state for the given session and namespace.
          * 
          * @param sessionId The session ID
-         * @param ns The namespace within the session
+         * @param ns        The namespace within the session
          * @since 0.1.7
          */
         @Override

@@ -137,6 +137,7 @@ public class DeepAgentConfig {
     @Builder.Default
     private String sessionStoreType = "file";
     private Map<String, Object> kvStoreConfig;
+    private Map<String, Object> todoStorageConfig;
     @Builder.Default
     private Duration tmpTtl = Duration.ofHours(24);
     @Builder.Default

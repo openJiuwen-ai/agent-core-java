@@ -12,8 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Factory and registry for KV store instances.
  * <p>
  * Built-in types are discovered via {@link ServiceLoader} from
- * {@code META-INF/services/com.openjiuwen.spi.store.KVStoreProvider}.
- * Service adapters can register additional types via
+ * {@code META-INF/services/com.openjiuwen.spi.store.KVStoreProvider}. Service
+ * adapters can register additional types via
  * {@link #register(String, KVStoreProvider)} without modifying Core source.
  * <p>
  * Calling point: PersistenceCheckpointer, Workflow state persistence, etc.
@@ -43,7 +43,7 @@ public final class KVStoreFactory {
     /**
      * Register a KV store provider for a given type name.
      * 
-     * @param type the store type name (e.g. "in_memory", "redis", "hbase")
+     * @param type     the store type name (e.g. "in_memory", "redis", "hbase")
      * @param provider the provider that creates BaseKVStore instances
      * @since 0.1.7
      */
@@ -61,10 +61,27 @@ public final class KVStoreFactory {
      */
     public static BaseKVStore create(String type, Map<String, Object> conf) {
         KVStoreProvider provider = REGISTRY.get(type);
+        if (provider == null && "redis".equals(type)) {
+            provider = loadOptionalRedisProvider();
+        }
         if (provider == null) {
             throw new IllegalArgumentException("No KV store provider registered for type: " + type);
         }
         return provider.create(conf != null ? conf : Map.of());
+    }
+
+    private static KVStoreProvider loadOptionalRedisProvider() {
+        return REGISTRY.computeIfAbsent("redis", key -> {
+            try {
+                Class<?> type = Class.forName("com.openjiuwen.extensions.store.kv.RedisKVStoreProvider");
+                return (KVStoreProvider) type.getDeclaredConstructor().newInstance();
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException(
+                        "Redis provider is unavailable; add the Redis implementation and Jedis dependency", e);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Failed to initialize Redis provider", e);
+            }
+        });
     }
 
     /**
@@ -75,6 +92,6 @@ public final class KVStoreFactory {
      * @since 0.1.7
      */
     public static boolean hasProvider(String type) {
-        return type != null && REGISTRY.containsKey(type);
+        return type != null && ("redis".equals(type) || REGISTRY.containsKey(type));
     }
 }

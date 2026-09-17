@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.foundation.store.kv.ApplicationStorageScope;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
@@ -33,18 +34,21 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
-
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.factory.HarnessFactory;
+import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -72,6 +76,7 @@ public class RunnerImpl {
     private final LocalMessageQueue messageQueue;
     private final CallbackFramework callbackFramework;
     private final TeamRuntimeManager teamRuntimeManager;
+    private final ApplicationStorageScope storageScope;
 
     private TenantWorkspaceResolver workspaceResolver;
 
@@ -98,6 +103,11 @@ public class RunnerImpl {
      * @since 0.1.7
      */
     public RunnerImpl(String runnerId, RunnerConfig config) {
+        this(runnerId, config, new ApplicationStorageScope());
+    }
+
+    public RunnerImpl(String runnerId, RunnerConfig config, ApplicationStorageScope storageScope) {
+        this.storageScope = Objects.requireNonNull(storageScope, "storageScope");
         this.runnerId = runnerId != null ? runnerId : DEFAULT_RUNNER_ID;
         this.resourceManager = new ResourceMgr();
         this.messageQueue = new LocalMessageQueue();
@@ -111,9 +121,19 @@ public class RunnerImpl {
         }
     }
 
+    /** Create an Agent that shares this Runner's named stores. */
+    public DeepAgent createDeepAgent(
+            DeepAgentConfig config) {
+        return HarnessFactory.createDeepAgent(config, storageScope);
+    }
+
+    public ApplicationStorageScope getStorageScope() {
+        return storageScope;
+    }
+
     /**
      * Get the resource manager for workflow, agent, agent_group, tool, model, prompt...
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -182,6 +202,58 @@ public class RunnerImpl {
         return RunnerConfig.getRunnerConfig();
     }
 
+    private Map<String, Object> initializedKvConfig;
+
+    private synchronized void initializeKvResource(Map<String, Object> config) {
+        if (config == null || config.isEmpty() || config.equals(initializedKvConfig)) {
+            return;
+        }
+        Object raw = config.getOrDefault("conf", Map.of());
+        if (!(raw instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException("Runner KV conf must be a map");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> conf = (Map<String, Object>) raw;
+        if (config.containsKey("storeRef") || conf.containsKey("storeRef")) {
+            if (config.containsKey("storeRef") && conf.containsKey("storeRef")
+                    && !java.util.Objects.equals(config.get("storeRef"), conf.get("storeRef"))) {
+                throw new IllegalArgumentException("Conflicting storeRef values");
+            }
+            Object ref = config.containsKey("storeRef") ? config.get("storeRef") : conf.get("storeRef");
+            if (!(ref instanceof String name) || name.isBlank()) {
+                throw new IllegalArgumentException("Runner storeRef must be nonblank");
+            }
+            if (config.containsKey("name") || conf.keySet().stream().anyMatch(k -> !"storeRef".equals(k))) {
+                throw new IllegalArgumentException("Runner storeRef conflicts with connection or name");
+            }
+            storageScope.kvStores().resolve(name);
+        } else {
+            if (!(config.get("type") instanceof String type)) {
+                throw new IllegalArgumentException("Runner KV type is required");
+            }
+            Object name = config.getOrDefault("name", "default");
+            if (!(name instanceof String resourceName)) {
+                throw new IllegalArgumentException("Runner KV name must be a string");
+            }
+            storageScope.kvStores().create(resourceName, type, conf);
+        }
+        initializedKvConfig = snapshotKvConfig(config);
+    }
+
+    private static Map<String, Object> snapshotKvConfig(Map<String, Object> config) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        config.forEach((key, value) -> {
+            if (value instanceof Map<?, ?> nested) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> fields = (Map<String, Object>) nested;
+                snapshot.put(key, snapshotKvConfig(fields));
+            } else {
+                snapshot.put(key, value);
+            }
+        });
+        return snapshot;
+    }
+
     /**
      * Start the runner and its associated components, such as message queue.
      * 
@@ -192,6 +264,9 @@ public class RunnerImpl {
         boolean result = true;
         logger.info("Begin to start runner, runnerId={}", runnerId);
 
+        // Resources explicitly pre-registered in storageScope are available before Checkpointer assembly.
+        initializeKvResource(RunnerConfig.getRunnerConfig().getKvStoreConfig());
+
         // Initialize checkpointer if configured
         Map<String, Object> checkpointerConfig = RunnerConfig.getRunnerConfig().getCheckpointerConfig();
         if (checkpointerConfig != null) {
@@ -200,7 +275,7 @@ public class RunnerImpl {
             Map<String, Object> conf = (Map<String, Object>) checkpointerConfig.getOrDefault("conf", Map.of());
             logger.info("Begin to initializing checkpointer with type: {}, runnerId={}", type, runnerId);
             try {
-                var checkpointer = CheckpointerFactory.create(type, conf);
+                var checkpointer = CheckpointerFactory.create(type, conf, storageScope);
                 CheckpointerFactory.setDefaultCheckpointer(checkpointer);
                 logger.info("Succeed to initializing checkpointer with type: {}, runnerId={}", type, runnerId);
             } catch (Exception e) {
@@ -968,7 +1043,7 @@ public class RunnerImpl {
      */
     private Map<String, Object> normalizeSpawnInputs(Object inputs) {
         if (inputs instanceof Map<?, ?> rawInputs) {
-            java.util.LinkedHashMap<String, Object> normalized = new java.util.LinkedHashMap<>();
+            LinkedHashMap<String, Object> normalized = new LinkedHashMap<>();
             rawInputs.forEach((key, value) -> normalized.put(String.valueOf(key), value));
             return normalized;
         }

@@ -7,6 +7,7 @@ package com.openjiuwen.harness.tools;
 import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.spi.store.KVStoreFactory;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -21,22 +22,51 @@ public class KvTodoStorageProvider implements TodoStorageProvider {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public TodoStorage create(Map<String, Object> conf) {
-        if (conf != null && conf.get("sharedKvStore") instanceof BaseKVStore) {
-            return new KvTodoStorage((BaseKVStore) conf.get("sharedKvStore"));
+        Map<String, Object> input = conf == null ? Map.of() : conf;
+        if (input.containsKey("storeRef")) {
+            throw new IllegalArgumentException("Resolve Todo storeRef in the application scope first");
         }
-        String kvStoreType = "in_memory";
-        if (conf != null) {
-            Object raw = conf.getOrDefault("kvStoreType", "in_memory");
-            if (raw instanceof String s) {
-                kvStoreType = s;
+        Duration ttl = null;
+        boolean refresh = false;
+        if (input.containsKey("ttl")) {
+            if (!(input.get("ttl") instanceof Map<?, ?> policy)) {
+                throw new IllegalArgumentException("Todo ttl must be a map");
             }
+            if (policy.containsKey("default_ttl")) {
+                Object raw = policy.get("default_ttl");
+                if (!(raw instanceof Number n) || !Double.isFinite(n.doubleValue()) || n.doubleValue() <= 0
+                        || n.doubleValue() * 60 > Integer.MAX_VALUE) {
+                    throw new IllegalArgumentException("Todo default_ttl must be positive finite minutes");
+                }
+                ttl = Duration.ofSeconds((long) Math.ceil(n.doubleValue() * 60));
+            }
+            if (policy.containsKey("refresh_on_read") && !(policy.get("refresh_on_read") instanceof Boolean)) {
+                throw new IllegalArgumentException("Todo refresh_on_read must be boolean");
+            }
+            refresh = Boolean.TRUE.equals(policy.get("refresh_on_read"));
         }
-        Map<String, Object> kvStoreConf = null;
-        if (conf != null && conf.get("kvStoreConf") instanceof Map) {
-            kvStoreConf = (Map<String, Object>) conf.get("kvStoreConf");
+        if (refresh && ttl == null) {
+            throw new IllegalArgumentException("Todo refresh_on_read requires default_ttl");
         }
-        BaseKVStore kvStore = KVStoreFactory.create(kvStoreType, kvStoreConf != null ? kvStoreConf : Map.of());
-        return new KvTodoStorage(kvStore);
+        BaseKVStore store;
+        if (input.containsKey("sharedKvStore")) {
+            if (!(input.get("sharedKvStore") instanceof BaseKVStore supplied)) {
+                throw new IllegalArgumentException("sharedKvStore must be a BaseKVStore");
+            }
+            store = supplied;
+        } else {
+            Object type = input.getOrDefault("kvStoreType", "in_memory");
+            if (!(type instanceof String)) {
+                throw new IllegalArgumentException("kvStoreType must be a string");
+            }
+            Object args = input.getOrDefault("kvStoreConf", Map.of());
+            if (!(args instanceof Map<?, ?>)) {
+                throw new IllegalArgumentException("kvStoreConf must be a map");
+            }
+            store = KVStoreFactory.create((String) type, (Map<String, Object>) args);
+        }
+        return new KvTodoStorage(store, ttl, refresh);
     }
 }

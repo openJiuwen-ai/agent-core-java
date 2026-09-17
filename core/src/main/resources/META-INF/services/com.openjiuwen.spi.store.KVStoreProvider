@@ -1,3 +1,2 @@
 com.openjiuwen.spi.store.kv.InMemoryKVStoreProvider
 com.openjiuwen.spi.store.kv.SqliteKVStoreProvider
-com.openjiuwen.extensions.store.kv.RedisKVStoreProvider

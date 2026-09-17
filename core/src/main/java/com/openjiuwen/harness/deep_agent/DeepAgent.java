@@ -23,6 +23,7 @@ import com.openjiuwen.core.multitenant.workspace.WorkspaceStoreFactory;
 import com.openjiuwen.core.multitenant.workspace.store.LocalWorkspaceStore;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.core.foundation.store.kv.ApplicationStorageScope;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -163,6 +164,7 @@ public class DeepAgent implements AutoCloseable {
     @Setter
     private BaseKVStore kvStore;
     private CompletionPromiseEvaluator completionPromiseEvaluator;
+    private final ApplicationStorageScope storageScope;
     private boolean isExplicitCompletionPolicy;
 
     /**
@@ -174,6 +176,11 @@ public class DeepAgent implements AutoCloseable {
      * @since 0.1.7
      */
     public DeepAgent(AgentCard card, DeepAgentConfig config, Workspace workspace) {
+        this(card, config, workspace, new ApplicationStorageScope());
+    }
+
+    public DeepAgent(AgentCard card, DeepAgentConfig config, Workspace workspace, ApplicationStorageScope storageScope) {
+        this.storageScope = Objects.requireNonNull(storageScope, "storageScope");
         this.card = card != null ? card : AgentCard.builder().name("deep_agent").description("DeepAgent").build();
         this.config = config != null ? config : DeepAgentConfig.builder().build();
         this.workspace = workspace != null
@@ -1388,7 +1395,7 @@ public class DeepAgent implements AutoCloseable {
         Workspace childWorkspace = resolveChildWorkspace(spec, sessionId);
         DeepAgentConfig childConfig = spec.toDeepAgentConfig();
         applyParentRuntimeFallbacks(childConfig);
-        return HarnessFactory.createDeepAgent(spec.getAgentCard(), childConfig, childWorkspace);
+        return HarnessFactory.createDeepAgent(spec.getAgentCard(), childConfig, childWorkspace, storageScope);
     }
 
     /**

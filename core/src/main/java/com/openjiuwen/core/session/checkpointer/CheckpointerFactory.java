@@ -4,6 +4,11 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
+import com.openjiuwen.core.foundation.store.kv.ApplicationStorageScope;
+import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.spi.store.KVStoreFactory;
+
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,9 +19,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * Built-in types are discovered via {@link ServiceLoader} from
  * {@code META-INF/services/com.openjiuwen.core.session.checkpointer.CheckpointerProvider}.
  * Service adapters can register additional types via
- * {@link #register(String, CheckpointerProvider)} without modifying Core source.
+ * {@link #register(String, CheckpointerProvider)} without modifying Core
+ * source.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.session.checkpointer.checkpointer.CheckpointerFactory}.
+ * Mirrors Python's
+ * {@code openjiuwen.core.session.checkpointer.checkpointer.CheckpointerFactory}.
  * 
  * @since 0.1.7
  */
@@ -43,10 +50,6 @@ public final class CheckpointerFactory {
         for (CheckpointerProvider provider : ServiceLoader.load(CheckpointerProvider.class)) {
             REGISTRY.putIfAbsent(provider.typeName(), provider);
         }
-        // Register redis_checkpointer_cluster as alias for redis
-        if (REGISTRY.containsKey("redis") && !REGISTRY.containsKey("redis_checkpointer_cluster")) {
-            REGISTRY.put("redis_checkpointer_cluster", REGISTRY.get("redis"));
-        }
     }
 
     /**
@@ -60,7 +63,7 @@ public final class CheckpointerFactory {
     /**
      * Register a checkpointer provider for a given type name.
      * 
-     * @param name the type name
+     * @param name     the type name
      * @param provider the provider
      * @since 0.1.7
      */
@@ -92,10 +95,84 @@ public final class CheckpointerFactory {
      */
     public static Checkpointer create(String type, Map<String, Object> conf) {
         CheckpointerProvider provider = REGISTRY.get(type);
+        if (provider == null && ("redis".equals(type) || "redis_checkpointer_cluster".equals(type))) {
+            provider = REGISTRY.computeIfAbsent("redis", ignored -> loadOptionalRedisProvider());
+            REGISTRY.putIfAbsent("redis_checkpointer_cluster", provider);
+        }
         if (provider == null) {
             throw new IllegalArgumentException("No checkpointer provider registered for type: " + type);
         }
         return provider.create(conf);
+    }
+
+    /**
+     * Resolve a scoped resource once, then use the existing provider injection
+     * contract.
+     */
+    public static Checkpointer create(String type, Map<String, Object> conf, ApplicationStorageScope scope) {
+        if (scope == null) {
+            return create(type, conf);
+        }
+        synchronized (scope.kvStores()) {
+            return createScoped(type, conf, scope);
+        }
+    }
+
+    private static Checkpointer createScoped(String type, Map<String, Object> conf, ApplicationStorageScope scope) {
+        boolean redis = "redis".equals(type) || "redis_checkpointer_cluster".equals(type);
+        boolean persistence = "persistence".equals(type);
+        Map<String, Object> input = new LinkedHashMap<>(conf == null ? Map.of() : conf);
+        if (!redis && !persistence) {
+            if (input.containsKey("storeRef")) {
+                throw new IllegalArgumentException("Checkpointer does not support storeRef: " + type);
+            }
+            return create(type, input);
+        }
+        boolean explicit = input.containsKey("connection") || input.containsKey("kv_store")
+                || input.containsKey("db_type") || input.containsKey("db_path");
+        BaseKVStore store = null;
+        if (input.containsKey("storeRef")) {
+            if (explicit) {
+                throw new IllegalArgumentException("storeRef conflicts with connection or direct Store");
+            }
+            Object ref = input.remove("storeRef");
+            if (!(ref instanceof String name) || name.isBlank()) {
+                throw new IllegalArgumentException("storeRef must be a nonblank string");
+            }
+            store = scope.kvStores().resolve(name);
+        } else if (!explicit && scope.kvStores().contains("default")) {
+            store = scope.kvStores().resolve("default");
+        } else if (input.get("kv_store") instanceof BaseKVStore supplied) {
+            store = supplied;
+        } else if (redis && input.containsKey("connection")) {
+            store = KVStoreFactory.create("redis", Map.of("connection", input.get("connection")));
+            input.remove("connection");
+        }
+        if (store == null && persistence && !input.containsKey("kv_store")
+                && "sqlite".equals(input.getOrDefault("db_type", "sqlite"))) {
+            store = KVStoreFactory.create("sqlite", input);
+        }
+        if (store != null) {
+            input.put("kv_store", store);
+            Checkpointer result = create(type, input); // Redis type validation stays inside its optional Provider.
+            if (!scope.kvStores().contains("default")) {
+                scope.kvStores().register("default", store);
+            }
+            return result;
+        }
+        return create(type, input);
+    }
+
+    private static CheckpointerProvider loadOptionalRedisProvider() {
+        try {
+            Class<?> type = Class.forName("com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer$Provider");
+            return (CheckpointerProvider) type.getDeclaredConstructor().newInstance();
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(
+                    "Redis checkpointer is unavailable; add the Redis implementation and Jedis dependency", e);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to initialize Redis checkpointer provider", e);
+        }
     }
 
     /**
@@ -111,7 +188,7 @@ public final class CheckpointerFactory {
     /**
      * Set a checkpointer instance for a specific type.
      * 
-     * @param storeType the type
+     * @param storeType    the type
      * @param checkpointer the instance
      * @since 0.1.7
      */

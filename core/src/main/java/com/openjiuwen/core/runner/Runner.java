@@ -5,6 +5,7 @@
 package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.foundation.store.kv.ApplicationStorageScope;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
@@ -50,6 +51,16 @@ public final class Runner {
      */
     private Runner() {
         // Utility class
+    }
+
+    /** Create an Agent within the facade Runner's application scope. */
+    public static com.openjiuwen.harness.deep_agent.DeepAgent createDeepAgent(
+            com.openjiuwen.harness.schema.config.DeepAgentConfig config) {
+        return GLOBAL_RUNNER.createDeepAgent(config);
+    }
+
+    public static ApplicationStorageScope storageScope() {
+        return GLOBAL_RUNNER.getStorageScope();
     }
 
     /**

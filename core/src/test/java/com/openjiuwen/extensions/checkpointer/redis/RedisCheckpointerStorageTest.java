@@ -18,14 +18,17 @@ import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.extensions.store.kv.RedisStore;
 
 import org.junit.jupiter.api.Test;
 
 import java.io.NotSerializableException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -34,7 +37,7 @@ class RedisCheckpointerStorageTest {
     void preAgentExecuteRestoresStateQueuesInputsAndRefreshesTtl() throws Exception {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+            new RedisCheckpointer(new RedisStore(redisClient),
                     Map.of("default_ttl", 1, "refresh_on_read", true));
 
         Config config = new Config();
@@ -60,7 +63,7 @@ class RedisCheckpointerStorageTest {
     void agentCheckpointPersistsInteractiveInputAcrossCheckpointerInstances() {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer writer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+            new RedisCheckpointer(new RedisStore(redisClient), null);
         Config config = new Config();
         config.setAgentConfig(new Config.MetadataLike("agent-1", "agent", "invoke"));
         InteractiveInput input = new InteractiveInput();
@@ -74,7 +77,7 @@ class RedisCheckpointerStorageTest {
         assertEquals(1L, redisClient.exists("interactive-session:agent:agent-1:agent_state_blobs_dump_type"));
 
         RedisCheckpointer reader =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+            new RedisCheckpointer(new RedisStore(redisClient), null);
         AgentSession restored = new AgentSession("interactive-session", config, reader);
         reader.preAgentExecute(restored, null);
 
@@ -87,7 +90,7 @@ class RedisCheckpointerStorageTest {
     void agentCheckpointPropagatesSerializationFailureWithoutWritingState() {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+            new RedisCheckpointer(new RedisStore(redisClient), null);
         Config config = new Config();
         config.setAgentConfig(new Config.MetadataLike("agent-1", "agent", "invoke"));
         AgentSession session = new AgentSession("invalid-session", config, checkpointer);
@@ -104,7 +107,7 @@ class RedisCheckpointerStorageTest {
     void workflowLifecycleRestoresStateUpdatesAndClearsOnCompletion() {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+            new RedisCheckpointer(new RedisStore(redisClient),
                     Map.of("default_ttl", 1, "refresh_on_read", true));
 
         WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
@@ -144,7 +147,7 @@ class RedisCheckpointerStorageTest {
     void forceDeleteWorkflowStateClearsGraphAndWorkflowCheckpoint() {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+            new RedisCheckpointer(new RedisStore(redisClient), null);
 
         WorkflowSession initial = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         checkpointer.preWorkflowExecute(initial, null);
@@ -168,7 +171,7 @@ class RedisCheckpointerStorageTest {
     void interruptDuringPostAgentExecuteStillPersistsState() throws Exception {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+            new RedisCheckpointer(new RedisStore(redisClient),
                     Map.of("default_ttl", 60));
 
         Config config = new Config();
@@ -200,7 +203,7 @@ class RedisCheckpointerStorageTest {
     void postAgentExecutePersistsStateBeforeReturning() {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+            new RedisCheckpointer(new RedisStore(redisClient),
                     Map.of("default_ttl", 60));
 
         Config config = new Config();
@@ -222,7 +225,7 @@ class RedisCheckpointerStorageTest {
     void preWorkflowExecuteWithoutInteractiveInputRejectsExistingStateWhenCleanupDisabled() {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+            new RedisCheckpointer(new RedisStore(redisClient), null);
 
         WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         checkpointer.preWorkflowExecute(session, null);
@@ -241,7 +244,7 @@ class RedisCheckpointerStorageTest {
     void graphStoreDeletesNamespacePrefixesAndRefreshesTtl() throws Exception {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+            new RedisCheckpointer(new RedisStore(redisClient),
                     Map.of("default_ttl", 1, "refresh_on_read", true));
 
         GraphStoreState parent = GraphStoreState.create("workflow-1", 1, Map.of("a", 1), List.of(), Map.of(), Map.of());
@@ -266,6 +269,33 @@ class RedisCheckpointerStorageTest {
         assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").isEmpty());
         assertTrue(checkpointer.graphStore().get("session-1", "workflow-1:sub:1").isEmpty());
         assertEquals(3, checkpointer.graphStore().get("session-1", "workflow-2").orElseThrow().getStep());
+    }
+
+    @Test
+    void restoresAgentWorkflowAndGraphBytesWrittenByUnmodifiedLegacyCore() throws Exception {
+        var fixture = new Properties();
+        try (var input = getClass().getResourceAsStream("/redis/legacy-9cfb82e36.properties")) {
+            assertNotNull(input);
+            fixture.load(input);
+        }
+        FakeRedisClient client = new FakeRedisClient();
+        var store = new RedisStore(client);
+        for (String key : fixture.stringPropertyNames()) {
+            store.set(key, Base64.getDecoder().decode(fixture.getProperty(key)));
+        }
+        RedisCheckpointer checkpointer = new RedisCheckpointer(store, null);
+        String sessionId = "legacy-redis-fixture";
+        Config config = new Config();
+        config.setAgentConfig(new Config.MetadataLike("agent", "agent", "invoke"));
+        AgentSession agent = new AgentSession(sessionId, config, checkpointer);
+        checkpointer.getAgentStorage().recover(agent, null).join();
+        assertEquals("legacy-agent", agent.state().getGlobal("persisted"));
+        WorkflowSession workflow = new WorkflowSession("workflow", null, sessionId, InMemoryState.create(), null);
+        checkpointer.getWorkflowStorage().recover(workflow, null).join();
+        assertEquals("legacy-workflow", workflow.state().getGlobal("persisted"));
+        GraphStoreState graph = checkpointer.graphStore().get(sessionId, "workflow").orElseThrow();
+        assertEquals(7, graph.getStep());
+        assertEquals("legacy-graph", graph.getChannelValues().get("persisted"));
     }
 
     private static boolean hasCause(Throwable throwable, Class<? extends Throwable> causeType) {

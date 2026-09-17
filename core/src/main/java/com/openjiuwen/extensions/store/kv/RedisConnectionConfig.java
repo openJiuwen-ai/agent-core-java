@@ -1,0 +1,268 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.extensions.store.kv;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Redis connection configuration.
+ * <p>
+ * This class provides a structured way to configure Redis connections with
+ * validation and type safety.
+ * <p>
+ * Mirrors Python's
+ * {@code openjiuwen.extensions.checkpointer.redis.checkpointer.RedisConnectionConfig}.
+ *
+ * @since 0.1.7
+ */
+public class RedisConnectionConfig {
+    private Object redisClient;
+
+    /**
+     * Redis connection URL.
+     */
+    private String url;
+
+    /**
+     * Explicitly enable/disable cluster mode.
+     */
+    private Boolean clusterMode;
+
+    /**
+     * Additional connection arguments.
+     */
+    private Map<String, Object> connectionArgs;
+
+    /**
+     * Default constructor.
+     *
+     * @since 0.1.7
+     */
+    public RedisConnectionConfig() {
+        this.connectionArgs = new LinkedHashMap<>();
+    }
+
+    /**
+     * Constructor with URL.
+     *
+     * @param url Redis connection URL
+     * @since 0.1.7
+     */
+    public RedisConnectionConfig(String url) {
+        this.url = url;
+        this.connectionArgs = new LinkedHashMap<>();
+    }
+
+    /**
+     * Constructor with pre-configured client.
+     *
+     * @param redisClient Pre-configured Redis client
+     * @since 0.1.7
+     */
+    public RedisConnectionConfig(Object redisClient) {
+        this.redisClient = redisClient;
+        this.connectionArgs = new LinkedHashMap<>();
+    }
+
+    /**
+     * Create from a configuration map.
+     *
+     * @param config Configuration map
+     * @return RedisConnectionConfig instance
+     * @since 0.1.7
+     */
+    public static RedisConnectionConfig fromMap(Map<String, Object> config) {
+        if (config == null) {
+            throw new IllegalArgumentException("Connection configuration cannot be null");
+        }
+
+        RedisConnectionConfig connectionConfig = new RedisConnectionConfig();
+        connectionConfig.setRedisClient(config.get("redis_client"));
+        Object urlValue = config.get("url");
+        if (urlValue != null) {
+            connectionConfig.setUrl(String.valueOf(urlValue));
+        }
+
+        if (config.get("cluster_mode") != null) {
+            if (!(config.get("cluster_mode") instanceof Boolean)) {
+                throw new IllegalArgumentException("cluster_mode must be boolean");
+            }
+            connectionConfig.setClusterMode((Boolean) config.get("cluster_mode"));
+        }
+        if (config.get("connection_args") != null && !(config.get("connection_args") instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException("connection_args must be a map");
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> args = (Map<String, Object>) config.get("connection_args");
+        connectionConfig.setConnectionArgs(args);
+
+        return connectionConfig;
+    }
+
+    /**
+     * Validate the configuration.
+     *
+     * @since 0.1.7
+     */
+    public void validate() {
+        if (redisClient == null && (url == null || url.isBlank())) {
+            throw new IllegalArgumentException(
+                    "Either 'redis_client' or 'url' must be provided in RedisConnectionConfig");
+        }
+
+        if (url != null && !url.isBlank()) {
+            if (!url.startsWith("redis://") && !url.startsWith("rediss://") && !url.startsWith("redis+cluster://")
+                    && !url.startsWith("rediss+cluster://")) {
+                throw new IllegalArgumentException("Invalid Redis URL format. "
+                        + "URL must start with redis://, rediss://, redis+cluster://, or rediss+cluster://");
+            }
+        }
+    }
+
+    /**
+     * Determine if cluster mode should be used.
+     *
+     * @return True if cluster mode should be used
+     * @since 0.1.7
+     */
+    public boolean isClusterMode() {
+        if (redisClient != null) {
+            // Check if client is a cluster client
+            return redisClient.getClass().getSimpleName().contains("Cluster");
+        }
+
+        if (clusterMode != null) {
+            return clusterMode;
+        }
+
+        if (connectionArgs != null) {
+            Object argsClusterMode = connectionArgs.get("cluster_mode");
+            if (argsClusterMode instanceof Boolean booleanValue) {
+                return booleanValue;
+            }
+            if (argsClusterMode instanceof String stringValue) {
+                return Boolean.parseBoolean(stringValue);
+            }
+        }
+
+        if (url != null) {
+            return url.startsWith("redis+cluster://") || url.startsWith("rediss+cluster://");
+        }
+
+        return false;
+    }
+
+    /**
+     * Get the connection URL, normalizing cluster URLs if needed.
+     *
+     * @return Normalized connection URL
+     * @since 0.1.7
+     */
+    public String getConnectionUrl() {
+        if (url == null) {
+            return null;
+        }
+
+        // Remove +cluster suffix for RedisCluster.from_url
+        if (url.startsWith("redis+cluster://")) {
+            return url.replace("redis+cluster://", "redis://");
+        } else if (url.startsWith("rediss+cluster://")) {
+            return url.replace("rediss+cluster://", "rediss://");
+        }
+
+        return url;
+    }
+
+    // Getters and Setters
+    /**
+     * getRedisClient.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    public Object getRedisClient() {
+        return redisClient;
+    }
+
+    /**
+     * setRedisClient.
+     *
+     * @param redisClient redisClient
+     * @since 0.1.7
+     */
+    public void setRedisClient(Object redisClient) {
+        this.redisClient = redisClient;
+    }
+
+    /**
+     * getUrl.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    public String getUrl() {
+        return url;
+    }
+
+    /**
+     * setUrl.
+     *
+     * @param url url
+     * @since 0.1.7
+     */
+    public void setUrl(String url) {
+        this.url = url != null ? url.trim() : null;
+    }
+
+    /**
+     * getClusterMode.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    public Boolean getClusterMode() {
+        return clusterMode;
+    }
+
+    /**
+     * setClusterMode.
+     *
+     * @param clusterMode clusterMode
+     * @since 0.1.7
+     */
+    public void setClusterMode(Boolean clusterMode) {
+        this.clusterMode = clusterMode;
+    }
+
+    /**
+     * getConnectionArgs.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    public Map<String, Object> getConnectionArgs() {
+        if (connectionArgs == null) {
+            return Collections.emptyMap();
+        }
+        return Collections.unmodifiableMap(connectionArgs);
+    }
+
+    /**
+     * setConnectionArgs.
+     *
+     * @param connectionArgs connectionArgs
+     * @since 0.1.7
+     */
+    public void setConnectionArgs(Map<String, Object> connectionArgs) {
+        if (connectionArgs == null) {
+            this.connectionArgs = new LinkedHashMap<>();
+            return;
+        }
+        this.connectionArgs = new LinkedHashMap<>(connectionArgs);
+    }
+}

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.factory;
 
+import com.openjiuwen.core.foundation.store.kv.ApplicationStorageScope;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
@@ -40,13 +41,12 @@ import java.util.UUID;
  */
 public final class HarnessFactory {
     private static final String GENERAL_PURPOSE_NAME = "general-purpose";
-    private static final String GENERAL_PURPOSE_DESC_CN =
-        "用于研究复杂问题、搜索文件与内容、执行多步骤任务。该智能体拥有与主代理完全相同的全部工具权限。" + "适合用于隔离上下文与 Token 消耗，并完成特定的复杂任务，因为它拥有与主代理完全相同的全部能力。";
-    private static final String GENERAL_PURPOSE_DESC_EN =
-        "General-purpose agent for researching complex questions, searching for files and content, "
-                + "and executing multi-step tasks. This agent has access to all tools as the main agent. "
-                + "The general-purpose agent is suitable for isolating context and token consumption, "
-                + "and completing specific complex tasks";
+    private static final String GENERAL_PURPOSE_DESC_CN = "用于研究复杂问题、搜索文件与内容、执行多步骤任务。该智能体拥有与主代理完全相同的全部工具权限。"
+            + "适合用于隔离上下文与 Token 消耗，并完成特定的复杂任务，因为它拥有与主代理完全相同的全部能力。";
+    private static final String GENERAL_PURPOSE_DESC_EN = "General-purpose agent for researching complex questions, searching for files and content, "
+            + "and executing multi-step tasks. This agent has access to all tools as the main agent. "
+            + "The general-purpose agent is suitable for isolating context and token consumption, "
+            + "and completing specific complex tasks";
 
     /**
      * HarnessFactory.
@@ -59,34 +59,83 @@ public final class HarnessFactory {
     /**
      * createDeepAgent.
      * 
-     * @param card card
-     * @param config config
+     * @param card      card
+     * @param config    config
      * @param workspace workspace
      * @return the result
      * @since 0.1.7
      */
     public static DeepAgent createDeepAgent(AgentCard card, DeepAgentConfig config, Workspace workspace) {
-        AgentCard effectiveCard =
-            card != null ? card : AgentCard.builder().name("deep_agent").description("DeepAgent instance").build();
+        return createDeepAgent(card, config, workspace, new ApplicationStorageScope());
+    }
+
+    public static DeepAgent createDeepAgent(AgentCard card, DeepAgentConfig config, Workspace workspace,
+            ApplicationStorageScope storageScope) {
+        AgentCard effectiveCard = card != null ? card
+                : AgentCard.builder().name("deep_agent").description("DeepAgent instance").build();
         ensureCardIdentity(effectiveCard);
         DeepAgentConfig effectiveConfig = enrichConfig(effectiveCard, config, workspace);
         Workspace effectiveWorkspace = resolveWorkspace(effectiveConfig, workspace);
         registerToolInstances(effectiveConfig.getTools());
-        DeepAgent agent = new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace);
-        injectKvStore(agent, effectiveConfig);
+        DeepAgent agent = new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace, storageScope);
+        injectKvStore(agent, effectiveConfig, storageScope);
         return agent;
     }
 
-    private static void injectKvStore(DeepAgent agent, DeepAgentConfig config) {
-        Map<String, Object> kvStoreConfig = config.getKvStoreConfig();
-        Object typeValue = kvStoreConfig == null ? null : kvStoreConfig.get("type");
-        if (!(typeValue instanceof String type)) {
+    private static void injectKvStore(DeepAgent agent, DeepAgentConfig config, ApplicationStorageScope scope) {
+        Map<String, Object> input = config.getKvStoreConfig();
+        if (input == null || input.isEmpty()) {
+            if ("kv".equals(config.getTodoStorageType()) && scope.kvStores().contains("default")) {
+                agent.setKvStore(scope.kvStores().resolve("default"));
+            }
             return;
         }
-        Map<String, Object> conf = kvStoreConfig.get("conf") instanceof Map
-            ? (Map<String, Object>) kvStoreConfig.get("conf") : Map.of();
-        BaseKVStore kvStore = KVStoreFactory.create(type, conf);
-        agent.setKvStore(kvStore);
+        Object rawConf = input.get("conf");
+        if (rawConf != null && !(rawConf instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException("KV conf must be a map");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> conf = rawConf == null ? Map.of() : (Map<String, Object>) rawConf;
+        Object ref = input.containsKey("storeRef") ? input.get("storeRef") : conf.get("storeRef");
+        if (input.containsKey("storeRef") || conf.containsKey("storeRef")) {
+            if (input.containsKey("storeRef") && conf.containsKey("storeRef")
+                    && !java.util.Objects.equals(input.get("storeRef"), conf.get("storeRef"))) {
+                throw new IllegalArgumentException("Conflicting storeRef values");
+            }
+            if (!(ref instanceof String name) || name.isBlank()) {
+                throw new IllegalArgumentException("storeRef must be a nonblank string");
+            }
+            if (conf.keySet().stream().anyMatch(k -> !"storeRef".equals(k)) || input.containsKey("name")) {
+                throw new IllegalArgumentException("storeRef conflicts with connection configuration or name");
+            }
+            agent.setKvStore(scope.kvStores().resolve(name));
+            return;
+        }
+        if (!(input.get("type") instanceof String type)) {
+            throw new IllegalArgumentException("KV type is required");
+        }
+        synchronized (scope.kvStores()) {
+            BaseKVStore store;
+            if (input.containsKey("name")) {
+                if (!(input.get("name") instanceof String name)) {
+                    throw new IllegalArgumentException("KV name must be a string");
+                }
+                store = scope.kvStores().create(name, type, conf);
+            } else if (conf.isEmpty() && scope.kvStores().contains("default")) {
+                store = scope.kvStores().resolve("default");
+            } else {
+                store = KVStoreFactory.create(type, conf);
+                if (!scope.kvStores().contains("default")) {
+                    scope.kvStores().register("default", store);
+                }
+            }
+            agent.setKvStore(store);
+        }
+    }
+
+    /** Create an independent Agent in a caller-provided application scope. */
+    public static DeepAgent createDeepAgent(DeepAgentConfig config, ApplicationStorageScope scope) {
+        return createDeepAgent(null, config, null, scope);
     }
 
     /**
@@ -104,10 +153,10 @@ public final class HarnessFactory {
     /**
      * createDeepAgent.
      * 
-     * @param card card
-     * @param config config
-     * @param workspace workspace
-     * @param permissions permissions
+     * @param card           card
+     * @param config         config
+     * @param workspace      workspace
+     * @param permissions    permissions
      * @param permissionHost permissionHost
      * @return the result
      * @since 0.1.7
@@ -123,8 +172,8 @@ public final class HarnessFactory {
     /**
      * enrichConfig.
      * 
-     * @param card card
-     * @param config config
+     * @param card      card
+     * @param config    config
      * @param workspace workspace
      * @return the result
      * @since 0.1.7
@@ -168,11 +217,11 @@ public final class HarnessFactory {
             if (registered instanceof SysOperation existing) {
                 sysOperation = existing;
             } else {
-                SysOperationCard sysOperationCard =
-                    SysOperationCard.builder().id(sysOpId).name(sysOpId).mode(OperationMode.LOCAL)
-                            .workConfig(LocalWorkConfig.builder().workDir(effectiveWorkspace.root().toString())
-                                    .restrictToSandbox(source.isRestrictToWorkDir()).build())
-                            .build();
+                SysOperationCard sysOperationCard = SysOperationCard.builder().id(sysOpId).name(sysOpId)
+                        .mode(OperationMode.LOCAL)
+                        .workConfig(LocalWorkConfig.builder().workDir(effectiveWorkspace.root().toString())
+                                .restrictToSandbox(source.isRestrictToWorkDir()).build())
+                        .build();
                 Runner.resourceMgr().addSysOperation(sysOperationCard, card.getId());
                 Object added = Runner.resourceMgr().getSysOperation(sysOpId, null, TagMatchStrategy.ALL);
                 sysOperation = added instanceof SysOperation addedSysOperation
@@ -207,13 +256,13 @@ public final class HarnessFactory {
                 .tenantDataRoot(source.getTenantDataRoot())
                 .todoStorageType(source.getTodoStorageType())
                 .sessionStoreType(source.getSessionStoreType())
-                .kvStoreConfig(source.getKvStoreConfig()).build();
+                .kvStoreConfig(source.getKvStoreConfig()).todoStorageConfig(source.getTodoStorageConfig()).build();
     }
 
     /**
      * resolveWorkspace.
      * 
-     * @param config config
+     * @param config    config
      * @param workspace workspace
      * @return the result
      * @since 0.1.7
@@ -250,7 +299,7 @@ public final class HarnessFactory {
      * resolveLanguage.
      * 
      * @param configLanguage configLanguage
-     * @param workspace workspace
+     * @param workspace      workspace
      * @return the result
      * @since 0.1.7
      */
@@ -288,9 +337,9 @@ public final class HarnessFactory {
      * injectGeneralPurposeSubagent.
      * 
      * @param subagents subagents
-     * @param language language
-     * @param source source
-     * @param tools tools
+     * @param language  language
+     * @param source    source
+     * @param tools     tools
      * @since 0.1.7
      */
     private static void injectGeneralPurposeSubagent(List<Object> subagents, String language, DeepAgentConfig source,
@@ -311,8 +360,8 @@ public final class HarnessFactory {
         addDefaultRailIfAbsent(subagentRails, SysOperationRail.class, SysOperationRail::new);
 
         String resolvedLanguage = resolveLanguage(language, null);
-        String description =
-            "en".equalsIgnoreCase(resolvedLanguage) ? GENERAL_PURPOSE_DESC_EN : GENERAL_PURPOSE_DESC_CN;
+        String description = "en".equalsIgnoreCase(resolvedLanguage) ? GENERAL_PURPOSE_DESC_EN
+                : GENERAL_PURPOSE_DESC_CN;
         subagents.add(0,
                 SubAgentConfig.builder()
                         .agentCard(AgentCard.builder().name(GENERAL_PURPOSE_NAME).description(description).build())
@@ -352,7 +401,7 @@ public final class HarnessFactory {
     /**
      * addDefaultRailIfAbsent.
      * 
-     * @param rails rails
+     * @param rails    rails
      * @param railType railType
      * @param supplier supplier
      * @since 0.1.7
@@ -368,7 +417,7 @@ public final class HarnessFactory {
     /**
      * addSkillUseRailIfAbsent.
      * 
-     * @param rails rails
+     * @param rails  rails
      * @param source source
      * @since 0.1.7
      */

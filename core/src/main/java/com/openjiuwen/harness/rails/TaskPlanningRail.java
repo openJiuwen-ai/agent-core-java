@@ -24,7 +24,6 @@ import com.openjiuwen.harness.prompts.sections.tools.ToolMetadataRegistry;
 import com.openjiuwen.harness.task_loop.TaskIterationContext;
 import com.openjiuwen.harness.task_loop.TaskPlan;
 import com.openjiuwen.harness.task_loop.TaskPlanSnapshot;
-import com.openjiuwen.harness.tools.FileTodoStorage;
 import com.openjiuwen.harness.tools.TodoStorage;
 import com.openjiuwen.harness.tools.TodoStorageFactory;
 import com.openjiuwen.harness.tools.TodoTool;
@@ -175,30 +174,66 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
             Map<String, Object> conf = buildTodoStorageConfig(deepAgent, todoStorageType);
             return TodoStorageFactory.create(todoStorageType, conf);
         }
-        if ("kv".equals(todoStorageType)) {
-            Loggers.TOOL.warning("todoStorageType is 'kv' but no provider registered, "
-                    + "falling back to file storage");
-        }
-        return new FileTodoStorage(deepAgent.getWorkspace().root().resolve(".todo"));
+        throw new IllegalArgumentException("No TodoStorage provider registered for type: " + todoStorageType);
     }
 
     private static Map<String, Object> buildTodoStorageConfig(DeepAgent deepAgent, String todoStorageType) {
         Map<String, Object> conf = new HashMap<>();
+        Map<String, Object> configured = deepAgent.getConfig().getTodoStorageConfig();
+        if (configured != null) {
+            conf.putAll(configured);
+        }
         if (!"kv".equals(todoStorageType)) {
-            conf.put("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
+            conf.putIfAbsent("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
             return conf;
         }
-        BaseKVStore kvStore = deepAgent.getKvStore();
-        if (kvStore != null) {
-            conf.put("kvStoreType", "shared");
-            conf.put("sharedKvStore", kvStore);
-            return conf;
+        synchronized (deepAgent.getStorageScope().kvStores()) {
+            BaseKVStore store = resolveTodoStore(deepAgent, conf);
+            if (store != null) {
+                conf.put("sharedKvStore", store);
+            }
         }
-        Map<String, Object> kvConf = deepAgent.getConfig().getKvStoreConfig();
-        if (kvConf != null) {
-            conf.put("kvStoreConf", kvConf);
-        }
+
         return conf;
+    }
+
+    private static BaseKVStore resolveTodoStore(DeepAgent agent, Map<String, Object> conf) {
+        var stores = agent.getStorageScope().kvStores();
+        boolean directStore = conf.containsKey("sharedKvStore");
+        boolean dedicatedConnection = conf.containsKey("kvStoreConf") || conf.containsKey("kvStoreType");
+        if (conf.containsKey("storeRef")) {
+            if (directStore || dedicatedConnection) {
+                throw new IllegalArgumentException("Todo storeRef conflicts with direct Store or connection");
+            }
+            Object reference = conf.remove("storeRef");
+            if (!(reference instanceof String name) || name.isBlank()) {
+                throw new IllegalArgumentException("Todo storeRef must be nonblank");
+            }
+            return stores.resolve(name);
+        }
+        if (directStore) {
+            return null; // The provider validates the existing sharedKvStore entry.
+        }
+        if (!dedicatedConnection) {
+            if (agent.getKvStore() != null) {
+                return agent.getKvStore();
+            }
+            if (stores.contains("default")) {
+                return stores.resolve("default");
+            }
+        }
+        Object type = conf.getOrDefault("kvStoreType", "in_memory");
+        Object args = conf.getOrDefault("kvStoreConf", Map.of());
+        if (!(type instanceof String) || !(args instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException("Todo KV type must be a string and configuration must be a map");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> kvConf = (Map<String, Object>) args;
+        BaseKVStore store = com.openjiuwen.spi.store.KVStoreFactory.create((String) type, kvConf);
+        if (!stores.contains("default")) {
+            stores.register("default", store);
+        }
+        return store;
     }
 
     /**
