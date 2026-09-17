@@ -17,6 +17,7 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.runner.Runner;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -459,7 +460,7 @@ public class CurrentRoundCompressor extends ContextProcessor {
         this.accumulatedSummaryTokenLimit = config.getAccumulatedSummaryTokenLimit();
         this.summaryMergeMinBlocks = config.getSummaryMergeMinBlocks();
         this.priorContextWindowSize = config.getPriorContextWindowSize();
-        this.model = new Model(config.getModelClient(), config.getModel());
+        this.model = Runner.resourceMgr().resolveModel(null, config.getModelClient(), config.getModel());
     }
 
     String wrapMemoryBlock(String summary) {

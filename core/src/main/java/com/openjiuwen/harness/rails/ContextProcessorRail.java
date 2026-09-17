@@ -14,23 +14,37 @@ import com.openjiuwen.core.context.processor.compressor.MicroCompactProcessorCon
 import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressorConfig;
 import com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloaderConfig;
 import com.openjiuwen.core.context.processor.offloader.ToolResultBudgetProcessorConfig;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.common.eventbus.EventBus;
+import com.openjiuwen.core.common.eventbus.EventBusHolder;
+import com.openjiuwen.core.common.eventbus.Subscription;
+import com.openjiuwen.core.common.eventbus.events.ModelChangeEvent;
+import com.openjiuwen.core.common.eventbus.events.ModelUpdatedEvent;
+import com.openjiuwen.core.common.eventbus.events.ModelRemovedEvent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Public class ContextProcessorRail used by the Java parity implementation.
@@ -39,6 +53,7 @@ import java.util.Set;
  */
 public class ContextProcessorRail extends DeepAgentRail {
     private static final String OFFLOAD_SECTION = "offload";
+    private static final String DEFAULT_MODEL_KEY = "__default__";
     private final boolean isPreset;
     private final List<String> processorKeys;
     private final boolean isSessionMemoryEnabled;
@@ -51,6 +66,56 @@ public class ContextProcessorRail extends DeepAgentRail {
      */
     private final List<ContextEngine.ProcessorSpec> installedProcessors = new ArrayList<>();
     private DeepAgent owner;
+
+    /**
+     * ProcessorSpec cache keyed by modelId.
+     * <p>
+     * - maximumSize=100: at most 100 models' specs are cached
+     * - expireAfterAccess=60min: entries not read in 60 minutes are evicted
+     * <p>
+     * LoadingCache is thread-safe; concurrent getUnchecked(key) calls for the
+     * same key will block on the first load and share the result.
+     *
+     * @since 0.1.16
+     */
+    private final LoadingCache<String, List<ContextEngine.ProcessorSpec>> specsCache =
+        CacheBuilder.newBuilder()
+            .maximumSize(100)
+            .expireAfterAccess(60, TimeUnit.MINUTES)
+            .build(new CacheLoader<>() {
+                @Override
+                public List<ContextEngine.ProcessorSpec> load(String modelId) {
+                    ReActAgentConfig agentConfig = (owner != null
+                        && owner.getAgent().getConfig() instanceof ReActAgentConfig cfg)
+                        ? cfg : null;
+                    ModelRequestConfig modelConfig = agentConfig != null
+                        ? agentConfig.getModelConfigObj() : null;
+                    ModelClientConfig modelClientConfig = agentConfig != null
+                        ? agentConfig.getModelClientConfig() : null;
+                    // If modelId is not the default placeholder, resolve via ModelMgr
+                    if (!DEFAULT_MODEL_KEY.equals(modelId)) {
+                        Model resolved = Runner.resourceMgr().resolveModel(
+                            modelId, modelClientConfig, modelConfig);
+                        if (resolved != null) {
+                            modelConfig = resolved.getModelConfig();
+                            modelClientConfig = resolved.getModelClientConfig();
+                        }
+                    }
+                    return buildProcessorSpecs(agentConfig, modelConfig, modelClientConfig);
+                }
+            });
+
+    /**
+     * EventBus subscriptions for model change events. Stored so they can be
+     * cancelled in {@link #uninit(Object)}.
+     */
+    private Subscription modelUpdatedSubscription;
+    private Subscription modelRemovedSubscription;
+
+    /**
+     * Track which modelId's specs are currently installed, to avoid redundant rebuilds.
+     */
+    private String lastInstalledModelKey = null;
 
     /**
      * ContextProcessorRail.
@@ -110,6 +175,14 @@ public class ContextProcessorRail extends DeepAgentRail {
             specs = buildProcessorSpecs(null);
             installedProcessors.addAll(specs);
         }
+        lastInstalledModelKey = DEFAULT_MODEL_KEY;
+
+        // Subscribe to model change events via EventBus to invalidate cache on update/remove
+        EventBus eventBus = EventBusHolder.getInstance();
+        modelUpdatedSubscription = eventBus.subscribe(ModelUpdatedEvent.class,
+            e -> invalidateSpecsCache(e.getModelId()));
+        modelRemovedSubscription = eventBus.subscribe(ModelRemovedEvent.class,
+            e -> invalidateSpecsCache(e.getModelId()));
     }
 
     /**
@@ -128,6 +201,16 @@ public class ContextProcessorRail extends DeepAgentRail {
             deepAgent.getAgent().getPromptBuilder().removeSection(OFFLOAD_SECTION);
         }
         installedProcessors.clear();
+        invalidateAllSpecsCache();
+        // Cancel EventBus subscriptions
+        if (modelUpdatedSubscription != null) {
+            modelUpdatedSubscription.cancel();
+            modelUpdatedSubscription = null;
+        }
+        if (modelRemovedSubscription != null) {
+            modelRemovedSubscription.cancel();
+            modelRemovedSubscription = null;
+        }
         owner = null;
     }
 
@@ -151,6 +234,68 @@ public class ContextProcessorRail extends DeepAgentRail {
     @Override
     public void beforeModelCall(AgentCallbackContext ctx) {
         injectOffloadSection();
+
+        // Dynamic model: if a dynamicModelId is set, rebuild processor specs
+        // from cache (or build-and-cache on first use for this modelId)
+        String dynamicModelId = ctx.getDynamicModelId();
+        String cacheKey = cacheKey(dynamicModelId);
+
+        // Only rebuild if the active modelId differs from the one already installed
+        if (!Objects.equals(cacheKey, lastInstalledModelKey)) {
+            List<ContextEngine.ProcessorSpec> specs = specsCache.getUnchecked(cacheKey);
+            applyProcessorSpecs(specs);
+            lastInstalledModelKey = cacheKey;
+        }
+    }
+
+    /**
+     * Normalize a dynamicModelId into a cache key. null/blank → default key.
+     *
+     * @param dynamicModelId the dynamic model ID to normalize, may be null or blank
+     * @return the normalized cache key
+     */
+    private String cacheKey(String dynamicModelId) {
+        return (dynamicModelId == null || dynamicModelId.isBlank())
+            ? DEFAULT_MODEL_KEY
+            : dynamicModelId;
+    }
+
+    /**
+     * Apply a list of ProcessorSpecs to the agent's config.
+     *
+     * @param specs the processor specs to apply
+     */
+    private void applyProcessorSpecs(List<ContextEngine.ProcessorSpec> specs) {
+        if (owner == null) {
+            return;
+        }
+        installedProcessors.clear();
+        installedProcessors.addAll(specs);
+        if (owner.getAgent().getConfig() instanceof ReActAgentConfig config) {
+            config.configureContextProcessors(new ArrayList<>(installedProcessors));
+            owner.getAgent().configure(config);
+        }
+    }
+
+    /**
+     * Invalidate the cached ProcessorSpecs for the given modelId.
+     * Called when a model is updated or removed via ModelMgr.
+     *
+     * @param modelId the model ID whose specs should be invalidated; null clears the default
+     * @since 0.1.16
+     */
+    public void invalidateSpecsCache(String modelId) {
+        specsCache.invalidate(cacheKey(modelId));
+    }
+
+    /**
+     * Invalidate all cached ProcessorSpecs.
+     *
+     * @since 0.1.16
+     */
+    public void invalidateAllSpecsCache() {
+        specsCache.invalidateAll();
+        lastInstalledModelKey = null;
     }
 
     /**
@@ -317,9 +462,23 @@ public class ContextProcessorRail extends DeepAgentRail {
      * @since 0.1.7
      */
     private List<ContextEngine.ProcessorSpec> buildProcessorSpecs(ReActAgentConfig agentConfig) {
-        Map<String, ContextEngine.ProcessorSpec> specs = new LinkedHashMap<>();
         ModelRequestConfig modelConfig = agentConfig != null ? agentConfig.getModelConfigObj() : null;
         ModelClientConfig modelClientConfig = agentConfig != null ? agentConfig.getModelClientConfig() : null;
+        return buildProcessorSpecs(agentConfig, modelConfig, modelClientConfig);
+    }
+
+    /**
+     * buildProcessorSpecs with explicit model configs (for dynamic model support).
+     *
+     * @param agentConfig agentConfig
+     * @param modelConfig request-level model config
+     * @param modelClientConfig connection-level model config
+     * @return the result
+     * @since 0.1.16
+     */
+    private List<ContextEngine.ProcessorSpec> buildProcessorSpecs(ReActAgentConfig agentConfig,
+            ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+        Map<String, ContextEngine.ProcessorSpec> specs = new LinkedHashMap<>();
         if (isPreset) {
             if (isSessionMemoryEnabled) {
                 putSpec(specs, "ToolResultBudgetProcessor", ToolResultBudgetProcessorConfig.builder().build());
