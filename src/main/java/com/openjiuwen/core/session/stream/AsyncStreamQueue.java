@@ -67,9 +67,12 @@ public class AsyncStreamQueue {
 
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
+                // Count before offering: a concurrent receive() may drain the item the
+                // instant it lands, so incrementing after offer() can leave a permanent
+                // phantom count that stalls awaitDrain() on close().
+                unfinishedTasks.incrementAndGet();
                 boolean offered = streamQueue.offer(data, attemptTimeoutMs, TimeUnit.MILLISECONDS);
                 if (offered) {
-                    unfinishedTasks.incrementAndGet();
                     SESSION_LOGGER.debug(
                             "Stream data sent successfully, eventType={}, timeoutMs={}, attempt={}",
                             LogEventType.SESSION_STREAM_CHUNK.getValue(),
@@ -78,7 +81,8 @@ public class AsyncStreamQueue {
                     );
                     return;
                 }
-                SESSION_LOGGER.error(
+                unfinishedTasks.decrementAndGet();
+                SESSION_LOGGER.warn(
                         "Stream data send timeout, eventType={}, timeoutMs={}, attempt={}",
                         LogEventType.SESSION_STREAM_ERROR.getValue(),
                         attemptTimeoutMs,
@@ -86,6 +90,7 @@ public class AsyncStreamQueue {
                 );
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
+                unfinishedTasks.decrementAndGet();
                 SESSION_LOGGER.error(
                         "Stream data send interrupted, eventType={}, timeoutMs={}, attempt={}",
                         LogEventType.SESSION_STREAM_ERROR.getValue(),
@@ -114,12 +119,14 @@ public class AsyncStreamQueue {
         }
         while (!closed.get()) {
             try {
+                unfinishedTasks.incrementAndGet();
                 if (streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                    unfinishedTasks.incrementAndGet();
                     return;
                 }
+                unfinishedTasks.decrementAndGet();
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
+                unfinishedTasks.decrementAndGet();
                 return;
             }
         }
@@ -159,6 +166,14 @@ public class AsyncStreamQueue {
 
     public void close(long timeoutMs) {
         if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        // An empty queue has nothing to drain: any residual count is a phantom left
+        // behind by a consumer that stopped iterating mid-stream (cancellation,
+        // session reuse). Waiting for it would stall for the full timeout, so
+        // reset the accounting and return immediately.
+        if (streamQueue.isEmpty()) {
+            forceClear();
             return;
         }
         if (!awaitDrain(timeoutMs)) {
