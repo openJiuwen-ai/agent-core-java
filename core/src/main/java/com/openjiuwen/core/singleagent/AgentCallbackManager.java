@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.IsolatedActions;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -154,12 +155,14 @@ public class AgentCallbackManager {
         List<RailRegistration> registrations = railRegistrations.remove(rail);
         if (registrations != null) {
             for (RailRegistration registration : registrations) {
-                try {
+                // Isolation semantic: one callback's unregister failure
+                // must not stop the remaining callbacks of the rail.
+                IsolatedActions.runIsolated(() -> {
                     unregister(registration.event(), registration.callback());
-                } catch (Exception e) {
-                    Loggers.AGENT.error("[unregisterRail] rail '{}' callback unregister failed for '{}'; continue",
-                            railName(rail), registration.event(), e);
-                }
+                    return null;
+                }).ifPresent(failure -> Loggers.AGENT.error(
+                        "[unregisterRail] rail '{}' callback unregister failed for '{}'; continue",
+                        railName(rail), registration.event(), failure));
             }
         }
 
@@ -168,29 +171,33 @@ public class AgentCallbackManager {
     }
 
     private void unregisterRailTools(AgentRail rail, Object agent) {
-        try {
+        // Isolation semantic: rail tool metadata and the ability removal run
+        // user code and must not abort the rest of the destroy sequence.
+        IsolatedActions.runIsolated(() -> {
             if (rail.getTools() == null || rail.getTools().isEmpty()) {
-                return;
+                return null;
             }
             if (!(agent instanceof BaseAgent baseAgent)) {
-                return;
+                return null;
             }
             for (var toolCard : rail.getTools()) {
                 if (toolCard.getName() != null) {
                     baseAgent.getAbilityManager().remove(toolCard.getName());
                 }
             }
-        } catch (Exception e) {
-            Loggers.AGENT.error("[unregisterRail] rail '{}' tool-card removal failed; continue", railName(rail), e);
-        }
+            return null;
+        }).ifPresent(failure -> Loggers.AGENT.error(
+                "[unregisterRail] rail '{}' tool-card removal failed; continue", railName(rail), failure));
     }
 
     private static void uninitRail(AgentRail rail, Object agent) {
-        try {
+        // Isolation semantic: user rail code must not abort the remaining
+        // cleanup, so the failure is captured and only logged.
+        IsolatedActions.runIsolated(() -> {
             rail.uninit(agent);
-        } catch (Exception e) {
-            Loggers.AGENT.error("[unregisterRail] rail '{}' uninit failed; continue", railName(rail), e);
-        }
+            return null;
+        }).ifPresent(failure -> Loggers.AGENT.error("[unregisterRail] rail '{}' uninit failed; continue",
+                railName(rail), failure));
     }
 
     private static String railName(AgentRail rail) {
@@ -216,14 +223,13 @@ public class AgentCallbackManager {
     public void unregisterAllRails(Object agent) {
         List<AgentRail> rails = new ArrayList<>(railRegistrations.keySet());
         for (AgentRail rail : rails) {
-            try {
+            // Isolation semantic: rail metadata access (getTools/getPriority)
+            // runs user code and must not abort the remaining rails.
+            IsolatedActions.runIsolated(() -> {
                 unregisterRail(rail, agent);
-            } catch (Exception e) {
-                // Broad catch is the required batch-isolation semantic: rail
-                // metadata access (getTools/getPriority) runs user code and
-                // must not abort the remaining rails.
-                Loggers.AGENT.error("[unregisterAllRails] rail '{}' cleanup failed; continue", railName(rail), e);
-            }
+                return null;
+            }).ifPresent(failure -> Loggers.AGENT.error(
+                    "[unregisterAllRails] rail '{}' cleanup failed; continue", railName(rail), failure));
         }
     }
 

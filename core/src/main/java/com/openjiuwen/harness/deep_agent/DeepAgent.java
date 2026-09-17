@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.IsolatedActions;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.base.Tag;
@@ -175,7 +176,7 @@ public class DeepAgent implements AutoCloseable {
      * @since 0.1.16
      */
     @Getter(AccessLevel.NONE)
-    private boolean inFlightInit;
+    private boolean isInitInFlight;
 
     /**
      * Serializes lifecycle state transitions (init claim, commit,
@@ -884,13 +885,13 @@ public class DeepAgent implements AutoCloseable {
         try {
             runInitializationSequence();
             completeInitialization(true);
-        } catch (Exception failure) {
-            // Required rollback channel: any failure in
-            // the registration sequence must restore NEW so callers can
-            // retry; the broad catch is the semantic necessity here
-            // (G.ERR.02; exemption pending with core maintainers).
-            completeInitialization(false);
-            throw failure;
+        } finally {
+            if (isInitInFlight) {
+                // Required rollback channel: a sequence that did not commit
+                // must restore NEW so callers can retry; the original
+                // failure propagates unchanged.
+                completeInitialization(false);
+            }
         }
     }
 
@@ -932,9 +933,9 @@ public class DeepAgent implements AutoCloseable {
                 if (lifecycleState == LifecycleState.INITIALIZED) {
                     return false;
                 }
-                if (!inFlightInit) {
+                if (!isInitInFlight) {
                     lifecycleState = LifecycleState.INITIALIZING;
-                    inFlightInit = true;
+                    isInitInFlight = true;
                     return true;
                 }
                 try {
@@ -995,15 +996,15 @@ public class DeepAgent implements AutoCloseable {
      * the commit does not override it and the rollback keeps it, the
      * destroy sequence owns the cleanup of whatever was registered.
      *
-     * @param success whether the registration sequence completed
+     * @param isSuccessful whether the registration sequence completed
      */
-    private void completeInitialization(boolean success) {
+    private void completeInitialization(boolean isSuccessful) {
         lifecycleLock.lock();
         try {
             if (lifecycleState == LifecycleState.INITIALIZING) {
-                lifecycleState = success ? LifecycleState.INITIALIZED : LifecycleState.NEW;
+                lifecycleState = isSuccessful ? LifecycleState.INITIALIZED : LifecycleState.NEW;
             }
-            inFlightInit = false;
+            isInitInFlight = false;
             initDone.signalAll();
         } finally {
             lifecycleLock.unlock();
@@ -2774,20 +2775,18 @@ public class DeepAgent implements AutoCloseable {
      * Runs one destroy step with per-step isolation: the
      * one-shot guard is already consumed, so every step must execute even
      * when an earlier one fails; the failure is recorded and reported at
-     * the end. The broad {@code Exception} catch is the required isolation
-     * semantic (rail/tool cleanup runs user code outside core control).
+     * the end. Failures are captured without catching exception base
+     * classes (rail/tool cleanup runs user code outside core control).
      *
      * @param step step name for logging and the residue report
      * @param action the destructive action to run
      * @since 0.1.16
      */
     private void runDestructiveStep(String step, Runnable action) {
-        try {
-            action.run();
-        } catch (Exception e) {
-            Loggers.AGENT.error("[destroy] step '{}' failed; continue", step, e);
+        IsolatedActions.runIsolated(action).ifPresent(failure -> {
+            Loggers.AGENT.error("[destroy] step '{}' failed; continue", step, failure);
             destroyStepFailures.add(step);
-        }
+        });
     }
 
     private void stopTmpFileCleanerSafely() {
@@ -2842,7 +2841,7 @@ public class DeepAgent implements AutoCloseable {
             }
             LifecycleState previousState = lifecycleState;
             lifecycleState = LifecycleState.DESTROYED;
-            while (inFlightInit) {
+            while (isInitInFlight) {
                 try {
                     initDone.await();
                 } catch (InterruptedException e) {
@@ -2874,16 +2873,14 @@ public class DeepAgent implements AutoCloseable {
         // Snapshot first: unregisterRail mutates the underlying collections.
         for (Object rail : List.of(registeredRails.toArray())) {
             if (rail instanceof DeepAgentRail deepAgentRail) {
-                try {
+                IsolatedActions.runIsolated(() -> {
                     deepAgentRail.uninit(this);
-                } catch (Exception e) {
-                    // Isolation semantic: user rail code must not abort the
-                    // destroy sequence (G.ERR.02; exemption pending with
-                    // core maintainers).
+                    return null;
+                }).ifPresent(failure -> {
                     Loggers.AGENT.error("[destroy-rails] deep rail '{}' uninit failed; continue",
-                            rail.getClass().getName(), e);
+                            rail.getClass().getName(), failure);
                     destroyStepFailures.add("rails:" + rail.getClass().getSimpleName());
-                }
+                });
             }
         }
         registeredRails.clear();
@@ -2903,13 +2900,14 @@ public class DeepAgent implements AutoCloseable {
         // Snapshot first: unregisterHarnessTool mutates the underlying collection.
         for (Object tool : List.of(registeredTools.toArray())) {
             if (tool instanceof Tool toolInstance) {
-                try {
+                IsolatedActions.runIsolated(() -> {
                     unregisterHarnessTool(toolInstance);
-                } catch (Exception e) {
+                    return null;
+                }).ifPresent(failure -> {
                     Loggers.AGENT.error("[destroy-tools] tool '{}' release failed; continue",
-                            tool.getClass().getName(), e);
+                            tool.getClass().getName(), failure);
                     destroyStepFailures.add("tools:" + tool.getClass().getSimpleName());
-                }
+                });
             }
         }
         registeredTools.clear();
