@@ -12,7 +12,6 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
-import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.SessionContextHolder;

@@ -12,12 +12,13 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Supplier;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Unified entry point for all model resource operations.
@@ -173,20 +174,20 @@ public class ModelMgr extends AbstractManager<Model> {
      * <p>
      * If a default model ID has been set, the model for that ID is returned.
      * Otherwise, if at least one model is registered, the first one is returned.
-     * If no models are registered, null is returned.
+     * If no models are registered, an empty Optional is returned.
      *
-     * @return the default Model instance, or null
+     * @return an Optional containing the default Model, or empty if none available
      * @since 0.1.16
      */
-    public Model getDefaultModel() {
+    public Optional<Model> getDefaultModel() {
         if (defaultModelId != null) {
-            return getResource(defaultModelId);
+            return Optional.ofNullable(getResource(defaultModelId));
         }
         if (providers.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         String firstId = providers.keySet().iterator().next();
-        return getResource(firstId);
+        return Optional.ofNullable(getResource(firstId));
     }
 
     /**
@@ -246,9 +247,9 @@ public class ModelMgr extends AbstractManager<Model> {
         }
 
         // 2. Try default model
-        Model defaultModel = getDefaultModel();
-        if (defaultModel != null) {
-            return defaultModel;
+        Optional<Model> defaultModel = getDefaultModel();
+        if (defaultModel.isPresent()) {
+            return defaultModel.get();
         }
 
         // 3. Fallback: construct from config

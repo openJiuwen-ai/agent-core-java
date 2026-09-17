@@ -5,7 +5,6 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,7 +39,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,7 +55,6 @@ import java.util.function.Supplier;
  */
 @DisplayName("ReActAgent getLlm(ctx) Dynamic Model Tests (UT-E)")
 class ReActAgentDynamicModelTest {
-
     private static final String TEST_PROVIDER = "ut-react-dyn-test";
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
     private static final String PREFIX = "dm-ut-e-" + UUID.randomUUID() + "-";
@@ -92,7 +89,7 @@ class ReActAgentDynamicModelTest {
                 if (Runner.resourceMgr().listModelIds().contains(modelId)) {
                     Runner.resourceMgr().removeModel(modelId, Tag.GLOBAL, TagMatchStrategy.ALL, true);
                 }
-            } catch (Exception ignored) {
+            } catch (RuntimeException ignored) {
                 // Best effort cleanup
             }
         }
@@ -164,7 +161,7 @@ class ReActAgentDynamicModelTest {
 
         @Override
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                String negativePrompt, int n, boolean isPromptExtend, boolean isWatermark, int seed,
                 Map<String, Object> kwargs) {
             return new ImageGenerationResponse();
         }
@@ -177,7 +174,7 @@ class ReActAgentDynamicModelTest {
 
         @Override
         public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String model, String size, String resolution, int duration, boolean isPromptExtend, boolean isWatermark,
                 String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             return new VideoGenerationResponse();
         }
@@ -188,7 +185,6 @@ class ReActAgentDynamicModelTest {
     @Nested
     @DisplayName("getLlm(ctx) dynamic resolution")
     class GetLlmCtx {
-
         @Test
         @DisplayName("UT-E-01: getLlm(ctx) resolves dynamic model when registered")
         void getLlmCtx_resolvesDynamic() {
@@ -245,26 +241,12 @@ class ReActAgentDynamicModelTest {
         @Test
         @DisplayName("UT-E-04: getLlm(ctx) with no registered models falls back to lazy load")
         void getLlmCtx_noMgrModelFallsBackLazy() {
-            // Use a fresh ReActAgent with no models registered for its dynamicModelId
-            // Note: the global Runner.resourceMgr() may have models from other tests,
-            // but with a non-null dynamicModelId that doesn't match anything and a
-            // default that exists, it should return the default.
-            // To truly test the fallback path, we need a ctx with null dynamicModelId
-            // and ensure the agent's config has a modelClientConfig for lazy load.
-            // Since ReActAgent creates a default config in constructor, it won't have
-            // a modelClientConfig — so getLlm() would throw IllegalStateException,
-            // and getLlm(ctx) would also throw from resolveModel (if no models registered).
-            //
-            // Instead, we test the fallback path by providing a ctx with null
-            // dynamicModelId and verify the agent returns a model from ModelMgr
-            // (default path) rather than throwing.
+            // With null dynamicModelId, getLlm(ctx) should resolve via ModelMgr (default path).
+            // If no models registered, resolveModel throws IllegalStateException,
+            // proving the fallback path was attempted.
             ReActAgent agent = newAgent();
             AgentCallbackContext ctx = newCtx(null);
 
-            // If ModelMgr has models, resolveModel returns the default.
-            // If no models and no fallback config, resolveModel throws IllegalStateException,
-            // and getLlm(ctx) falls through to getLlm() which also throws.
-            // We verify it doesn't return null or crash unexpectedly.
             try {
                 Model resolved = agent.getLlm(ctx);
                 assertNotNull(resolved);
@@ -288,7 +270,9 @@ class ReActAgentDynamicModelTest {
 
             int threads = 2;
             int iterations = 50;
-            ExecutorService pool = Executors.newFixedThreadPool(threads);
+            ExecutorService pool = new java.util.concurrent.ThreadPoolExecutor(
+                    threads, threads, 0L, TimeUnit.MILLISECONDS,
+                    new java.util.concurrent.LinkedBlockingQueue<>());
             CountDownLatch start = new CountDownLatch(1);
             ConcurrentHashMap<String, AtomicInteger> resultCounts = new ConcurrentHashMap<>();
 
@@ -310,18 +294,19 @@ class ReActAgentDynamicModelTest {
                         }
                     } catch (AssertionError e) {
                         // Re-throw to fail the test
-                        throw new RuntimeException(e);
+                        throw e;
                     } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
+                        // Thread interrupted — record as a test failure
+                        throw new AssertionError("Thread interrupted", e);
                     }
                 });
             }
 
             start.countDown();
             pool.shutdown();
-            boolean done = pool.awaitTermination(30, TimeUnit.SECONDS);
+            boolean isDone = pool.awaitTermination(30, TimeUnit.SECONDS);
 
-            assertTrue(done, "All threads should complete within timeout");
+            assertTrue(isDone, "All threads should complete within timeout");
             assertEquals(2, resultCounts.size(),
                     "Both model names should appear in results: " + resultCounts.keySet());
             assertEquals(iterations, resultCounts.get("model-1").get(),

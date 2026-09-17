@@ -102,6 +102,7 @@ public class DeepAgentConfig {
     private String skillMode = "all";
     private Object model;
     private Object backend;
+
     /**
      * Multi-model configuration list. When non-empty, supports dynamic model selection
      * per query. Must have exactly one default entry; if none is marked default, the

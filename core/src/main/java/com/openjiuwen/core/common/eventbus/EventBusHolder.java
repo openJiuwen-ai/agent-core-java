@@ -17,7 +17,6 @@ package com.openjiuwen.core.common.eventbus;
  * @since 0.1.16
  */
 public final class EventBusHolder {
-
     private static volatile EventBus instance = new DefaultEventBus();
 
     private EventBusHolder() {

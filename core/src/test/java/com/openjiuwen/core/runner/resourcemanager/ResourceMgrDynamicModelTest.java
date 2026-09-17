@@ -45,12 +45,10 @@ import java.util.function.Supplier;
  */
 @DisplayName("ResourceMgr Dynamic Model Tests (UT-B)")
 class ResourceMgrDynamicModelTest {
-
-    private ResourceMgr resourceMgr;
-
     private static final String PREFIX = "dm-ut-b-" + UUID.randomUUID() + "-";
     private static final String TEST_PROVIDER = "ut-resmgr-model-test";
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
+    private ResourceMgr resourceMgr;
 
     @BeforeEach
     void setup() {
@@ -117,7 +115,7 @@ class ResourceMgrDynamicModelTest {
 
         @Override
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                String negativePrompt, int n, boolean isPromptExtend, boolean isWatermark, int seed,
                 Map<String, Object> kwargs) {
             return new ImageGenerationResponse();
         }
@@ -130,7 +128,7 @@ class ResourceMgrDynamicModelTest {
 
         @Override
         public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String model, String size, String resolution, int duration, boolean isPromptExtend, boolean isWatermark,
                 String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             return new VideoGenerationResponse();
         }
@@ -141,7 +139,6 @@ class ResourceMgrDynamicModelTest {
     @Nested
     @DisplayName("addModel facade")
     class AddModel {
-
         @Test
         @DisplayName("UT-B-01: addModel succeeds once")
         void addModel_okOnce() {
@@ -163,7 +160,9 @@ class ResourceMgrDynamicModelTest {
 
             assertTrue(result2.isError());
             // Original provider unchanged
-            Model model = (Model) resourceMgr.getModel(id);
+            Object retrieved = resourceMgr.getModel(id);
+            assertTrue(retrieved instanceof Model);
+            Model model = (Model) retrieved;
             assertNotNull(model);
             assertEquals("model-1", model.getModelConfig().getModelName());
         }
@@ -181,8 +180,12 @@ class ResourceMgrDynamicModelTest {
             resourceMgr.addModel(id, countingSupplier, Tag.GLOBAL);
 
             // Calling getModel should trigger supplier exactly once
-            Model m1 = (Model) resourceMgr.getModel(id);
-            Model m2 = (Model) resourceMgr.getModel(id);
+            Object obj1 = resourceMgr.getModel(id);
+            Object obj2 = resourceMgr.getModel(id);
+            assertTrue(obj1 instanceof Model);
+            assertTrue(obj2 instanceof Model);
+            Model m1 = (Model) obj1;
+            Model m2 = (Model) obj2;
 
             assertNotNull(m1);
             assertNotNull(m2);
@@ -195,18 +198,21 @@ class ResourceMgrDynamicModelTest {
     @Nested
     @DisplayName("updateModel facade")
     class UpdateModel {
-
         @Test
         @DisplayName("UT-B-04: updateModel overwrites existing")
         void updateModel_overwrites() {
             String id = PREFIX + "m1";
             resourceMgr.addModel(id, mockSupplier("model-1"), Tag.GLOBAL);
-            Model original = (Model) resourceMgr.getModel(id);
+            Object origObj = resourceMgr.getModel(id);
+            assertTrue(origObj instanceof Model);
+            Model original = (Model) origObj;
 
             Result<String> result = resourceMgr.updateModel(id, mockSupplier("model-1-v2"), Tag.GLOBAL);
 
             assertTrue(result.isOk());
-            Model updated = (Model) resourceMgr.getModel(id);
+            Object updatedObj = resourceMgr.getModel(id);
+            assertTrue(updatedObj instanceof Model);
+            Model updated = (Model) updatedObj;
             assertNotNull(updated);
             assertEquals("model-1-v2", updated.getModelConfig().getModelName());
         }
@@ -215,7 +221,6 @@ class ResourceMgrDynamicModelTest {
     @Nested
     @DisplayName("removeModel facade")
     class RemoveModel {
-
         @Test
         @DisplayName("UT-B-05: removeModel on last model returns error (not throws)")
         void removeModel_errorWhenLast() {
@@ -241,7 +246,6 @@ class ResourceMgrDynamicModelTest {
     @Nested
     @DisplayName("addModels batch")
     class AddModels {
-
         @Test
         @DisplayName("UT-B-06: addModels registers multiple entries")
         void addModels_batch() {
@@ -262,7 +266,6 @@ class ResourceMgrDynamicModelTest {
     @Nested
     @DisplayName("resolveModel facade")
     class ResolveModel {
-
         @Test
         @DisplayName("UT-B-07: resolveModel delegates to ModelMgr")
         void resolveModel_delegates() {

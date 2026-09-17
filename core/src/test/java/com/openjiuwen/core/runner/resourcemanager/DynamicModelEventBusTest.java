@@ -6,8 +6,6 @@ package com.openjiuwen.core.runner.resourcemanager;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,12 +48,10 @@ import java.util.function.Supplier;
  */
 @DisplayName("EventBus Model Events & Cache Invalidation (UT-C)")
 class DynamicModelEventBusTest {
-
-    private DefaultEventBus eventBus;
-
     private static final String TEST_PROVIDER = "ut-eventbus-test";
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
     private static final String PREFIX = "dm-ut-c-" + UUID.randomUUID() + "-";
+    private DefaultEventBus eventBus;
 
     @BeforeEach
     void setup() {
@@ -122,7 +118,7 @@ class DynamicModelEventBusTest {
 
         @Override
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                String negativePrompt, int n, boolean isPromptExtend, boolean isWatermark, int seed,
                 Map<String, Object> kwargs) {
             return new ImageGenerationResponse();
         }
@@ -135,7 +131,7 @@ class DynamicModelEventBusTest {
 
         @Override
         public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String model, String size, String resolution, int duration, boolean isPromptExtend, boolean isWatermark,
                 String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             return new VideoGenerationResponse();
         }
@@ -146,7 +142,6 @@ class DynamicModelEventBusTest {
     @Nested
     @DisplayName("Event Publishing")
     class EventPublishing {
-
         @Test
         @DisplayName("UT-C-01: ModelUpdatedEvent carries modelId")
         void modelUpdatedEvent_carriesModelId() {
@@ -198,7 +193,6 @@ class DynamicModelEventBusTest {
     @Nested
     @DisplayName("Subscription lifecycle")
     class SubscriptionLifecycle {
-
         @Test
         @DisplayName("UT-C-04: unsubscribed subscribers no longer receive events")
         void unsubscribe_cancelsDelivery() {
@@ -220,7 +214,6 @@ class DynamicModelEventBusTest {
     @Nested
     @DisplayName("Cache invalidation (via direct API)")
     class CacheInvalidation {
-
         /**
          * UT-C-05: invalidateSpecsCache(null) should be equivalent to
          * invalidating the "__default__" key. Since ContextProcessorRail

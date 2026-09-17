@@ -84,6 +84,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -422,20 +423,20 @@ public class DeepAgent implements AutoCloseable {
         if (modelObj == null || backendObj == null) {
             return;
         }
-        ModelRequestConfig modelReqConfig = extractModelRequestConfig(modelObj);
-        ModelClientConfig modelClientConfig = extractModelClientConfig(backendObj);
+        Optional<ModelRequestConfig> modelReqConfig = extractModelRequestConfig(modelObj);
+        Optional<ModelClientConfig> modelClientConfig = extractModelClientConfig(backendObj);
 
         String modelId = buildModelId(
-            modelReqConfig != null ? modelReqConfig.getModelName() : null,
-            modelClientConfig != null ? modelClientConfig.getClientProvider() : null);
+            modelReqConfig.map(ModelRequestConfig::getModelName).orElse(null),
+            modelClientConfig.map(ModelClientConfig::getClientProvider).orElse(null));
 
-        boolean found = entries.stream().anyMatch(e -> e.getModelId().equals(modelId));
-        if (!found) {
+        boolean hasMatchingEntry = entries.stream().anyMatch(e -> e.getModelId().equals(modelId));
+        if (!hasMatchingEntry) {
             ModelConfigEntry newEntry = ModelConfigEntry.builder()
                 .modelId(modelId)
                 .isDefault(entries.stream().noneMatch(ModelConfigEntry::isDefault))
-                .modelConfig(modelReqConfig)
-                .modelClient(modelClientConfig)
+                .modelConfig(modelReqConfig.orElse(null))
+                .modelClient(modelClientConfig.orElse(null))
                 .build();
             entries.add(newEntry);
         }
@@ -509,24 +510,24 @@ public class DeepAgent implements AutoCloseable {
      * and {@code Map} (raw config map).
      *
      * @param modelObj the model object (may be null)
-     * @return the extracted ModelRequestConfig, or null if not determinable
+     * @return an Optional containing the extracted ModelRequestConfig, or empty if not determinable
      * @since 0.1.16
      */
-    private ModelRequestConfig extractModelRequestConfig(Object modelObj) {
+    private Optional<ModelRequestConfig> extractModelRequestConfig(Object modelObj) {
         if (modelObj == null) {
-            return null;
+            return Optional.empty();
         }
         if (modelObj instanceof Model model) {
-            return model.getModelConfig();
+            return Optional.of(model.getModelConfig());
         }
         if (modelObj instanceof ModelRequestConfig requestConfig) {
-            return requestConfig;
+            return Optional.of(requestConfig);
         }
         if (modelObj instanceof String modelName && !modelName.isBlank()) {
-            return ModelRequestConfig.builder().modelName(modelName).build();
+            return Optional.of(ModelRequestConfig.builder().modelName(modelName).build());
         }
         if (modelObj instanceof Map<?, ?> modelMap) {
-            return ModelRequestConfig.builder()
+            return Optional.of(ModelRequestConfig.builder()
                 .modelName(string(firstPresent(modelMap, new String[]{"model", "model_name", "modelName"})))
                 .temperature(doubleValue(firstPresent(modelMap, new String[]{"temperature"})))
                 .topP(doubleValue(firstPresent(modelMap, new String[]{"top_p", "topP"})))
@@ -536,9 +537,9 @@ public class DeepAgent implements AutoCloseable {
                 .seed(integerValue(firstPresent(modelMap, new String[]{"seed"})))
                 .extraFields(extraFields(modelMap, "model", "model_name", "modelName", "temperature", "top_p",
                         "topP", "max_tokens", "maxTokens", "stop", "user", "seed"))
-                .build();
+                .build());
         }
-        return null;
+        return Optional.empty();
     }
 
     /**
@@ -549,18 +550,18 @@ public class DeepAgent implements AutoCloseable {
      * and {@code Map} (raw config map).
      *
      * @param backendObj the backend object (may be null)
-     * @return the extracted ModelClientConfig, or null if not determinable
+     * @return an Optional containing the extracted ModelClientConfig, or empty if not determinable
      * @since 0.1.16
      */
-    private ModelClientConfig extractModelClientConfig(Object backendObj) {
+    private Optional<ModelClientConfig> extractModelClientConfig(Object backendObj) {
         if (backendObj == null) {
-            return null;
+            return Optional.empty();
         }
         if (backendObj instanceof ModelClientConfig clientConfig) {
-            return clientConfig;
+            return Optional.of(clientConfig);
         }
         if (backendObj instanceof String provider && !provider.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         if (backendObj instanceof Map<?, ?> backendMap) {
             String provider = string(firstPresent(backendMap, new String[]{"client_provider", "clientProvider",
@@ -569,9 +570,9 @@ public class DeepAgent implements AutoCloseable {
             String apiBase =
                 string(firstPresent(backendMap, new String[]{"api_base", "apiBase", "base_url", "baseUrl"}));
             if (provider == null || apiKey == null || apiBase == null) {
-                return null;
+                return Optional.empty();
             }
-            return ModelClientConfig.builder()
+            return Optional.of(ModelClientConfig.builder()
                 .clientId(string(firstPresent(backendMap, new String[]{"client_id", "clientId"})))
                 .clientProvider(provider).apiKey(apiKey).apiBase(apiBase)
                 .timeout(doubleOrDefault(firstPresent(backendMap, new String[]{"timeout"}), 60.0))
@@ -579,9 +580,9 @@ public class DeepAgent implements AutoCloseable {
                 .verifySsl(
                         booleanOrDefault(firstPresent(backendMap, new String[]{"verify_ssl", "verifySsl"}), true))
                 .sslCert(string(firstPresent(backendMap, new String[]{"ssl_cert", "sslCert"})))
-                .headers(headers(firstPresent(backendMap, new String[]{"headers"}))).build();
+                .headers(headers(firstPresent(backendMap, new String[]{"headers"}))).build());
         }
-        return null;
+        return Optional.empty();
     }
 
     /**

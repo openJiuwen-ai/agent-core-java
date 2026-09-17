@@ -24,7 +24,6 @@ import java.util.function.Consumer;
  * @since 0.1.16
  */
 public class DefaultEventBus implements EventBus {
-
     private final Map<Class<?>, List<SubscriberEntry<?>>> subscribers = new ConcurrentHashMap<>();
 
     @Override
@@ -76,7 +75,7 @@ public class DefaultEventBus implements EventBus {
         for (SubscriberEntry entry : list) {
             try {
                 entry.subscriber().accept(event);
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
                 Loggers.AGENT.warning("EventBus subscriber error for event type {}: {}",
                     type.getSimpleName(), e.getMessage(), e);
             }

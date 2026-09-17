@@ -53,6 +53,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class ContextProcessorRail extends DeepAgentRail {
     private static final String OFFLOAD_SECTION = "offload";
+    private static final String DEFAULT_MODEL_KEY = "__default__";
     private final boolean isPreset;
     private final List<String> processorKeys;
     private final boolean isSessionMemoryEnabled;
@@ -104,14 +105,17 @@ public class ContextProcessorRail extends DeepAgentRail {
                 }
             });
 
-    private static final String DEFAULT_MODEL_KEY = "__default__";
-
     /**
      * EventBus subscriptions for model change events. Stored so they can be
      * cancelled in {@link #uninit(Object)}.
      */
     private Subscription modelUpdatedSubscription;
     private Subscription modelRemovedSubscription;
+
+    /**
+     * Track which modelId's specs are currently installed, to avoid redundant rebuilds.
+     */
+    private String lastInstalledModelKey = null;
 
     /**
      * ContextProcessorRail.
@@ -245,12 +249,10 @@ public class ContextProcessorRail extends DeepAgentRail {
     }
 
     /**
-     * Track which modelId's specs are currently installed, to avoid redundant rebuilds.
-     */
-    private String lastInstalledModelKey = null;
-
-    /**
      * Normalize a dynamicModelId into a cache key. null/blank → default key.
+     *
+     * @param dynamicModelId the dynamic model ID to normalize, may be null or blank
+     * @return the normalized cache key
      */
     private String cacheKey(String dynamicModelId) {
         return (dynamicModelId == null || dynamicModelId.isBlank())
@@ -260,6 +262,8 @@ public class ContextProcessorRail extends DeepAgentRail {
 
     /**
      * Apply a list of ProcessorSpecs to the agent's config.
+     *
+     * @param specs the processor specs to apply
      */
     private void applyProcessorSpecs(List<ContextEngine.ProcessorSpec> specs) {
         if (owner == null) {

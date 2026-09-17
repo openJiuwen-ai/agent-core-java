@@ -5,7 +5,6 @@
 package com.openjiuwen.core.runner.resourcemanager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -13,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.eventbus.DefaultEventBus;
-import com.openjiuwen.core.common.eventbus.Subscription;
 import com.openjiuwen.core.common.eventbus.events.ModelChangeEvent;
 import com.openjiuwen.core.common.eventbus.events.ModelRemovedEvent;
 import com.openjiuwen.core.common.eventbus.events.ModelUpdatedEvent;
@@ -40,7 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -54,7 +51,11 @@ import java.util.function.Supplier;
  */
 @DisplayName("ModelMgr Dynamic Model Tests (UT-A)")
 class ModelMgrTest {
+    private static final String TEST_PROVIDER = "ut-model-mgr-test";
+    private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
 
+    /** Unique prefix to avoid polluting the global Runner.resourceMgr(). */
+    private static final String PREFIX = "dm-ut-a-" + UUID.randomUUID() + "-";
     private DefaultEventBus eventBus;
     private ModelMgr modelMgr;
 
@@ -65,12 +66,6 @@ class ModelMgrTest {
     }
 
     // ── Mock helpers ──────────────────────────────────────────────
-
-    private static final String TEST_PROVIDER = "ut-model-mgr-test";
-    private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
-
-    /** Unique prefix to avoid polluting the global Runner.resourceMgr(). */
-    private static final String PREFIX = "dm-ut-a-" + UUID.randomUUID() + "-";
 
     private static void ensureFactoryRegistered() {
         if (FACTORY_REGISTERED.compareAndSet(false, true)) {
@@ -137,7 +132,7 @@ class ModelMgrTest {
 
         @Override
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                String negativePrompt, int n, boolean isPromptExtend, boolean isWatermark, int seed,
                 Map<String, Object> kwargs) {
             return new ImageGenerationResponse();
         }
@@ -150,7 +145,7 @@ class ModelMgrTest {
 
         @Override
         public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String model, String size, String resolution, int duration, boolean isPromptExtend, boolean isWatermark,
                 String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             return new VideoGenerationResponse();
         }
@@ -161,7 +156,6 @@ class ModelMgrTest {
     @Nested
     @DisplayName("Registration & Events")
     class Registration {
-
         @Test
         @DisplayName("UT-A-01: addModel registers and publishes ModelUpdatedEvent")
         void addModel_registersAndPublishesEvent() {
@@ -189,7 +183,6 @@ class ModelMgrTest {
     @Nested
     @DisplayName("Update")
     class Update {
-
         @Test
         @DisplayName("UT-A-03: updateModel overwrites without throwing")
         void updateModel_overwritesWithoutThrow() {
@@ -210,7 +203,6 @@ class ModelMgrTest {
     @Nested
     @DisplayName("Removal & Default Reassignment")
     class Removal {
-
         @Test
         @DisplayName("UT-A-04: removeModel on last model throws IllegalArgumentException")
         void removeModel_keepsLastModel() {
@@ -254,7 +246,6 @@ class ModelMgrTest {
     @Nested
     @DisplayName("Default Model")
     class DefaultModel {
-
         @Test
         @DisplayName("UT-A-07: setDefaultModelId on unregistered id throws")
         void setDefaultModelId_unregisteredThrows() {
@@ -271,14 +262,13 @@ class ModelMgrTest {
             modelMgr.addModel(m2, mockSupplier("model-2"));
 
             assertNull(modelMgr.getDefaultModelId());
-            assertNotNull(modelMgr.getDefaultModel());
+            assertTrue(modelMgr.getDefaultModel().isPresent());
         }
     }
 
     @Nested
     @DisplayName("List & Snapshot")
     class ListAndSnapshot {
-
         @Test
         @DisplayName("UT-A-09: listModelIds returns a defensive copy")
         void listModelIds_snapshotCopy() {
@@ -300,7 +290,6 @@ class ModelMgrTest {
     @Nested
     @DisplayName("resolveModel")
     class ResolveModel {
-
         @Test
         @DisplayName("UT-A-10: resolveModel returns dynamic model when registered")
         void resolveModel_dynamicWins() {

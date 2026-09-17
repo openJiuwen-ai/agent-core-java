@@ -10,7 +10,6 @@ package com.openjiuwen.core.common.eventbus.events;
  * @since 0.1.16
  */
 public class ModelRemovedEvent extends ModelChangeEvent {
-
     /**
      * ModelRemovedEvent.
      *

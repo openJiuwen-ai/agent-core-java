@@ -54,7 +54,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @DisplayName("DeepAgent reconcileModelConfigs Tests (UT-D)")
 class DeepAgentDynamicModelTest {
-
     private static final String TEST_PROVIDER = "ut-deepagent-model-test";
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
     private static final String PREFIX = "dm-ut-d-" + UUID.randomUUID() + "-";
@@ -92,14 +91,11 @@ class DeepAgentDynamicModelTest {
                 if (Runner.resourceMgr().listModelIds().contains(modelId)) {
                     Runner.resourceMgr().removeModel(modelId, Tag.GLOBAL, TagMatchStrategy.ALL, true);
                 }
-            } catch (Exception ignored) {
+            } catch (RuntimeException ignored) {
                 // Best effort
             }
         }
-        // Destroy agents
-        for (String agentId : createdAgentIds) {
-            // DeepAgent destroy is handled by GC; models cleaned above
-        }
+        // DeepAgent destroy is handled by GC; models cleaned above
     }
 
     private ModelClientConfig newClientConfig() {
@@ -165,7 +161,7 @@ class DeepAgentDynamicModelTest {
 
         @Override
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                String negativePrompt, int n, boolean isPromptExtend, boolean isWatermark, int seed,
                 Map<String, Object> kwargs) {
             return new ImageGenerationResponse();
         }
@@ -178,7 +174,7 @@ class DeepAgentDynamicModelTest {
 
         @Override
         public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String model, String size, String resolution, int duration, boolean isPromptExtend, boolean isWatermark,
                 String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             return new VideoGenerationResponse();
         }
@@ -189,7 +185,6 @@ class DeepAgentDynamicModelTest {
     @Nested
     @DisplayName("reconcileModelConfigs")
     class Reconcile {
-
         @Test
         @DisplayName("UT-D-01: reconcile registers all modelConfigs entries")
         void reconcile_registersAllEntries() {
@@ -233,9 +228,9 @@ class DeepAgentDynamicModelTest {
             });
 
             // The generated id should be in listModelIds
-            boolean found = Runner.resourceMgr().listModelIds().stream()
+            boolean isFound = Runner.resourceMgr().listModelIds().stream()
                     .anyMatch(id -> id.startsWith("model-blank@"));
-            assertTrue(found);
+            assertTrue(isFound);
             // Track for cleanup
             Runner.resourceMgr().listModelIds().stream()
                     .filter(id -> id.startsWith("model-blank@"))
@@ -275,9 +270,9 @@ class DeepAgentDynamicModelTest {
 
             // The legacy model should be registered under an auto-generated id
             // containing "legacy-model@" prefix
-            boolean found = Runner.resourceMgr().listModelIds().stream()
+            boolean isLegacyFound = Runner.resourceMgr().listModelIds().stream()
                     .anyMatch(id -> id.contains("legacy-model"));
-            assertTrue(found);
+            assertTrue(isLegacyFound);
             // Track for cleanup
             Runner.resourceMgr().listModelIds().stream()
                     .filter(id -> id.contains("legacy-model"))
