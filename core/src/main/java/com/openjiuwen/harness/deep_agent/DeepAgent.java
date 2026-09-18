@@ -430,7 +430,7 @@ public class DeepAgent implements AutoCloseable {
             modelReqConfig.map(ModelRequestConfig::getModelName).orElse(null),
             modelClientConfig.map(ModelClientConfig::getClientProvider).orElse(null));
 
-        boolean hasMatchingEntry = entries.stream().anyMatch(e -> e.getModelId().equals(modelId));
+        boolean hasMatchingEntry = entries.stream().anyMatch(e -> Objects.equals(e.getModelId(), modelId));
         if (!hasMatchingEntry) {
             ModelConfigEntry newEntry = ModelConfigEntry.builder()
                 .modelId(modelId)

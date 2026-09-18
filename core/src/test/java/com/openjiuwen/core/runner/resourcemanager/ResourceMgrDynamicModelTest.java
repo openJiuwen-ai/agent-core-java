@@ -6,6 +6,7 @@ package com.openjiuwen.core.runner.resourcemanager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -233,13 +234,11 @@ class ResourceMgrDynamicModelTest {
             // The facade catches IllegalArgumentException → returns Error result
             // The result is a List<Result<?>> from innerRemoveResources
             assertNotNull(result);
-            if (result instanceof List<?> list) {
-                assertFalse(list.isEmpty());
-                Object first = list.get(0);
-                if (first instanceof Result<?> r) {
-                    assertTrue(r.isError());
-                }
-            }
+            List<?> list = assertInstanceOf(List.class, result);
+            assertFalse(list.isEmpty());
+            Object first = list.get(0);
+            Result<?> r = assertInstanceOf(Result.class, first);
+            assertTrue(r.isError());
         }
     }
 

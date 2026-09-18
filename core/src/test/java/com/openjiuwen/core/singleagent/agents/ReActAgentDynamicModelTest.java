@@ -31,13 +31,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -274,11 +277,12 @@ class ReActAgentDynamicModelTest {
                     new java.util.concurrent.LinkedBlockingQueue<>());
             CountDownLatch start = new CountDownLatch(1);
             ConcurrentHashMap<String, AtomicInteger> resultCounts = new ConcurrentHashMap<>();
+            List<Future<?>> futures = new ArrayList<>();
 
             for (int t = 0; t < threads; t++) {
                 final String modelId = (t % 2 == 0) ? m1 : m2;
                 final String expectedName = (t % 2 == 0) ? "model-1" : "model-2";
-                pool.submit(() -> {
+                futures.add(pool.submit(() -> {
                     try {
                         start.await();
                         for (int i = 0; i < iterations; i++) {
@@ -298,7 +302,7 @@ class ReActAgentDynamicModelTest {
                         // Thread interrupted — record as a test failure
                         throw new AssertionError("Thread interrupted", e);
                     }
-                });
+                }));
             }
 
             start.countDown();
@@ -306,6 +310,17 @@ class ReActAgentDynamicModelTest {
             boolean isDone = pool.awaitTermination(30, TimeUnit.SECONDS);
 
             assertTrue(isDone, "All threads should complete within timeout");
+            // Collect futures to propagate assertion failures from worker threads
+            for (Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (ExecutionException e) {
+                    if (e.getCause() instanceof AssertionError ae) {
+                        throw ae;
+                    }
+                    throw new AssertionError("Worker thread failed", e.getCause());
+                }
+            }
             assertEquals(2, resultCounts.size(),
                     "Both model names should appear in results: " + resultCounts.keySet());
             assertEquals(iterations, resultCounts.get("model-1").get(),
