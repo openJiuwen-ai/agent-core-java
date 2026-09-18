@@ -1,6 +1,6 @@
 # indexing
 
-`com.openjiuwen.core.retrieval.indexing` 负责把原始文件、链接或内存中的内容转换为可检索索引。该子树覆盖索引后端选择、文档解析、文本切分、chunk 生成与三元组抽取。
+`com.openjiuwen.retrieval.indexing` 负责把原始文件、链接或内存中的内容转换为可检索索引。该子树覆盖索引后端选择、文档解析、文本切分、chunk 生成与三元组抽取。
 
 ## 子包
 

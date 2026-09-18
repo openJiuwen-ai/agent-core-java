@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.operation.OperationRegistry
+# com.openjiuwen.memory.migration.operation.OperationRegistry
 
 ## 类 OperationRegistry
 

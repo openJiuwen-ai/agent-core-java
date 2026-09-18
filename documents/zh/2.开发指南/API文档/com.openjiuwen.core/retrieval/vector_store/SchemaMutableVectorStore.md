@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.vector_store.SchemaMutableVectorStore
+# com.openjiuwen.retrieval.vector_store.SchemaMutableVectorStore
 
 ## 接口 SchemaMutableVectorStore
 

@@ -1,6 +1,6 @@
 # resource
 
-`com.openjiuwen.core.workflow.component.resource` 提供知识检索型工作流组件、执行器以及输入输出模型。
+`com.openjiuwen.retrieval.workflow.component.resource` 提供知识检索型工作流组件、执行器以及输入输出模型。
 
 ## 类型
 

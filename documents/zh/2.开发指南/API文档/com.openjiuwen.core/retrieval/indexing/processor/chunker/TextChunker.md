@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.TextChunker
+# com.openjiuwen.retrieval.indexing.processor.chunker.TextChunker
 
 ## 类 TextChunker
 

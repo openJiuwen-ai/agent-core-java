@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.MemResult
+# com.openjiuwen.memory.MemResult
 
 ## 类 MemResult
 

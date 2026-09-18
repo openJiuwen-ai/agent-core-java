@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.indexer.ChromaIndexer
+# com.openjiuwen.retrieval.indexing.indexer.ChromaIndexer
 
 ## 类 ChromaIndexer
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.SimpleKnowledgeBase
+# com.openjiuwen.retrieval.SimpleKnowledgeBase
 
 ## 类 SimpleKnowledgeBase
 

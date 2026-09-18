@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.BaseCallback
+# com.openjiuwen.retrieval.common.BaseCallback
 
 ## 类 BaseCallback
 

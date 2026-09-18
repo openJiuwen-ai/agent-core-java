@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.Triple
+# com.openjiuwen.retrieval.common.Triple
 
 ## 类 Triple
 

@@ -1,6 +1,6 @@
 ﻿# update
 
-`com.openjiuwen.core.memory.manage.update` 提供记忆增量更新判定能力，负责描述检查结果、动作项与状态枚举，并通过 `MemUpdateChecker` 调用模型判断冗余或冲突。
+`com.openjiuwen.memory.manage.update` 提供记忆增量更新判定能力，负责描述检查结果、动作项与状态枚举，并通过 `MemUpdateChecker` 调用模型判断冗余或冲突。
 
 ## 核心类型
 

@@ -1,6 +1,6 @@
 # extract
 
-`com.openjiuwen.core.memory.process.extract` 负责把对话消息转换为长期记忆相关结果，覆盖参数封装、模型分析、摘要生成与片段记忆提取。
+`com.openjiuwen.memory.process.extract` 负责把对话消息转换为长期记忆相关结果，覆盖参数封装、模型分析、摘要生成与片段记忆提取。
 
 ## 核心类型
 

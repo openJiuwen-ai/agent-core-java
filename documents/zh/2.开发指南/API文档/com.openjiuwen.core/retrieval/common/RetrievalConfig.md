@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.RetrievalConfig
+# com.openjiuwen.retrieval.common.RetrievalConfig
 
 ## 类 RetrievalConfig
 

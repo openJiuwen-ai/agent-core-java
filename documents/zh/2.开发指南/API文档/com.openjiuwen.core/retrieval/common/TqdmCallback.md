@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.TqdmCallback
+# com.openjiuwen.retrieval.common.TqdmCallback
 
 ## 类 TqdmCallback
 

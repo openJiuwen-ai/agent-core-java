@@ -1,6 +1,6 @@
 ﻿# mem_model
 
-`com.openjiuwen.core.memory.manage.mem_model` 定义管理层使用的数据模型与底层存储适配器，包括记忆单元、SQL 行模型、枚举值、消息写入请求，以及向量/SQL/KV 封装。
+`com.openjiuwen.memory.manage.mem_model` 定义管理层使用的数据模型与底层存储适配器，包括记忆单元、SQL 行模型、枚举值、消息写入请求，以及向量/SQL/KV 封装。
 
 ## 核心类型
 

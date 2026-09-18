@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.embedding.APIEmbedding
+# com.openjiuwen.retrieval.embedding.APIEmbedding
 
 ## 类 APIEmbedding
 

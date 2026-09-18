@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.IndexConfig
+# com.openjiuwen.retrieval.common.IndexConfig
 
 ## 类 IndexConfig
 

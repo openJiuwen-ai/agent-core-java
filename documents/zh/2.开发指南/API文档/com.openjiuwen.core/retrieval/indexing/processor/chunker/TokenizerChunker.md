@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.TokenizerChunker
+# com.openjiuwen.retrieval.indexing.processor.chunker.TokenizerChunker
 
 ## 类 TokenizerChunker
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.retriever.SparseRetriever
+# com.openjiuwen.retrieval.retriever.SparseRetriever
 
 ## 类 SparseRetriever
 

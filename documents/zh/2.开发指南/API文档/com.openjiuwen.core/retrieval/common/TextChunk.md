@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.TextChunk
+# com.openjiuwen.retrieval.common.TextChunk
 
 ## 类 TextChunk
 

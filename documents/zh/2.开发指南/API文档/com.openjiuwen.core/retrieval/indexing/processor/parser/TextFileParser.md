@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.TextFileParser
+# com.openjiuwen.retrieval.indexing.processor.parser.TextFileParser
 
 ## 类 TextFileParser
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.indexer.Indexer
+# com.openjiuwen.retrieval.indexing.indexer.Indexer
 
 ## 接口 Indexer
 

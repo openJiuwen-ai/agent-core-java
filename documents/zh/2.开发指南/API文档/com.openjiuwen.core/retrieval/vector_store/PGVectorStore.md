@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.vector_store.PGVectorStore
+# com.openjiuwen.retrieval.vector_store.PGVectorStore
 
 ## 类 PGVectorStore
 

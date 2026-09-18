@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.PDFParser
+# com.openjiuwen.retrieval.indexing.processor.parser.PDFParser
 
 ## 类 PDFParser
 

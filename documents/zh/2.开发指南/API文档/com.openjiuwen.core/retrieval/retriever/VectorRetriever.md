@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.retriever.VectorRetriever
+# com.openjiuwen.retrieval.retriever.VectorRetriever
 
 ## 类 VectorRetriever
 

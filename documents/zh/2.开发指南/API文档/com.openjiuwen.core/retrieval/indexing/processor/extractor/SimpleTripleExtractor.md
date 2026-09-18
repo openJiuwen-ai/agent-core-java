@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.extractor.SimpleTripleExtractor
+# com.openjiuwen.retrieval.indexing.processor.extractor.SimpleTripleExtractor
 
 ## 类 SimpleTripleExtractor
 

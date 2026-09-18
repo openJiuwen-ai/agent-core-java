@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig
+# com.openjiuwen.retrieval.common.KnowledgeBaseConfig
 
 ## 类 KnowledgeBaseConfig
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.index.SummaryManager
+# com.openjiuwen.memory.manage.index.SummaryManager
 
 ## 类 SummaryManager
 
@@ -6,7 +6,7 @@
 public class SummaryManager extends BaseMemoryManager
 ```
 
-`SummaryManager` 是 `com.openjiuwen.core.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`SummaryManager` 是 `com.openjiuwen.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

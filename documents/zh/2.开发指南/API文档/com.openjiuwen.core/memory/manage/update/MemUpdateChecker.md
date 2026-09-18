@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.update.MemUpdateChecker
+# com.openjiuwen.memory.manage.update.MemUpdateChecker
 
 ## 类 MemUpdateChecker
 

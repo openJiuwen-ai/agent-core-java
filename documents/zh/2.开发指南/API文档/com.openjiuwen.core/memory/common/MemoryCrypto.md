@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.common.MemoryCrypto
+# com.openjiuwen.memory.common.MemoryCrypto
 
 ## 类 MemoryCrypto
 
@@ -6,7 +6,7 @@
 public final class MemoryCrypto
 ```
 
-`MemoryCrypto` 是 `com.openjiuwen.core.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`MemoryCrypto` 是 `com.openjiuwen.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

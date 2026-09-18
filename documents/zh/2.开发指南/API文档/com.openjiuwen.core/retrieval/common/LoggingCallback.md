@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.LoggingCallback
+# com.openjiuwen.retrieval.common.LoggingCallback
 
 ## 类 LoggingCallback
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.Parser
+# com.openjiuwen.retrieval.indexing.processor.parser.Parser
 
 ## 抽象类 Parser
 

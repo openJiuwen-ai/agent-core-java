@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.MemInfo
+# com.openjiuwen.memory.MemInfo
 
 ## 类 MemInfo
 
