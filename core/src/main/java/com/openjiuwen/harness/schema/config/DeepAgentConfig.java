@@ -9,6 +9,7 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,7 +29,7 @@ import java.util.Map;
 @Data
 @Builder
 @NoArgsConstructor
-@AllArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class DeepAgentConfig {
     @Builder.Default
     private String systemPrompt = "";
@@ -149,99 +150,6 @@ public class DeepAgentConfig {
      * An absent policy inherits Checkpointer settings only for {@code checkpointer_redis}.
      */
     private Map<String, Object> todoStorageConfig;
-
-    /**
-     * Retains the original all-arguments constructor for existing callers.
-     * New callers should use the builder to avoid depending on field order.
-     *
-     * @param systemPrompt the system prompt
-     * @param maxIterations the iteration limit
-     * @param maxParallelToolCalls the parallel tool-call limit
-     * @param shouldFailTaskOnToolError whether tool errors fail the task
-     * @param isTaskLoopEnabled whether the task loop is enabled
-     * @param isTaskPlanningEnabled whether task planning is enabled
-     * @param language the working language
-     * @param defaultMode the default agent mode
-     * @param workspacePath the workspace path
-     * @param completionTimeout the completion timeout
-     * @param permissions the permission configuration
-     * @param tools the configured tools
-     * @param rails the configured rails
-     * @param mcps the MCP server configurations
-     * @param subagents the configured subagents
-     * @param extraPromptSections the additional prompt sections
-     * @param skillDirectories the skill directories
-     * @param skillMode the skill loading mode
-     * @param model the model configuration
-     * @param backend the backend configuration
-     * @param promptMode the prompt mode
-     * @param skills the configured skills
-     * @param isSkillDiscoveryEnabled whether skill discovery is enabled
-     * @param factoryKwargs the additional factory arguments
-     * @param isAsyncSubagentEnabled whether asynchronous subagents are enabled
-     * @param isGeneralPurposeAgentEnabled whether the general-purpose agent is enabled
-     * @param isRestrictToWorkDirEnabled whether operations are restricted to the workspace
-     * @param sysOperation the system operation provider
-     * @param permissionHost the tool permission host
-     * @param isEnableTenantIsolation whether tenant isolation is enabled
-     * @param tenantDataRoot the tenant data root
-     * @param workspaceSecondaryTiers the secondary workspace tiers
-     * @param workspaceTierConfigs the workspace tier configurations
-     * @param todoStorageType the Todo storage type, or null for the default
-     * @param sessionStoreType the session storage type
-     * @param kvStoreConfig the independent KV store configuration
-     * @param tmpTtl the temporary data TTL
-     * @param tmpTtlScanInterval the temporary data scan interval
-     * @since 0.1.16
-     */
-    public DeepAgentConfig(
-            String systemPrompt,
-            int maxIterations,
-            int maxParallelToolCalls,
-            boolean shouldFailTaskOnToolError,
-            boolean isTaskLoopEnabled,
-            boolean isTaskPlanningEnabled,
-            String language,
-            AgentMode defaultMode,
-            String workspacePath,
-            Double completionTimeout,
-            Map<String, Object> permissions,
-            List<Object> tools,
-            List<Object> rails,
-            List<McpServerConfig> mcps,
-            List<Object> subagents,
-            List<Map<String, Object>> extraPromptSections,
-            List<String> skillDirectories,
-            String skillMode,
-            Object model,
-            Object backend,
-            String promptMode,
-            List<String> skills,
-            boolean isSkillDiscoveryEnabled,
-            Map<String, Object> factoryKwargs,
-            boolean isAsyncSubagentEnabled,
-            boolean isGeneralPurposeAgentEnabled,
-            boolean isRestrictToWorkDirEnabled,
-            SysOperation sysOperation,
-            ToolPermissionHost permissionHost,
-            boolean isEnableTenantIsolation,
-            String tenantDataRoot,
-            java.util.List<String> workspaceSecondaryTiers,
-            java.util.Map<String, java.util.Map<String, Object>> workspaceTierConfigs,
-            String todoStorageType,
-            String sessionStoreType,
-            Map<String, Object> kvStoreConfig,
-            Duration tmpTtl,
-            Duration tmpTtlScanInterval) {
-        this(systemPrompt, maxIterations, maxParallelToolCalls, shouldFailTaskOnToolError,
-                isTaskLoopEnabled, isTaskPlanningEnabled, language, defaultMode, workspacePath,
-                completionTimeout, permissions, tools, rails, mcps, subagents, extraPromptSections,
-                skillDirectories, skillMode, model, backend, promptMode, skills, isSkillDiscoveryEnabled,
-                factoryKwargs, isAsyncSubagentEnabled, isGeneralPurposeAgentEnabled, isRestrictToWorkDirEnabled,
-                sysOperation, permissionHost, isEnableTenantIsolation, tenantDataRoot, workspaceSecondaryTiers,
-                workspaceTierConfigs, todoStorageType, sessionStoreType, kvStoreConfig, tmpTtl,
-                tmpTtlScanInterval, null);
-    }
 
     /**
      * Returns the selected storage type, retaining the historical default when omitted.

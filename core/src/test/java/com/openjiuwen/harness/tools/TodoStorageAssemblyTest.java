@@ -30,7 +30,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -109,21 +108,6 @@ class TodoStorageAssemblyTest {
             assertThat(parent.createSubagent("dynamic", "other-session")).isSameAs(created);
             assertThat(created.getConfig().getTodoStorageType()).isEqualTo("file");
         }
-    }
-
-    @Test
-    void originalConstructorSignatureRemainsAvailable() throws Exception {
-        var legacy = Arrays.stream(DeepAgentConfig.class.getConstructors())
-                .filter(c -> c.getParameterCount() == 38).findFirst().orElseThrow();
-        List<Object> args = new ArrayList<>();
-        for (Class<?> type : legacy.getParameterTypes()) {
-            args.add(type == boolean.class ? false : type == int.class ? 0 : null);
-        }
-        args.set(33, "file");
-        assertThat(legacy.newInstance(args.toArray())).isInstanceOfSatisfying(DeepAgentConfig.class, config -> {
-            assertThat(config.isTodoStorageTypeExplicit()).isTrue();
-            assertThat(config.getTodoStorageConfig()).isNull();
-        });
     }
 
     @Test
