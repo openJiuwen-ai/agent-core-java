@@ -18,7 +18,6 @@ import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxShellP
  * @since 0.1.7
  */
 public final class SandboxRegistryBootstrap {
-
     /**
      * SandboxRegistryBootstrap.
      * 

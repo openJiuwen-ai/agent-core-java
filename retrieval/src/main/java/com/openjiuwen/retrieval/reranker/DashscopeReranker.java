@@ -5,7 +5,6 @@
 package com.openjiuwen.retrieval.reranker;
 
 
-import com.openjiuwen.core.retrieval.reranker.Reranker;
 import com.openjiuwen.core.retrieval.reranker.StandardReranker;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

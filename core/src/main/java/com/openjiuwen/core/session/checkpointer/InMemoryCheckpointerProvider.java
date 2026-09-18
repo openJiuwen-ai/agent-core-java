@@ -17,7 +17,6 @@ import java.util.Map;
  * @since 0.1.7
  */
 public final class InMemoryCheckpointerProvider implements CheckpointerProvider {
-
     /**
      * Returns the in-memory checkpointer type name.
      * 

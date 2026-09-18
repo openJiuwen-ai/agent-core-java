@@ -40,7 +40,6 @@ import java.util.stream.Stream;
  * the delegation loop.</p>
  */
 public class HierarchicalMsgBusTeam extends BaseTeam {
-
     private final TeamRuntime localRuntime;
 
     /**

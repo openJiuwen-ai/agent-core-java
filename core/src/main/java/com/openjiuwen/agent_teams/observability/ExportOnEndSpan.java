@@ -14,7 +14,6 @@ import java.util.Objects;
  * @since 0.1.14
  */
 final class ExportOnEndSpan extends TelemetrySpan {
-
     private final TelemetrySpan delegate;
     private final TraceFileExporter exporter;
 

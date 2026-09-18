@@ -37,9 +37,7 @@ public class A2ARemoteClient implements RemoteClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final TypeReference<LinkedHashMap<String, Object>> RESULT_MAP_TYPE = new TypeReference<>() {
     };
-    /** Runtime outbound injection: JDK {@link HttpClient} for TLS/auth control. */
     private static final String KWARG_HTTP_CLIENT = "_ojw_http_client";
-    /** Runtime outbound injection: extra HTTP auth headers. */
     private static final String KWARG_AUTH_HEADERS = "_ojw_auth_headers";
 
     private final RemoteClientConfig config;

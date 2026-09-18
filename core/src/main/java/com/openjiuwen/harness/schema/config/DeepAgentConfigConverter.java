@@ -23,7 +23,6 @@ import java.util.Map;
  * runtime {@link DeepAgentConfig} used by {@code deep_agent.DeepAgent}.
  */
 public final class DeepAgentConfigConverter {
-
     private DeepAgentConfigConverter() {
     }
 

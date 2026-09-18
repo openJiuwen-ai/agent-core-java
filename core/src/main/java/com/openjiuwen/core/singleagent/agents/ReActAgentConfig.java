@@ -343,15 +343,6 @@ public class ReActAgentConfig {
         this.parallelToolCalls = parallelToolCalls;
     }
 
-    public ReActAgentConfig configureParallelToolCalls(boolean parallelToolCalls) {
-        this.parallelToolCalls = parallelToolCalls;
-        return this;
-    }
-
-    public ReActAgentConfig configure_parallel_tool_calls(boolean parallelToolCalls) {
-        return configureParallelToolCalls(parallelToolCalls);
-    }
-
     public int getMaxParallelToolCalls() {
         return maxParallelToolCalls;
     }

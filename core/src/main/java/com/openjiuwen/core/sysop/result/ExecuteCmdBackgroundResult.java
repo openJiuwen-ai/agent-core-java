@@ -9,7 +9,6 @@ package com.openjiuwen.core.sysop.result;
  * {@code openjiuwen/core/sys_operation/result/shell_operation_result.py}.
  */
 public class ExecuteCmdBackgroundResult extends BaseResult<ExecuteCmdBackgroundData> {
-
     public ExecuteCmdBackgroundResult() {
     }
 

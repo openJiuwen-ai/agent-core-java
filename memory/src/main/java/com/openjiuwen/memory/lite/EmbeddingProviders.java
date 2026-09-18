@@ -5,7 +5,6 @@
 package com.openjiuwen.memory.lite;
 
 
-import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.store.EmbeddingConfig;
 

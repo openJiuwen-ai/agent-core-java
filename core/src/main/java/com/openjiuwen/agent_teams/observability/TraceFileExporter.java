@@ -42,7 +42,6 @@ import java.util.stream.Stream;
  * @since 0.1.14
  */
 public final class TraceFileExporter {
-
     private static final LoggerProtocol TEAM_LOGGER = Loggers.TEAM;
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneOffset.UTC);

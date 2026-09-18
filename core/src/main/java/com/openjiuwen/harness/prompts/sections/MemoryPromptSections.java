@@ -10,7 +10,6 @@ import com.openjiuwen.core.singleagent.prompts.PromptSection;
  * Compatibility facade. The production text lives in {@link MemorySection}.
  */
 public final class MemoryPromptSections {
-
     private MemoryPromptSections() {
     }
 

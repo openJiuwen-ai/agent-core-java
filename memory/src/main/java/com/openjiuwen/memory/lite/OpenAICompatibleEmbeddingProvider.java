@@ -5,7 +5,6 @@
 package com.openjiuwen.memory.lite;
 
 
-import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 

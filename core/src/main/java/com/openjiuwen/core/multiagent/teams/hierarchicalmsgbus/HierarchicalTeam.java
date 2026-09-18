@@ -6,6 +6,7 @@ package com.openjiuwen.core.multiagent.teams.hierarchicalmsgbus;
 
 import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Objects;
@@ -24,7 +25,7 @@ public class HierarchicalTeam extends com.openjiuwen.core.multiagent.teams.hiera
         super(card, config);
     }
 
-    public HierarchicalTeam addAgent(AgentCard agentCard, Supplier<? extends com.openjiuwen.core.singleagent.BaseAgent> provider) {
+    public HierarchicalTeam addAgent(AgentCard agentCard, Supplier<? extends BaseAgent> provider) {
         Objects.requireNonNull(provider, "provider must not be null");
         super.addAgent(agentCard, provider);
         return this;

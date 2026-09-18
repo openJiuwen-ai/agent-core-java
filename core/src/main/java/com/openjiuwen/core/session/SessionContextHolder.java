@@ -8,7 +8,6 @@ package com.openjiuwen.core.session;
  * Thread-local holder for the currently executing session.
  */
 public final class SessionContextHolder {
-
     private static final ThreadLocal<Object> CURRENT_SESSION = new ThreadLocal<>();
 
     private SessionContextHolder() {

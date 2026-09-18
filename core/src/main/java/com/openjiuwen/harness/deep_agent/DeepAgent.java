@@ -139,7 +139,6 @@ public class DeepAgent implements AutoCloseable {
     private Workspace workspace;
     private ReActAgent agent;
     private Object reactAgentOverride;
-    /** May hold non-{@link com.openjiuwen.core.sysop.SysOperation} values used by rail tests. */
     private Object railSysOperation;
     private final List<String> pendingHarnessConfigs = new CopyOnWriteArrayList<>();
     private volatile boolean invokeActive;

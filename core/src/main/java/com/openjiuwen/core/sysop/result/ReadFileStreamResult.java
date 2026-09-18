@@ -9,7 +9,6 @@ package com.openjiuwen.core.sysop.result;
  * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
  */
 public class ReadFileStreamResult extends BaseResult<ReadFileChunkData> {
-
     public ReadFileStreamResult() {
     }
 

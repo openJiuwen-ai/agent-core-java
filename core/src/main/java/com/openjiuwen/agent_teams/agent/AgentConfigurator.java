@@ -1677,7 +1677,6 @@ public class AgentConfigurator {
         private final List<String> cleanupPaths = new ArrayList<>();
         private final Object taskManager = new Object();
         private final ConfiguredMessageManager messageManager = new ConfiguredMessageManager();
-        /** Members currently in {@code SHUTDOWN_REQUESTED} (issue #59 poll suppress). */
         private final Set<String> shuttingDownMembers = ConcurrentHashMap.newKeySet();
 
         public ConfiguredTeamBackend(

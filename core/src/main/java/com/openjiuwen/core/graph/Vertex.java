@@ -80,12 +80,13 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private final String nodeId;
     private final Executable<Map<String, Object>, Object> executable;
     private final Executor executor;
+    private final AtomicInteger callCount = new AtomicInteger();
+    private final AtomicInteger streamCallCount = new AtomicInteger();
+    private final List<ComponentAbility> deferredStreamEndAbilities = new ArrayList<>();
     private VertexSession session;
     private Object context;
     private int streamCallTimeoutSeconds = 10;
     private CompletableFuture<Object> streamDone = new CompletableFuture<>();
-    private final AtomicInteger callCount = new AtomicInteger();
-    private final AtomicInteger streamCallCount = new AtomicInteger();
     private boolean endNode;
     private boolean started;
     private boolean callStarted;
@@ -94,13 +95,6 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private boolean hasStreamCall;
     private boolean hasCall = true;
     private boolean firstInit = true;
-    /**
-     * Abilities whose END_FRAME should be deferred until the current
-     * batch-in or stream-in ability group finishes, so a downstream consumer's
-     * stream processor does not receive an end frame before sibling abilities
-     * (e.g. INVOKE following STREAM on the same node) have completed.
-     */
-    private final List<ComponentAbility> deferredStreamEndAbilities = new ArrayList<>();
 
     public Vertex(String nodeId, Executable<Map<String, Object>, ?> executable) {
         this(nodeId, executable, ForkJoinPool.commonPool());

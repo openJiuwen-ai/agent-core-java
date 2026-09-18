@@ -347,19 +347,12 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
     }
 
     /**
-     * processingChunks.
-     * 
+     * Convert inner stream chunks into controller output chunks.
+     *
      * @param result result
      * @param taskId taskId
      * @return the result
      * @since 0.1.7
-     */
-    /**
-     * Convert inner stream chunks into controller output chunks.
-     * <p>
-     * Parallel {@code __interaction__} members are merged into a single
-     * {@code TASK_INTERACTION} chunk ({@code data:[N]}) so TaskScheduler's
-     * first-chunk break still publishes all siblings (issue #66).
      */
     static List<ControllerOutputChunk> processingChunks(Map<String, Object> result, String taskId) {
         if (result == null) {

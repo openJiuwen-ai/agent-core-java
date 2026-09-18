@@ -5,8 +5,6 @@
 package com.openjiuwen.retrieval.utils;
 
 
-import com.openjiuwen.core.retrieval.embedding.Embedding;
-import com.openjiuwen.core.retrieval.reranker.Reranker;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -16,7 +14,6 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 

@@ -20,7 +20,6 @@ import com.openjiuwen.memory.graph.extraction.EntityDef;
 import com.openjiuwen.memory.graph.extraction.EntityDuplication;
 import com.openjiuwen.memory.graph.extraction.EntitySummary;
 import com.openjiuwen.memory.graph.extraction.MergeRelations;
-import com.openjiuwen.memory.graph.extraction.MultilingualBaseModel;
 import com.openjiuwen.memory.graph.extraction.RelevantFacts;
 
 import java.util.ArrayList;

@@ -52,9 +52,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
     private static final int UNIX_CMD_LIMIT = 100000;
     private static final int DEFAULT_STREAM_CHUNK_SIZE = 1024;
     private static final String DEFAULT_ENCODING = "utf-8";
-    /** Process env override used by issue #50 / 730 LocalCodeOperation. */
     private static final String PYTHON_EXECUTABLE_SYSTEM_ENV = "PYTHON_EXECUTABLE";
-    /** Per-execution environment map key (legacy / sandbox inject). */
     private static final String PYTHON_EXECUTABLE_ENV = "PYTHON";
 
     public LocalCodeOperation(Object runConfig) {

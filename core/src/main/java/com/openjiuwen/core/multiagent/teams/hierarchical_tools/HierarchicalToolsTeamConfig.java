@@ -17,7 +17,6 @@ import java.util.Map;
  * {@code parent_agent_id} mapping).</p>
  */
 public class HierarchicalToolsTeamConfig extends TeamConfig {
-
     private AgentCard rootAgent;
 
     /**

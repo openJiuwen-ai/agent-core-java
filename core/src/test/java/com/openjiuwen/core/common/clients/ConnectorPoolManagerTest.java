@@ -3,10 +3,17 @@ package com.openjiuwen.core.common.clients;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 class ConnectorPoolManagerTest {
+
+    @BeforeEach
+    void setUp() {
+        // Process-global singleton; prior suite tests may leave pools (Linux CI).
+        ConnectorPoolManager.getInstance().closeAll().join();
+    }
 
     @AfterEach
     void tearDown() {
@@ -16,6 +23,8 @@ class ConnectorPoolManagerTest {
     @Test
     void closeAllClearsPoolsAndReopensManager() {
         ConnectorPoolManager manager = ConnectorPoolManager.getInstance();
+        assertThat(manager.getStats().get("total_connector_pools")).isEqualTo(0);
+
         manager.getConnectorPool("default", new ConnectorPoolConfig()).join();
 
         assertThat(manager.getStats().get("total_connector_pools")).isEqualTo(1);

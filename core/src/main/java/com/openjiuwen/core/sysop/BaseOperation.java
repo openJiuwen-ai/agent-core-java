@@ -197,7 +197,7 @@ public abstract class BaseOperation {
     private Optional<List<String>> requiredParameters(String methodName) {
         return switch (methodName) {
             case "read_file", "readFile", "read_file_stream", "readFileStream",
-                 "list_files", "listFiles", "list_directories", "listDirectories"
+                "list_files", "listFiles", "list_directories", "listDirectories"
                     -> Optional.of(List.of("path"));
             case "write_file", "writeFile" -> Optional.of(List.of("path", "content"));
             case "upload_file", "uploadFile" -> Optional.of(List.of("localPath", "targetPath"));
@@ -208,7 +208,7 @@ public abstract class BaseOperation {
                     -> Optional.of(List.of("sourcePath", "localPath"));
             case "search_files", "searchFiles" -> Optional.of(List.of("path", "pattern"));
             case "execute_cmd", "executeCmd", "execute_cmd_stream", "executeCmdStream",
-                 "execute_cmd_background", "executeCmdBackground"
+                "execute_cmd_background", "executeCmdBackground"
                     -> Optional.of(List.of("command"));
             case "execute_code", "executeCode", "execute_code_stream", "executeCodeStream"
                     -> Optional.of(List.of("code", "language"));

@@ -11,7 +11,6 @@ import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
  * Compatibility facade. The production text lives in {@link CodingMemorySection}.
  */
 public final class CodingMemoryPromptSections {
-
     private CodingMemoryPromptSections() {
     }
 

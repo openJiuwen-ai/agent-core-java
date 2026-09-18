@@ -30,14 +30,8 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DeepAgentConfig {
-
-    /** Python {@code Workspace(root_path="./")} / {@code WorkspaceSpec.root_path} default. */
     public static final String DEFAULT_WORKSPACE_PATH = "./";
-
-    /** Python general-purpose subagent card name ({@code factory._inject_general_purpose_subagent}). */
     public static final String GENERAL_PURPOSE_AGENT_NAME = "general-purpose";
-
-    /** Legacy factoryKwargs key; prefer {@link #enableReadImageMultimodal}. */
     public static final String FACTORY_KWARG_ENABLE_READ_IMAGE_MULTIMODAL = "enable_read_image_multimodal";
 
     @Builder.Default
@@ -58,61 +52,22 @@ public class DeepAgentConfig {
     private AgentMode defaultMode = AgentMode.NORMAL;
     @Builder.Default
     private String workspacePath = DEFAULT_WORKSPACE_PATH;
-    /**
-     * Whether {@code read_file} attaches image bytes natively.
-     * Mirrors Python {@code DeepAgentConfig.enable_read_image_multimodal} (default True when unset).
-     */
     @Builder.Default
     private boolean enableReadImageMultimodal = true;
     private Double completionTimeout;
     @Builder.Default
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> permissions = new LinkedHashMap<>();
     @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<Object> tools = new ArrayList<>();
     @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<Object> rails = new ArrayList<>();
     @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<McpServerConfig> mcps = new ArrayList<>();
     @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<Object> subagents = new ArrayList<>();
     @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<Map<String, Object>> extraPromptSections = new ArrayList<>();
     @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<String> skillDirectories = new ArrayList<>();
     @Builder.Default
     private String skillMode = "auto_list";
@@ -120,20 +75,10 @@ public class DeepAgentConfig {
     private Object backend;
     private String promptMode;
     @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<String> skills = new ArrayList<>();
     @Builder.Default
     private boolean enableSkillDiscovery = false;
     @Builder.Default
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> factoryKwargs = new LinkedHashMap<>();
     @Builder.Default
     private boolean isAsyncSubagentEnabled = false;
@@ -141,10 +86,6 @@ public class DeepAgentConfig {
     private boolean isGeneralPurposeAgentEnabled = false;
     @Builder.Default
     private boolean isRestrictToWorkDirEnabled = true;
-    /**
-     * Whether {@link com.openjiuwen.harness.deep_agent.DeepAgent#ensureInitialized()}
-     * materializes the workspace schema. Python default is {@code True}.
-     */
     @Builder.Default
     private boolean autoCreateWorkspace = true;
     private SysOperation sysOperation;

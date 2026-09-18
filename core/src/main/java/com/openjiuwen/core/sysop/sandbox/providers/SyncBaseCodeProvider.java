@@ -19,7 +19,6 @@ import java.util.Map;
  */
 @Deprecated(since = "0.1.14", forRemoval = false)
 public abstract class SyncBaseCodeProvider {
-
     protected final SandboxEndpoint endpoint;
     protected final SandboxGatewayConfig config;
 

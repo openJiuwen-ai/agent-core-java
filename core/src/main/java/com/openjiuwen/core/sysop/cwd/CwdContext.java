@@ -18,7 +18,6 @@ import java.nio.file.Path;
  * @since 0.1.7
  */
 public final class CwdContext {
-
     private CwdContext() {
     }
 

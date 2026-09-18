@@ -20,7 +20,6 @@ import java.util.Map;
  */
 @Deprecated(since = "0.1.14", forRemoval = false)
 public abstract class SyncBaseShellProvider {
-
     protected final SandboxEndpoint endpoint;
     protected final SandboxGatewayConfig config;
 
