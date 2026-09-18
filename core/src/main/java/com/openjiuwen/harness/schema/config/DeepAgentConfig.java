@@ -9,6 +9,7 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,7 +29,7 @@ import java.util.Map;
 @Data
 @Builder
 @NoArgsConstructor
-@AllArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class DeepAgentConfig {
     @Builder.Default
     private String systemPrompt = "";
@@ -132,8 +133,9 @@ public class DeepAgentConfig {
     private String tenantDataRoot;
     private java.util.List<String> workspaceSecondaryTiers;
     private java.util.Map<String, java.util.Map<String, Object>> workspaceTierConfigs;
-    @Builder.Default
-    private String todoStorageType = "file";
+
+    // Null retains the distinction between an omitted type and an explicit "file".
+    private String todoStorageType;
     @Builder.Default
     private String sessionStoreType = "file";
     private Map<String, Object> kvStoreConfig;
@@ -141,6 +143,33 @@ public class DeepAgentConfig {
     private Duration tmpTtl = Duration.ofHours(24);
     @Builder.Default
     private Duration tmpTtlScanInterval = Duration.ofHours(1);
+
+    /**
+     * Optional Todo policy: {@code ttl.default_ttl} is a positive number of minutes;
+     * {@code ttl.refresh_on_read} defaults to false when a policy is supplied.
+     * An absent policy inherits Checkpointer settings only for {@code checkpointer_redis}.
+     */
+    private Map<String, Object> todoStorageConfig;
+
+    /**
+     * Returns the selected storage type, retaining the historical default when omitted.
+     *
+     * @return the selected type, or file storage when no type was selected
+     * @since 0.1.16
+     */
+    public String getTodoStorageType() {
+        return todoStorageType == null ? "file" : todoStorageType;
+    }
+
+    /**
+     * Reports whether a caller selected a storage type, including explicit file storage.
+     *
+     * @return whether the storage type was explicitly selected
+     * @since 0.1.16
+     */
+    public boolean isTodoStorageTypeExplicit() {
+        return todoStorageType != null;
+    }
 
     /**
      * DeepAgentConfigBuilder.

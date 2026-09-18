@@ -38,7 +38,8 @@ public class TodoTool {
      * @since 0.1.7
      */
     public static TodoTool fromConfig(String storageType, Map<String, Object> conf) {
-        if (TodoStorageFactory.hasProvider(storageType)) {
+        if (CheckpointerRedisTodoStorageProvider.TYPE.equals(storageType)
+                || TodoStorageFactory.hasProvider(storageType)) {
             return new TodoTool(TodoStorageFactory.create(storageType, conf));
         }
         String basePath = ".";

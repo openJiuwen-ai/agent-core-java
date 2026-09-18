@@ -25,6 +25,7 @@ import com.openjiuwen.harness.task_loop.TaskIterationContext;
 import com.openjiuwen.harness.task_loop.TaskPlan;
 import com.openjiuwen.harness.task_loop.TaskPlanSnapshot;
 import com.openjiuwen.harness.tools.FileTodoStorage;
+import com.openjiuwen.harness.tools.CheckpointerRedisTodoStorageProvider;
 import com.openjiuwen.harness.tools.TodoStorage;
 import com.openjiuwen.harness.tools.TodoStorageFactory;
 import com.openjiuwen.harness.tools.TodoTool;
@@ -171,6 +172,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     private TodoStorage resolveTodoStorage(DeepAgent deepAgent, String todoStorageType) {
+        if (CheckpointerRedisTodoStorageProvider.TYPE.equals(todoStorageType)) {
+            if (deepAgent.getKvStore() != null || deepAgent.getConfig().getKvStoreConfig() != null
+                    && !deepAgent.getConfig().getKvStoreConfig().isEmpty()) {
+                throw new IllegalArgumentException("checkpointer_redis cannot use an independent KV store");
+            }
+            return TodoStorageFactory.create(todoStorageType, deepAgent.getConfig().getTodoStorageConfig());
+        }
         if (TodoStorageFactory.hasProvider(todoStorageType)) {
             Map<String, Object> conf = buildTodoStorageConfig(deepAgent, todoStorageType);
             return TodoStorageFactory.create(todoStorageType, conf);
@@ -184,6 +192,9 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
 
     private static Map<String, Object> buildTodoStorageConfig(DeepAgent deepAgent, String todoStorageType) {
         Map<String, Object> conf = new HashMap<>();
+        if (deepAgent.getConfig().getTodoStorageConfig() != null) {
+            conf.putAll(deepAgent.getConfig().getTodoStorageConfig());
+        }
         if (!"kv".equals(todoStorageType)) {
             conf.put("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
             return conf;
