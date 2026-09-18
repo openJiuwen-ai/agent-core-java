@@ -200,6 +200,7 @@ public final class HarnessFactory {
                 .skillDirectories(new ArrayList<>(
                         source.getSkillDirectories() != null ? source.getSkillDirectories() : List.of()))
                 .skillMode(source.getSkillMode()).model(source.getModel()).backend(source.getBackend())
+                .modelConfigs(new ArrayList<>(source.getModelConfigs() != null ? source.getModelConfigs() : List.of()))
                 .promptMode(source.getPromptMode())
                 .skills(new ArrayList<>(source.getSkills() != null ? source.getSkills() : List.of()))
                 .enableSkillDiscovery(source.isEnableSkillDiscovery())

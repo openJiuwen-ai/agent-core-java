@@ -19,6 +19,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.runner.Runner;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -683,7 +684,7 @@ public class MessageSummaryOffloader extends MessageOffloader {
         if (config == null || config.getModelClient() == null) {
             return null;
         }
-        return new Model(config.getModelClient(), config.getModel());
+        return Runner.resourceMgr().resolveModel(null, config.getModelClient(), config.getModel());
     }
 
     /**

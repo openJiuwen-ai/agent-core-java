@@ -23,6 +23,7 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.SessionContextHolder;
@@ -407,6 +408,65 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
+     * Get LLM instance for the current request, resolving dynamically via
+     * {@code ResourceMgr.resolveModel()}.
+     * <p>
+     * Resolution priority:
+     * <ol>
+     * <li>{@code ctx.dynamicModelId} — if set, resolve via ModelMgr.resolveModel()</li>
+     * <li>Existing llm instance (set via {@link #setLlm(Model)} or lazy-loaded from config)</li>
+     * <li>If llm is null and no modelClientConfig, resolve via ModelMgr default model</li>
+     * </ol>
+     * When {@code dynamicModelId} is null/blank, this method first checks the existing
+     * {@code llm} field (preserving backward compatibility with {@link #setLlm(Model)}).
+     * If not yet initialized and the agent has no modelClientConfig, it delegates to
+     * {@link #getLlm()} which may throw {@link IllegalStateException}.
+     * <p>
+     * This method is stateless and thread-safe: it does not modify any instance
+     * field, and {@code ModelMgr.resolveModel()} is backed by a
+     * {@code ConcurrentHashMap}.
+     *
+     * @param ctx the callback context providing {@code dynamicModelId}; may be null
+     * @return the resolved Model instance
+     * @since 0.1.16
+     */
+    protected Model getLlm(AgentCallbackContext ctx) {
+        // 1. If a dynamic model ID is specified, resolve via ModelMgr
+        String dynamicModelId = ctx != null ? ctx.getDynamicModelId() : null;
+        if (dynamicModelId != null && !dynamicModelId.isBlank()) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(
+                        dynamicModelId,
+                        config.getModelClientConfig(),
+                        config.getModelConfigObj()
+                    );
+                } catch (RuntimeException e) {
+                    // Dynamic model resolution failed — fall through to existing llm
+                }
+            }
+        }
+        // 2. Check existing llm (set via setLlm or already lazy-loaded)
+        if (llm != null) {
+            return llm;
+        }
+        // 3. If no llm and no modelClientConfig, try ModelMgr default model
+        if (config.getModelClientConfig() == null) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(null, null, null);
+                } catch (RuntimeException e) {
+                    // No default model available — fall through to getLlm() which will throw
+                }
+            }
+        }
+        // 4. Fallback: lazy-load from config (may throw if no modelClientConfig)
+        return getLlm();
+    }
+
+    /**
      * Prepare context and call model with rail lifecycle events.
      *
      * @param ctx ctx
@@ -419,7 +479,7 @@ public class ReActAgent extends BaseAgent {
     private AssistantMessage callModel(AgentCallbackContext ctx, ModelContext context, List<BaseMessage> systemMessages,
             List<ToolInfo> tools) {
         var contextWindow = context.getContextWindow(systemMessages, tools != null ? tools : null,
-                null, null, buildContextWindowKwargs());
+                null, null, buildContextWindowKwargs(ctx));
 
         ctx.setInputs(ModelCallInputs.builder().messages(new ArrayList<>(contextWindow.getMessages()))
                 .tools(contextWindow.getToolList()).build());
@@ -440,14 +500,15 @@ public class ReActAgent extends BaseAgent {
      * @return kwargs map (possibly containing {@code "model"})
      * @since 0.1.7
      */
-    private Map<String, Object> buildContextWindowKwargs() {
+    private Map<String, Object> buildContextWindowKwargs(AgentCallbackContext ctx) {
         Map<String, Object> kwargs = new HashMap<>();
-        if (llm == null) {
+        Model activeModel = (ctx != null) ? getLlm(ctx) : peekLlm();
+        if (activeModel == null) {
             return kwargs;
         }
         ContextEngineConfig ceConfig = config.getContextEngineConfig();
         boolean isKvReleaseEnabled = ceConfig != null && ceConfig.isEnableKvCacheRelease();
-        boolean isKvReleaseSupported = llm.supportsKvCacheRelease();
+        boolean isKvReleaseSupported = activeModel.supportsKvCacheRelease();
 
         if (isKvReleaseEnabled && !isKvReleaseSupported && !isKvReleaseWarningLogged) {
             Loggers.AGENT.warning("ContextEngineConfig.enable_kv_cache_release is True, "
@@ -457,7 +518,7 @@ public class ReActAgent extends BaseAgent {
         }
 
         if (isKvReleaseEnabled && isKvReleaseSupported) {
-            kwargs.put("model", llm);
+            kwargs.put("model", activeModel);
         }
         return kwargs;
     }
@@ -477,12 +538,13 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.15
      */
     private Map<String, Object> buildKvCacheInvokeKwargs(AgentCallbackContext ctx) {
-        if (llm == null) {
+        Model activeModel = (ctx != null) ? getLlm(ctx) : peekLlm();
+        if (activeModel == null) {
             return Map.of();
         }
         ContextEngineConfig ceConfig = config.getContextEngineConfig();
         boolean isKvReleaseEnabled = ceConfig != null && ceConfig.isEnableKvCacheRelease();
-        return new LinkedHashMap<>(llm.buildKvCacheInvokeKwargs(ctx.getSession(), isKvReleaseEnabled));
+        return new LinkedHashMap<>(activeModel.buildKvCacheInvokeKwargs(ctx.getSession(), isKvReleaseEnabled));
     }
 
     /**
@@ -629,7 +691,7 @@ public class ReActAgent extends BaseAgent {
     private Optional<AssistantMessage> railedModelCall(AgentCallbackContext ctx, Map<String, Object> extraKwargs) {
         return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_MODEL_CALL, AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION, () -> {
-                    Model model = getLlm();
+                    Model model = getLlm(ctx);
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
                     logLlmRequest(inputs.getMessages());
 
@@ -657,7 +719,7 @@ public class ReActAgent extends BaseAgent {
             Map<String, Object> extraKwargs) {
         return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_MODEL_CALL, AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION, () -> {
-                    Model model = getLlm();
+                    Model model = getLlm(ctx);
                     if (!(ctx.getInputs() instanceof ModelCallInputs inputs)) {
                         return null;
                     }
@@ -1734,7 +1796,7 @@ public class ReActAgent extends BaseAgent {
     private AssistantMessage callModelStream(AgentCallbackContext ctx, ModelContext context,
             List<BaseMessage> systemMessages, List<ToolInfo> tools, AgentSessionApi agentSession) {
         var contextWindow = context.getContextWindow(systemMessages, tools != null ? tools : null,
-                null, null, buildContextWindowKwargs());
+                null, null, buildContextWindowKwargs(ctx));
 
         ctx.setInputs(ModelCallInputs.builder().messages(new ArrayList<>(contextWindow.getMessages()))
                 .tools(contextWindow.getToolList()).build());
