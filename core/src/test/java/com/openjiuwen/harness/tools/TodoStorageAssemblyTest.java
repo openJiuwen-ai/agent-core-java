@@ -1,7 +1,17 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
@@ -20,20 +30,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
+/**
+ * Verifies Todo configuration copying, inheritance and initialization compatibility.
+ *
+ * @since 0.1.16
+ */
 class TodoStorageAssemblyTest {
     @TempDir
     Path workspace;
 
     @Test
     void factoryCopyPreservesMissingAndExplicitFileTypes() {
-        for (String type : new String[]{null, "file", "kv"}) {
+        for (String type : Arrays.asList(null, "file", "kv")) {
             DeepAgentConfig source = DeepAgentConfig.builder().workspacePath(workspace.toString())
                     .todoStorageType(type).todoStorageConfig(Map.of("ttl", Map.of("default_ttl", 1))).build();
             try (DeepAgent agent = HarnessFactory.createDeepAgent(
@@ -88,7 +102,8 @@ class TodoStorageAssemblyTest {
                 DeepAgent created = parent.createSubagent("dynamic", "session")) {
             assertThat(created.getConfig().getTodoStorageType()).isEqualTo("checkpointer_redis");
             assertThat(created.getConfig().getTodoStorageConfig()).isEqualTo(parentConfig.getTodoStorageConfig());
-            assertThat(created.getConfig().getTodoStorageConfig()).isNotSameAs(parent.getConfig().getTodoStorageConfig());
+            assertThat(created.getConfig().getTodoStorageConfig())
+                    .isNotSameAs(parent.getConfig().getTodoStorageConfig());
             parent.getConfig().setSubagents(List.of(created));
             created.getConfig().setTodoStorageType("file");
             assertThat(parent.createSubagent("dynamic", "other-session")).isSameAs(created);
@@ -98,17 +113,17 @@ class TodoStorageAssemblyTest {
 
     @Test
     void originalConstructorSignatureRemainsAvailable() throws Exception {
-        var legacy = java.util.Arrays.stream(DeepAgentConfig.class.getConstructors())
+        var legacy = Arrays.stream(DeepAgentConfig.class.getConstructors())
                 .filter(c -> c.getParameterCount() == 38).findFirst().orElseThrow();
-        Object[] args = new Object[38];
-        Class<?>[] types = legacy.getParameterTypes();
-        for (int i = 0; i < args.length; i++) {
-            args[i] = types[i] == boolean.class ? false : types[i] == int.class ? 0 : null;
+        List<Object> args = new ArrayList<>();
+        for (Class<?> type : legacy.getParameterTypes()) {
+            args.add(type == boolean.class ? false : type == int.class ? 0 : null);
         }
-        args[33] = "file";
-        DeepAgentConfig config = (DeepAgentConfig) legacy.newInstance(args);
-        assertThat(config.isTodoStorageTypeExplicit()).isTrue();
-        assertThat(config.getTodoStorageConfig()).isNull();
+        args.set(33, "file");
+        assertThat(legacy.newInstance(args.toArray())).isInstanceOfSatisfying(DeepAgentConfig.class, config -> {
+            assertThat(config.isTodoStorageTypeExplicit()).isTrue();
+            assertThat(config.getTodoStorageConfig()).isNull();
+        });
     }
 
     @Test

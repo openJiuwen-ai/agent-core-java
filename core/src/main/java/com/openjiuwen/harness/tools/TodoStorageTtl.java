@@ -9,20 +9,24 @@ import com.openjiuwen.spi.store.BaseKVStore;
 import java.time.Duration;
 import java.util.Map;
 
-/** Parsed, per-Todo expiry settings. Never changes a shared store's defaults. */
+/**
+ * Parsed, per-Todo expiry settings. Never changes a shared store's defaults.
+ *
+ * @since 0.1.16
+ */
 final class TodoStorageTtl {
     private final Duration ttl;
-    private final boolean refreshOnRead;
+    private final boolean shouldRefreshOnRead;
 
-    private TodoStorageTtl(Duration ttl, boolean refreshOnRead) {
+    private TodoStorageTtl(Duration ttl, boolean shouldRefreshOnRead) {
         this.ttl = ttl;
-        this.refreshOnRead = refreshOnRead;
+        this.shouldRefreshOnRead = shouldRefreshOnRead;
     }
 
-    static TodoStorageTtl from(Map<String, Object> conf, Duration inheritedTtl, boolean inheritedRefresh) {
+    static TodoStorageTtl from(Map<String, Object> conf, Duration inheritedTtl, boolean shouldInheritRefresh) {
         Object raw = conf == null ? null : conf.get("ttl");
-        if (raw == null || raw instanceof Map<?, ?> map && map.isEmpty()) {
-            return new TodoStorageTtl(inheritedTtl, inheritedRefresh);
+        if (raw == null || (raw instanceof Map<?, ?> map && map.isEmpty())) {
+            return new TodoStorageTtl(inheritedTtl, shouldInheritRefresh);
         }
         if (!(raw instanceof Map<?, ?> settings)
                 || !(settings.get("default_ttl") instanceof Number minutes)) {
@@ -40,7 +44,7 @@ final class TodoStorageTtl {
     }
 
     KvTodoStorage create(BaseKVStore store) {
-        return new KvTodoStorage(store, ttl, refreshOnRead);
+        return new KvTodoStorage(store, ttl, shouldRefreshOnRead);
     }
 
     static void rejectUnsupported(Map<String, Object> conf) {

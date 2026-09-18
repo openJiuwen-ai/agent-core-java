@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -88,11 +89,22 @@ public abstract class BaseRedisStorage {
         }
     }
 
-    /** Effective expiry parsed with the existing checkpointer conversion rules. */
-    public Duration getEffectiveTtl() {
-        return ttlSeconds == null ? null : Duration.ofSeconds(ttlSeconds);
+    /**
+     * Returns expiration parsed with the checkpointer's existing conversion rules.
+     *
+     * @return the effective TTL, or an empty optional when expiration is disabled
+     * @since 0.1.16
+     */
+    public Optional<Duration> getEffectiveTtl() {
+        return Optional.ofNullable(ttlSeconds).map(Duration::ofSeconds);
     }
 
+    /**
+     * Returns whether reads refresh expiration.
+     *
+     * @return whether expiration is refreshed on reads
+     * @since 0.1.16
+     */
     public boolean isRefreshOnRead() {
         return refreshOnRead;
     }

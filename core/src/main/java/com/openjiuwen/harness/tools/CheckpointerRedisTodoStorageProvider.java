@@ -9,8 +9,15 @@ import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
 
 import java.util.Map;
 
-/** Borrows the application's default Redis checkpointer store and expiry settings. */
+/**
+ * Borrows the application's default Redis checkpointer store and expiry settings.
+ *
+ * @since 0.1.16
+ */
 public final class CheckpointerRedisTodoStorageProvider implements TodoStorageProvider {
+    /**
+     * Storage type that reuses the default Redis checkpointer.
+     */
     public static final String TYPE = "checkpointer_redis";
 
     @Override
@@ -27,7 +34,7 @@ public final class CheckpointerRedisTodoStorageProvider implements TodoStoragePr
         if (!(CheckpointerFactory.getCheckpointer() instanceof RedisCheckpointer checkpointer)) {
             throw new IllegalStateException(TYPE + " requires an initialized default RedisCheckpointer");
         }
-        return TodoStorageTtl.from(conf, checkpointer.getEffectiveTtl(), checkpointer.isRefreshOnRead())
+        return TodoStorageTtl.from(conf, checkpointer.getEffectiveTtl().orElse(null), checkpointer.isRefreshOnRead())
                 .create(checkpointer.getRedisStore());
     }
 }

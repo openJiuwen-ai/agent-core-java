@@ -1,7 +1,19 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
@@ -20,12 +32,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-
+/**
+ * Verifies Redis checkpointer reuse, Todo expiration and legacy storage compatibility.
+ *
+ * @since 0.1.16
+ */
 class CheckpointerRedisTodoStorageTest {
     private final Checkpointer previous = CheckpointerFactory.getCheckpointer();
     private final RedisStore store = mock(RedisStore.class);
@@ -62,13 +73,14 @@ class CheckpointerRedisTodoStorageTest {
         when(store.get("session:todo")).thenReturn("[]");
         todo.load("session");
         verify(store, never()).refreshTtl(any(), any(Duration.class));
-        RedisCheckpointer cp = (RedisCheckpointer) CheckpointerFactory.getCheckpointer();
-        assertThat(cp.getEffectiveTtl()).isEqualTo(Duration.ofHours(1));
-        assertThat(cp.isRefreshOnRead()).isTrue();
+        assertThat(CheckpointerFactory.getCheckpointer()).isInstanceOfSatisfying(RedisCheckpointer.class, cp -> {
+            assertThat(cp.getEffectiveTtl()).contains(Duration.ofHours(1));
+            assertThat(cp.isRefreshOnRead()).isTrue();
+        });
     }
 
     @Test
-    void inheritedSecondsKeepCheckpointerTruncationWhileTodoOverrideRoundsUp() throws Exception {
+    void inheritedTtlPreservesCheckpointerTruncation() throws Exception {
         TodoStorage todo = create(Map.of("default_ttl", 0.025), Map.of());
         todo.save("session", List.of());
         verify(store).set("session:todo", "[]", Duration.ofSeconds(1));
@@ -106,6 +118,8 @@ class CheckpointerRedisTodoStorageTest {
     @Test
     void absentCheckpointerTtlUsesOrdinaryWriteAndDoesNotRenewMissingKeys() throws Exception {
         TodoStorage todo = create(null, Map.of());
+        assertThat(CheckpointerFactory.getCheckpointer()).isInstanceOfSatisfying(RedisCheckpointer.class,
+                cp -> assertThat(cp.getEffectiveTtl()).isEmpty());
         todo.save("session", List.of());
         assertThat(todo.load("missing")).isEmpty();
         verify(store).set("session:todo", "[]");

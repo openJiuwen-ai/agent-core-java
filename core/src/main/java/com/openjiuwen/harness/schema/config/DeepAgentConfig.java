@@ -132,6 +132,7 @@ public class DeepAgentConfig {
     private String tenantDataRoot;
     private java.util.List<String> workspaceSecondaryTiers;
     private java.util.Map<String, java.util.Map<String, Object>> workspaceTierConfigs;
+
     // Null retains the distinction between an omitted type and an explicit "file".
     private String todoStorageType;
     @Builder.Default
@@ -142,7 +143,57 @@ public class DeepAgentConfig {
     @Builder.Default
     private Duration tmpTtlScanInterval = Duration.ofHours(1);
 
-    /** Retains the original all-arguments constructor for existing callers. */
+    /**
+     * Optional Todo policy: {@code ttl.default_ttl} is a positive number of minutes;
+     * {@code ttl.refresh_on_read} defaults to false when a policy is supplied.
+     * An absent policy inherits Checkpointer settings only for {@code checkpointer_redis}.
+     */
+    private Map<String, Object> todoStorageConfig;
+
+    /**
+     * Retains the original all-arguments constructor for existing callers.
+     * New callers should use the builder to avoid depending on field order.
+     *
+     * @param systemPrompt the system prompt
+     * @param maxIterations the iteration limit
+     * @param maxParallelToolCalls the parallel tool-call limit
+     * @param shouldFailTaskOnToolError whether tool errors fail the task
+     * @param isTaskLoopEnabled whether the task loop is enabled
+     * @param isTaskPlanningEnabled whether task planning is enabled
+     * @param language the working language
+     * @param defaultMode the default agent mode
+     * @param workspacePath the workspace path
+     * @param completionTimeout the completion timeout
+     * @param permissions the permission configuration
+     * @param tools the configured tools
+     * @param rails the configured rails
+     * @param mcps the MCP server configurations
+     * @param subagents the configured subagents
+     * @param extraPromptSections the additional prompt sections
+     * @param skillDirectories the skill directories
+     * @param skillMode the skill loading mode
+     * @param model the model configuration
+     * @param backend the backend configuration
+     * @param promptMode the prompt mode
+     * @param skills the configured skills
+     * @param isSkillDiscoveryEnabled whether skill discovery is enabled
+     * @param factoryKwargs the additional factory arguments
+     * @param isAsyncSubagentEnabled whether asynchronous subagents are enabled
+     * @param isGeneralPurposeAgentEnabled whether the general-purpose agent is enabled
+     * @param isRestrictToWorkDirEnabled whether operations are restricted to the workspace
+     * @param sysOperation the system operation provider
+     * @param permissionHost the tool permission host
+     * @param isEnableTenantIsolation whether tenant isolation is enabled
+     * @param tenantDataRoot the tenant data root
+     * @param workspaceSecondaryTiers the secondary workspace tiers
+     * @param workspaceTierConfigs the workspace tier configurations
+     * @param todoStorageType the Todo storage type, or null for the default
+     * @param sessionStoreType the session storage type
+     * @param kvStoreConfig the independent KV store configuration
+     * @param tmpTtl the temporary data TTL
+     * @param tmpTtlScanInterval the temporary data scan interval
+     * @since 0.1.16
+     */
     public DeepAgentConfig(
             String systemPrompt,
             int maxIterations,
@@ -166,7 +217,7 @@ public class DeepAgentConfig {
             Object backend,
             String promptMode,
             List<String> skills,
-            boolean enableSkillDiscovery,
+            boolean isSkillDiscoveryEnabled,
             Map<String, Object> factoryKwargs,
             boolean isAsyncSubagentEnabled,
             boolean isGeneralPurposeAgentEnabled,
@@ -185,28 +236,32 @@ public class DeepAgentConfig {
         this(systemPrompt, maxIterations, maxParallelToolCalls, shouldFailTaskOnToolError,
                 isTaskLoopEnabled, isTaskPlanningEnabled, language, defaultMode, workspacePath,
                 completionTimeout, permissions, tools, rails, mcps, subagents, extraPromptSections,
-                skillDirectories, skillMode, model, backend, promptMode, skills, enableSkillDiscovery,
+                skillDirectories, skillMode, model, backend, promptMode, skills, isSkillDiscoveryEnabled,
                 factoryKwargs, isAsyncSubagentEnabled, isGeneralPurposeAgentEnabled, isRestrictToWorkDirEnabled,
                 sysOperation, permissionHost, isEnableTenantIsolation, tenantDataRoot, workspaceSecondaryTiers,
-                workspaceTierConfigs, todoStorageType, sessionStoreType, kvStoreConfig, tmpTtl, tmpTtlScanInterval, null);
+                workspaceTierConfigs, todoStorageType, sessionStoreType, kvStoreConfig, tmpTtl,
+                tmpTtlScanInterval, null);
     }
 
-    /** Omitted storage keeps the historical public default. */
+    /**
+     * Returns the selected storage type, retaining the historical default when omitted.
+     *
+     * @return the selected type, or file storage when no type was selected
+     * @since 0.1.16
+     */
     public String getTodoStorageType() {
         return todoStorageType == null ? "file" : todoStorageType;
     }
 
-    /** Whether a caller selected a storage type, including explicit file storage. */
+    /**
+     * Reports whether a caller selected a storage type, including explicit file storage.
+     *
+     * @return whether the storage type was explicitly selected
+     * @since 0.1.16
+     */
     public boolean isTodoStorageTypeExplicit() {
         return todoStorageType != null;
     }
-
-    /**
-     * Optional Todo policy: {@code ttl.default_ttl} is a positive number of minutes;
-     * {@code ttl.refresh_on_read} defaults to false when a policy is supplied.
-     * An absent policy inherits Checkpointer settings only for {@code checkpointer_redis}.
-     */
-    private Map<String, Object> todoStorageConfig;
 
     /**
      * DeepAgentConfigBuilder.

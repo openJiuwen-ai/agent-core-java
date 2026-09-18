@@ -79,7 +79,16 @@ public class RedisStore extends BaseKVStore implements ExpirableKVStore {
         setInternal(key, value, null);
     }
 
-    /** Atomic expiry write, including externally supplied Redis clients. */
+    /**
+     * Writes a value and its expiration atomically, including for supplied Redis clients.
+     *
+     * @param key the key to write
+     * @param value the value to store
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the key or TTL is invalid
+     * @throws IllegalStateException if the client cannot perform the atomic write
+     * @since 0.1.16
+     */
     @Override
     public void set(String key, Object value, Duration ttl) {
         requireKey(key);
@@ -93,7 +102,15 @@ public class RedisStore extends BaseKVStore implements ExpirableKVStore {
         }
     }
 
-    /** Strict expiry operation; the legacy int overload retains its original behavior. */
+    /**
+     * Refreshes expiration and propagates failures; the legacy int overload is unchanged.
+     *
+     * @param keys the existing keys whose expiration should be refreshed
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the TTL is invalid
+     * @throws IllegalStateException if refreshing a key fails
+     * @since 0.1.16
+     */
     @Override
     public void refreshTtl(List<String> keys, Duration ttl) {
         int seconds = expirySeconds(ttl);

@@ -1402,15 +1402,7 @@ public class DeepAgent implements AutoCloseable {
         if (childConfig == null || config == null) {
             return;
         }
-        if (CheckpointerRedisTodoStorageProvider.TYPE.equals(config.getTodoStorageType())
-                && !childConfig.isTodoStorageTypeExplicit()
-                && (childConfig.getKvStoreConfig() == null || childConfig.getKvStoreConfig().isEmpty())) {
-            childConfig.setTodoStorageType(config.getTodoStorageType());
-            if (childConfig.getTodoStorageConfig() == null || childConfig.getTodoStorageConfig().isEmpty()) {
-                childConfig.setTodoStorageConfig(config.getTodoStorageConfig() == null ? null
-                        : new LinkedHashMap<>(config.getTodoStorageConfig()));
-            }
-        }
+        inheritParentTodoStorageDefaults(childConfig);
         if (childConfig.getModel() == null) {
             childConfig.setModel(config.getModel());
         }
@@ -1419,6 +1411,25 @@ public class DeepAgent implements AutoCloseable {
         }
         if (childConfig.getPromptMode() == null || childConfig.getPromptMode().isBlank()) {
             childConfig.setPromptMode(config.getPromptMode());
+        }
+    }
+
+    private void inheritParentTodoStorageDefaults(DeepAgentConfig childConfig) {
+        if (!CheckpointerRedisTodoStorageProvider.TYPE.equals(config.getTodoStorageType())) {
+            return;
+        }
+        if (childConfig.isTodoStorageTypeExplicit()) {
+            return;
+        }
+        Map<String, Object> childKvConfig = childConfig.getKvStoreConfig();
+        if (childKvConfig != null && !childKvConfig.isEmpty()) {
+            return;
+        }
+        childConfig.setTodoStorageType(config.getTodoStorageType());
+        Map<String, Object> childTodoConfig = childConfig.getTodoStorageConfig();
+        Map<String, Object> parentTodoConfig = config.getTodoStorageConfig();
+        if ((childTodoConfig == null || childTodoConfig.isEmpty()) && parentTodoConfig != null) {
+            childConfig.setTodoStorageConfig(new LinkedHashMap<>(parentTodoConfig));
         }
     }
 

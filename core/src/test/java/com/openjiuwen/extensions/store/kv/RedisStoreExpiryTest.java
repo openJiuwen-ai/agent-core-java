@@ -1,18 +1,30 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.extensions.store.kv;
 
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.UnifiedJedis;
+
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
-
+/**
+ * Verifies atomic expiration writes and strict failure handling across Redis clients.
+ *
+ * @since 0.1.16
+ */
 class RedisStoreExpiryTest {
     @Test
     void jedisTextAndBinaryWritesUseAtomicSetex() {
@@ -66,7 +78,16 @@ class RedisStoreExpiryTest {
         verify(client, never()).setex(anyString(), anyLong(), anyString());
     }
 
+    /**
+     * Reflectively accessible client stub without expiration support.
+     */
     public interface PlainClient {
+        /**
+         * Writes a value without setting expiration.
+         *
+         * @param key the key to write
+         * @param value the value to store
+         */
         void set(String key, String value);
     }
 }

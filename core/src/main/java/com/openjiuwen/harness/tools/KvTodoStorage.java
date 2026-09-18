@@ -35,8 +35,16 @@ public class KvTodoStorage implements TodoStorage {
         this(kvStore, null, false);
     }
 
-    /** Resolve expiry behavior once, while assembling this Todo storage. */
-    public KvTodoStorage(BaseKVStore kvStore, Duration ttl, boolean refreshOnRead) {
+    /**
+     * Resolves expiry behavior once, while assembling this Todo storage.
+     *
+     * @param kvStore the store used for Todo data
+     * @param ttl the Todo TTL, or null to retain ordinary writes without expiration
+     * @param shouldRefreshOnRead whether successful reads renew the configured TTL
+     * @throws IllegalArgumentException if the TTL is invalid or unsupported by the store
+     * @since 0.1.16
+     */
+    public KvTodoStorage(BaseKVStore kvStore, Duration ttl, boolean shouldRefreshOnRead) {
         this.kvStore = Objects.requireNonNull(kvStore);
         if (ttl == null) {
             write = kvStore::set;
@@ -50,7 +58,7 @@ public class KvTodoStorage implements TodoStorage {
                 throw new IllegalArgumentException("Selected KV store does not support Todo TTL");
             }
             write = (key, value) -> expirable.set(key, value, ttl);
-            afterRead = refreshOnRead ? key -> expirable.refreshTtl(List.of(key), ttl) : key -> { };
+            afterRead = shouldRefreshOnRead ? key -> expirable.refreshTtl(List.of(key), ttl) : key -> { };
         }
     }
 
