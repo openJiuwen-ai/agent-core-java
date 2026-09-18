@@ -367,7 +367,7 @@ public class DeepAgent implements AutoCloseable {
             entries = new ArrayList<>();
             this.config.setModelConfigs(entries);
         }
-        mergeLegacyModelBackend(entries);
+        mergeModelBackend(entries);
         if (entries.isEmpty()) {
             return;
         }
@@ -417,7 +417,7 @@ public class DeepAgent implements AutoCloseable {
      * @param entries the model config entries (mutated: a new entry may be appended)
      * @since 0.1.16
      */
-    private void mergeLegacyModelBackend(List<ModelConfigEntry> entries) {
+    private void mergeModelBackend(List<ModelConfigEntry> entries) {
         Object modelObj = this.config.getModel();
         Object backendObj = this.config.getBackend();
         if (modelObj == null || backendObj == null) {
