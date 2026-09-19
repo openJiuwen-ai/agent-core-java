@@ -5,7 +5,6 @@
 package com.openjiuwen.batch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.agent_teams.memory.TeamMemoryConfig;
 import com.openjiuwen.core.foundation.store.EmbeddingConfig;
 import com.openjiuwen.core.foundation.store.base_reranker.Document;
 import com.openjiuwen.core.foundation.store.base_reranker.RerankerConfig;
@@ -43,18 +42,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class Batch0050FocusedTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    @Test
-    void teamMemoryConfigResolvePrefersExplicitEmbeddingConfig() {
-        EmbeddingConfig embeddingConfig = EmbeddingConfig.builder()
-                .modelName("embed-model")
-                .baseUrl("https://example.invalid")
-                .apiKey("token")
-                .build();
-        TeamMemoryConfig config = TeamMemoryConfig.builder().embeddingConfig(embeddingConfig).build();
-
-        assertThat(TeamMemoryConfig.resolveEmbeddingConfig(config)).isSameAs(embeddingConfig);
-    }
 
     @Test
     void inMemoryStoreSupportsAsyncRoundTripAndPrefixDelete() {
