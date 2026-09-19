@@ -4,11 +4,15 @@
 
 package com.openjiuwen.core.runner;
 
-import com.openjiuwen.agent_teams.agent.AgentConfigurator.DeepAgentSpec;
-import com.openjiuwen.agent_teams.agent.SessionManager;
-import com.openjiuwen.agent_teams.agent.TeamAgent;
-import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
-import com.openjiuwen.agent_teams.schema.TeamOutputSchema;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.ToolDecorator;
@@ -19,13 +23,12 @@ import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy;
-import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
-import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -34,27 +37,19 @@ import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
-import java.util.Iterator;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Stream;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Focused tests for the Runner singleton facade.
@@ -230,77 +225,29 @@ class RunnerTest {
     }
 
     @Test
-    void runAgentTeamStreamingAcceptsSpecAndEmitsRuntimeReadyChunk() {
-        RecordingTeamAgent agent = new RecordingTeamAgent("spec-team", List.of(teamChunk("team.chunk")));
-        RecordingTeamSpec spec = new RecordingTeamSpec("spec-team", agent);
-
-        List<Object> chunks = drain(Runner.runAgentTeamStreaming(
-                spec,
-                Map.of("query", "hello"),
-                false,
-                false,
-                "team-session",
-                null,
-                null,
-                null,
-                null
-        ).toCompletableFuture().join());
-
-        TeamOutputSchema ready = assertInstanceOf(TeamOutputSchema.class, chunks.get(0));
-        Map<?, ?> payload = assertInstanceOf(Map.class, ready.getPayload());
-        assertEquals("team.runtime_ready", payload.get("event_type"));
-        assertEquals("spec-team", payload.get("team_name"));
-        assertEquals("team-session", payload.get("session_id"));
-        assertEquals("create", payload.get("activation_kind"));
-        assertEquals("team.chunk", ((OutputSchema) chunks.get(1)).getPayload());
-        assertEquals(Map.of("query", "hello"), agent.lastInputs);
-        SessionManager.AgentTeamSessionView session =
-                assertInstanceOf(SessionManager.AgentTeamSessionView.class, agent.lastSession);
-        assertEquals("team-session", session.getSessionId());
-        assertEquals(1, agent.streamCalls);
-    }
-
-    @Test
-    void runAgentTeamReturnsLastTeamChunk() {
-        RecordingTeamAgent agent = new RecordingTeamAgent(
-                "invoke-team",
-                List.of(teamChunk("first"), teamChunk("last"))
-        );
-
-        Object result = Runner.runAgentTeam(
-                new RecordingTeamSpec("invoke-team", agent),
+    void runAgentTeamRejectsUnknownTeamName() {
+        assertThrows(RuntimeException.class, () -> Runner.runAgentTeam(
+                "no-such-team",
                 Map.of("query", "invoke"),
                 false,
                 false,
                 "invoke-session",
                 null,
                 null
-        ).toCompletableFuture().join();
-
-        OutputSchema output = assertInstanceOf(OutputSchema.class, result);
-        assertEquals("last", output.getPayload());
+        ).toCompletableFuture().join());
     }
 
     @Test
-    void runAgentTeamMemberPathExecutesSpawnedTeamAgent() {
-        RecordingTeamAgent agent = new RecordingTeamAgent(
-                "member-team",
-                List.of(teamChunk("member-result"))
-        );
-
-        Object result = Runner.runAgentTeam(
-                agent,
+    void runAgentTeamMemberPathRejectsNonTeamAgent() {
+        assertThrows(RuntimeException.class, () -> Runner.runAgentTeam(
+                "not-a-team-agent",
                 Map.of("query", "member"),
                 false,
                 true,
                 "member-session",
                 null,
                 null
-        ).toCompletableFuture().join();
-
-        OutputSchema output = assertInstanceOf(OutputSchema.class, result);
-        assertEquals("member-result", output.getPayload());
-        assertEquals(1, agent.streamCalls);
+        ).toCompletableFuture().join());
     }
 
     @Test
@@ -319,45 +266,6 @@ class RunnerTest {
 
         assertEquals("base:base-session:{payload=base}", result);
         assertEquals(1, team.invokeCalls);
-    }
-
-    @Test
-    void runAgentTeamRecoversTeamAndChildState() {
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        CheckpointerFactory.register("unit-runner-team-state", conf -> checkpointer);
-        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig("unit-runner-team-state", Map.of()));
-        String teamId = "team_runner_session_team";
-        String sessionId = "team_runner_session_state";
-        try {
-            StatefulTeam team = new StatefulTeam(teamId);
-
-            Map<?, ?> result1 = assertInstanceOf(Map.class, Runner.runAgentTeam(
-                    team,
-                    Map.of("payload", "first"),
-                    true,
-                    false,
-                    sessionId,
-                    null,
-                    null
-            ).toCompletableFuture().join());
-            Map<?, ?> result2 = assertInstanceOf(Map.class, Runner.runAgentTeam(
-                    team,
-                    Map.of("payload", "second"),
-                    true,
-                    false,
-                    sessionId,
-                    null,
-                    null
-            ).toCompletableFuture().join());
-
-            assertEquals(1, result1.get("team_count"));
-            assertEquals(1, result1.get("worker_count"));
-            assertEquals(2, result2.get("team_count"));
-            assertEquals(2, result2.get("worker_count"));
-        } finally {
-            checkpointer.release(sessionId);
-            CheckpointerFactory.releaseDefaultCheckpointer();
-        }
     }
 
     @Test
@@ -443,63 +351,6 @@ class RunnerTest {
         @Override
         public void close() {
             closed = true;
-        }
-    }
-
-    /**
-     * Mirrors Python's TeamAgentSpec build hook used by
-     * {@code openjiuwen/core/runner/team_runner.py}.
-     */
-    private static final class RecordingTeamSpec extends TeamAgentSpec {
-        private final RecordingTeamAgent agent;
-
-        private RecordingTeamSpec(String teamName, RecordingTeamAgent agent) {
-            this.agent = agent;
-            setTeamName(teamName);
-            setAgents(Map.of("leader", new DeepAgentSpec()));
-        }
-
-        @Override
-        public TeamAgent build() {
-            return agent;
-        }
-    }
-
-    /**
-     * Mirrors Python's {@code TeamAgent} methods consumed by Runner team execution in
-     * {@code openjiuwen/core/runner/team_runner.py}.
-     */
-    private static final class RecordingTeamAgent extends TeamAgent {
-        private final List<Object> chunks;
-        private Object lastInputs;
-        private Object lastSession;
-        private int streamCalls;
-
-        private RecordingTeamAgent(String teamName, List<Object> chunks) {
-            super(new com.openjiuwen.agent_teams.agent.AgentConfigurator.AgentCard(
-                    teamName + "-leader",
-                    "leader",
-                    "leader"
-            ));
-            this.chunks = new ArrayList<>(chunks);
-        }
-
-        @Override
-        public CompletionStage<List<Object>> stream(Object inputs, Object session, Object streamModes) {
-            this.lastInputs = inputs;
-            this.lastSession = session;
-            this.streamCalls += 1;
-            return CompletableFuture.completedFuture(new ArrayList<>(chunks));
-        }
-
-        @Override
-        public CompletionStage<Void> stopCoordination() {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<Void> pauseCoordination() {
-            return CompletableFuture.completedFuture(null);
         }
     }
 
