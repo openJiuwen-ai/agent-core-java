@@ -84,6 +84,7 @@ import com.openjiuwen.harness.task_loop.TaskLoopController;
 import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
 import com.openjiuwen.harness.task_loop.TaskLoopEventExecutor;
 import com.openjiuwen.harness.task_loop.TaskIterationContext;
+import com.openjiuwen.harness.tools.CheckpointerRedisTodoStorageProvider;
 import com.openjiuwen.harness.tools.SessionToolkit;
 import com.openjiuwen.harness.workspace.DirectoryBuilder;
 import com.openjiuwen.harness.workspace.Workspace;
@@ -1456,6 +1457,7 @@ public class DeepAgent implements AutoCloseable {
         if (childConfig == null || config == null) {
             return;
         }
+        inheritParentTodoStorageDefaults(childConfig);
         if (childConfig.getModel() == null) {
             childConfig.setModel(config.getModel());
         }
@@ -1477,6 +1479,25 @@ public class DeepAgent implements AutoCloseable {
             if (childConfig.getSkills() == null || childConfig.getSkills().isEmpty()) {
                 childConfig.setSkills(config.getSkills() == null ? List.of() : new ArrayList<>(config.getSkills()));
             }
+        }
+    }
+
+    private void inheritParentTodoStorageDefaults(DeepAgentConfig childConfig) {
+        if (!CheckpointerRedisTodoStorageProvider.TYPE.equals(config.getTodoStorageType())) {
+            return;
+        }
+        if (childConfig.isTodoStorageTypeExplicit()) {
+            return;
+        }
+        Map<String, Object> childKvConfig = childConfig.getKvStoreConfig();
+        if (childKvConfig != null && !childKvConfig.isEmpty()) {
+            return;
+        }
+        childConfig.setTodoStorageType(config.getTodoStorageType());
+        Map<String, Object> childTodoConfig = childConfig.getTodoStorageConfig();
+        Map<String, Object> parentTodoConfig = config.getTodoStorageConfig();
+        if ((childTodoConfig == null || childTodoConfig.isEmpty()) && parentTodoConfig != null) {
+            childConfig.setTodoStorageConfig(new LinkedHashMap<>(parentTodoConfig));
         }
     }
 
@@ -1799,21 +1820,15 @@ public class DeepAgent implements AutoCloseable {
                 : Math.max(1.0, config.getCompletionTimeout());
         long timeoutMillis = (long) Math.ceil(timeoutSeconds * 1000.0);
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        String sessionId = session != null ? session.getSessionId() : TaskLoopController.DEFAULT_SESSION_ID;
         LoopCoordinator coordinator = coordinatorForSession(session);
         while (System.nanoTime() < deadline) {
-            Map<String, Object> result = eventHandler.waitCompletion((double) timeoutMillis / 1000.0);
+            long remainingMillis = TimeUnit.NANOSECONDS.toMillis(Math.max(1L, deadline - System.nanoTime()));
+            Map<String, Object> result = eventHandler.waitCompletion(remainingMillis / 1000.0d);
             if (!"completion_timeout".equals(result.get("error"))) {
                 return result;
             }
             if (coordinator.isAborted()) {
                 return Map.of("status", "aborted", "task_id", taskId);
-            }
-            try {
-                Thread.sleep(25L);
-            } catch (InterruptedException ex) {
-
-                return Map.of("error", "interrupted", "task_id", taskId);
             }
         }
         return Map.of("error", "completion_timeout", "task_id", taskId);

@@ -12,8 +12,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -50,6 +52,26 @@ public abstract class BaseRedisStorage {
         if (config != null && config.containsKey(REFRESH_ON_READ)) {
             this.refreshOnRead = Boolean.TRUE.equals(config.get(REFRESH_ON_READ));
         }
+    }
+
+    /**
+     * Returns expiration parsed with the checkpointer's existing conversion rules.
+     *
+     * @return the effective TTL, or an empty optional when expiration is disabled
+     * @since 0.1.15
+     */
+    public Optional<Duration> getEffectiveTtl() {
+        return Optional.ofNullable(ttlSeconds).map(Duration::ofSeconds);
+    }
+
+    /**
+     * Returns whether reads refresh expiration.
+     *
+     * @return whether expiration is refreshed on reads
+     * @since 0.1.15
+     */
+    public boolean isRefreshOnRead() {
+        return refreshOnRead;
     }
 
     /**

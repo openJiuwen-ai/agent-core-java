@@ -5,12 +5,15 @@
 package com.openjiuwen.extensions.store.kv;
 
 import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.spi.store.ExpirableKVStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
 import com.openjiuwen.spi.store.KVStoreProvider;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * SPI provider that creates Redis-backed {@link BaseKVStore} instances.
@@ -30,14 +33,25 @@ public final class RedisKVStoreProvider implements KVStoreProvider {
     public BaseKVStore create(Map<String, Object> conf) {
         Object existing = conf.get("redis_client");
         if (existing != null) {
-            return new SyncKVStoreAdapter(new RedisStore(existing, false));
+            return adapt(new RedisStore(existing, false));
         }
         Object redisClient = createClientByReflection(
                 stringOrDefault(conf.get("host"), "localhost"),
                 intOrDefault(conf.get("port"), 6379),
                 conf.get("password") instanceof String ? (String) conf.get("password") : null,
                 Boolean.parseBoolean(String.valueOf(conf.getOrDefault("cluster", "false"))));
-        return new SyncKVStoreAdapter(new RedisStore(redisClient, true));
+        return adapt(new RedisStore(redisClient, true));
+    }
+
+    /**
+     * Wraps a foundation {@link RedisStore} as a synchronous SPI {@link BaseKVStore}.
+     *
+     * @param redisStore the store to adapt; must not be null
+     * @return a synchronous SPI facade that also exposes {@link ExpirableKVStore}
+     * @since 0.1.15
+     */
+    public static BaseKVStore adapt(RedisStore redisStore) {
+        return new SyncKVStoreAdapter(Objects.requireNonNull(redisStore, "redisStore"));
     }
 
     private static String stringOrDefault(Object value, String defaultValue) {
@@ -73,7 +87,7 @@ public final class RedisKVStoreProvider implements KVStoreProvider {
         }
     }
 
-    private static final class SyncKVStoreAdapter extends BaseKVStore {
+    private static final class SyncKVStoreAdapter extends BaseKVStore implements ExpirableKVStore {
         private final RedisStore delegate;
 
         SyncKVStoreAdapter(RedisStore delegate) {
@@ -83,6 +97,16 @@ public final class RedisKVStoreProvider implements KVStoreProvider {
         @Override
         public void set(String key, Object value) {
             delegate.set(key, value).join();
+        }
+
+        @Override
+        public void set(String key, Object value, Duration ttl) {
+            delegate.set(key, value, ttl);
+        }
+
+        @Override
+        public void refreshTtl(List<String> keys, Duration ttl) {
+            delegate.refreshTtl(keys, ttl);
         }
 
         @Override

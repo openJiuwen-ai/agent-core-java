@@ -8,6 +8,7 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextStats;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -104,6 +105,78 @@ class ReActAgentTest {
         assertEquals("done", ((Map<?, ?>) result).get("output"));
         assertEquals("answer", ((Map<?, ?>) result).get("result_type"));
         assertTrue(agent.clearContextMessages("session-1", "default_context_id"));
+    }
+
+    @Test
+    void contextEngineRefreshesAfterMutableConfigUpdate() {
+        ReActAgent agent = new ReActAgent(new AgentCard("mutable-1", "mutable", "desc"));
+        ContextEngine initialEngine = agent.getContextEngine();
+        ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
+
+        mutableConfig.configureContextEngine(2, 1, false, false);
+
+        assertTrue(agent.getContextEngine() != initialEngine);
+        ModelContext context = agent.getContextEngine().createContext("mutable-config", new MemorySession("mutable"));
+        context.addMessages(List.of(new UserMessage("first"), new UserMessage("second"), new UserMessage("third")))
+                .toCompletableFuture().join();
+        assertEquals(List.of("second", "third"),
+                context.getMessages().stream().map(BaseMessage::getContent).toList());
+    }
+
+    @Test
+    void contextEngineIsReusedWhenMutableConfigIsUnchanged() {
+        ReActAgent agent = new ReActAgent(new AgentCard("reuse-1", "reuse", "desc"));
+        assertSame(agent.getContextEngine(), agent.getContextEngine());
+    }
+
+    @Test
+    void contextEngineRefreshesAfterNestedConfigMapUpdate() {
+        ReActAgent agent = new ReActAgent(new AgentCard("nested-1", "nested", "desc"));
+        Map<String, Integer> modelWindowTokens = new LinkedHashMap<>();
+        modelWindowTokens.put("model-a", 1000);
+        agent.configure(ReActAgentConfig.builder()
+                .contextEngineConfig(ContextEngineConfig.builder()
+                        .modelContextWindowTokens(modelWindowTokens)
+                        .build())
+                .build());
+        ContextEngine initialEngine = agent.getContextEngine();
+
+        ReActAgentConfig config = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
+        config.getContextEngineConfig().getModelContextWindowTokens().put("model-a", 2000);
+
+        assertTrue(agent.getContextEngine() != initialEngine);
+    }
+
+    @Test
+    void invokeRefreshesContextEngineAfterMutableConfigUpdate() {
+        ReActAgent agent = agentWithFakeModel(new AssistantMessage("done"));
+        ContextEngine initialEngine = agent.getContextEngine();
+        ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
+        mutableConfig.configureContextEngine(2, 1, false, false);
+        MemorySession session = new MemorySession("mutable-invoke");
+
+        agent.invoke(Map.of("query", "first"), session);
+
+        ContextEngine refreshedEngine = agent.getContextEngine();
+        assertTrue(refreshedEngine != initialEngine);
+        ModelContext context = refreshedEngine.getContext(null, session.getSessionId());
+        assertTrue(context != null);
+        context.addMessages(List.of(new UserMessage("second"), new UserMessage("third")))
+                .toCompletableFuture().join();
+        assertEquals(List.of("second", "third"),
+                context.getMessages().stream().map(BaseMessage::getContent).toList());
+    }
+
+    @Test
+    void configureRefreshesContextEngineForSameMutableConfigInstance() {
+        ReActAgent agent = new ReActAgent(new AgentCard("same-1", "same", "desc"));
+        ContextEngine initialEngine = agent.getContextEngine();
+        ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
+        mutableConfig.configureContextEngine(10, 2, true, false);
+
+        agent.configure(mutableConfig);
+
+        assertTrue(agent.getContextEngine() != initialEngine);
     }
 
     @Test

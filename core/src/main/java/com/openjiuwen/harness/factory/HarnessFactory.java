@@ -22,11 +22,13 @@ import com.openjiuwen.harness.rails.subagent.SubagentRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
+import com.openjiuwen.harness.tools.CheckpointerRedisTodoStorageProvider;
 import com.openjiuwen.harness.workspace.Workspace;
 import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.spi.store.KVStoreFactory;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -58,6 +60,10 @@ public final class HarnessFactory {
                 .build();
         ensureCardIdentity(effectiveCard);
         DeepAgentConfig effectiveConfig = enrichConfig(effectiveCard, config, workspace);
+        if (CheckpointerRedisTodoStorageProvider.TYPE.equals(effectiveConfig.getTodoStorageType())
+                && effectiveConfig.getKvStoreConfig() != null && !effectiveConfig.getKvStoreConfig().isEmpty()) {
+            throw new IllegalArgumentException("checkpointer_redis cannot use an independent KV store");
+        }
         Workspace effectiveWorkspace = resolveWorkspace(effectiveConfig, workspace);
         registerToolInstances(effectiveConfig.getTools());
         DeepAgent agent = new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace);
@@ -194,7 +200,9 @@ public final class HarnessFactory {
                 .tenantDataRoot(source.getTenantDataRoot())
                 .workspaceSecondaryTiers(source.getWorkspaceSecondaryTiers())
                 .workspaceTierConfigs(source.getWorkspaceTierConfigs())
-                .todoStorageType(source.getTodoStorageType())
+                .todoStorageType(source.isTodoStorageTypeExplicit() ? source.getTodoStorageType() : null)
+                .todoStorageConfig(source.getTodoStorageConfig() == null ? null
+                        : new LinkedHashMap<>(source.getTodoStorageConfig()))
                 .sessionStoreType(source.getSessionStoreType())
                 .kvStoreConfig(source.getKvStoreConfig())
                 .tmpTtl(source.getTmpTtl())

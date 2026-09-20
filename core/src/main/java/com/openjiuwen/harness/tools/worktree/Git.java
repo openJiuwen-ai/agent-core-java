@@ -92,10 +92,7 @@ public final class Git {
     }
 
     public static CompletableFuture<String> findGitRoot(String cwd) {
-        return CompletableFuture.supplyAsync(() -> {
-            GitResult result = runGitSync(List.of("rev-parse", "--show-toplevel"), cwd, false);
-            return result.ok() ? result.stdout() : null;
-        });
+        return CompletableFuture.supplyAsync(() -> findGitRootSync(cwd));
     }
 
     public static CompletableFuture<String> getCurrentBranch(String cwd) {
@@ -134,41 +131,52 @@ public final class Git {
     }
 
     public static CompletableFuture<String> resolveGitDir(String cwd) {
-        return CompletableFuture.supplyAsync(() -> {
-            GitResult result = runGitSync(List.of("rev-parse", "--git-dir"), cwd, false);
-            if (!result.ok()) {
-                return null;
-            }
-            Path gitDir = Path.of(result.stdout());
-            if (!gitDir.isAbsolute()) {
-                gitDir = Path.of(cwd).resolve(gitDir);
-            }
-            return gitDir.normalize().toString();
-        });
+        return CompletableFuture.supplyAsync(() -> resolveGitDirSync(cwd));
     }
 
     public static CompletableFuture<String> findCanonicalGitRoot(String cwd) {
-        return CompletableFuture.supplyAsync(() -> {
-            String gitDir = resolveGitDir(cwd).join();
-            if (gitDir == null) {
+        // Keep all git CLI work on this worker; nested supplyAsync().join() can deadlock the
+        // common ForkJoinPool when many tests compete for workers.
+        return CompletableFuture.supplyAsync(() -> findCanonicalGitRootSync(cwd));
+    }
+
+    private static String findGitRootSync(String cwd) {
+        GitResult result = runGitSync(List.of("rev-parse", "--show-toplevel"), cwd, false);
+        return result.ok() ? result.stdout() : null;
+    }
+
+    private static String resolveGitDirSync(String cwd) {
+        GitResult result = runGitSync(List.of("rev-parse", "--git-dir"), cwd, false);
+        if (!result.ok()) {
+            return null;
+        }
+        Path gitDir = Path.of(result.stdout());
+        if (!gitDir.isAbsolute()) {
+            gitDir = Path.of(cwd).resolve(gitDir);
+        }
+        return gitDir.normalize().toString();
+    }
+
+    private static String findCanonicalGitRootSync(String cwd) {
+        String gitDir = resolveGitDirSync(cwd);
+        if (gitDir == null) {
+            return null;
+        }
+        Path commonDirPath = Path.of(gitDir).resolve("commondir");
+        if (Files.isRegularFile(commonDirPath)) {
+            try {
+                String common = Files.readString(commonDirPath).strip();
+                Path commonAbs = Path.of(gitDir).resolve(common).normalize();
+                if (".git".equals(commonAbs.getFileName().toString())) {
+                    Path parent = commonAbs.getParent();
+                    return parent == null ? null : parent.toString();
+                }
+                return commonAbs.toString();
+            } catch (IOException e) {
                 return null;
             }
-            Path commonDirPath = Path.of(gitDir).resolve("commondir");
-            if (Files.isRegularFile(commonDirPath)) {
-                try {
-                    String common = Files.readString(commonDirPath).strip();
-                    Path commonAbs = Path.of(gitDir).resolve(common).normalize();
-                    if (".git".equals(commonAbs.getFileName().toString())) {
-                        Path parent = commonAbs.getParent();
-                        return parent == null ? null : parent.toString();
-                    }
-                    return commonAbs.toString();
-                } catch (IOException e) {
-                    return null;
-                }
-            }
-            return findGitRoot(cwd).join();
-        });
+        }
+        return findGitRootSync(cwd);
     }
 
     public static CompletableFuture<Void> worktreeAdd(
@@ -319,10 +327,14 @@ public final class Git {
         try {
             Process process = builder.start();
             process.getOutputStream().close();
-            CompletableFuture<String> stdout = readAll(process.getInputStream());
-            CompletableFuture<String> stderr = readAll(process.getErrorStream());
+            // Drain pipes on dedicated named threads — not the common ForkJoinPool — so nested
+            // git supplyAsync workers cannot starve while waiting for stdout/stderr readers.
+            StreamDrain stdout = StreamDrain.start(process.getInputStream(), "git-stdout-drain");
+            StreamDrain stderr = StreamDrain.start(process.getErrorStream(), "git-stderr-drain");
             int exitCode = process.waitFor();
-            GitResult result = new GitResult(exitCode, stdout.join().strip(), stderr.join().strip());
+            stdout.await();
+            stderr.await();
+            GitResult result = new GitResult(exitCode, stdout.text().strip(), stderr.text().strip());
             if (check && !result.ok()) {
                 throw new GitError(args, result.returncode(), result.stderr());
             }
@@ -341,13 +353,35 @@ public final class Git {
         }
     }
 
-    private static CompletableFuture<String> readAll(InputStream stream) {
-        return CompletableFuture.supplyAsync(() -> {
+    private static final class StreamDrain {
+        private final Thread thread;
+        private volatile String text = "";
+
+        private StreamDrain(InputStream stream, String threadName) {
+            thread = new Thread(() -> text = readAllBytes(stream), threadName);
+            thread.setDaemon(true);
+        }
+
+        static StreamDrain start(InputStream stream, String threadName) {
+            StreamDrain drain = new StreamDrain(stream, threadName);
+            drain.thread.start();
+            return drain;
+        }
+
+        void await() throws InterruptedException {
+            thread.join();
+        }
+
+        String text() {
+            return text;
+        }
+
+        private static String readAllBytes(InputStream stream) {
             try (stream) {
                 return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             } catch (IOException e) {
                 return "";
             }
-        });
+        }
     }
 }

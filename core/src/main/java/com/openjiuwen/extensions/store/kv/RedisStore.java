@@ -6,6 +6,7 @@ package com.openjiuwen.extensions.store.kv;
 
 import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
+import com.openjiuwen.spi.store.ExpirableKVStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +14,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -36,7 +38,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>Mirrors Python's {@code RedisStore} in
  * {@code openjiuwen/extensions/store/kv/redis_store.py}.</p>
  */
-public class RedisStore extends BaseKVStore implements AutoCloseable {
+public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableKVStore {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisStore.class);
 
@@ -75,6 +77,60 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         } catch (Throwable throwable) {
             return CompletableFuture.failedFuture(throwable);
         }
+    }
+
+    /**
+     * Writes a value and its expiration atomically, including for supplied Redis clients.
+     *
+     * @param key the key to write
+     * @param value the value to store
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the key or TTL is invalid
+     * @throws IllegalStateException if the client cannot perform the atomic write
+     * @since 0.1.15
+     */
+    @Override
+    public void set(String key, Object value, Duration ttl) {
+        requireKey(key);
+        int seconds = expirySeconds(ttl);
+        Object redisKey = value instanceof byte[] ? key.getBytes(StandardCharsets.UTF_8) : key;
+        Object redisValue = value instanceof byte[] ? value : String.valueOf(value);
+        try {
+            invokeRequired(redisClient, new String[]{"setex"}, redisKey, seconds, redisValue);
+        } catch (Exception e) {
+            throw new IllegalStateException("Redis client failed to perform an atomic TTL write", e);
+        }
+    }
+
+    /**
+     * Refreshes expiration and propagates failures; the legacy int overload is unchanged.
+     *
+     * @param keys the existing keys whose expiration should be refreshed
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the TTL is invalid
+     * @throws IllegalStateException if refreshing a key fails
+     * @since 0.1.15
+     */
+    @Override
+    public void refreshTtl(List<String> keys, Duration ttl) {
+        int seconds = expirySeconds(ttl);
+        Objects.requireNonNull(keys, "keys");
+        try {
+            for (String key : keys) {
+                requireKey(key);
+                expireKey(key, seconds);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Redis client failed to refresh TTL", e);
+        }
+    }
+
+    private static int expirySeconds(Duration ttl) {
+        Objects.requireNonNull(ttl, "ttl");
+        if (ttl.isNegative() || ttl.isZero() || ttl.getNano() != 0 || ttl.getSeconds() > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("TTL must be positive whole seconds within integer range");
+        }
+        return (int) ttl.getSeconds();
     }
 
     @Override
@@ -297,6 +353,10 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
     public BasedKVStorePipeline pipeline() {
         return new BasedKVStorePipeline(operations -> {
             try {
+                List<Object> batched = executePipelineBatch(operations);
+                if (batched != null) {
+                    return CompletableFuture.completedFuture(batched);
+                }
                 List<Object> results = new ArrayList<>(operations.size());
                 for (BasedKVStorePipeline.PipelineOperation operation : operations) {
                     switch (operation.kind()) {
@@ -314,6 +374,102 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
                 return CompletableFuture.failedFuture(throwable);
             }
         });
+    }
+
+    /**
+     * Executes queued pipeline operations over a native Redis pipeline when the client
+     * exposes one, so the batch costs one connection borrow and one network round-trip.
+     * Returns {@code null} when the fast path is unavailable.
+     *
+     * @param operations queued pipeline operations
+     * @return results in operation order, or {@code null} when falling back
+     * @since 0.1.15
+     */
+    private List<Object> executePipelineBatch(List<BasedKVStorePipeline.PipelineOperation> operations) {
+        if (operations.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Object pipeline = null;
+        try {
+            InvocationOutcome pipelineOutcome = tryInvoke(redisClient, new String[]{"pipeline", "pipelined"});
+            if (!pipelineOutcome.handled() || pipelineOutcome.value() == null) {
+                return null;
+            }
+            pipeline = pipelineOutcome.value();
+            for (BasedKVStorePipeline.PipelineOperation operation : operations) {
+                if (!enqueuePipelineOperation(pipeline, operation)) {
+                    return null;
+                }
+            }
+            InvocationOutcome syncOutcome = tryInvoke(pipeline,
+                    new String[]{"syncAndReturnAll", "sync", "execute", "exec"});
+            if (!syncOutcome.handled()) {
+                return null;
+            }
+            return mapPipelineReplies(syncOutcome.value(), operations);
+        } catch (Exception ex) {
+            logger.warn("Real pipeline batch failed, falling back to per-op execution: {}", ex.getMessage());
+            return null;
+        } finally {
+            closePipelineQuietly(pipeline);
+        }
+    }
+
+    private void closePipelineQuietly(Object pipeline) {
+        if (pipeline == null) {
+            return;
+        }
+        try {
+            tryInvoke(pipeline, new String[]{"close"});
+        } catch (Exception ignored) {
+            logger.debug("Failed to close pipeline");
+        }
+    }
+
+    private boolean enqueuePipelineOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation)
+            throws Exception {
+        return switch (operation.kind()) {
+            case "set" -> enqueueSetOperation(pipeline, operation);
+            case "get" -> tryInvoke(pipeline, new String[]{"get"}, operation.key()).handled();
+            case "exists" -> tryInvoke(pipeline, new String[]{"exists"}, operation.key()).handled();
+            default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
+        };
+    }
+
+    private boolean enqueueSetOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation)
+            throws Exception {
+        Integer ttl = operation.ttl();
+        if (ttl != null && ttl > 0) {
+            InvocationOutcome setex = tryInvoke(pipeline, new String[]{"setex", "setEx"},
+                    operation.key(), ttl, operation.value());
+            if (setex.handled()) {
+                return true;
+            }
+            InvocationOutcome setWithTtl = tryInvoke(pipeline, new String[]{"set"},
+                    operation.key(), operation.value(), ttl);
+            return setWithTtl.handled();
+        }
+        return tryInvoke(pipeline, new String[]{"set"}, operation.key(), operation.value()).handled();
+    }
+
+    private List<Object> mapPipelineReplies(Object rawReplies,
+            List<BasedKVStorePipeline.PipelineOperation> operations) {
+        List<Object> replies = toObjectList(rawReplies);
+        if (replies.size() != operations.size()) {
+            throw new IllegalStateException("Pipeline reply count mismatch: ops=" + operations.size()
+                    + ", replies=" + replies.size());
+        }
+        List<Object> results = new ArrayList<>(operations.size());
+        for (int index = 0; index < operations.size(); index++) {
+            BasedKVStorePipeline.PipelineOperation operation = operations.get(index);
+            switch (operation.kind()) {
+            case "set" -> results.add(null);
+            case "get" -> results.add(normalizeValue(replies.get(index)));
+            case "exists" -> results.add(asBoolean(replies.get(index)));
+            default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
+            }
+        }
+        return results;
     }
 
     /**

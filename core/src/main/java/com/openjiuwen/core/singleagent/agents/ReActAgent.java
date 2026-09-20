@@ -11,6 +11,7 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
@@ -108,20 +109,25 @@ public class ReActAgent extends BaseAgent {
     private static final String EXTERNAL_TOOL_RESULTS_REQUIRED_ERROR =
             "External tool results are required before continuing this conversation";
 
-    private ReActAgentConfig config;
-    private ContextEngine contextEngine;
-    private volatile Model llm;
+    private final Object contextEngineLock = new Object();
     private final Object llmLock = new Object();
+    private final ToolInterruptHandler hitlHandler;
+
+    private ReActAgentConfig config;
+    private volatile ContextEngine contextEngine;
+    private ContextEngineConfig appliedContextEngineConfig;
+    private volatile Model llm;
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
-    private final ToolInterruptHandler hitlHandler;
     private boolean kvReleaseWarningLogged;
 
     public ReActAgent(AgentCard card) {
         super(card);
         this.config = createDefaultConfig();
         setConfig(this.config);
-        this.contextEngine = new ContextEngine(this.config.getContextEngineConfig());
+        ContextEngineConfig initialConfig = effectiveContextEngineConfig(this.config.getContextEngineConfig());
+        this.appliedContextEngineConfig = copyContextEngineConfig(initialConfig);
+        this.contextEngine = new ContextEngine(this.appliedContextEngineConfig);
         this.hitlHandler = new ToolInterruptHandler(this);
         getAbilityManager().setContextEngine(contextEngine);
         initMemoryScope();
@@ -159,10 +165,7 @@ public class ReActAgent extends BaseAgent {
             }
             kvReleaseWarningLogged = false;
         }
-        if (!Objects.equals(oldConfig.getContextEngineConfig(), effectiveConfig.getContextEngineConfig())) {
-            contextEngine = new ContextEngine(effectiveConfig.getContextEngineConfig());
-            getAbilityManager().setContextEngine(contextEngine);
-        }
+        refreshContextEngineIfNeeded();
         if (!Objects.equals(oldConfig.getMemScopeId(), effectiveConfig.getMemScopeId())) {
             initMemoryScope();
         }
@@ -1191,9 +1194,11 @@ public class ReActAgent extends BaseAgent {
     }
 
     public ModelContext initContext(AgentSessionApi session) {
-        ModelContext context = contextEngine.createContext(null, session, config.getContextProcessors(), null, null);
+        ContextEngine activeContextEngine = refreshContextEngineIfNeeded();
+        ModelContext context = activeContextEngine.createContext(null, session, config.getContextProcessors(), null,
+                null);
         ModelContext.ToolPort contextReloader = context.reloaderTool();
-        if (config.getContextEngineConfig().isEnableReload()) {
+        if (appliedContextEngineConfig.isEnableReload()) {
             Tool reloader = asSessionReloader(contextReloader);
             if (reloader != null) {
                 getAbilityManager().add(reloader.getCard());
@@ -1822,7 +1827,66 @@ public class ReActAgent extends BaseAgent {
     }
 
     public ContextEngine getContextEngine() {
-        return contextEngine;
+        return refreshContextEngineIfNeeded();
+    }
+
+    /**
+     * Refresh the context engine when the mutable agent configuration changed.
+     *
+     * @return the active context engine
+     * @since 0.1.15
+     */
+    private ContextEngine refreshContextEngineIfNeeded() {
+        synchronized (contextEngineLock) {
+            ContextEngineConfig currentConfig = effectiveContextEngineConfig(config.getContextEngineConfig());
+            if (Objects.equals(appliedContextEngineConfig, currentConfig)) {
+                return contextEngine;
+            }
+            ContextEngineConfig configSnapshot = copyContextEngineConfig(currentConfig);
+            ContextEngine refreshedContextEngine = new ContextEngine(configSnapshot);
+            appliedContextEngineConfig = configSnapshot;
+            contextEngine = refreshedContextEngine;
+            getAbilityManager().setContextEngine(refreshedContextEngine);
+            kvReleaseWarningLogged = false;
+            return contextEngine;
+        }
+    }
+
+    /**
+     * Copy context-engine settings so later in-place mutations remain detectable.
+     *
+     * @param source source configuration
+     * @return an independent configuration snapshot
+     * @since 0.1.15
+     */
+    private static ContextEngineConfig copyContextEngineConfig(ContextEngineConfig source) {
+        Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
+        ContextEngineConfig.Builder snapshotBuilder = ContextEngineConfig.builder()
+                .maxContextMessageNum(source.getMaxContextMessageNum())
+                .defaultWindowMessageNum(source.getDefaultWindowMessageNum())
+                .defaultWindowRoundNum(source.getDefaultWindowRoundNum())
+                .enableKvCacheRelease(source.isEnableKvCacheRelease())
+                .enableReload(source.isEnableReload())
+                .enableTiktokenCounter(source.isTiktokenCounterEnabled())
+                .contextWindowTokens(source.getContextWindowTokens())
+                .modelName(source.getModelName())
+                .enableOpenrouterModelContextWindowTokens(source.isEnableOpenrouterModelContextWindowTokens())
+                .openrouterRequestTimeout(source.getOpenrouterRequestTimeout());
+        if (modelWindowTokens != null) {
+            snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
+        }
+        return snapshotBuilder.build();
+    }
+
+    /**
+     * Normalize an absent context-engine configuration to the engine defaults.
+     *
+     * @param source configured settings, possibly absent
+     * @return configured settings or an empty default configuration
+     * @since 0.1.15
+     */
+    private static ContextEngineConfig effectiveContextEngineConfig(ContextEngineConfig source) {
+        return source != null ? source : ContextEngineConfig.builder().build();
     }
 
     public SystemPromptBuilder getPromptBuilder() {
