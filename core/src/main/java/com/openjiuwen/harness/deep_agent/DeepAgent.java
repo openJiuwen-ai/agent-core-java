@@ -467,7 +467,17 @@ public class DeepAgent implements AutoCloseable {
         }
         for (ModelConfigEntry entry : entries) {
             if (entry.isDefault()) {
-                Runner.resourceMgr().setDefaultModelId(entry.getModelId());
+                // Only set the process-global default when none is set yet.
+                // This preserves an existing global default from other agents
+                // or prior calls, keeping agent-local defaults independent of
+                // the global model pool (FRS DEC-24).
+                if (Runner.resourceMgr().getDefaultModelId() == null) {
+                    Runner.resourceMgr().setDefaultModelId(entry.getModelId());
+                } else {
+                    Loggers.AGENT.warning(
+                        "Skip setting global default model to \"{}\": global default already set to \"{}\"",
+                        entry.getModelId(), Runner.resourceMgr().getDefaultModelId());
+                }
                 if (this.config.getModel() == null && this.config.getBackend() == null) {
                     this.config.setModel(entry.getModelConfig());
                     this.config.setBackend(entry.getModelClient());

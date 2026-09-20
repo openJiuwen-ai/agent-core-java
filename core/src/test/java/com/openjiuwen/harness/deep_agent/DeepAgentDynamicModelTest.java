@@ -79,6 +79,12 @@ class DeepAgentDynamicModelTest {
     void setup() {
         createdAgentIds.clear();
         registeredModelIds.clear();
+        // Reset the process-global default model ID so each test starts clean.
+        // Without this, a default model left over from a prior test (or from
+        // Runner initialization) causes the DM-C01 guard in
+        // DeepAgent.registerModelsAndSetDefault to skip setting the default,
+        // breaking tests that expect their own model to become the default.
+        Runner.resourceMgr().setDefaultModelId(null);
     }
 
     @AfterEach
@@ -93,6 +99,8 @@ class DeepAgentDynamicModelTest {
                 // Best effort
             }
         }
+        // Reset the global default model ID after cleanup
+        Runner.resourceMgr().setDefaultModelId(null);
         // DeepAgent destroy is handled by GC; models cleaned above
     }
 

@@ -408,6 +408,25 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
+     * Resolve the effective model name from the given Model instance, falling back
+     * to {@code config.getModelName()} when the model or its modelConfig is null.
+     * <p>
+     * This ensures that when a dynamic model is selected via
+     * {@code ctx.dynamicModelId}, the provider receives that model's name rather
+     * than the static default from {@code ReActAgentConfig}.
+     *
+     * @param model the resolved model, may be null
+     * @return the effective model name
+     * @since 0.1.16
+     */
+    private String resolveModelName(Model model) {
+        if (model != null && model.getModelConfig() != null) {
+            return model.getModelConfig().getModelName();
+        }
+        return config.getModelName();
+    }
+
+    /**
      * Get LLM instance for the current request, resolving dynamically via
      * {@code ResourceMgr.resolveModel()}.
      * <p>
@@ -695,9 +714,14 @@ public class ReActAgent extends BaseAgent {
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
                     logLlmRequest(inputs.getMessages());
 
+                    // Use the resolved model's name (may differ from config when a dynamic
+                    // model was selected via ctx.dynamicModelId) so the provider receives
+                    // the correct model name. Fall back to config.getModelName() only when
+                    // the resolved model has no modelConfig.
+                    String effectiveModelName = resolveModelName(model);
                     AssistantMessage aiMessage = model.invoke(inputs.getMessages(),
                             inputs.getTools() != null && !inputs.getTools().isEmpty() ? inputs.getTools() : null, null,
-                            null, config.getModelName(), null, null, null, null, extraKwargs);
+                            null, effectiveModelName, null, null, null, null, extraKwargs);
 
                     inputs.setResponse(aiMessage);
                     return aiMessage;
@@ -724,9 +748,14 @@ public class ReActAgent extends BaseAgent {
                         return null;
                     }
                     logLlmRequest(inputs.getMessages());
+                    // Use the resolved model's name (may differ from config when a dynamic
+                    // model was selected via ctx.dynamicModelId) so the provider receives
+                    // the correct model name. Fall back to config.getModelName() only when
+                    // the resolved model has no modelConfig.
+                    String effectiveModelName = resolveModelName(model);
                     Iterator<AssistantMessageChunk> stream = model.stream(inputs.getMessages(),
                             inputs.getTools() != null && !inputs.getTools().isEmpty() ? inputs.getTools() : null, null,
-                            null, config.getModelName(), null, null, null, null, extraKwargs);
+                            null, effectiveModelName, null, null, null, null, extraKwargs);
                     AssistantMessageChunk merged = null;
                     int chunkIndex = 0;
                     try {
@@ -987,6 +1016,7 @@ public class ReActAgent extends BaseAgent {
             copyInvokeExtra(map, callbackExtra, "run_context");
             copyInvokeExtra(map, callbackExtra, "is_follow_up");
             copyInvokeExtra(map, callbackExtra, "loop_queues");
+            copyInvokeExtra(map, callbackExtra, "model_id");
         } else {
             queryPayload = inputs;
         }
@@ -1633,6 +1663,7 @@ public class ReActAgent extends BaseAgent {
             copyInvokeExtra(map, callbackExtra, "run_context");
             copyInvokeExtra(map, callbackExtra, "is_follow_up");
             copyInvokeExtra(map, callbackExtra, "loop_queues");
+            copyInvokeExtra(map, callbackExtra, "model_id");
         } else {
             queryPayload = inputs;
         }

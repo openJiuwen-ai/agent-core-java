@@ -246,6 +246,12 @@ public class ContextProcessorRail extends DeepAgentRail {
             List<ContextEngine.ProcessorSpec> specs = specsCache.getUnchecked(cacheKey);
             applyProcessorSpecs(specs);
             lastInstalledModelKey = cacheKey;
+
+            // the ModelContext was already created by initContext()
+            // using the *old* processor specs. Rebuild processor instances from
+            // the new specs and swap them into the live context so that
+            // context-window construction uses the updated processors.
+            reconfigureContextProcessors(ctx, specs);
         }
     }
 
@@ -279,6 +285,34 @@ public class ContextProcessorRail extends DeepAgentRail {
     }
 
     /**
+     * Rebuild processor instances from the new specs and swap them into the
+     * live {@link ModelContext} carried by {@code ctx}.
+     * <p>
+     * This fixes BUG-02: {@code initContext()} runs before {@code beforeModelCall},
+     * so the context was created with the old processor specs. By rebuilding the
+     * processor instances here, the context window constructed in the subsequent
+     * {@code callModel} uses processors that match the dynamically selected model.
+     *
+     * @param ctx   the callback context carrying the live ModelContext
+     * @param specs the new processor specs to instantiate
+     * @since 0.1.16
+     */
+    private void reconfigureContextProcessors(AgentCallbackContext ctx,
+            List<ContextEngine.ProcessorSpec> specs) {
+        if (ctx == null || ctx.getContext() == null) {
+            return;
+        }
+        ContextEngine engine = owner != null
+            ? owner.getAgent().getContextEngine()
+            : null;
+        if (engine == null) {
+            return;
+        }
+        var newInstances = engine.createProcessorInstances(specs);
+        ctx.getContext().reconfigureProcessors(newInstances);
+    }
+
+    /**
      * Invalidate the cached ProcessorSpecs for the given modelId.
      * Called when a model is updated or removed via ModelMgr.
      *
@@ -287,6 +321,9 @@ public class ContextProcessorRail extends DeepAgentRail {
      */
     public void invalidateSpecsCache(String modelId) {
         specsCache.invalidate(cacheKey(modelId));
+        // Reset lastInstalledModelKey so the next beforeModelCall re-fetches specs
+        // from cache (or rebuilds), rather than skipping due to stale key equality.
+        lastInstalledModelKey = null;
     }
 
     /**

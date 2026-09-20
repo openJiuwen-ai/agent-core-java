@@ -375,6 +375,27 @@ public class ContextEngine {
     public record ProcessorSpec(String processorType, Object config) {
     }
 
+    /**
+     * Create a fresh list of {@link ContextProcessor} instances from the given specs.
+     * <p>
+     * Used by the rail layer to rebuild processor instances when a dynamic model
+     * switch requires new processor configurations, without recreating the entire
+     * {@link ModelContext}.
+     *
+     * @param specs processor specifications; may be {@code null} or empty
+     * @return a new list of processor instances (empty when specs is null/empty)
+     * @since 0.1.16
+     */
+    public List<ContextProcessor> createProcessorInstances(List<ProcessorSpec> specs) {
+        List<ContextProcessor> instances = new ArrayList<>();
+        if (specs != null) {
+            for (ProcessorSpec spec : specs) {
+                instances.add(createProcessor(spec.processorType(), spec.config()));
+            }
+        }
+        return instances;
+    }
+
     // Private helpers
 
     /**
