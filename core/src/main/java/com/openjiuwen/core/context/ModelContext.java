@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.context;
 
+import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
@@ -244,4 +245,18 @@ public abstract class ModelContext {
      * @since 0.1.7
      */
     public abstract Tool reloaderTool();
+
+    /**
+     * Replace the live context processor instances on this context.
+     * <p>
+     * Called by the rail layer when dynamic model switching rebuilds processor
+     * specs (e.g. in {@code beforeModelCall}). The default implementation is a
+     * no-op so that non-processor-backed context implementations are unaffected.
+     *
+     * @param newProcessors the new processor instances to install; may be empty
+     * @since 0.1.16
+     */
+    public void reconfigureProcessors(List<ContextProcessor> newProcessors) {
+        // no-op by default
+    }
 }

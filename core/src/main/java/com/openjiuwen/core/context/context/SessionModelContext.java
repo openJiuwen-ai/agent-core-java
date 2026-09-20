@@ -181,6 +181,25 @@ public class SessionModelContext extends ModelContext implements StatefulContext
     }
 
     /**
+     * Replace the live processor instances backing this context.
+     * <p>
+     * The {@code processors} field is a final reference to a mutable {@code ArrayList},
+     * so this method clears and re-populates the list in-place, allowing the rail
+     * layer to swap processor instances after dynamic model switching without
+     * recreating the entire context.
+     *
+     * @param newProcessors the new processor instances to install; may be empty
+     * @since 0.1.16
+     */
+    @Override
+    public void reconfigureProcessors(List<ContextProcessor> newProcessors) {
+        processors.clear();
+        if (newProcessors != null) {
+            processors.addAll(newProcessors);
+        }
+    }
+
+    /**
      * sessionRef.
      * 
      * @return the result
