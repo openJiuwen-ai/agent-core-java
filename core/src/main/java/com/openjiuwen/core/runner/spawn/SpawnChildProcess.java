@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.runner.spawn;
 
-import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.agentteams.agent.TeamAgent;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
@@ -202,14 +202,30 @@ public final class SpawnChildProcess {
             return runnerExecutor.runAgent(agent, safeInputs, session);
         }
         if (agentConfig.getAgentKind() == SpawnAgentKind.TEAM_AGENT) {
-            return TeamAgent.fromSpawnPayload(agentConfig.getPayload())
-                    .thenCompose(agent -> {
-                        if (streaming) {
-                            return runnerExecutor.runAgentTeamStreaming(agent, safeInputs, true, session)
-                                    .thenApply(chunks -> writeStreamChunks(chunks, writer));
+            TeamAgent agent = TeamAgent.fromSpawnPayload(agentConfig.getPayload());
+            String query = String.valueOf(safeInputs.getOrDefault("query",
+                    safeInputs.getOrDefault("data", "")));
+            if (streaming) {
+                return CompletableFuture.supplyAsync(() -> {
+                    try {
+                        Object lastChunk = agent.invokeForSpawn(query);
+                        List<Object> chunks = new ArrayList<>();
+                        if (lastChunk != null) {
+                            chunks.add(lastChunk);
                         }
-                        return runnerExecutor.runAgentTeam(agent, safeInputs, true, session);
-                    });
+                        return chunks;
+                    } catch (InterruptedException error) {
+                        throw new CompletionException(error);
+                    }
+                }).thenApply(chunks -> writeStreamChunks(chunks.iterator(), writer));
+            }
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    return agent.invokeForSpawn(query);
+                } catch (InterruptedException error) {
+                    throw new CompletionException(error);
+                }
+            });
         }
         return failedFuture(new IllegalArgumentException(
                 "Unsupported spawned agent kind: " + agentConfig.getAgentKind()));
@@ -441,7 +457,6 @@ public final class SpawnChildProcess {
         try {
             return stage.toCompletableFuture().get();
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
             throw new CompletionException(interrupted);
         } catch (ExecutionException error) {
             Throwable cause = error.getCause();
@@ -503,7 +518,7 @@ public final class SpawnChildProcess {
                 Map<String, Object> inputs,
                 boolean member,
                 String session) {
-            return Runner.runAgentTeamStreaming(agent, inputs, false, member, session, null, null, null, null);
+            return Runner.runAgentTeamStreaming(agent, inputs, false, member, session, null, null, null);
         }
 
         @Override

@@ -11,7 +11,7 @@ import com.openjiuwen.agentevolving.trajectory.MemberTrajectorySnapshot;
 import com.openjiuwen.agentevolving.trajectory.ToolCallDetail;
 import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.agentevolving.trajectory.TrajectorySink;
-import com.openjiuwen.agent_teams.schema.TeamRole;
+import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;

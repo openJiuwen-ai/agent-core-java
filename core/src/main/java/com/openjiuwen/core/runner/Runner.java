@@ -4,19 +4,10 @@
 
 package com.openjiuwen.core.runner;
 
-import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamRole;
-import com.openjiuwen.agent_teams.agent.SessionManager;
-import com.openjiuwen.agent_teams.agent.TeamAgent;
-import com.openjiuwen.agent_teams.agent.TeamMember;
-import com.openjiuwen.agent_teams.interaction.DeliverResult;
-import com.openjiuwen.agent_teams.monitor.TeamMonitor;
-import com.openjiuwen.agent_teams.monitor.TeamStreamLogger;
-import com.openjiuwen.agent_teams.runtime.RunActionKind;
-import com.openjiuwen.agent_teams.runtime.TeamRuntimeActivation;
-import com.openjiuwen.agent_teams.runtime.TeamRuntimeManager;
-import com.openjiuwen.agent_teams.runtime.TeamRuntimeMetadata;
-import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
-import com.openjiuwen.agent_teams.schema.TeamOutputSchema;
+import com.openjiuwen.agentteams.agent.TeamAgent;
+import com.openjiuwen.agentteams.monitor.TeamMonitor;
+import com.openjiuwen.agentteams.runtime.TeamRuntimeManager;
+import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
@@ -24,7 +15,6 @@ import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.core.multiagent.BaseTeam;
-import com.openjiuwen.core.multiagent.team_runtime.TeamRuntime;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
@@ -64,7 +54,6 @@ import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -343,17 +332,17 @@ public final class Runner {
     }
 
     public static CompletionStage<Iterator<Object>> runAgentTeamStreaming(Object agentTeam, Object inputs) {
-        return runAgentTeamStreaming(agentTeam, inputs, false, false, null, null, null, null, null);
+        return runAgentTeamStreaming(agentTeam, inputs, false, false, null, null, null, null);
     }
 
     public static Iterator<Object> runAgentTeamStreaming(String agentTeam, Object inputs, Object session) {
-        return joinOrThrow(runAgentTeamStreaming(agentTeam, inputs, true, false, session, null, null, null, null));
+        return joinOrThrow(runAgentTeamStreaming(agentTeam, inputs, true, false, session, null, null, null));
     }
 
     public static Iterator<Object> runAgentTeamStreaming(TeamAgentSpec agentTeam, Map<String, String> inputs,
                                                          String conversationId) {
         return runAgentTeamStreaming(
-                agentTeam, inputs, false, false, conversationId, null, null, null, null)
+                agentTeam, inputs, false, false, conversationId, null, null, null)
                 .toCompletableFuture()
                 .join();
     }
@@ -361,7 +350,7 @@ public final class Runner {
     public static Iterator<Object> runAgentTeamStreaming(TeamAgent agentTeam, Map<String, String> inputs,
                                                          String conversationId) {
         return runAgentTeamStreaming(
-                agentTeam, inputs, false, true, conversationId, null, null, null, null)
+                agentTeam, inputs, false, true, conversationId, null, null, null)
                 .toCompletableFuture()
                 .join();
     }
@@ -371,7 +360,7 @@ public final class Runner {
                                                                           ModelContext context,
                                                                           List<StreamMode> streamModes,
                                                                           Map<String, Object> envs) {
-        return runAgentTeamStreaming(agentTeam, inputs, false, false, session, context, streamModes, envs, null);
+        return runAgentTeamStreaming(agentTeam, inputs, false, false, session, context, streamModes, envs);
     }
 
     public static CompletionStage<Iterator<Object>> runAgentTeamStreaming(Object agentTeam, Object inputs,
@@ -379,42 +368,35 @@ public final class Runner {
                                                                           Object session,
                                                                           ModelContext context,
                                                                           List<StreamMode> streamModes,
-                                                                          Map<String, Object> envs,
-                                                                          TeamStreamLogger streamLogger) {
+                                                                          Map<String, Object> envs) {
         if (base) {
             return GLOBAL_RUNNER.runBaseTeamStreaming(agentTeam, inputs, session, context, streamModes, envs);
         }
         return GLOBAL_RUNNER.runAgentTeamStreaming(
-                agentTeam, inputs, member, session, context, streamModes, envs, streamLogger);
+                agentTeam, inputs, member, session, context, streamModes, envs);
     }
 
-    public static CompletionStage<DeliverResult> interactAgentTeam(Object payload, String teamName, String sessionId) {
-        return GLOBAL_RUNNER.interactAgentTeam(payload, teamName, sessionId);
+    /**
+     * Destroy a registered agent team.
+     *
+     * @param teamName team name
+     * @param isForceEnabled whether other members should be force-shut down
+     * @return {@code true} when the registered team was cleaned
+     * @since 0.1.13
+     */
+    public static boolean destroyAgentTeam(String teamName, boolean isForceEnabled) {
+        return GLOBAL_RUNNER.destroyAgentTeam(teamName, isForceEnabled);
     }
 
-    public static CompletionStage<Boolean> registerHumanAgentInbound(String teamName, String sessionId,
-                                                                     String memberName, Object callback) {
-        return GLOBAL_RUNNER.registerHumanAgentInbound(teamName, sessionId, memberName, callback);
-    }
-
-    public static CompletionStage<Boolean> pauseAgentTeam(String teamName, String sessionId) {
-        return GLOBAL_RUNNER.pauseAgentTeam(teamName, sessionId);
-    }
-
-    public static CompletionStage<Boolean> stopAgentTeam(String teamName, String sessionId) {
-        return GLOBAL_RUNNER.stopAgentTeam(teamName, sessionId);
-    }
-
-    public static CompletionStage<Object> getAgentTeamMonitor(String teamName, String sessionId, boolean hideDm) {
-        return GLOBAL_RUNNER.getAgentTeamMonitor(teamName, sessionId, hideDm);
-    }
-
-    public static List<TeamRuntimeManager.RuntimeEntryInfo> listActiveTeams() {
-        return GLOBAL_RUNNER.listActiveTeams();
-    }
-
-    public static CompletionStage<Boolean> deleteAgentTeam(String teamName, List<String> sessionIds, boolean force) {
-        return GLOBAL_RUNNER.deleteAgentTeam(teamName, sessionIds, force);
+    /**
+     * Inspect the monitor of a registered agent team.
+     *
+     * @param teamName team name
+     * @return an {@link Optional} containing the team monitor, or empty when no team is registered
+     * @since 0.1.13
+     */
+    public static Optional<TeamMonitor> getAgentTeamMonitor(String teamName) {
+        return GLOBAL_RUNNER.getAgentTeamMonitor(teamName);
     }
 
     private static <T> CompletionStage<T> failedFuture(Throwable error) {
@@ -452,13 +434,13 @@ public final class Runner {
         private final ResourceMgr resourceManager = new ResourceMgr();
         private final LocalMessageQueue messageQueue = new LocalMessageQueue();
         private final AsyncCallbackFramework callbackFramework = new AsyncCallbackFramework();
-        private final Set<String> knownTeamNames = ConcurrentHashMap.newKeySet();
         private MessageQueueBase distributedMessageQueue;
         private ReplyTopicSubscription systemReplySub;
         private Object rootTaskGroup;
         private TeamRuntimeManager teamRuntimeManager;
         private boolean defaultCheckpointerInstalledFromConfig;
         private TenantWorkspaceResolver workspaceResolver;
+        private final Map<String, TeamAgent> teamMonitors = new LinkedHashMap<>();
 
         private RunnerImpl(RunnerConfig config) {
             this("global", config);
@@ -919,9 +901,8 @@ public final class Runner {
         }
 
         private CompletionStage<Void> release(String sessionId, boolean force) {
-            return getTeamRuntimeManager()
-                    .releaseSession(sessionId, force)
-                    .thenRun(() -> CheckpointerFactory.getCheckpointer().release(sessionId));
+            return CompletableFuture.runAsync(
+                    () -> CheckpointerFactory.getCheckpointer().release(sessionId));
         }
 
         private CompletionStage<Object> spawnDependencyPending(String methodName) {
@@ -948,17 +929,15 @@ public final class Runner {
                     if (member) {
                         return await(runTeamMember(agentTeam, inputs, session));
                     }
-                    TeamSpecAdapter spec = resolveTeamAgentSpec(agentTeam, session);
-                    AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, spec.teamName());
-                    TeamRuntimeActivation activation = await(getTeamRuntimeManager().activate(spec, teamSession, inputs));
+                    TeamRuntimeManager.Activation activation = getTeamRuntimeManager()
+                            .activate(agentTeam, resolveAgentSessionId(inputs, session));
                     try {
-                        rememberActivatedTeam(spec, activation);
-                        if (isRejectKind(activation.action().kind())) {
-                            return null;
-                        }
-                        return await(asTeamAgentRuntime(activation.agent()).invoke(inputs, activation.session()));
+                        teamMonitors.put(activation.teamName(), activation.agent());
+                        return invokeTeamAgent(activation.agent(), inputs, session);
+                    } catch (InterruptedException interrupted) {
+                        throw new CompletionException(interrupted);
                     } finally {
-                        finalizeTeamActivation(spec.teamName(), activation, teamSession);
+                        getTeamRuntimeManager().finalizeRound(activation);
                     }
                 } finally {
                     if (bound) {
@@ -975,41 +954,26 @@ public final class Runner {
                 Object session,
                 ModelContext context,
                 List<StreamMode> streamModes,
-                Map<String, Object> envs,
-                TeamStreamLogger streamLogger) {
+                Map<String, Object> envs) {
             return CompletableFuture.supplyAsync(() -> {
                 if (member) {
                     return await(runTeamMemberStreaming(agentTeam, inputs, session, streamModes));
                 }
-                TeamSpecAdapter spec = resolveTeamAgentSpec(agentTeam, session);
-                AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, spec.teamName());
-                TeamRuntimeActivation activation = await(getTeamRuntimeManager().activate(spec, teamSession, inputs));
-                List<Object> chunks = new java.util.ArrayList<>();
+                TeamRuntimeManager.Activation activation = getTeamRuntimeManager()
+                        .activate(agentTeam, resolveAgentSessionId(inputs, session));
+                boolean isSuccessful = false;
                 try {
-                    rememberActivatedTeam(spec, activation);
-                    if (isRejectKind(activation.action().kind())) {
-                        return chunks.iterator();
-                    }
-                    TeamAgentRuntimeAdapter runtime = asTeamAgentRuntime(activation.agent());
-                    Object readyChunk = buildTeamRuntimeReadyChunk(spec.teamName(), activation, runtime.agent());
-                    if (streamLogger != null) {
-                        streamLogger.feed(readyChunk);
-                    }
-                    chunks.add(readyChunk);
-                    Iterator<Object> stream = await(runtime.stream(inputs, activation.session(), streamModes));
-                    while (stream.hasNext()) {
-                        Object chunk = stream.next();
-                        if (streamLogger != null) {
-                            streamLogger.feed(chunk);
-                        }
-                        chunks.add(chunk);
-                    }
-                    return chunks.iterator();
+                    teamMonitors.put(activation.teamName(), activation.agent());
+                    Iterator<Object> stream = streamTeamAgent(
+                            activation.agent(), inputs, session, streamModes);
+                    isSuccessful = true;
+                    return wrapAgentTeamIterator(stream, activation);
+                } catch (InterruptedException interrupted) {
+                    throw new CompletionException(interrupted);
                 } finally {
-                    if (streamLogger != null) {
-                        streamLogger.flush();
+                    if (!isSuccessful) {
+                        getTeamRuntimeManager().finalizeRound(activation);
                     }
-                    finalizeTeamActivation(spec.teamName(), activation, teamSession);
                 }
             });
         }
@@ -1018,12 +982,8 @@ public final class Runner {
                                                     ModelContext context, Map<String, Object> envs) {
             return CompletableFuture.supplyAsync(() -> {
                 BaseTeam team = await(prepareBaseTeam(baseTeam));
-                AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, team.getTeamId());
-                AgentSessionApi executionSession = baseTeamExecutionSession(team, session, teamSession);
-                TeamRuntime runtime = team.getRuntime();
-                teamSession.preRun(inputs instanceof Map<?, ?> values ? copyStringMap(values) : null)
-                        .toCompletableFuture()
-                        .join();
+                AgentSessionApi executionSession = baseTeamExecutionSession(team, session);
+                com.openjiuwen.core.multiagent.team_runtime.TeamRuntime runtime = team.getRuntime();
                 if (runtime != null) {
                     runtime.bindTeamSession(executionSession);
                 }
@@ -1033,7 +993,6 @@ public final class Runner {
                     if (runtime != null) {
                         runtime.unbindTeamSession(executionSession.getSessionId());
                     }
-                    teamSession.postRun();
                 }
             });
         }
@@ -1044,12 +1003,8 @@ public final class Runner {
                                                                        Map<String, Object> envs) {
             return CompletableFuture.supplyAsync(() -> {
                 BaseTeam team = await(prepareBaseTeam(baseTeam));
-                AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, team.getTeamId());
-                AgentSessionApi executionSession = baseTeamExecutionSession(team, session, teamSession);
-                TeamRuntime runtime = team.getRuntime();
-                teamSession.preRun(inputs instanceof Map<?, ?> values ? copyStringMap(values) : null)
-                        .toCompletableFuture()
-                        .join();
+                AgentSessionApi executionSession = baseTeamExecutionSession(team, session);
+                com.openjiuwen.core.multiagent.team_runtime.TeamRuntime runtime = team.getRuntime();
                 if (runtime != null) {
                     runtime.bindTeamSession(executionSession);
                 }
@@ -1064,167 +1019,73 @@ public final class Runner {
                     if (runtime != null) {
                         runtime.unbindTeamSession(executionSession.getSessionId());
                     }
-                    teamSession.postRun();
                 }
             });
         }
 
-        private static AgentSessionApi baseTeamExecutionSession(
-                BaseTeam team,
-                Object requestedSession,
-                AgentTeamSessionAdapter teamSession) {
+        private static AgentSessionApi baseTeamExecutionSession(BaseTeam team, Object requestedSession) {
             if (requestedSession instanceof AgentSessionApi requested) {
                 return requested;
             }
-            return teamSession.asAgentSessionApi();
-        }
-
-        private CompletionStage<DeliverResult> interactAgentTeam(Object payload, String teamName, String sessionId) {
-            if (teamName == null || sessionId == null) {
-                return CompletableFuture.completedFuture(DeliverResult.failure("missing_target"));
+            if (requestedSession instanceof String sessionId) {
+                return AgentSession.createAgentSession(sessionId, null, null);
             }
-            return getTeamRuntimeManager().interact(payload, teamName, sessionId);
+            return AgentSession.createAgentSession(team.getTeamId(), null, null);
         }
 
-        private CompletionStage<Boolean> registerHumanAgentInbound(String teamName, String sessionId,
-                                                                   String memberName, Object callback) {
-            return getTeamRuntimeManager().registerHumanAgentInbound(teamName, sessionId, memberName, callback);
+        private boolean destroyAgentTeam(String teamName, boolean isForceEnabled) {
+            return getTeamRuntimeManager().destroyTeam(teamName, isForceEnabled);
         }
 
-        private CompletionStage<Boolean> pauseAgentTeam(String teamName, String sessionId) {
-            return getTeamRuntimeManager().pause(teamName, sessionId);
-        }
-
-        private CompletionStage<Boolean> stopAgentTeam(String teamName, String sessionId) {
-            return getTeamRuntimeManager().stopTeam(teamName, sessionId);
-        }
-
-        private CompletionStage<Object> getAgentTeamMonitor(String teamName, String sessionId, boolean hideDm) {
-            return getTeamRuntimeManager().getMonitor(teamName, sessionId, hideDm);
-        }
-
-        private List<TeamRuntimeManager.RuntimeEntryInfo> listActiveTeams() {
-            return getTeamRuntimeManager().listActiveTeams();
-        }
-
-        private CompletionStage<Boolean> deleteAgentTeam(String teamName, List<String> sessionIds, boolean force) {
-            return getTeamRuntimeManager().deleteTeam(teamName, sessionIds, force);
+        private Optional<TeamMonitor> getAgentTeamMonitor(String teamName) {
+            TeamAgent agent = teamMonitors.get(teamName);
+            return Optional.ofNullable(agent).map(TeamMonitor::createMonitor);
         }
 
         private CompletionStage<Object> runTeamMember(Object agent, Object inputs, Object session) {
+            if (!(agent instanceof TeamAgent teamAgent)) {
+                return failedFuture(ErrorHelper.buildError(
+                        StatusCode.AGENT_TEAM_CONFIG_INVALID,
+                        "reason",
+                        "run_agent_team(member=True) accepts TeamAgent; got " + typeName(agent)
+                ));
+            }
             return CompletableFuture.supplyAsync(() -> {
-                TeamAgentRuntimeAdapter runtime = adaptTeamAgent(agent);
-                AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, runtime.teamName());
-                teamSession.preRun(inputs instanceof Map<?, ?> values ? copyStringMap(values) : null)
-                        .toCompletableFuture()
-                        .join();
-                try {
-                    return await(runtime.invoke(inputs, teamSession));
-                } finally {
-                    await(TeamRuntimeManager.finalizeMember(runtime));
-                    teamSession.postRun();
+                if (session instanceof AgentSessionApi sessionApi) {
+                    teamAgent.stream(asObjectMap(inputs), sessionApi);
+                } else if (session instanceof String sessionId && sessionId != null && !sessionId.isBlank()) {
+                    teamAgent.stream(asObjectMap(inputs), sessionId);
+                } else {
+                    teamAgent.stream(asObjectMap(inputs), teamAgent.sessionId());
                 }
+                return null;
             });
         }
 
         private CompletionStage<Iterator<Object>> runTeamMemberStreaming(Object agent, Object inputs,
                                                                          Object session,
                                                                          List<StreamMode> streamModes) {
+            if (!(agent instanceof TeamAgent teamAgent)) {
+                return failedFuture(ErrorHelper.buildError(
+                        StatusCode.AGENT_TEAM_CONFIG_INVALID,
+                        "reason",
+                        "run_agent_team(member=True) accepts TeamAgent; got " + typeName(agent)
+                ));
+            }
             return CompletableFuture.supplyAsync(() -> {
-                TeamAgentRuntimeAdapter runtime = adaptTeamAgent(agent);
-                AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, runtime.teamName());
-                teamSession.preRun(inputs instanceof Map<?, ?> values ? copyStringMap(values) : null)
-                        .toCompletableFuture()
-                        .join();
-                try {
-                    return await(runtime.stream(inputs, teamSession, streamModes));
-                } finally {
-                    await(TeamRuntimeManager.finalizeMember(runtime));
-                    teamSession.postRun();
-                }
+                Object streamSession = session instanceof AgentSessionApi sessionApi ? sessionApi
+                        : session instanceof String sessionId && sessionId != null && !sessionId.isBlank()
+                        ? sessionId : teamAgent.sessionId();
+                Iterator<Object> stream = teamAgent.stream(asObjectMap(inputs), streamSession);
+                return stream == null ? List.<Object>of().iterator() : stream;
             });
         }
 
         private TeamRuntimeManager getTeamRuntimeManager() {
             if (teamRuntimeManager == null) {
-                teamRuntimeManager = new TeamRuntimeManager(
-                        this::inspectTeamSession,
-                        TeamRuntimeManager.RuntimeCleanup.noop(),
-                        this::createTeamMonitor
-                );
+                teamRuntimeManager = new TeamRuntimeManager();
             }
             return teamRuntimeManager;
-        }
-
-        private CompletionStage<TeamRuntimeManager.SessionInspection> inspectTeamSession(
-                TeamRuntimeManager.TeamSpecView spec,
-                TeamRuntimeManager.AgentTeamSessionView session,
-                String teamName) {
-            boolean teamInSession = false;
-            String teamDbState = null;
-            if (session instanceof TeamRuntimeMetadata.SessionStateAccess stateAccess) {
-                teamInSession = TeamRuntimeMetadata.readTeamNamespace(stateAccess, teamName) != null;
-                teamDbState = TeamRuntimeMetadata.readTeamDbState(stateAccess, teamName);
-            }
-            boolean teamInDb = knownTeamNames.contains(teamName)
-                    || TeamRuntimeMetadata.TEAM_DB_STATE_CREATED.equals(teamDbState);
-            return CompletableFuture.completedFuture(new TeamRuntimeManager.SessionInspection(
-                    teamInSession, teamInDb, teamDbState));
-        }
-
-        private Object createTeamMonitor(TeamRuntimeManager.TeamAgentRuntime agent, boolean hideDm) {
-            if (agent instanceof TeamAgentRuntimeAdapter adapter) {
-                return TeamMonitor.createMonitor(adapter.agent(), hideDm);
-            }
-            return agent;
-        }
-
-        private TeamSpecAdapter resolveTeamAgentSpec(Object agentTeam, Object session) {
-            if (agentTeam instanceof TeamAgentSpec spec) {
-                return new TeamSpecAdapter(spec);
-            }
-            if (agentTeam instanceof String teamName) {
-                TeamRuntimeManager.RuntimeEntry entry = getTeamRuntimeManager().pool().get(teamName);
-                if (entry != null && entry.agent() instanceof TeamAgentRuntimeAdapter adapter
-                        && adapter.spec() != null) {
-                    return adapter.spec();
-                }
-                TeamSpecAdapter specFromBucket = resolveSpecFromSessionBucket(teamName, session);
-                if (specFromBucket != null) {
-                    return specFromBucket;
-                }
-                throw ErrorHelper.buildError(
-                        StatusCode.AGENT_TEAM_CONFIG_INVALID,
-                        "reason",
-                        "team '" + teamName + "' has no live pool entry and no persisted spec in the supplied session; "
-                                + "first-time runs must pass a TeamAgentSpec on a new session"
-                );
-            }
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_TEAM_CONFIG_INVALID,
-                    "reason",
-                    "run_agent_team accepts str | TeamAgentSpec; got "
-                            + typeName(agentTeam) + ". For BaseTeam pass base=True."
-            );
-        }
-
-        private TeamSpecAdapter resolveSpecFromSessionBucket(String teamName, Object session) {
-            if (session == null) {
-                return null;
-            }
-            AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, teamName);
-            try {
-                teamSession.preRun(null).toCompletableFuture().join();
-                Map<String, Object> bucket = TeamRuntimeMetadata.readTeamNamespace(teamSession, teamName);
-                if (bucket == null || bucket.get("spec") == null) {
-                    return null;
-                }
-                TeamAgentSpec spec = new TeamAgentSpec();
-                spec.setTeamName(teamName);
-                return new TeamSpecAdapter(spec);
-            } catch (RuntimeException ignored) {
-                return null;
-            }
         }
 
         private CompletionStage<BaseTeam> prepareBaseTeam(Object baseTeam) {
@@ -1251,90 +1112,138 @@ public final class Runner {
             );
         }
 
-        private AgentTeamSessionAdapter createAgentTeamSession(Object session, String teamId) {
-            if (session instanceof AgentTeamSessionAdapter adapter) {
-                return adapter;
-            }
-            if (session instanceof AgentTeamSession teamSession) {
-                return new AgentTeamSessionAdapter(teamSession);
-            }
-            if (session instanceof AgentSession agentSession) {
-                return new AgentTeamSessionAdapter(AgentTeamSession.createAgentTeamSession(
-                        agentSession.getSessionId(), agentSession.getEnvs(), teamId));
-            }
-            if (session instanceof String sessionId) {
-                return new AgentTeamSessionAdapter(AgentTeamSession.createAgentTeamSession(sessionId, null, teamId));
-            }
-            return new AgentTeamSessionAdapter(AgentTeamSession.createAgentTeamSession(null, null, teamId));
-        }
-
-        private void rememberActivatedTeam(TeamSpecAdapter spec, TeamRuntimeActivation activation) {
-            if (activation != null && activation.agent() != null && !isRejectKind(activation.action().kind())) {
-                knownTeamNames.add(spec.teamName());
-            }
-        }
-
-        private void finalizeTeamActivation(String teamName, TeamRuntimeActivation activation,
-                                            AgentTeamSessionAdapter teamSession) {
-            try {
-                if (activation != null) {
-                    String sessionId = activation.session() == null ? teamSession.getSessionId()
-                            : activation.session().getSessionId();
-                    await(getTeamRuntimeManager().finalizeTeam(teamName, sessionId));
-                    closeTeamInteractGate(teamName, sessionId);
+        private static String resolveAgentSessionId(Object inputs, Object session) {
+            if (inputs instanceof Map<?, ?> inputMap) {
+                Object conversationId = inputMap.get(AGENT_CONVERSATION_ID);
+                if (conversationId instanceof String value && !value.isBlank()) {
+                    return value;
                 }
-            } finally {
-                teamSession.postRun();
             }
+            if (session instanceof AgentSessionApi sessionApi) {
+                String sessionId = sessionApi.getSessionId();
+                if (sessionId != null && !sessionId.isBlank()) {
+                    return sessionId;
+                }
+            }
+            if (session instanceof String sessionId && !sessionId.isBlank()) {
+                return sessionId;
+            }
+            return DEFAULT_AGENT_SESSION_ID;
         }
 
-        private void closeTeamInteractGate(String teamName, String sessionId) {
-            TeamRuntimeManager.RuntimeEntry entry = getTeamRuntimeManager().pool().get(teamName);
-            if (entry == null || !Objects.equals(entry.currentSessionId(), sessionId)) {
-                return;
+        private static Map<String, Object> asObjectMap(Object inputs) {
+            if (inputs instanceof Map<?, ?> rawMap) {
+                return copyStringMap(rawMap);
             }
-            entry.interactGate().closeAndDrain();
+            Map<String, Object> wrapped = new LinkedHashMap<>();
+            wrapped.put("query", String.valueOf(inputs));
+            return wrapped;
         }
 
-        private static boolean isRejectKind(RunActionKind kind) {
-            return kind == RunActionKind.REJECT_RUNNING
-                    || kind == RunActionKind.REJECT_ORPHANED
-                    || kind == RunActionKind.REJECT_INCONSISTENT;
+        /**
+         * Drive one full team round with the given inputs and return the last emitted chunk.
+         *
+         * <p>Mirrors Python's {@code LeaderTeammateAgentTeam.invoke} path: dispatch the
+         * query and consume the coordination stream until the round completes.</p>
+         */
+        private static Object invokeTeamAgent(TeamAgent agent, Object inputs, Object session)
+                throws InterruptedException {
+            Iterator<Object> stream = streamTeamAgent(agent, inputs, session, null);
+            Object last = null;
+            while (stream != null && stream.hasNext()) {
+                last = stream.next();
+            }
+            return last;
         }
 
-        private static TeamAgentRuntimeAdapter asTeamAgentRuntime(TeamRuntimeManager.TeamAgentRuntime runtime) {
-            if (runtime instanceof TeamAgentRuntimeAdapter adapter) {
-                return adapter;
+        /**
+         * Start a streaming coordination round and return the chunk iterator.
+         */
+        private static Iterator<Object> streamTeamAgent(
+                TeamAgent agent,
+                Object inputs,
+                Object session,
+                List<StreamMode> streamModes) throws InterruptedException {
+            Map<String, Object> teamInputs = asObjectMap(inputs);
+            if (session instanceof AgentSessionApi sessionApi) {
+                return agent.stream(teamInputs, sessionApi);
             }
-            throw new IllegalStateException("team runtime agent is not a Runner adapter: " + typeName(runtime));
+            if (session instanceof String sessionId && !sessionId.isBlank()) {
+                return agent.stream(teamInputs, sessionId);
+            }
+            return agent.stream(teamInputs, agent.sessionId());
         }
 
-        private static TeamAgentRuntimeAdapter adaptTeamAgent(Object agent) {
-            if (agent instanceof TeamAgentRuntimeAdapter adapter) {
-                return adapter;
-            }
-            if (agent instanceof TeamAgent teamAgent) {
-                return new TeamAgentRuntimeAdapter(null, teamAgent);
-            }
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_TEAM_CONFIG_INVALID,
-                    "reason",
-                    "run_agent_team(member=True) accepts TeamAgent; got " + typeName(agent)
-            );
+        /**
+         * Finalize the team round when the stream is fully consumed or fails.
+         *
+         * <p>A persistent team stays registered (paused) so it can be resumed by
+         * name on the same session; a temporary team is stopped and removed.</p>
+         */
+        private Iterator<Object> wrapAgentTeamIterator(
+                Iterator<Object> delegate,
+                TeamRuntimeManager.Activation activation) {
+            return new AgentTeamStreamingIterator(delegate, activation);
         }
 
-        private static Object buildTeamRuntimeReadyChunk(
-                String teamName,
-                TeamRuntimeActivation activation,
-                TeamAgent agent) {
-            TeamRole role = agent == null ? null : agent.getRole();
-            String leaderMemberName = agent == null ? null : agent.getMemberName();
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("event_type", "team.runtime_ready");
-            payload.put("team_name", teamName);
-            payload.put("session_id", activation.session().getSessionId());
-            payload.put("activation_kind", activation.action().kind().getValue());
-            return new TeamOutputSchema("message", 0, payload, leaderMemberName, role);
+        private final class AgentTeamStreamingIterator implements Iterator<Object>, AutoCloseable {
+            private final Iterator<Object> delegate;
+            private final TeamRuntimeManager.Activation activation;
+            private boolean isFinalized;
+
+            private AgentTeamStreamingIterator(
+                    Iterator<Object> delegate,
+                    TeamRuntimeManager.Activation activation) {
+                this.delegate = delegate;
+                this.activation = activation;
+            }
+
+            @Override
+            public boolean hasNext() {
+                boolean isSuccessful = false;
+                try {
+                    boolean hasNext = delegate.hasNext();
+                    isSuccessful = true;
+                    if (!hasNext) {
+                        finalizeTeam();
+                    }
+                    return hasNext;
+                } finally {
+                    if (!isSuccessful) {
+                        finalizeTeam();
+                    }
+                }
+            }
+
+            @Override
+            public Object next() {
+                boolean isSuccessful = false;
+                try {
+                    Object next = delegate.next();
+                    isSuccessful = true;
+                    return next;
+                } finally {
+                    if (!isSuccessful) {
+                        finalizeTeam();
+                    }
+                }
+            }
+
+            @Override
+            public void close() throws Exception {
+                if (delegate instanceof AutoCloseable closeable) {
+                    closeable.close();
+                }
+                finalizeTeam();
+            }
+
+            private void finalizeTeam() {
+                if (isFinalized) {
+                    return;
+                }
+                getTeamRuntimeManager().finalizeRound(activation);
+                isFinalized = true;
+            }
         }
 
         private static Map<String, Object> copyStringMap(Map<?, ?> values) {
@@ -1349,287 +1258,6 @@ public final class Runner {
 
         private static String typeName(Object value) {
             return value == null ? "null" : value.getClass().getSimpleName();
-        }
-
-        /**
-         * Adapter from the public TeamAgentSpec model to the runtime manager's narrow spec view.
-         *
-         * <p>Mirrors Python's {@code _resolve_team_agent_spec} output in
-         * {@code openjiuwen/core/runner/team_runner.py}.</p>
-         */
-        private static final class TeamSpecAdapter implements TeamRuntimeManager.TeamSpecView {
-            private final TeamAgentSpec spec;
-
-            private TeamSpecAdapter(TeamAgentSpec spec) {
-                this.spec = Objects.requireNonNull(spec, "spec");
-            }
-
-            @Override
-            public String teamName() {
-                return spec.getTeamName();
-            }
-
-            @Override
-            public TeamRuntimeManager.TeamAgentRuntime build() {
-                return new TeamAgentRuntimeAdapter(this, spec.build());
-            }
-
-            @Override
-            public TeamRuntimeManager.TeamAgentRuntime recoverFromSession(
-                    TeamRuntimeManager.AgentTeamSessionView session,
-                    String teamName) {
-                if (session instanceof SessionManager.AgentTeamSessionView sessionView) {
-                    return new TeamAgentRuntimeAdapter(
-                            this,
-                            TeamAgent.recoverFromSession(sessionView, teamName, spec.toConfiguratorSpec()));
-                }
-                return build();
-            }
-        }
-
-        /**
-         * Adapter from TeamAgent to the runtime manager's lifecycle surface plus invoke/stream helpers.
-         *
-         * <p>Mirrors Python's leader/member TeamAgent object used by
-         * {@code openjiuwen/core/runner/team_runner.py}.</p>
-         */
-        private static final class TeamAgentRuntimeAdapter implements TeamRuntimeManager.TeamAgentRuntime {
-            private final TeamSpecAdapter spec;
-            private final TeamAgent agent;
-
-            private TeamAgentRuntimeAdapter(TeamSpecAdapter spec, TeamAgent agent) {
-                this.spec = spec;
-                this.agent = Objects.requireNonNull(agent, "agent");
-            }
-
-            private TeamSpecAdapter spec() {
-                return spec;
-            }
-
-            private TeamAgent agent() {
-                return agent;
-            }
-
-            private String teamName() {
-                if (spec != null) {
-                    return spec.teamName();
-                }
-                if (agent.getTeamName() != null) {
-                    return agent.getTeamName();
-                }
-                return "agent_team";
-            }
-
-            private CompletionStage<Object> invoke(Object inputs, TeamRuntimeManager.AgentTeamSessionView session) {
-                return stream(inputs, session, null).thenApply(iterator -> {
-                    Object last = null;
-                    while (iterator.hasNext()) {
-                        last = iterator.next();
-                    }
-                    return last;
-                });
-            }
-
-            private CompletionStage<Iterator<Object>> stream(
-                    Object inputs,
-                    TeamRuntimeManager.AgentTeamSessionView session,
-                    List<StreamMode> streamModes) {
-                SessionManager.AgentTeamSessionView sessionView = asAgentSessionView(session);
-                return agent.stream(inputs, sessionView, streamModes)
-                        .thenApply(chunks -> chunks == null ? List.<Object>of().iterator() : chunks.iterator());
-            }
-
-            @Override
-            public CompletionStage<Void> deliverInput(String body) {
-                return agent.deliverInput(body);
-            }
-
-            @Override
-            public CompletionStage<Void> pauseCoordination() {
-                return agent.pauseCoordination();
-            }
-
-            @Override
-            public CompletionStage<Void> stopCoordination() {
-                return agent.stopCoordination();
-            }
-
-            @Override
-            public CompletionStage<Boolean> isShutdownRequested() {
-                return agent.isShutdownRequested();
-            }
-
-            @Override
-            public String lifecycle() {
-                return agent.getLifecycle();
-            }
-
-            @Override
-            public boolean hasPendingInterrupt() {
-                return agent.hasPendingInterrupt();
-            }
-
-            @Override
-            public CompletionStage<Void> resumeInterrupt(com.openjiuwen.core.session.interaction.InteractiveInput input) {
-                return agent.resumeInterrupt(input);
-            }
-
-            @Override
-            public CompletionStage<Void> autoStartAll() {
-                return agent.autoStartAll().thenApply(ignored -> null);
-            }
-
-            @Override
-            public CompletionStage<Void> autoStartMember(String memberName) {
-                return agent.autoStartMember(memberName).thenApply(ignored -> null);
-            }
-
-            @Override
-            public CompletionStage<TeamRuntimeManager.TeamAgentRuntime> lookupHumanAgentRuntime(String memberName) {
-                return agent.lookupHumanAgentRuntime(memberName).thenApply(runtime -> {
-                    if (runtime instanceof TeamAgent teamAgent) {
-                        return new TeamAgentRuntimeAdapter(null, teamAgent);
-                    }
-                    return null;
-                });
-            }
-
-            @Override
-            public CompletionStage<Void> resumeForNewSession(TeamRuntimeManager.AgentTeamSessionView session) {
-                return agent.resumeForNewSession(asAgentSessionView(session));
-            }
-
-            @Override
-            public CompletionStage<Void> recoverTeam() {
-                return agent.recoverTeam();
-            }
-
-            @Override
-            public void persistSessionManifest(TeamRuntimeManager.AgentTeamSessionView session) {
-                agent.persistSessionManifest(asAgentSessionView(session));
-            }
-
-            @Override
-            public TeamRuntimeManager.TeamMemberRuntime teamMember() {
-                TeamMember member = agent.getTeamMember();
-                return member == null ? null : new TeamMemberRuntimeAdapter(member);
-            }
-
-            private static SessionManager.AgentTeamSessionView asAgentSessionView(
-                    TeamRuntimeManager.AgentTeamSessionView session) {
-                if (session instanceof SessionManager.AgentTeamSessionView sessionView) {
-                    return sessionView;
-                }
-                throw new IllegalArgumentException("session must implement AgentTeamSessionView");
-            }
-        }
-
-        /**
-         * Adapter for TeamMember lifecycle status used by finalize_member.
-         *
-         * <p>Mirrors Python's member status transitions in
-         * {@code openjiuwen/agent_teams/runtime/manager.py}.</p>
-         */
-        private static final class TeamMemberRuntimeAdapter implements TeamRuntimeManager.TeamMemberRuntime {
-            private final TeamMember member;
-
-            private TeamMemberRuntimeAdapter(TeamMember member) {
-                this.member = member;
-            }
-
-            @Override
-            public CompletionStage<TeamRuntimeManager.MemberStatus> status() {
-                return member.status().thenApply(TeamMemberRuntimeAdapter::toRuntimeStatus);
-            }
-
-            @Override
-            public CompletionStage<Void> updateStatus(TeamRuntimeManager.MemberStatus status) {
-                com.openjiuwen.agent_teams.schema.status.MemberStatus target = toSchemaStatus(status);
-                if (target == null) {
-                    return CompletableFuture.completedFuture(null);
-                }
-                return member.updateStatus(target).thenApply(ignored -> null);
-            }
-
-            private static TeamRuntimeManager.MemberStatus toRuntimeStatus(
-                    com.openjiuwen.agent_teams.schema.status.MemberStatus status) {
-                if (status == null) {
-                    return null;
-                }
-                return switch (status) {
-                    case READY -> TeamRuntimeManager.MemberStatus.READY;
-                    case STOPPED -> TeamRuntimeManager.MemberStatus.STOPPED;
-                    case PAUSED -> TeamRuntimeManager.MemberStatus.PAUSED;
-                    case SHUTDOWN -> TeamRuntimeManager.MemberStatus.SHUTDOWN;
-                    case SHUTDOWN_REQUESTED -> TeamRuntimeManager.MemberStatus.SHUTDOWN_REQUESTED;
-                    default -> null;
-                };
-            }
-
-            private static com.openjiuwen.agent_teams.schema.status.MemberStatus toSchemaStatus(
-                    TeamRuntimeManager.MemberStatus status) {
-                if (status == null) {
-                    return null;
-                }
-                return switch (status) {
-                    case READY -> com.openjiuwen.agent_teams.schema.status.MemberStatus.READY;
-                    case STOPPED -> com.openjiuwen.agent_teams.schema.status.MemberStatus.STOPPED;
-                    case PAUSED -> com.openjiuwen.agent_teams.schema.status.MemberStatus.PAUSED;
-                    case SHUTDOWN -> com.openjiuwen.agent_teams.schema.status.MemberStatus.SHUTDOWN;
-                    case SHUTDOWN_REQUESTED -> com.openjiuwen.agent_teams.schema.status.MemberStatus.SHUTDOWN_REQUESTED;
-                    default -> null;
-                };
-            }
-        }
-
-        /**
-         * Session adapter shared by TeamRuntimeManager, TeamAgent, and BaseTeam.
-         *
-         * <p>Mirrors Python's {@code create_agent_team_session(...)} use in
-         * {@code openjiuwen/core/runner/team_runner.py}.</p>
-         */
-        private static final class AgentTeamSessionAdapter implements TeamRuntimeManager.AgentTeamSessionView,
-                SessionManager.AgentTeamSessionView {
-            private final AgentTeamSession session;
-
-            private AgentTeamSessionAdapter(AgentTeamSession session) {
-                this.session = Objects.requireNonNull(session, "session");
-            }
-
-            @Override
-            public String getSessionId() {
-                return session.getSessionId();
-            }
-
-            @Override
-            public CompletionStage<Void> preRun(Map<String, Object> inputs) {
-                session.preRun(inputs == null ? null : Map.of("inputs", inputs));
-                return CompletableFuture.completedFuture(null);
-            }
-
-            private void postRun() {
-                session.postRun();
-            }
-
-            @Override
-            public CompletionStage<Void> flushCheckpoint() {
-                session.flushCheckpoint();
-                return CompletableFuture.completedFuture(null);
-            }
-
-            @Override
-            public Object getState(String key) {
-                return session.getState(key);
-            }
-
-            @Override
-            public void updateState(Map<String, Object> data) {
-                session.updateState(data);
-            }
-
-            private AgentSessionApi asAgentSessionApi() {
-                return session;
-            }
         }
 
         private PreparedWorkflow prepareWorkflow(Object workflow, Object session) {
@@ -1906,7 +1534,6 @@ public final class Runner {
             try {
                 return stage.toCompletableFuture().get();
             } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
                 throw new CompletionException(interrupted);
             } catch (ExecutionException error) {
                 Throwable cause = error.getCause();
