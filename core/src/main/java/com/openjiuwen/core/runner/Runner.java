@@ -32,6 +32,7 @@ import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
 import com.openjiuwen.core.runner.spawn.SpawnMessage;
 import com.openjiuwen.core.runner.spawn.SpawnMessageType;
 import com.openjiuwen.core.runner.spawn.SpawnProcesses;
+import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
@@ -728,7 +729,7 @@ public final class Runner {
                         return result;
                     }
                     if (prepared.agent() instanceof DeepAgent deepAgent) {
-                        Object result = deepAgent.invoke(asStringObjectMap(inputs));
+                        Object result = deepAgent.invoke(asStringObjectMap(inputs), prepared.agentSession());
                         if (prepared.agentSessionFacade() != null) {
                             prepared.agentSessionFacade().postRun();
                         }
@@ -787,7 +788,7 @@ public final class Runner {
                             iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
                         }
                     } else if (prepared.agent() instanceof DeepAgent deepAgent) {
-                        iterator = deepAgent.stream(asStringObjectMap(inputs), effectiveModes);
+                        iterator = deepAgent.stream(asStringObjectMap(inputs), prepared.agentSession(), effectiveModes);
                         if (prepared.agentSessionFacade() != null) {
                             iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
                         }
@@ -1024,13 +1025,19 @@ public final class Runner {
         }
 
         private static AgentSessionApi baseTeamExecutionSession(BaseTeam team, Object requestedSession) {
+            if (requestedSession instanceof AgentGroupSession groupSession) {
+                groupSession.setTeamId(team.getCard().getId());
+                return groupSession;
+            }
             if (requestedSession instanceof AgentSessionApi requested) {
                 return requested;
             }
-            if (requestedSession instanceof String sessionId) {
-                return AgentSession.createAgentSession(sessionId, null, null);
-            }
-            return AgentSession.createAgentSession(team.getTeamId(), null, null);
+            String sessionId = requestedSession instanceof String requestedId
+                    ? requestedId
+                    : team.getTeamId();
+            AgentGroupSession groupSession = AgentGroupSession.create(sessionId, null);
+            groupSession.setTeamId(team.getCard().getId());
+            return groupSession;
         }
 
         private boolean destroyAgentTeam(String teamName, boolean isForceEnabled) {
