@@ -162,6 +162,15 @@ class ReActAgentTest {
 
     @Test
     void testInvokeRefreshesContextEngineAfterMutableConfigUpdate() {
+        // Ignore a process-global default model left by other tests. This case
+        // checks context refresh when the agent itself has no model client.
+        agent = new ReActAgent(AgentCard.builder().name("test-react-agent").description("Test ReAct Agent").build()) {
+            @Override
+            protected Model getLlm(AgentCallbackContext ctx) {
+                throw new IllegalStateException(
+                        "model_client_config is required. Use configureModelClient() to set it.");
+            }
+        };
         ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
         mutableConfig.configureContextEngine(2, 1, false);
         TestSession session = new TestSession("mutable-invoke");

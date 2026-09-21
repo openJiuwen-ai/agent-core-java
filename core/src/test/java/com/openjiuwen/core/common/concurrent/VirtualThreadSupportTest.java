@@ -189,7 +189,7 @@ class VirtualThreadSupportTest {
     void newThreadMatchesRuntimeCapability()
             throws InterruptedException, TimeoutException, ExecutionException {
         Thread thread = OpenJiuwenExecutors.newThread(() -> {
-        }, "new-thread-test", true);
+        }, "new-thread-test", false);
         try {
             assertThat(thread.getName()).isEqualTo("new-thread-test");
             assertThat(thread.isDaemon()).isEqualTo(VirtualThreadSupport.isSupported());
