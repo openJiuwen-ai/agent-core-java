@@ -7,7 +7,7 @@
 
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-java-reactor</artifactId>
-    <version>0.1.15</version>
+    <version>0.1.17</version>
     <packaging>pom</packaging>
 
     <name>agent-core-java-reactor</name>
