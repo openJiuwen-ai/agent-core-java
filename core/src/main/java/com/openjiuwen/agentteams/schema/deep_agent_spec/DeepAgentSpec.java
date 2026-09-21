@@ -85,4 +85,15 @@ public class DeepAgentSpec {
     private double completionTimeout = 600.0;
     private ProgressiveToolSpec progressiveTool;
     private List<String> approvalRequiredTools;
+
+    /**
+     * Whether the unified {@code agent_hint} KV-cache affinity protocol is
+     * enabled for the agent built from this spec. Mirrors Python's
+     * {@code kv_cache_affinity_config.enable_kv_cache_affinity} carried on the
+     * member spec.
+     *
+     * @since 0.1.16
+     */
+    @Builder.Default
+    private boolean isEnableKvCacheAffinity = false;
 }

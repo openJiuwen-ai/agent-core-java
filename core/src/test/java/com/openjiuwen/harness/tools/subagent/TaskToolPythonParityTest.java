@@ -185,6 +185,12 @@ class TaskToolPythonParityTest {
 
         @Override
         public Map<String, Object> invoke(Map<String, Object> inputs) {
+            AgentSessionApi session = null;
+            return invoke(inputs, session);
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
             lastInputs = new LinkedHashMap<>(inputs);
             return Map.of("output", "done");
         }

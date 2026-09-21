@@ -4,7 +4,7 @@
 
 package com.openjiuwen.retrieval.indexing.processor.parser;
 
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;

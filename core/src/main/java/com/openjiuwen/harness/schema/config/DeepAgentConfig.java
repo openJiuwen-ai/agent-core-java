@@ -98,6 +98,15 @@ public class DeepAgentConfig {
     private ToolPermissionHost permissionHost;
     @Builder.Default
     private boolean isEnableTenantIsolation = false;
+    /**
+     * Whether the unified {@code agent_hint} KV-cache affinity protocol is
+     * enabled for this DeepAgent and its subagents. Mirrors Python's
+     * {@code DeepConfig.kv_cache_affinity_config.enable_kv_cache_affinity}.
+     *
+     * @since 0.1.16
+     */
+    @Builder.Default
+    private boolean isEnableKvCacheAffinity = false;
     private String tenantDataRoot;
     private List<String> workspaceSecondaryTiers;
     private Map<String, Map<String, Object>> workspaceTierConfigs;

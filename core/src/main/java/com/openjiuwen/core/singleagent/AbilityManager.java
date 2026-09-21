@@ -918,7 +918,7 @@ public class AbilityManager {
                     ? toolCall.getId()
                     : parentSessionId + ":" + toolCall.getId();
             inputs.put("conversation_id", childSessionId);
-            Object childSession = AgentSession.createAgentSession(childSessionId, null,
+            Object childSession = buildAgentChildSession(session, childSessionId,
                     agent instanceof BaseAgent baseAgent ? baseAgent.getCard() : agentCard);
             Object result = Runner.runAgent(agent, inputs, childSession, null);
             return new ExecutionResult(result, new ToolMessage(buildToolMessageContent(result),
@@ -928,6 +928,43 @@ public class AbilityManager {
                 | ClassCastException | UnsupportedOperationException exception) {
             throw AbilityExecutionError.of(toolCall, "Agent execution error: " + exception.getMessage(), exception);
         }
+    }
+
+    /**
+     * Build the child Session for one sub-Agent execution with KVC inheritance.
+     *
+     * <p>Mirrors Python {@code ability_manager.py}: when the parent session
+     * carries a shared KVC runtime, the child inherits it plus the parent's
+     * provider-facing lineage; otherwise it stays a plain self-keyed
+     * session.</p>
+     *
+     * @param session parent session object (may be an {@code AgentSessionApi})
+     * @param childSessionId child session id
+     * @param card child agent card
+     * @return the child session object
+     */
+    private Object buildAgentChildSession(Object session, String childSessionId, Object card) {
+        if (!(session instanceof AgentSessionApi parentSession)) {
+            return AgentSession.createAgentSession(childSessionId, null, card);
+        }
+        java.util.Optional<com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.ChildSessionKwargs> inheritance =
+                com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.buildChildSessionKwargs(parentSession);
+        if (inheritance.isEmpty()) {
+            return AgentSession.createAgentSession(childSessionId, null, card);
+        }
+        com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.ChildSessionKwargs inherited =
+                inheritance.get();
+        com.openjiuwen.core.session.AgentSession child = new com.openjiuwen.core.session.AgentSession(
+                childSessionId,
+                inherited.envs(),
+                card,
+                null,
+                true,
+                java.util.Map.of(),
+                inherited.kvCacheRuntime()
+        );
+        child.bindParentSessionId(inherited.parentSessionId());
+        return child;
     }
 
     private Object createWorkflowContext(String workflowId, Object session) {

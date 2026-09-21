@@ -80,6 +80,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
@@ -126,6 +127,11 @@ public class ReActAgent extends BaseAgent {
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
     private boolean kvReleaseWarningLogged;
+    private final com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook kvCacheModelCallHook =
+            new com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook();
+
+    /** Previous LLM-bound window per session, used for affinity window-diff eviction. */
+    private final ConcurrentHashMap<String, ContextWindow> lastAffinityWindows = new ConcurrentHashMap<>();
 
     public ReActAgent(AgentCard card) {
         super(card);
@@ -170,6 +176,7 @@ public class ReActAgent extends BaseAgent {
                 llm = null;
             }
             kvReleaseWarningLogged = false;
+            kvCacheModelCallHook.resetWarnings();
         }
         refreshContextEngineIfNeeded();
         if (!Objects.equals(oldConfig.getMemScopeId(), effectiveConfig.getMemScopeId())) {
@@ -408,11 +415,30 @@ public class ReActAgent extends BaseAgent {
         modelInputs.setTools(new ArrayList<>(tools));
         logLlmRequest(null, messages, tools);
 
+        com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook.KVCacheCallCapabilities kvCapabilities =
+                kvCacheModelCallHook.resolveRuntime(model, config.isEnableKvCacheAffinity());
+        String affinitySessionId = ctx.getSession() != null
+                ? ctx.getSession().getSessionId()
+                : ctx.getContext().sessionId();
+        com.openjiuwen.core.kvcache.KVCacheMetadata.Lineage kvLineage =
+                kvCacheModelCallHook.resolveLineage(kvCapabilities, ctx.getSession(), affinitySessionId);
+        kvCacheModelCallHook.handleContextWindowChange(
+                kvCapabilities,
+                model,
+                contextWindow,
+                lastAffinityWindows.get(affinitySessionId),
+                kvLineage
+        ).join();
+        lastAffinityWindows.put(affinitySessionId, contextWindow);
+
         Map<String, Object> extraFields = new LinkedHashMap<>();
         extraFields.putAll(model.buildKvCacheInvokeKwargs(
                 ctx.getSession(),
                 enableKvRelease
         ));
+        extraFields.putAll(kvCacheModelCallHook.buildInvokeKwargs(kvCapabilities, model, ctx.getSession(),
+                kvLineage));
+        extraFields.put("__openjiuwen_kvc_model", model);
         if (config.isLlmReturnTokenIds()) {
             extraFields.put("return_token_ids", true);
         }
@@ -437,25 +463,46 @@ public class ReActAgent extends BaseAgent {
                     modelRetryPayload(event)
             )));
         }
+
+        com.openjiuwen.core.kvcache.KVCacheModelHook.RuntimeLease kvLease = kvCacheModelCallHook
+                .beginInferenceLease(kvCapabilities, ctx.getSession(), extraFields)
+                .join();
+        // The live model is only needed for runtime accounting; never forward
+        // it to the provider client as a request kwarg.
+        extraFields.remove("__openjiuwen_kvc_model");
         ModelInvokeOptions options = optionsBuilder.build();
 
         boolean streaming = Boolean.TRUE.equals(ctx.getExtra().get("_streaming"));
+        StreamModelCall modelCall = new StreamModelCall(ctx, model, messages, options, modelInputs);
         if (!streaming) {
-            logModelCallStarted(ctx, messages, tools, false);
-            long modelStartNanos = System.nanoTime();
-            AssistantMessage aiMessage;
-            try {
-                aiMessage = model.invoke(messages, options).toCompletableFuture().join();
-            } catch (RuntimeException exception) {
-                logModelCallCompleted(ctx, false, modelStartNanos, null, exception);
-                throw exception;
-            }
-            modelInputs.setResponse(aiMessage);
-            logModelResponse(ctx, aiMessage);
-            logModelCallCompleted(ctx, false, modelStartNanos, aiMessage, null);
-            return aiMessage;
+            return invokeNonStreaming(modelCall, kvLease);
         }
-        return streamModelResponseWithRetry(ctx, model, messages, options, modelInputs);
+        return streamModelResponseWithRetry(modelCall, kvLease);
+    }
+
+    private AssistantMessage invokeNonStreaming(StreamModelCall call,
+            com.openjiuwen.core.kvcache.KVCacheModelHook.RuntimeLease kvLease) {
+        List<?> tools = call.options() == null ? List.of() : call.options().getTools();
+        logModelCallStarted(call.ctx(), call.messages(), tools, false);
+        long modelStartNanos = System.nanoTime();
+        AssistantMessage aiMessage;
+        boolean isKvSucceeded = false;
+        try {
+            aiMessage = call.model().invoke(call.messages(), call.options())
+                    .toCompletableFuture().join();
+            isKvSucceeded = true;
+        } catch (BaseError | CompletionException | IllegalArgumentException | IllegalStateException
+                | NullPointerException | ClassCastException | UnsupportedOperationException
+                | UncheckedIOException exception) {
+            logModelCallCompleted(call.ctx(), false, modelStartNanos, null, exception);
+            com.openjiuwen.core.kvcache.KVCacheModelHook.end(kvLease, false).join();
+            throw exception;
+        }
+        com.openjiuwen.core.kvcache.KVCacheModelHook.end(kvLease, isKvSucceeded).join();
+        call.modelInputs().setResponse(aiMessage);
+        logModelResponse(call.ctx(), aiMessage);
+        logModelCallCompleted(call.ctx(), false, modelStartNanos, aiMessage, null);
+        return aiMessage;
     }
 
     public static void renderSystemMessages(List<SystemMessage> systemMessages, Object inputs,
@@ -2110,28 +2157,43 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    /** Inputs shared by the streaming retry loop. */
+    private record StreamModelCall(AgentCallbackContext ctx, Model model,
+            List<BaseMessage> messages, ModelInvokeOptions options, ModelCallInputs modelInputs) {
+    }
+
     /**
      * Retry empty streams and transport failures before the first chunk. Once a chunk is visible,
      * never replay the request. Empty or reasoning-only results fall back to a blocking invocation.
      */
-    private AssistantMessage streamModelResponseWithRetry(AgentCallbackContext ctx, Model model,
-                                                          List<BaseMessage> messages, ModelInvokeOptions options,
-                                                          ModelCallInputs modelInputs) {
-        int maxRetries = config.getStreamMaxRetries();
-        long retryDelayMs = config.getStreamRetryDelayMs();
+    private AssistantMessage streamModelResponseWithRetry(
+            StreamModelCall call, com.openjiuwen.core.kvcache.KVCacheModelHook.RuntimeLease kvLease) {
+        boolean isKvStreamSucceeded = false;
+        try {
+            AssistantMessage aiMessage = streamWithRetry(call, config.getStreamMaxRetries(),
+                    config.getStreamRetryDelayMs());
+            isKvStreamSucceeded = true;
+            return aiMessage;
+        } finally {
+            com.openjiuwen.core.kvcache.KVCacheModelHook.end(kvLease, isKvStreamSucceeded).join();
+        }
+    }
 
+    private AssistantMessage streamWithRetry(StreamModelCall call, int maxRetries, long retryDelayMs) {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             StreamAttempt streamAttempt = new StreamAttempt();
             try {
-                AssistantMessage aiMessage = streamModelResponse(ctx, model, messages, options, streamAttempt);
-                modelInputs.setResponse(aiMessage);
+                AssistantMessage aiMessage = streamModelResponse(call.ctx(), call.model(), call.messages(),
+                        call.options(), streamAttempt);
+                call.modelInputs().setResponse(aiMessage);
                 if (!isEmptyStreamResult(aiMessage)) {
                     return aiMessage;
                 }
                 if (hasReasoningContent(aiMessage)) {
                     Loggers.AGENT.warning("ReAct stream completed with reasoning but no answer content or "
                             + "tool calls; falling back to non-stream");
-                    return fallbackToNonStream(ctx, model, messages, options, modelInputs);
+                    return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(),
+                            call.modelInputs());
                 }
                 Loggers.AGENT.warning("ReAct stream returned empty (attempt "
                         + (attempt + 1) + "/" + (maxRetries + 1) + ")");
@@ -2159,7 +2221,7 @@ public class ReActAgent extends BaseAgent {
 
         Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
                 + " attempts, falling back to non-stream with stream wrapping");
-        return fallbackToNonStream(ctx, model, messages, options, modelInputs);
+        return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(), call.modelInputs());
     }
 
     private AssistantMessage fallbackToNonStream(AgentCallbackContext ctx, Model model,

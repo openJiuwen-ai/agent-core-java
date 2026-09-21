@@ -6,7 +6,7 @@
 
 | 模块 | 说明 |
 | --- | --- |
-| [`model_clients`](llm/model_clients.README.md) | 收纳各 provider 客户端实现、工厂及默认注册逻辑。 |
+| [`modelclients`](llm/modelclients.README.md) | 收纳各 provider 客户端实现、工厂及默认注册逻辑。 |
 | [`output_parsers`](llm/output_parsers.README.md) | 将模型文本输出解析为 JSON 或 Markdown 结构结果。 |
 | [`schema`](llm/schema.README.md) | 定义消息、请求配置、使用量统计与多模态响应对象。 |
 
