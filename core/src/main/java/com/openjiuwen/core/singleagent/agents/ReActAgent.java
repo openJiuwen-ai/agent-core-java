@@ -1013,11 +1013,7 @@ public class ReActAgent extends BaseAgent {
             Map<?, ?> map = (Map<?, ?>) inputs;
             queryPayload = map.get("query");
             conversationId = map.containsKey("conversation_id") ? String.valueOf(map.get("conversation_id")) : null;
-            copyInvokeExtra(map, callbackExtra, "run_kind");
-            copyInvokeExtra(map, callbackExtra, "run_context");
-            copyInvokeExtra(map, callbackExtra, "is_follow_up");
-            copyInvokeExtra(map, callbackExtra, "loop_queues");
-            copyInvokeExtra(map, callbackExtra, "model_id");
+            copyRemainingExtras(map, callbackExtra);
         } else {
             queryPayload = inputs;
         }
@@ -1184,18 +1180,29 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * copyInvokeExtra.
-     * 
-     * @param inputs inputs
-     * @param target target
-     * @param key key
-     * @since 0.1.7
+     * Copy all String-keyed entries from {@code inputs} into {@code target}, skipping
+     * the reserved keys {@code "query"} and {@code "conversation_id"} which are handled
+     * separately. This allows any custom parameter name (e.g. {@code model_id},
+     * {@code llm_id}, or any user-defined key) to be transparently forwarded to
+     * {@code ctx.getExtra()}.
+     *
+     * @param inputs the invoke inputs map
+     * @param target the callback extra map to populate
+     * @since 0.1.16
      */
-    private static void copyInvokeExtra(Map<?, ?> inputs, Map<String, Object> target, String key) {
-        if (inputs.containsKey(key)) {
-            target.put(key, inputs.get(key));
+    private static void copyRemainingExtras(Map<?, ?> inputs, Map<String, Object> target) {
+        for (Map.Entry<?, ?> entry : inputs.entrySet()) {
+            Object keyObj = entry.getKey();
+            if (!(keyObj instanceof String)) {
+                continue;
+            }
+            String key = (String) keyObj;
+            if (!"query".equals(key) && !"conversation_id".equals(key)) {
+                target.put(key, entry.getValue());
+            }
         }
     }
+
 
     /**
      * bindSteeringQueue.
@@ -1679,11 +1686,7 @@ public class ReActAgent extends BaseAgent {
             Map<?, ?> map = (Map<?, ?>) inputs;
             queryPayload = map.get("query");
             conversationId = map.containsKey("conversation_id") ? String.valueOf(map.get("conversation_id")) : null;
-            copyInvokeExtra(map, callbackExtra, "run_kind");
-            copyInvokeExtra(map, callbackExtra, "run_context");
-            copyInvokeExtra(map, callbackExtra, "is_follow_up");
-            copyInvokeExtra(map, callbackExtra, "loop_queues");
-            copyInvokeExtra(map, callbackExtra, "model_id");
+            copyRemainingExtras(map, callbackExtra);
         } else {
             queryPayload = inputs;
         }
