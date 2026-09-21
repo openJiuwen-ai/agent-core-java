@@ -1782,10 +1782,6 @@ public class DeepAgent implements AutoCloseable {
         ensureTaskLoopRuntime();
         LoopCoordinator coordinator = coordinatorForSession(session);
         coordinator.reset();
-        String sessionId = session != null
-                ? session.getSessionId()
-                : String.valueOf(normalized.getOrDefault("conversation_id", card.getName() + "_session"));
-        Object currentQuery = normalized.getOrDefault("query", "");
         // Capture top-level keys (except reserved ones) so they can be forwarded
         // through the task-loop to ReActAgent's ctx.getExtra().
         Map<String, Object> invokeExtras = new LinkedHashMap<>();
@@ -1796,6 +1792,10 @@ public class DeepAgent implements AutoCloseable {
                 invokeExtras.put(key, entry.getValue());
             }
         }
+        String sessionId = session != null
+                ? session.getSessionId()
+                : String.valueOf(normalized.getOrDefault("conversation_id", card.getName() + "_session"));
+        Object currentQuery = normalized.getOrDefault("query", "");
         boolean isFollowUp = false;
         List<Map<String, Object>> rounds = new ArrayList<>();
         int maxRounds = Math.max(1, config.getMaxIterations());
