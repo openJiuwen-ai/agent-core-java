@@ -27,13 +27,18 @@ import java.util.Set;
  * metadata such as name and description.
  * </p>
  * <p>
- * Supports incremental refresh: only loads new or mtime-changed skills,
- * removes stale skills, and maintains directory traversal order.
+ * Supports incremental refresh: discovers skills under grouping directories
+ * (stops at the first SKILL.md on each branch), only loads new or mtime-changed
+ * skills, removes stale skills, and maintains directory traversal order.
  * </p>
  * 
  * @since 0.1.7
  */
 public class SkillManager {
+    private static final long MAX_SKILL_FILE_SIZE_BYTES = 10L * 1024 * 1024;
+    private static final Set<String> SKILL_SCAN_SKIP_DIRS =
+        Set.of("output", "temp", "assets", "node_modules");
+
     private final Map<String, Skill> registry = new LinkedHashMap<>();
 
     /**
@@ -51,6 +56,17 @@ public class SkillManager {
     private final List<String> skillOrder = new ArrayList<>();
     private String sysOperationId;
     private String description = "";
+
+    /**
+     * A skill directory discovered under a library root, with its SKILL.md mtime.
+     *
+     * @param skillDir skill package directory
+     * @param skillMd SKILL.md / Skill.md file
+     * @param mtime last-modified time of the skill markdown file
+     * @since 0.1.16
+     */
+    private record DiscoveredSkill(Path skillDir, File skillMd, long mtime) {
+    }
 
     /**
      * SkillManager.
@@ -225,8 +241,10 @@ public class SkillManager {
     /**
      * Incrementally refresh skills from given root directories.
      * <p>
-     * Only loads new or mtime-changed skills, removes stale skills
-     * (directories that no longer exist), and maintains traversal order.
+     * Discovers skills with the rule that
+     * walking into grouping directories, but stop at the first directory that contains
+     * {@code SKILL.md} / {@code Skill.md} (skill package boundary). Only loads new or
+     * mtime-changed skills, removes stale skills, and maintains traversal order.
      * </p>
      * 
      * @param roots list of skill root directories to scan
@@ -237,39 +255,17 @@ public class SkillManager {
         Set<String> discoveredKeys = new LinkedHashSet<>();
         List<String> orderedKeys = new ArrayList<>();
 
-        for (Path root : roots) {
-            if (!root.toFile().isDirectory()) {
+        for (DiscoveredSkill discovered : discoverSkillDirs(roots)) {
+            File skillMd = discovered.skillMd();
+            String key = discovered.skillDir().toAbsolutePath().normalize().toString();
+            if (skillMd.length() > MAX_SKILL_FILE_SIZE_BYTES) {
+                Loggers.AGENT.warning("SKILL.md file size exceeds 10MB, skipping: " + key + " (size: "
+                        + skillMd.length() + " bytes)");
                 continue;
             }
-            File[] subdirs = root.toFile().listFiles(File::isDirectory);
-            if (subdirs == null) {
-                continue;
-            }
-            Arrays.sort(subdirs, Comparator.comparing(File::getName));
-
-            for (File subdir : subdirs) {
-                File skillMd = new File(subdir, "SKILL.md");
-                if (!skillMd.exists()) {
-                    skillMd = new File(subdir, "Skill.md");
-                }
-                if (!skillMd.exists()) {
-                    continue;
-                }
-                String key = subdir.toPath().toAbsolutePath().normalize().toString();
-
-                long maxSkillFileSize = 10 * 1024 * 1024; // 10MB
-                if (skillMd.length() > maxSkillFileSize) {
-                    Loggers.AGENT.warning("SKILL.md file size exceeds 10MB, skipping: " + key + " (size: "
-                            + skillMd.length() + " bytes)");
-                    continue;
-                }
-                long mtime = skillMd.lastModified();
-
-                discoveredKeys.add(key);
-                orderedKeys.add(key);
-
-                getCachedMtime(skillMd, key, mtime);
-            }
+            discoveredKeys.add(key);
+            orderedKeys.add(key);
+            getCachedMtime(skillMd, key, discovered.mtime());
         }
         getStaleKeys(discoveredKeys);
         skillOrder.clear();
@@ -346,7 +342,8 @@ public class SkillManager {
      * Build a snapshot signature of all visible skill directories and their SKILL.md mtimes.
      * <p>
      * Used for fast comparison to detect whether skills have changed
-     * without actually reloading them.
+     * without actually reloading them. Discovery depth matches
+     * {@link #refreshIncrementally(List)}.
      * </p>
      * 
      * @param roots list of skill root directories to scan
@@ -355,26 +352,9 @@ public class SkillManager {
      */
     public List<Map.Entry<String, Long>> buildSnapshotSignature(List<Path> roots) {
         List<Map.Entry<String, Long>> entries = new ArrayList<>();
-        for (Path root : roots) {
-            if (!root.toFile().isDirectory()) {
-                continue;
-            }
-            File[] subdirs = root.toFile().listFiles(File::isDirectory);
-            if (subdirs == null) {
-                continue;
-            }
-            Arrays.sort(subdirs, Comparator.comparing(File::getName));
-            for (File subdir : subdirs) {
-                File skillMd = new File(subdir, "SKILL.md");
-                if (!skillMd.exists()) {
-                    skillMd = new File(subdir, "Skill.md");
-                }
-                if (!skillMd.exists()) {
-                    continue;
-                }
-                String key = subdir.toPath().toAbsolutePath().normalize().toString();
-                entries.add(Map.entry(key, skillMd.lastModified()));
-            }
+        for (DiscoveredSkill discovered : discoverSkillDirs(roots)) {
+            String key = discovered.skillDir().toAbsolutePath().normalize().toString();
+            entries.add(Map.entry(key, discovered.mtime()));
         }
         return entries;
     }
@@ -442,28 +422,105 @@ public class SkillManager {
 
         File dir = root.toFile();
         if (dir.isDirectory()) {
-            File[] subdirs = dir.listFiles(File::isDirectory);
-            if (subdirs != null) {
-                for (File subdir : subdirs) {
-                    File skillMd = new File(subdir, "Skill.md");
-                    if (!skillMd.exists()) {
-                        skillMd = new File(subdir, "SKILL.md");
+            for (DiscoveredSkill discovered : discoverSkillDirs(List.of(root))) {
+                Skill s = createSkillFromPath(discovered.skillMd().toPath());
+                if (s != null) {
+                    if (!overwrite && registry.containsKey(s.getName())) {
+                        throw new IllegalStateException("Skill already exists: " + s.getName());
                     }
-                    if (skillMd.exists()) {
-                        Skill s = createSkillFromPath(skillMd.toPath());
-                        if (s != null) {
-                            if (!overwrite && registry.containsKey(s.getName())) {
-                                throw new IllegalStateException("Skill already exists: " + s.getName());
-                            }
-                            registry.put(s.getName(), s);
-                            String key = subdir.toPath().toAbsolutePath().normalize().toString();
-                            updateAtCache.put(key, skillMd.lastModified());
-                            skillOrder.add(key);
-                        }
-                    }
+                    registry.put(s.getName(), s);
+                    String key = discovered.skillDir().toAbsolutePath().normalize().toString();
+                    updateAtCache.put(key, discovered.mtime());
+                    skillOrder.add(key);
                 }
             }
         }
+    }
+
+    /**
+     * Find every skill directory under {@code roots}, with its SKILL.md mtime.
+     * <p>
+     * Descend into grouping directories such as {@code skills/lark/lark-doc/},
+     * but stop at the first directory that contains {@code SKILL.md}/{@code Skill.md}.
+     * Nested SKILL.md files inside an already-identified skill package stay private to that package.
+     * </p>
+     *
+     * @param roots skill library roots
+     * @return discovered skill directories in stable root-then-name order
+     * @since 0.1.16
+     */
+    private List<DiscoveredSkill> discoverSkillDirs(List<Path> roots) {
+        List<DiscoveredSkill> found = new ArrayList<>();
+        Set<String> visited = new LinkedHashSet<>();
+        if (roots == null) {
+            return found;
+        }
+        for (Path root : roots) {
+            if (root == null || !Files.isDirectory(root)) {
+                continue;
+            }
+            walkSkillDirs(root, found, visited);
+        }
+        return found;
+    }
+
+    /**
+     * Recursively walk {@code directory} looking for skill packages.
+     *
+     * @param directory current directory
+     * @param found accumulator
+     * @param visited resolved paths already walked (breaks symlink cycles)
+     * @since 0.1.16
+     */
+    private void walkSkillDirs(Path directory, List<DiscoveredSkill> found, Set<String> visited) {
+        String dirKey;
+        try {
+            dirKey = directory.toRealPath().toString();
+        } catch (IOException e) {
+            dirKey = directory.toAbsolutePath().normalize().toString();
+        }
+        if (!visited.add(dirKey)) {
+            return;
+        }
+
+        File[] children = directory.toFile().listFiles(File::isDirectory);
+        if (children == null) {
+            return;
+        }
+        Arrays.sort(children, Comparator.comparing(File::getName));
+
+        for (File childFile : children) {
+            String name = childFile.getName();
+            if (name.startsWith(".") || SKILL_SCAN_SKIP_DIRS.contains(name)) {
+                continue;
+            }
+            Path child = childFile.toPath();
+            File skillMd = resolveSkillMdFile(childFile);
+            if (skillMd != null) {
+                found.add(new DiscoveredSkill(child, skillMd, skillMd.lastModified()));
+                continue;
+            }
+            walkSkillDirs(child, found, visited);
+        }
+    }
+
+    /**
+     * Resolve {@code SKILL.md} or {@code Skill.md} directly under {@code dir}.
+     *
+     * @param dir candidate skill directory
+     * @return the skill markdown file, or null when absent
+     * @since 0.1.16
+     */
+    private static File resolveSkillMdFile(File dir) {
+        File skillMd = new File(dir, "SKILL.md");
+        if (skillMd.isFile()) {
+            return skillMd;
+        }
+        skillMd = new File(dir, "Skill.md");
+        if (skillMd.isFile()) {
+            return skillMd;
+        }
+        return null;
     }
 
     /**

@@ -6,7 +6,11 @@ package com.openjiuwen.core.foundation.llm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.ValidationError;
 import com.openjiuwen.core.foundation.llm.model_clients.OpenAiCompatibleModelClient;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -123,6 +127,124 @@ class OpenAiCompatibleModelClientTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void invoke_whenContentIsArray_throwsTypeError() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> writeJson(exchange,
+                "{\"choices\":[{\"index\":0,\"message\":{\"content\":[\"a\",1,null]},\"finish_reason\":\"stop\"}]}"));
+        server.start();
+
+        try {
+            Model model = newModel(server);
+            ValidationError error = assertThrows(ValidationError.class,
+                    () -> model.invoke(List.of(new UserMessage("hello")), null, null, null, null, null, null, null,
+                            null, null));
+            assertEquals(StatusCode.MODEL_RESPONSE_TYPE_ERROR, error.getStatus());
+            assertTrue(error.getMessage().contains("must be a string"));
+            assertTrue(error.getMessage().contains("ArrayList") || error.getMessage().contains("List"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void invoke_whenContentIsNestedObject_throwsTypeError() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> writeJson(exchange,
+                "{\"choices\":[{\"message\":{\"content\":{\"text\":\"hi\"}},\"finish_reason\":\"stop\"}]}"));
+        server.start();
+
+        try {
+            Model model = newModel(server);
+            ValidationError error = assertThrows(ValidationError.class,
+                    () -> model.invoke(List.of(new UserMessage("hello")), null, null, null, null, null, null, null,
+                            null, null));
+            assertEquals(StatusCode.MODEL_RESPONSE_TYPE_ERROR, error.getStatus());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void invoke_whenContentIsNumber_throwsTypeError() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> writeJson(exchange,
+                "{\"choices\":[{\"message\":{\"content\":12345678901234567890},\"finish_reason\":\"stop\"}]}"));
+        server.start();
+
+        try {
+            Model model = newModel(server);
+            ValidationError error = assertThrows(ValidationError.class,
+                    () -> model.invoke(List.of(new UserMessage("hello")), null, null, null, null, null, null, null,
+                            null, null));
+            assertEquals(StatusCode.MODEL_RESPONSE_TYPE_ERROR, error.getStatus());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void invoke_whenMessageMissing_throwsResponseInvalid() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions",
+                exchange -> writeJson(exchange, "{\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}]}"));
+        server.start();
+
+        try {
+            Model model = newModel(server);
+            ValidationError error = assertThrows(ValidationError.class,
+                    () -> model.invoke(List.of(new UserMessage("hello")), null, null, null, null, null, null, null,
+                            null, null));
+            assertEquals(StatusCode.MODEL_RESPONSE_INVALID, error.getStatus());
+            assertTrue(error.getMessage().contains("No message"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void invoke_whenChoicesEmpty_throwsResponseInvalid() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> writeJson(exchange, "{}"));
+        server.start();
+
+        try {
+            Model model = newModel(server);
+            ValidationError error = assertThrows(ValidationError.class,
+                    () -> model.invoke(List.of(new UserMessage("hello")), null, null, null, null, null, null, null,
+                            null, null));
+            assertEquals(StatusCode.MODEL_RESPONSE_INVALID, error.getStatus());
+            assertTrue(error.getMessage().contains("No choices"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void stream_whenDeltaContentIsArray_throwsTypeError() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> writeSse(exchange,
+                "data: {\"choices\":[{\"delta\":{\"content\":[\"a\",1]},\"finish_reason\":null}]}\n\n"
+                        + "data: [DONE]\n\n"));
+        server.start();
+
+        try {
+            Model model = newModel(server);
+            Iterator<AssistantMessageChunk> stream = model.stream(List.of(new UserMessage("hello")), null, null, null,
+                    null, null, null, null, null, null);
+            ValidationError error = assertThrows(ValidationError.class, stream::hasNext);
+            assertEquals(StatusCode.MODEL_RESPONSE_TYPE_ERROR, error.getStatus());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static Model newModel(HttpServer server) {
+        ModelClientConfig clientConfig = ModelClientConfig.builder().clientProvider("OpenAI").apiKey("sk-test")
+                .apiBase("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").timeout(5).build();
+        return new Model(clientConfig, ModelRequestConfig.builder().modelName("test-model").build());
     }
 
     private static void writeJson(HttpExchange exchange, String body) throws IOException {
