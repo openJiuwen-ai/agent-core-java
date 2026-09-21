@@ -3,8 +3,12 @@
 package com.openjiuwen.core.singleagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.runner.base.Error;
+import com.openjiuwen.core.runner.base.Ok;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -16,6 +20,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -280,5 +285,33 @@ class BaseAgentTest {
         BaseAgent result = agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {
         }, 50);
         assertThat(result).isSameAs(agent);
+    }
+
+    // ============ Registration Result Guard ============
+
+    /**
+     * The protected add-result guard fails fast with the cause
+     * preserved: a success result returns quietly, a runtime error is
+     * rethrown as the same instance, and a checked error is wrapped
+     * into a BaseError carrying the resource id. Pinned directly
+     * because the integration callers (ReActAgent/ReActAgentEvolve
+     * initContext) cannot cheaply construct a conflicting reload-tool
+     * id; the DeepAgent and HarnessFactory copies share this shape and
+     * are exercised through registerHarnessTool and createDeepAgent
+     * conflicts in ResourceMgrOwnershipTest.
+     */
+    @Test
+    void testThrowIfAddResourceFailedFailsFastWithCausePreserved() {
+        BaseAgent.throwIfAddResourceFailed(new Ok<>(ToolCard.builder().build()), "ut-ok");
+
+        IllegalStateException runtime = new IllegalStateException("boom");
+        assertThatThrownBy(() -> BaseAgent.throwIfAddResourceFailed(new Error<>(runtime), "ut-runtime"))
+                .isSameAs(runtime);
+
+        IOException checked = new IOException("io boom");
+        assertThatThrownBy(() -> BaseAgent.throwIfAddResourceFailed(new Error<>(checked), "ut-checked"))
+                .isInstanceOf(BaseError.class)
+                .hasMessageContaining("ut-checked")
+                .hasCause(checked);
     }
 }
