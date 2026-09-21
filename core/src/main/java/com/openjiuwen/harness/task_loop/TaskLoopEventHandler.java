@@ -140,6 +140,7 @@ public class TaskLoopEventHandler extends EventHandler {
         copyIfPresent(metadata, taskMetadata, "run_context");
         copyIfPresent(metadata, taskMetadata, "collect_inner_stream");
         copyIfPresent(metadata, taskMetadata, "loop_queues");
+        copyIfPresent(metadata, taskMetadata, "_invoke_extras");
         taskMetadata.put("is_follow_up", Boolean.TRUE.equals(metadata.get("is_follow_up")));
 
         if (taskManager == null) {

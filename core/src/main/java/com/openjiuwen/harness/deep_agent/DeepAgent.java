@@ -1786,6 +1786,16 @@ public class DeepAgent implements AutoCloseable {
                 ? session.getSessionId()
                 : String.valueOf(normalized.getOrDefault("conversation_id", card.getName() + "_session"));
         Object currentQuery = normalized.getOrDefault("query", "");
+        // Capture top-level keys (except reserved ones) so they can be forwarded
+        // through the task-loop to ReActAgent's ctx.getExtra().
+        Map<String, Object> invokeExtras = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : normalized.entrySet()) {
+            String key = entry.getKey();
+            if (!"query".equals(key) && !"conversation_id".equals(key)
+                    && !"_collect_inner_stream".equals(key) && entry.getValue() != null) {
+                invokeExtras.put(key, entry.getValue());
+            }
+        }
         boolean isFollowUp = false;
         List<Map<String, Object>> rounds = new ArrayList<>();
         int maxRounds = Math.max(1, config.getMaxIterations());
@@ -1798,7 +1808,8 @@ public class DeepAgent implements AutoCloseable {
                     roundQuery = taskCompletionRail.applyTaskInstruction(currentQueryText, isFollowUp);
                 }
                 Map<String, Object> roundResult = new LinkedHashMap<>(executeCoreLoopRound(roundQuery, isFollowUp,
-                        session, Boolean.TRUE.equals(normalized.get("_collect_inner_stream"))));
+                        session, Boolean.TRUE.equals(normalized.get("_collect_inner_stream")),
+                        invokeExtras));
                 roundResult.put("query", currentQuery);
                 if (!Objects.equals(roundQuery, currentQuery)) {
                     roundResult.put("task_instruction_query", roundQuery);
@@ -1987,11 +1998,13 @@ public class DeepAgent implements AutoCloseable {
      * @param isFollowUp isFollowUp
      * @param session session
      * @param isCollectInnerStream isCollectInnerStream
+     * @param invokeExtras top-level keys from the original invoke inputs (excluding
+     *                      reserved keys) to be forwarded to ReActAgent's ctx.getExtra()
      * @return the result
      * @since 0.1.7
      */
     private Map<String, Object> executeCoreLoopRound(Object query, boolean isFollowUp, AgentSessionApi session,
-            boolean isCollectInnerStream) {
+            boolean isCollectInnerStream, Map<String, Object> invokeExtras) {
         InputEvent event = query instanceof String || query instanceof InputEvent
                 ? InputEvent.fromUserInput(query)
                 : InputEvent.fromUserInput(Map.of("query", query, "query_payload", query));
@@ -2005,6 +2018,10 @@ public class DeepAgent implements AutoCloseable {
         metadata.put("loop_queues", loopController.getInteractionQueues(session.getSessionId()));
         if (isCollectInnerStream) {
             metadata.put("collect_inner_stream", true);
+        }
+        // Forward top-level invoke extras so they reach ReActAgent's ctx.getExtra()
+        if (invokeExtras != null && !invokeExtras.isEmpty()) {
+            metadata.put("_invoke_extras", invokeExtras);
         }
         event.setMetadata(metadata);
         eventQueue.publishEvent(card.getId(), session, event);
