@@ -34,6 +34,7 @@ public class AgentCallbackContext {
     private RetryRequest retryRequest;
     private ForceFinishRequest forceFinishRequest;
     private Queue<String> steeringQueue;
+    private String dynamicModelId;
 
     public AgentCallbackContext() {
     }
@@ -170,6 +171,26 @@ public class AgentCallbackContext {
         this.extra = extra == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extra);
     }
 
+    /**
+     * Returns the request-scoped dynamic model id, if any.
+     *
+     * @return dynamic model id, or null when unset
+     * @since 0.1.15
+     */
+    public String getDynamicModelId() {
+        return dynamicModelId;
+    }
+
+    /**
+     * Sets the request-scoped dynamic model id used during model resolution.
+     *
+     * @param dynamicModelId model id to resolve for this request; may be null
+     * @since 0.1.15
+     */
+    public void setDynamicModelId(String dynamicModelId) {
+        this.dynamicModelId = dynamicModelId;
+    }
+
     public Exception getException() {
         return exception;
     }
@@ -199,6 +220,7 @@ public class AgentCallbackContext {
         private ModelContext context;
         private Object inputs;
         private Map<String, Object> extra;
+        private String dynamicModelId;
 
         /**
          * Sets the agent that owns this callback.
@@ -258,6 +280,18 @@ public class AgentCallbackContext {
         }
 
         /**
+         * Sets the request-scoped dynamic model id.
+         *
+         * @param dynamicModelId model id to resolve; may be null
+         * @return this builder
+         * @since 0.1.15
+         */
+        public Builder dynamicModelId(String dynamicModelId) {
+            this.dynamicModelId = dynamicModelId;
+            return this;
+        }
+
+        /**
          * Builds a callback context from the collected fields.
          *
          * @return a new context
@@ -275,6 +309,9 @@ public class AgentCallbackContext {
             }
             if (extra != null) {
                 callbackContext.setExtra(extra);
+            }
+            if (dynamicModelId != null) {
+                callbackContext.setDynamicModelId(dynamicModelId);
             }
             return callbackContext;
         }

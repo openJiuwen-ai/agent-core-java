@@ -262,6 +262,26 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
         return redisStore;
     }
 
+    /**
+     * Returns the effective TTL used by the checkpointer's storage classes.
+     *
+     * @return the effective TTL, or an empty optional when expiration is disabled
+     * @since 0.1.15
+     */
+    public Optional<Duration> getEffectiveTtl() {
+        return agentStorage.getEffectiveTtl();
+    }
+
+    /**
+     * Returns whether successful reads refresh checkpoint expiration.
+     *
+     * @return whether expiration is refreshed on reads
+     * @since 0.1.15
+     */
+    public boolean isRefreshOnRead() {
+        return agentStorage.isRefreshOnRead();
+    }
+
     @Override
     public Store graphStore() {
         return graphStoreAdapter;

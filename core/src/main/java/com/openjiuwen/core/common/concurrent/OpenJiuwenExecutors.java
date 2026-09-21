@@ -746,6 +746,7 @@ public final class OpenJiuwenExecutors {
         REACT_AGENT_STREAM("react-agent-stream", 32, 128),
         DEEP_AGENT_INVOKE("deep-agent-invoke", 16, 128),
         SPAWN_PROCESS_MANAGER("spawn-process-manager", 64, 64),
+        GIT_STREAM("git-stream", 32, 128),
         GENERIC("", 32, 256);
 
         private final String prefix;

@@ -181,6 +181,7 @@ public class TaskLoopEventHandler extends EventHandler {
         if (metadata.containsKey("loop_queues")) {
             taskMetadata.put("loop_queues", metadata.get("loop_queues"));
         }
+        copyModelSelectionKeys(metadata, taskMetadata);
 
         try {
             Task task = new Task(sessionId, taskId, TaskLoopEventExecutor.DEEP_TASK_TYPE);
@@ -312,6 +313,22 @@ public class TaskLoopEventHandler extends EventHandler {
 
     private static Map<String, Object> metadataOf(Event event) {
         return event == null || event.getMetadata() == null ? Map.of() : event.getMetadata();
+    }
+
+    private static void copyModelSelectionKeys(Map<String, Object> source, Map<String, Object> target) {
+        if (source == null || target == null) {
+            return;
+        }
+        copyStringIfPresent(source, target, "model_id");
+        copyStringIfPresent(source, target, "target_model_id");
+        copyStringIfPresent(source, target, "dynamic_model_id");
+    }
+
+    private static void copyStringIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
+        Object value = source.get(key);
+        if (value instanceof String text && !text.isBlank()) {
+            target.put(key, text);
+        }
     }
 
     private static Map<String, Object> extractCompletionResult(List<DataFrame> taskResult) {

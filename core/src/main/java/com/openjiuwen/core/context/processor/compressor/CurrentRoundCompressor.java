@@ -16,6 +16,7 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.runner.Runner;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -107,7 +108,7 @@ public class CurrentRoundCompressor extends ContextProcessor {
 
     public CurrentRoundCompressor(CurrentRoundCompressorConfig config) {
         this(config, config != null && config.getModelClient() != null
-                ? new Model(config.getModelClient(), config.getModel())
+                ? Runner.resourceMgr().resolveModel(null, config.getModelClient(), config.getModel())
                 : null);
     }
 

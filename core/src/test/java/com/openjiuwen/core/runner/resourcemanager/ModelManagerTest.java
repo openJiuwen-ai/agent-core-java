@@ -41,8 +41,21 @@ class ModelManagerTest {
         ModelManager manager = new ModelManager();
         Supplier<Object> provider = Object::new;
         manager.addModel("model-1", provider);
+        // Keep a second model so non-force remove is allowed.
+        manager.addModel("model-2", Object::new);
 
         assertSame(provider, manager.removeModel("model-1"));
+        assertNull(manager.getModel("model-1").toCompletableFuture().join());
+    }
+
+    @Test
+    void removeLastModelRequiresForce() {
+        ModelManager manager = new ModelManager();
+        Supplier<Object> provider = Object::new;
+        manager.addModel("model-1", provider);
+
+        assertThrows(IllegalArgumentException.class, () -> manager.removeModel("model-1"));
+        assertSame(provider, manager.removeModel("model-1", true));
         assertNull(manager.getModel("model-1").toCompletableFuture().join());
     }
 }

@@ -30,9 +30,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -65,6 +67,12 @@ public class TaskScheduler {
     private volatile boolean running = false;
     private ScheduledFuture<?> schedulerFuture;
     private ScheduledExecutorService scheduler;
+
+    /**
+     * Serializes wakeup-triggered schedule scans so a burst of submitted tasks
+     * results in at most one immediate scan instead of N.
+     */
+    private final AtomicBoolean wakeupPending = new AtomicBoolean(false);
 
     /**
      * Running tasks: taskId -> RunningTaskEntry (executor + future).
@@ -112,6 +120,9 @@ public class TaskScheduler {
     /**
      * Wake up the schedule loop when a task enters SUBMITTED status.
      *
+     * <p>Coalesces concurrent notifications so a burst of submissions triggers at most
+     * one immediate scan. The periodic schedule remains as a safety net.</p>
+     *
      * <p>Mirrors Python's {@code TaskScheduler.notify_task_submitted} in
      * {@code openjiuwen/core/controller/modules/task_scheduler.py}.</p>
      */
@@ -120,7 +131,18 @@ public class TaskScheduler {
         if (!running || currentScheduler == null || currentScheduler.isShutdown()) {
             return;
         }
-        currentScheduler.execute(this::scheduleLoop);
+        if (!wakeupPending.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            currentScheduler.execute(() -> {
+                wakeupPending.set(false);
+                scheduleLoop();
+            });
+        } catch (RejectedExecutionException ex) {
+            wakeupPending.set(false);
+            Loggers.CONTROLLER.warning("Wakeup schedule scan rejected: {}", ex.getMessage());
+        }
     }
 
     // ==================== Task Execution ====================

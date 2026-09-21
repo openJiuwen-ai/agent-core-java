@@ -21,6 +21,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.runner.Runner;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -487,7 +488,8 @@ public class MessageSummaryOffloader extends MessageOffloader {
 
     private Model getModel() {
         if (model == null) {
-            model = new Model(summaryConfig.getModelClient(), summaryConfig.getModel());
+            model = Runner.resourceMgr().resolveModel(
+                    null, summaryConfig.getModelClient(), summaryConfig.getModel());
         }
         return model;
     }

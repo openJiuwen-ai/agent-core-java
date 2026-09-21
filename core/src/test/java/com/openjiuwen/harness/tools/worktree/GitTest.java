@@ -18,6 +18,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -126,6 +128,23 @@ class GitTest {
         Path repo = createGitRepo();
 
         assertEquals(List.of(), Git.statusPorcelain(repo.toString()).join());
+    }
+
+    @Test
+    void concurrentGitCallsCompleteUnderForkJoinPressure() throws Exception {
+        Path repo = createGitRepo();
+        String head = Git.revParse("HEAD", repo.toString()).join();
+        int burst = Math.max(16, Runtime.getRuntime().availableProcessors() * 4);
+        List<CompletableFuture<?>> futures = new ArrayList<>(burst * 3);
+        for (int index = 0; index < burst; index++) {
+            futures.add(Git.findCanonicalGitRoot(repo.toString()));
+            futures.add(Git.statusPorcelain(repo.toString()));
+            futures.add(Git.countCommitsSince(head, repo.toString()));
+        }
+
+        CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                .orTimeout(20, TimeUnit.SECONDS)
+                .join();
     }
 
     @Test

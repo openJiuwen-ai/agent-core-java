@@ -11,6 +11,7 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
@@ -26,6 +27,8 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.OperatorStream;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -108,20 +111,25 @@ public class ReActAgent extends BaseAgent {
     private static final String EXTERNAL_TOOL_RESULTS_REQUIRED_ERROR =
             "External tool results are required before continuing this conversation";
 
-    private ReActAgentConfig config;
-    private ContextEngine contextEngine;
-    private volatile Model llm;
+    private final Object contextEngineLock = new Object();
     private final Object llmLock = new Object();
+    private final ToolInterruptHandler hitlHandler;
+
+    private ReActAgentConfig config;
+    private volatile ContextEngine contextEngine;
+    private ContextEngineConfig appliedContextEngineConfig;
+    private volatile Model llm;
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
-    private final ToolInterruptHandler hitlHandler;
     private boolean kvReleaseWarningLogged;
 
     public ReActAgent(AgentCard card) {
         super(card);
         this.config = createDefaultConfig();
         setConfig(this.config);
-        this.contextEngine = new ContextEngine(this.config.getContextEngineConfig());
+        ContextEngineConfig initialConfig = effectiveContextEngineConfig(this.config.getContextEngineConfig());
+        this.appliedContextEngineConfig = copyContextEngineConfig(initialConfig);
+        this.contextEngine = new ContextEngine(this.appliedContextEngineConfig);
         this.hitlHandler = new ToolInterruptHandler(this);
         getAbilityManager().setContextEngine(contextEngine);
         initMemoryScope();
@@ -159,10 +167,7 @@ public class ReActAgent extends BaseAgent {
             }
             kvReleaseWarningLogged = false;
         }
-        if (!Objects.equals(oldConfig.getContextEngineConfig(), effectiveConfig.getContextEngineConfig())) {
-            contextEngine = new ContextEngine(effectiveConfig.getContextEngineConfig());
-            getAbilityManager().setContextEngine(contextEngine);
-        }
+        refreshContextEngineIfNeeded();
         if (!Objects.equals(oldConfig.getMemScopeId(), effectiveConfig.getMemScopeId())) {
             initMemoryScope();
         }
@@ -204,6 +209,81 @@ public class ReActAgent extends BaseAgent {
             llm = local;
             return local;
         }
+    }
+
+    /**
+     * Resolves the model for the current request.
+     * <p>
+     * Priority: {@code ctx.dynamicModelId} / {@code target_model_id} extra, existing llm,
+     * ResourceMgr default, then lazy config load.
+     *
+     * @param ctx callback context providing a dynamic model id; may be null
+     * @return resolved model
+     * @since 0.1.15
+     */
+    protected Model getLlm(AgentCallbackContext ctx) {
+        String dynamicModelId = resolveDynamicModelId(ctx);
+        if (dynamicModelId != null && !dynamicModelId.isBlank()) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(
+                            dynamicModelId,
+                            config.getModelClientConfig(),
+                            config.getModelConfigObj()
+                    );
+                } catch (IllegalStateException | IllegalArgumentException | CompletionException ignored) {
+                    // Fall through to existing llm / default resolution.
+                }
+            }
+        }
+        if (llm != null) {
+            return llm;
+        }
+        if (config.getModelClientConfig() == null) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(null, null, null);
+                } catch (IllegalStateException | IllegalArgumentException | CompletionException ignored) {
+                    // Fall through to getLlm(), which throws a clearer config error.
+                }
+            }
+        }
+        return getLlm();
+    }
+
+    /**
+     * Resolves the effective model name from the given Model instance, falling back
+     * to {@code config.getModelName()} when the model or its modelConfig is null.
+     * <p>
+     * Ensures that when a dynamic model is selected via {@code ctx.dynamicModelId},
+     * the provider receives that model's name rather than the static default from
+     * {@code ReActAgentConfig}.
+     *
+     * @param model the resolved model, may be null
+     * @return the effective model name
+     * @since 0.1.15
+     */
+    private String resolveModelName(Model model) {
+        if (model != null && model.getModelConfig() != null) {
+            String modelName = model.getModelConfig().getModelName();
+            if (modelName != null && !modelName.isBlank()) {
+                return modelName;
+            }
+        }
+        return config.getModelName();
+    }
+
+    private static String resolveDynamicModelId(AgentCallbackContext ctx) {
+        if (ctx == null) {
+            return null;
+        }
+        if (ctx.getDynamicModelId() != null && !ctx.getDynamicModelId().isBlank()) {
+            return ctx.getDynamicModelId();
+        }
+        Object fromExtra = ctx.getExtra() == null ? null : ctx.getExtra().get("target_model_id");
+        return fromExtra instanceof String text ? text : null;
     }
 
     public void addPromptBuilderSection(String name, String content, int priority) {
@@ -295,7 +375,7 @@ public class ReActAgent extends BaseAgent {
     public Object doRailedModelCall(AgentCallbackContext ctx) {
         ModelCallInputs modelInputs = (ModelCallInputs) ctx.getInputs();
         Map<String, String> requestHeaders = modelInputs.consumeRequestHeaders();
-        Model model = getLlm();
+        Model model = getLlm(ctx);
         List<ToolInfo> tools = toolInfoList(modelInputs.getTools());
         boolean enableKvRelease = config.getContextEngineConfig().isEnableKvCacheRelease();
         boolean supportsKvRelease = model.supportsKvCacheRelease();
@@ -337,8 +417,11 @@ public class ReActAgent extends BaseAgent {
             extraFields.put("top_logprobs", config.getLlmTopLogprobs());
         }
 
+        // Use the resolved model's name (may differ from config when a dynamic
+        // model was selected via ctx.dynamicModelId) so the provider receives
+        // the correct model name.
         ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder = ModelInvokeOptions.builder()
-                .model(config.getModelName())
+                .model(resolveModelName(model))
                 .tools(tools)
                 .requestHeaders(requestHeaders)
                 .extraFields(extraFields);
@@ -1191,9 +1274,11 @@ public class ReActAgent extends BaseAgent {
     }
 
     public ModelContext initContext(AgentSessionApi session) {
-        ModelContext context = contextEngine.createContext(null, session, config.getContextProcessors(), null, null);
+        ContextEngine activeContextEngine = refreshContextEngineIfNeeded();
+        ModelContext context = activeContextEngine.createContext(null, session, config.getContextProcessors(), null,
+                null);
         ModelContext.ToolPort contextReloader = context.reloaderTool();
-        if (config.getContextEngineConfig().isEnableReload()) {
+        if (appliedContextEngineConfig.isEnableReload()) {
             Tool reloader = asSessionReloader(contextReloader);
             if (reloader != null) {
                 getAbilityManager().add(reloader.getCard());
@@ -1326,6 +1411,10 @@ public class ReActAgent extends BaseAgent {
                 copyInvokeExtra(map, ctx, "run_context");
                 copyInvokeExtra(map, ctx, "is_follow_up");
                 copyInvokeExtra(map, ctx, "loop_queues");
+                copyInvokeExtra(map, ctx, "model_id");
+                copyInvokeExtra(map, ctx, "target_model_id");
+                copyInvokeExtra(map, ctx, "dynamic_model_id");
+                bindDynamicModelIdFromInputs(map, ctx);
                 Object rawSteeringQueue = map.get("_steering_queue");
                 if (rawSteeringQueue instanceof Queue<?> queue) {
                     @SuppressWarnings("unchecked")
@@ -1822,7 +1911,66 @@ public class ReActAgent extends BaseAgent {
     }
 
     public ContextEngine getContextEngine() {
-        return contextEngine;
+        return refreshContextEngineIfNeeded();
+    }
+
+    /**
+     * Refresh the context engine when the mutable agent configuration changed.
+     *
+     * @return the active context engine
+     * @since 0.1.15
+     */
+    private ContextEngine refreshContextEngineIfNeeded() {
+        synchronized (contextEngineLock) {
+            ContextEngineConfig currentConfig = effectiveContextEngineConfig(config.getContextEngineConfig());
+            if (Objects.equals(appliedContextEngineConfig, currentConfig)) {
+                return contextEngine;
+            }
+            ContextEngineConfig configSnapshot = copyContextEngineConfig(currentConfig);
+            ContextEngine refreshedContextEngine = new ContextEngine(configSnapshot);
+            appliedContextEngineConfig = configSnapshot;
+            contextEngine = refreshedContextEngine;
+            getAbilityManager().setContextEngine(refreshedContextEngine);
+            kvReleaseWarningLogged = false;
+            return contextEngine;
+        }
+    }
+
+    /**
+     * Copy context-engine settings so later in-place mutations remain detectable.
+     *
+     * @param source source configuration
+     * @return an independent configuration snapshot
+     * @since 0.1.15
+     */
+    private static ContextEngineConfig copyContextEngineConfig(ContextEngineConfig source) {
+        ContextEngineConfig.Builder snapshotBuilder = ContextEngineConfig.builder()
+                .maxContextMessageNum(source.getMaxContextMessageNum())
+                .defaultWindowMessageNum(source.getDefaultWindowMessageNum())
+                .defaultWindowRoundNum(source.getDefaultWindowRoundNum())
+                .enableKvCacheRelease(source.isEnableKvCacheRelease())
+                .enableReload(source.isEnableReload())
+                .enableTiktokenCounter(source.isTiktokenCounterEnabled())
+                .contextWindowTokens(source.getContextWindowTokens())
+                .modelName(source.getModelName())
+                .enableOpenrouterModelContextWindowTokens(source.isEnableOpenrouterModelContextWindowTokens())
+                .openrouterRequestTimeout(source.getOpenrouterRequestTimeout());
+        Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
+        if (modelWindowTokens != null) {
+            snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
+        }
+        return snapshotBuilder.build();
+    }
+
+    /**
+     * Normalize an absent context-engine configuration to the engine defaults.
+     *
+     * @param source configured settings, possibly absent
+     * @return configured settings or an empty default configuration
+     * @since 0.1.15
+     */
+    private static ContextEngineConfig effectiveContextEngineConfig(ContextEngineConfig source) {
+        return source != null ? source : ContextEngineConfig.builder().build();
     }
 
     public SystemPromptBuilder getPromptBuilder() {
@@ -2301,6 +2449,32 @@ public class ReActAgent extends BaseAgent {
         if (inputs.containsKey(key)) {
             ctx.getExtra().put(key, inputs.get(key));
         }
+    }
+
+    /**
+     * Binds request-scoped model selection from invoke inputs onto the callback context.
+     *
+     * @param inputs invoke input map
+     * @param ctx callback context to update
+     */
+    private static void bindDynamicModelIdFromInputs(Map<?, ?> inputs, AgentCallbackContext ctx) {
+        String modelId = firstString(inputs, "dynamic_model_id", "target_model_id", "model_id");
+        if (modelId == null || modelId.isBlank()) {
+            return;
+        }
+        ctx.setDynamicModelId(modelId);
+        ctx.getExtra().put("target_model_id", modelId);
+        ctx.getExtra().put("model_id", modelId);
+    }
+
+    private static String firstString(Map<?, ?> inputs, String... keys) {
+        for (String key : keys) {
+            Object value = inputs.get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                return text;
+            }
+        }
+        return null;
     }
 
     private static void bindSteeringQueue(AgentCallbackContext ctx, Queue<String> steeringQueue) {

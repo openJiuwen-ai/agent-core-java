@@ -26,6 +26,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.Runner;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -1178,7 +1179,7 @@ public class RoundLevelCompressor extends ContextProcessor {
 
     private Model getModel() {
         if (model == null) {
-            model = new Model(config.getModelClient(), config.getModel());
+            model = Runner.resourceMgr().resolveModel(null, config.getModelClient(), config.getModel());
         }
         return model;
     }

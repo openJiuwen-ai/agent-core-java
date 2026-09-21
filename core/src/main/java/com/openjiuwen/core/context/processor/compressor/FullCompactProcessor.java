@@ -18,6 +18,7 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.runner.Runner;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -102,7 +103,7 @@ public class FullCompactProcessor extends ContextProcessor {
 
     public FullCompactProcessor(FullCompactProcessorConfig config) {
         this(config, config != null && config.getModelClient() != null
-                ? new Model(config.getModelClient(), config.getModel())
+                ? Runner.resourceMgr().resolveModel(null, config.getModelClient(), config.getModel())
                 : null);
     }
 

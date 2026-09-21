@@ -6,6 +6,8 @@ package com.openjiuwen.extensions.store.kv;
 
 import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
+import com.openjiuwen.spi.store.ExpirableKVStore;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +15,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -36,7 +39,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>Mirrors Python's {@code RedisStore} in
  * {@code openjiuwen/extensions/store/kv/redis_store.py}.</p>
  */
-public class RedisStore extends BaseKVStore implements AutoCloseable {
+public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableKVStore {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisStore.class);
 
@@ -77,6 +80,60 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    /**
+     * Writes a value and its expiration atomically, including for supplied Redis clients.
+     *
+     * @param key the key to write
+     * @param value the value to store
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the key or TTL is invalid
+     * @throws IllegalStateException if the client cannot perform the atomic write
+     * @since 0.1.15
+     */
+    @Override
+    public void set(String key, Object value, Duration ttl) {
+        requireKey(key);
+        int seconds = expirySeconds(ttl);
+        Object redisKey = value instanceof byte[] ? key.getBytes(StandardCharsets.UTF_8) : key;
+        Object redisValue = value instanceof byte[] ? value : String.valueOf(value);
+        try {
+            invokeRequired(redisClient, new String[]{"setex"}, redisKey, seconds, redisValue);
+        } catch (IllegalStateException failure) {
+            throw new IllegalStateException("Redis client failed to perform an atomic TTL write", failure);
+        }
+    }
+
+    /**
+     * Refreshes expiration and propagates failures; the legacy int overload is unchanged.
+     *
+     * @param keys the existing keys whose expiration should be refreshed
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the TTL is invalid
+     * @throws IllegalStateException if refreshing a key fails
+     * @since 0.1.15
+     */
+    @Override
+    public void refreshTtl(List<String> keys, Duration ttl) {
+        int seconds = expirySeconds(ttl);
+        Objects.requireNonNull(keys, "keys");
+        try {
+            for (String key : keys) {
+                requireKey(key);
+                expireKey(key, seconds);
+            }
+        } catch (IllegalStateException e) {
+            throw new IllegalStateException("Redis client failed to refresh TTL", e);
+        }
+    }
+
+    private static int expirySeconds(Duration ttl) {
+        Objects.requireNonNull(ttl, "ttl");
+        if (ttl.isNegative() || ttl.isZero() || ttl.getNano() != 0 || ttl.getSeconds() > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("TTL must be positive whole seconds within integer range");
+        }
+        return (int) ttl.getSeconds();
+    }
+
     @Override
     public CompletableFuture<Boolean> exclusiveSet(String key, Object value, Integer expiry) {
         try {
@@ -114,7 +171,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
             }
             logger.debug("Exclusive set key: {} with expiry {}s, result: {}", key, expiry, success);
             return success;
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to exclusive set key: {}, error: {}", key, e.getMessage());
             throw new RuntimeException("Failed to exclusive set key: " + key, e);
         }
@@ -140,7 +197,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
                 logger.debug("Successfully retrieved key: {}", key);
             }
             return value;
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to get key: {}, error: {}", key, e.getMessage());
             throw new RuntimeException("Failed to get key: " + key, e);
         }
@@ -160,7 +217,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         try {
             InvocationOutcome outcome = invokeRequired(redisClient, new String[]{"exists"}, key);
             return asBoolean(outcome.value());
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to check key existence: {}, error: {}", key, e.getMessage());
             throw new RuntimeException("Failed to check key existence: " + key, e);
         }
@@ -181,7 +238,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         try {
             deleteChunk(List.of(key));
             logger.debug("Deleted key: {}", key);
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to delete key: {}, error: {}", key, e.getMessage());
             throw new RuntimeException("Failed to delete key: " + key, e);
         }
@@ -208,7 +265,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
             }
             logger.debug("Retrieved {} keys by prefix: {}", result.size(), prefix);
             return result;
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to get keys by prefix: {}, error: {}", prefix, e.getMessage());
             throw new RuntimeException("Failed to get keys by prefix: " + prefix, e);
         }
@@ -232,7 +289,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
                 batchDeleteInternal(keys, batchSize);
             }
             logger.debug("Deleted keys by prefix: {}", prefix);
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to delete keys by prefix: {}, error: {}", prefix, e.getMessage());
             throw new RuntimeException("Failed to delete keys by prefix: " + prefix, e);
         }
@@ -257,7 +314,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
             long foundCount = result.stream().filter(Objects::nonNull).count();
             logger.debug("Bulk retrieved {}/{} keys", foundCount, keys.size());
             return result;
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to bulk get keys, error: {}", e.getMessage());
             throw new RuntimeException("Failed to bulk get keys", e);
         }
@@ -287,7 +344,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
                 }
             }
             return deleted;
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to batch delete keys, error: {}", e.getMessage());
             throw new RuntimeException("Failed to batch delete keys", e);
         }
@@ -297,6 +354,10 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
     public BasedKVStorePipeline pipeline() {
         return new BasedKVStorePipeline(operations -> {
             try {
+                List<Object> batched = executePipelineBatch(operations);
+                if (batched != null) {
+                    return CompletableFuture.completedFuture(batched);
+                }
                 List<Object> results = new ArrayList<>(operations.size());
                 for (BasedKVStorePipeline.PipelineOperation operation : operations) {
                     switch (operation.kind()) {
@@ -317,6 +378,100 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
     }
 
     /**
+     * Executes queued pipeline operations over a native Redis pipeline when the client
+     * exposes one, so the batch costs one connection borrow and one network round-trip.
+     * Returns {@code null} when the fast path is unavailable.
+     *
+     * @param operations queued pipeline operations
+     * @return results in operation order, or {@code null} when falling back
+     * @since 0.1.15
+     */
+    private List<Object> executePipelineBatch(List<BasedKVStorePipeline.PipelineOperation> operations) {
+        if (operations.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Object pipeline = null;
+        try {
+            InvocationOutcome pipelineOutcome = tryInvoke(redisClient, new String[]{"pipeline", "pipelined"});
+            if (!pipelineOutcome.handled() || pipelineOutcome.value() == null) {
+                return null;
+            }
+            pipeline = pipelineOutcome.value();
+            for (BasedKVStorePipeline.PipelineOperation operation : operations) {
+                if (!enqueuePipelineOperation(pipeline, operation)) {
+                    return null;
+                }
+            }
+            InvocationOutcome syncOutcome = tryInvoke(pipeline,
+                    new String[]{"syncAndReturnAll", "sync", "execute", "exec"});
+            if (!syncOutcome.handled()) {
+                return null;
+            }
+            return mapPipelineReplies(syncOutcome.value(), operations);
+        } catch (IllegalStateException ex) {
+            logger.warn("Real pipeline batch failed, falling back to per-op execution: {}", ex.getMessage());
+            return null;
+        } finally {
+            closePipelineQuietly(pipeline);
+        }
+    }
+
+    private void closePipelineQuietly(Object pipeline) {
+        if (pipeline == null) {
+            return;
+        }
+        try {
+            tryInvoke(pipeline, new String[]{"close"});
+        } catch (IllegalStateException ignored) {
+            logger.debug("Failed to close pipeline");
+        }
+    }
+
+    private boolean enqueuePipelineOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation) {
+        return switch (operation.kind()) {
+            case "set" -> enqueueSetOperation(pipeline, operation);
+            case "get" -> tryInvoke(pipeline, new String[]{"get"}, operation.key()).handled();
+            case "exists" -> tryInvoke(pipeline, new String[]{"exists"}, operation.key()).handled();
+            default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
+        };
+    }
+
+    private boolean enqueueSetOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation) {
+        Integer ttl = operation.ttl();
+        if (ttl != null && ttl > 0) {
+            InvocationOutcome setex = tryInvoke(pipeline, new String[]{"setex", "setEx"},
+                    operation.key(), ttl, operation.value());
+            if (setex.handled()) {
+                return true;
+            }
+            InvocationOutcome setWithTtl = tryInvoke(pipeline, new String[]{"set"},
+                    operation.key(), operation.value(), ttl);
+            return setWithTtl.handled();
+        }
+        return tryInvoke(pipeline, new String[]{"set"}, operation.key(), operation.value()).handled();
+    }
+
+    private List<Object> mapPipelineReplies(Object rawReplies,
+            List<BasedKVStorePipeline.PipelineOperation> operations) {
+        List<Object> replies = toObjectList(rawReplies);
+        if (replies.size() != operations.size()) {
+            throw new IllegalStateException("Pipeline reply count mismatch: ops=" + operations.size()
+                    + ", replies=" + replies.size());
+        }
+        List<Object> results = new ArrayList<>(operations.size());
+        for (int index = 0; index < operations.size(); index++) {
+            BasedKVStorePipeline.PipelineOperation operation = operations.get(index);
+            switch (operation.kind()) {
+            case "set" -> results.add(null);
+            case "get" -> results.add(normalizeValue(replies.get(index)));
+            case "exists" -> results.add(asBoolean(replies.get(index)));
+            default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
+            }
+        }
+        return results;
+    }
+
+    /**
      * Refresh TTL (Time To Live) for given keys.
      *
      * @param keys       a list of keys to refresh TTL for
@@ -334,7 +489,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
                 }
             }
             logger.debug("Successfully refreshed TTL for {} keys", keys.size());
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.warn("Failed to refresh TTL for {} keys, error: {}", keys.size(), e.getMessage());
         }
     }
@@ -355,8 +510,8 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
         try {
             closeable.close();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to close Redis client", e);
+        } catch (Exception failure) {
+            throw new IllegalStateException("Failed to close Redis client", failure);
         }
     }
 
@@ -392,13 +547,13 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
                 expireKey(key, expiry);
             }
             logger.debug("Successfully set key: {}", key);
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to set key: {}, error: {}", key, e.getMessage());
             throw new RuntimeException("Failed to set key: " + key, e);
         }
     }
 
-    private void setBinaryValue(String key, byte[] value, Integer expiry) throws Exception {
+    private void setBinaryValue(String key, byte[] value, Integer expiry) {
         byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
         boolean expiryApplied = false;
         if (expiry != null && expiry > 0) {
@@ -435,7 +590,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
      * Prefer binary GET when String GET mis-decodes binary payloads (Jedis {@code get(String)} vs
      * {@code get(byte[])}). For plain text values both APIs agree and String is returned.
      */
-    private Object getValuePreferringBinaryKey(String key) throws Exception {
+    private Object getValuePreferringBinaryKey(String key) {
         Object stringValue = null;
         InvocationOutcome stringOutcome = tryInvoke(redisClient, new String[]{"get"}, key);
         if (stringOutcome.handled()) {
@@ -474,7 +629,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return !text.equals(new String(bytes, StandardCharsets.UTF_8));
     }
 
-    private List<Object> tryMget(List<String> keys) throws Exception {
+    private List<Object> tryMget(List<String> keys) {
         try {
             InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"mget"}, keys);
             if (!outcome.handled()) {
@@ -486,7 +641,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
                     return normalized;
                 }
             }
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             logger.warn("MGET failed, falling back to individual GETs: {}", e.getMessage());
         }
 
@@ -497,7 +652,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return fallback;
     }
 
-    private int deleteChunk(List<String> keys) throws Exception {
+    private int deleteChunk(List<String> keys) {
         if (keys.isEmpty()) {
             return 0;
         }
@@ -521,7 +676,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return deleted;
     }
 
-    private List<String> scanKeys(String prefix) throws Exception {
+    private List<String> scanKeys(String prefix) {
         String pattern = prefix + "*";
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"scanIter", "keys", "scan"}, pattern);
         if (!outcome.handled()) {
@@ -539,7 +694,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return extractKeys(outcome.value(), prefix);
     }
 
-    private boolean refreshTtlViaClientPipeline(List<String> keys, int ttlSeconds) throws Exception {
+    private boolean refreshTtlViaClientPipeline(List<String> keys, int ttlSeconds) {
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"pipeline", "pipelined"});
         if (!outcome.handled() || outcome.value() == null) {
             return false;
@@ -557,7 +712,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return executeOutcome.handled();
     }
 
-    private void expireKey(String key, int ttlSeconds) throws Exception {
+    private void expireKey(String key, int ttlSeconds) {
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"expire"}, key, ttlSeconds);
         if (!outcome.handled()) {
             throw new IllegalStateException("Redis client does not support expire operations");
@@ -673,7 +828,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
             if (getValue.handled()) {
                 return normalizeValue(getValue.value());
             }
-        } catch (Exception ignored) {
+        } catch (IllegalStateException ignored) {
             // Keep the original value when reflection-based normalization is not supported.
         }
 
@@ -708,7 +863,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return asBoolean(value) ? fallbackCount : 0;
     }
 
-    private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args) throws Exception {
+    private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args) {
         InvocationOutcome outcome = tryInvoke(target, methodNames, args);
         if (!outcome.handled()) {
             throw new IllegalStateException("Redis client does not support " + Arrays.toString(methodNames));
@@ -716,12 +871,12 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         return outcome;
     }
 
-    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args) throws Exception {
+    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args) {
         return tryInvoke(target, methodNames, null, args);
     }
 
     private InvocationOutcome tryInvoke(
-            Object target, String[] methodNames, Class<?> requiredFirstParamType, Object... args) throws Exception {
+            Object target, String[] methodNames, Class<?> requiredFirstParamType, Object... args) {
         MethodMatch bestMatch = null;
         for (int nameIndex = 0; nameIndex < methodNames.length; nameIndex++) {
             String methodName = methodNames[nameIndex];
@@ -756,15 +911,15 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
                 bestMatch.method().setAccessible(true);
             }
             return new InvocationOutcome(true, bestMatch.method().invoke(target, bestMatch.arguments()));
-        } catch (InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof Exception exception) {
-                throw exception;
-            }
+        } catch (InvocationTargetException invocationFailure) {
+            Throwable cause = invocationFailure.getCause();
             if (cause instanceof Error error) {
                 throw error;
             }
-            throw e;
+            Throwable failure = cause == null ? invocationFailure : cause;
+            throw new IllegalStateException("Redis client invocation failed", failure);
+        } catch (IllegalAccessException accessFailure) {
+            throw new IllegalStateException("Redis client method is inaccessible", accessFailure);
         }
     }
 

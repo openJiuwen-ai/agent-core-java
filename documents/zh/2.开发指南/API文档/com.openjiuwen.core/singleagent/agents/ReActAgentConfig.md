@@ -43,4 +43,5 @@ public class ReActAgentConfig
 ## 说明
 
 - 相关测试：`ReActAgentConfigTest`、`ReActAgentEvolveTest`、`ReActAgentTest`、`BaseAgentTest`。
+- 该类型保持可变以兼容现有用法；原地修改 `contextEngineConfig` 后，由 `ReActAgent` 在读取引擎或发起请求时同步生效。
 - 该类型使用 Lombok 生成 builder / getter / setter；默认 `modelProvider` 为 `openai`，默认 `maxIterations` 为 `5`。
