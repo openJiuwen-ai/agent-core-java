@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -458,7 +459,7 @@ class ReActAgentStreamDegradationTest {
         return new Iterator<>() {
             @Override
             public boolean hasNext() {
-                throw new RuntimeException(new IOException("connection reset before first chunk"));
+                throw new UncheckedIOException(new IOException("connection reset before first chunk"));
             }
 
             @Override
@@ -470,22 +471,22 @@ class ReActAgentStreamDegradationTest {
 
     private static Iterator<AssistantMessageChunk> failingStreamAfterChunk(String content) {
         return new Iterator<>() {
-            private boolean emitted;
+            private boolean hasEmitted;
 
             @Override
             public boolean hasNext() {
-                if (!emitted) {
+                if (!hasEmitted) {
                     return true;
                 }
-                throw new RuntimeException(new IOException("connection reset after first chunk"));
+                throw new UncheckedIOException(new IOException("connection reset after first chunk"));
             }
 
             @Override
             public AssistantMessageChunk next() {
-                if (emitted) {
+                if (hasEmitted) {
                     throw new NoSuchElementException();
                 }
-                emitted = true;
+                hasEmitted = true;
                 return AssistantMessageChunk.builder().content(content).build();
             }
         };

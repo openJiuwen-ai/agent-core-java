@@ -5,6 +5,7 @@
 package com.openjiuwen.core.foundation.llm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.core.foundation.llm.model_clients.OpenAiCompatibleModelClient;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -15,11 +16,11 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
-import org.junit.jupiter.api.Test;
-
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -74,7 +75,7 @@ class OpenAiCompatibleModelClientTest {
 
         Field httpClientField = OpenAiCompatibleModelClient.class.getDeclaredField("httpClient");
         httpClientField.setAccessible(true);
-        OkHttpClient httpClient = (OkHttpClient) httpClientField.get(client);
+        OkHttpClient httpClient = assertInstanceOf(OkHttpClient.class, httpClientField.get(client));
 
         assertEquals(1_200_000, httpClient.readTimeoutMillis());
         assertEquals(1_200_000, httpClient.writeTimeoutMillis());

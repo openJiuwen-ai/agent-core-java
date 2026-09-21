@@ -4,6 +4,7 @@ package com.openjiuwen.core.singleagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
@@ -332,7 +333,8 @@ class AbilityManagerSupplementTest {
             agent.registerRail(new AgentRail() {
                 @Override
                 public void beforeToolCall(AgentCallbackContext ctx) {
-                    ((ToolCallInputs) ctx.getInputs()).setToolName(toolId);
+                    ToolCallInputs inputs = assertInstanceOf(ToolCallInputs.class, ctx.getInputs());
+                    inputs.setToolName(toolId);
                 }
             });
             AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).build();

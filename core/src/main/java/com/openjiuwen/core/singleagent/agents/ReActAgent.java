@@ -64,6 +64,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * ReAct paradigm Agent implementation.
@@ -1847,26 +1849,21 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * callModelStream.
-     * 
+     * Prepare callback inputs for a streaming model attempt.
+     *
      * @param ctx ctx
      * @param context context
      * @param systemMessages systemMessages
      * @param tools tools
-     * @param agentSession agentSession
-     * @return the result
-     * @since 0.1.7
+     * @since 0.1.16
      */
-    private AssistantMessage callModelStream(AgentCallbackContext ctx, ModelContext context,
-            List<BaseMessage> systemMessages, List<ToolInfo> tools, AgentSessionApi agentSession,
-            StreamAttempt streamAttempt) {
+    private void prepareModelStreamCall(AgentCallbackContext ctx, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools) {
         var contextWindow = context.getContextWindow(systemMessages, tools != null ? tools : null,
                 null, null, buildContextWindowKwargs(ctx));
 
         ctx.setInputs(ModelCallInputs.builder().messages(new ArrayList<>(contextWindow.getMessages()))
                 .tools(contextWindow.getToolList()).build());
-
-        return railedModelStreamCall(ctx, agentSession, buildKvCacheInvokeKwargs(ctx), streamAttempt).orElse(null);
     }
 
     /**
@@ -1890,8 +1887,9 @@ public class ReActAgent extends BaseAgent {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             StreamAttempt streamAttempt = new StreamAttempt();
             try {
-                AssistantMessage aiMessage = callModelStream(ctx, context, systemMessages, tools, agentSession,
-                        streamAttempt);
+                prepareModelStreamCall(ctx, context, systemMessages, tools);
+                AssistantMessage aiMessage = railedModelStreamCall(ctx, agentSession,
+                        buildKvCacheInvokeKwargs(ctx), streamAttempt).orElse(null);
                 if (hasActionableResponse(aiMessage)) {
                     return aiMessage;
                 }
@@ -1999,22 +1997,21 @@ public class ReActAgent extends BaseAgent {
         if (retryDelayMs <= 0) {
             return true;
         }
-        try {
-            Thread.sleep(retryDelayMs);
-            return true;
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(retryDelayMs));
+        return !Thread.currentThread().isInterrupted();
     }
 
-    /** Tracks whether an attempt has emitted anything to downstream consumers. */
+    /**
+     * Tracks whether an attempt has emitted anything to downstream consumers.
+     */
     private static final class StreamAttempt {
-        private boolean receivedChunks;
+        private boolean hasReceivedChunks;
 
-        /** Mark the attempt as externally observable. */
+        /**
+         * Mark the attempt as externally observable.
+         */
         private void markChunkReceived() {
-            receivedChunks = true;
+            hasReceivedChunks = true;
         }
 
         /**
@@ -2023,7 +2020,7 @@ public class ReActAgent extends BaseAgent {
          * @return {@code true} after the first chunk
          */
         private boolean hasReceivedChunks() {
-            return receivedChunks;
+            return hasReceivedChunks;
         }
     }
 
