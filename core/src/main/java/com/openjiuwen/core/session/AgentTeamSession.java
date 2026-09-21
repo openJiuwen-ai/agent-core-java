@@ -25,8 +25,27 @@ public class AgentTeamSession implements AgentSessionApi {
     private final com.openjiuwen.core.session.internal.AgentTeamSession inner;
     private boolean preRunDone;
     private boolean postRunDone;
+    private final com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol kvCacheRuntime;
+    private volatile boolean isKvcReleased;
 
     public AgentTeamSession(String sessionId, Map<String, Object> envs, String teamId) {
+        this(sessionId, envs, teamId, null);
+    }
+
+    /**
+     * Create a Team session with an optional shared KV cache runtime.
+     *
+     * <p>Mirrors Python's {@code Session(..., kv_cache_runtime=...)} in
+     * {@code openjiuwen/core/session/agent_team.py}.</p>
+     *
+     * @param sessionId team session id
+     * @param envs initial envs
+     * @param teamId team id
+     * @param kvCacheRuntime shared application KVC runtime, may be {@code null}
+     * @since 0.1.16
+     */
+    public AgentTeamSession(String sessionId, Map<String, Object> envs, String teamId,
+            com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol kvCacheRuntime) {
         this.sessionId = sessionId == null ? UUID.randomUUID().toString() : sessionId;
         this.teamId = teamId == null ? "agent_team" : teamId;
         Config config = new Config();
@@ -34,10 +53,28 @@ public class AgentTeamSession implements AgentSessionApi {
             config.setEnvs(envs);
         }
         this.inner = new com.openjiuwen.core.session.internal.AgentTeamSession(this.sessionId, this.teamId, config);
+        this.kvCacheRuntime = kvCacheRuntime;
     }
 
     public AgentTeamSession() {
         this(null, null, "agent_team");
+    }
+
+    /**
+     * Create an AgentTeam session factory alias with a shared KVC runtime.
+     *
+     * <p>Mirrors Python's {@code create_agent_team_session}.</p>
+     *
+     * @param sessionId team session id
+     * @param envs initial envs
+     * @param teamId team id
+     * @param kvCacheRuntime shared application KVC runtime
+     * @return the team session
+     * @since 0.1.16
+     */
+    public static AgentTeamSession createAgentTeamSession(String sessionId, Map<String, Object> envs, String teamId,
+            com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol kvCacheRuntime) {
+        return new AgentTeamSession(sessionId, envs, teamId, kvCacheRuntime);
     }
 
     public static AgentTeamSession createAgentTeamSession(String sessionId, Map<String, Object> envs, String teamId) {
@@ -166,18 +203,112 @@ public class AgentTeamSession implements AgentSessionApi {
     }
 
     public AgentSession createAgentSession(Object card, String agentId, boolean shareStreamWriter) {
+        return createAgentSession(card, agentId, shareStreamWriter, null);
+    }
+
+    /**
+     * Create a member child session sharing this Team session's KVC runtime.
+     *
+     * <p>Mirrors Python's {@code create_agent_session} on the Team Session:
+     * the child receives the shared runtime, source metadata, and a
+     * {@code team:{session}:team:{team}:member:{agent}} cache scope so member
+     * cache keys cannot collide.</p>
+     *
+     * @param card member agent card
+     * @param agentId member agent id
+     * @param isShareStreamWriter whether to share the team stream writer
+     * @param memberName optional member name recorded in metadata
+     * @return the child session
+     * @since 0.1.16
+     */
+    public AgentSession createAgentSession(Object card, String agentId, boolean isShareStreamWriter,
+            String memberName) {
         Object resolvedCard = card == null ? new SimpleAgentCard(agentId == null ? "team_agent" : agentId) : card;
         LinkedHashMap<String, Object> sourceMetadata = new LinkedHashMap<>();
         sourceMetadata.put("source_agent_id", readCardId(resolvedCard));
         sourceMetadata.put("source_team_id", teamId);
-        return new AgentSession(
+        if (memberName != null && !memberName.isBlank()) {
+            sourceMetadata.put("source_member_name", memberName);
+        }
+        AgentSession child = new AgentSession(
                 sessionId,
                 getEnvs(),
                 resolvedCard,
-                shareStreamWriter ? inner.streamWriterManager() : null,
+                isShareStreamWriter ? inner.streamWriterManager() : null,
                 false,
-                sourceMetadata
+                sourceMetadata,
+                getKvCacheRuntime().orElse(null)
         );
+        child.setTeamCacheScope(teamId, readCardId(resolvedCard));
+        return child;
+    }
+
+    /**
+     * Return the root identity shared by this Team session.
+     *
+     * <p>Mirrors Python's {@code agent_team.Session.get_cache_identity}: the
+     * team session is its own cache root.</p>
+     *
+     * @return self-pointing lineage identity
+     * @since 0.1.16
+     */
+    @Override
+    public com.openjiuwen.core.kvcache.KVCacheIdentity getCacheIdentity() {
+        return new com.openjiuwen.core.kvcache.KVCacheIdentity(sessionId, sessionId);
+    }
+
+    /**
+     * Return the process-local KVC runtime while this Team session is live.
+     *
+     * @return runtime, empty when released or never wired
+     * @since 0.1.16
+     */
+    @Override
+    public java.util.Optional<com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol> getKvCacheRuntime() {
+        return isKvcReleased
+                ? java.util.Optional.empty()
+                : java.util.Optional.ofNullable(kvCacheRuntime);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Boolean> prepareKvc() {
+        return invokeKvc("prepare");
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Boolean> suspendKvc() {
+        return invokeKvc("suspend");
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Boolean> releaseKvc() {
+        if (isKvcReleased) {
+            return java.util.concurrent.CompletableFuture.completedFuture(false);
+        }
+        isKvcReleased = true;
+        return invokeKvc("release");
+    }
+
+    private java.util.concurrent.CompletableFuture<Boolean> invokeKvc(String operation) {
+        com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol runtime =
+                "release".equals(operation) ? kvCacheRuntime : getKvCacheRuntime().orElse(null);
+        if (runtime == null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(false);
+        }
+        com.openjiuwen.core.kvcache.KVCacheIdentity identity = getCacheIdentity();
+        java.util.concurrent.CompletableFuture<Boolean> action = switch (operation) {
+            case "prepare" -> runtime.prepare(identity);
+            case "suspend" -> runtime.suspend(identity);
+            default -> runtime.release(identity);
+        };
+        return action.handle((result, throwable) -> {
+            if (throwable != null) {
+                com.openjiuwen.core.common.logging.Loggers.SESSION.warning(
+                        "Team KVC {0} failed; continue normal flow: {1}", operation, throwable.toString());
+                return false;
+            }
+            return Boolean.TRUE.equals(result);
+        });
     }
 
     public com.openjiuwen.core.session.internal.AgentTeamSession getInner() {

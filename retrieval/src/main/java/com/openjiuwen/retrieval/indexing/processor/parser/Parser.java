@@ -5,7 +5,7 @@
 package com.openjiuwen.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.common.async.FutureList;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.retrieval.indexing.processor.Processor;
 

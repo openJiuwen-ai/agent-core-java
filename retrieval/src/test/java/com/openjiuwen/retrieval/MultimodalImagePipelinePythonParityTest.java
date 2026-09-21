@@ -4,7 +4,7 @@
 
 package com.openjiuwen.retrieval;
 
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.MultimodalDocument;
 import com.openjiuwen.retrieval.common.TextChunk;

@@ -19,8 +19,8 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
-import com.openjiuwen.core.foundation.llm.model_clients.ModelClients;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelClients;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.callback.CallbackDecorators;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
@@ -407,6 +407,140 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
 
     public boolean supportsKvCacheRelease() {
         return client.supportsKvCacheRelease();
+    }
+
+    /**
+     * Whether the underlying client supports Ascend KV cache affinity actions.
+     *
+     * <p>Mirrors Python's {@code Model.supports_kv_cache_affinity}: delegates
+     * to the client when it exposes the capability check, else verifies the
+     * three KVC action methods exist.</p>
+     *
+     * @return true when the client supports affinity
+     * @since 0.1.16
+     */
+    public boolean supportsKvCacheAffinity() {
+        if (client instanceof KvCacheAffinityClient affinityClient) {
+            return affinityClient.supportsKvCacheAffinity();
+        }
+        return false;
+    }
+
+    /**
+     * Build AscendAffinity {@code agent_hint} kwargs for normal invoke/stream.
+     *
+     * <p>Mirrors Python's {@code Model.build_kv_cache_affinity_invoke_kwargs}.
+     * Returns an empty map when affinity is unsupported so callers need no
+     * special-casing.</p>
+     *
+     * @param sessionId lineage cache id, may be {@code null} to use session id
+     * @param parentSessionId lineage parent id, may be {@code null}
+     * @return kwargs carrying {@code session_id} and {@code parent_session_id}
+     * @since 0.1.16
+     */
+    public Map<String, Object> buildKvCacheAffinityInvokeKwargs(String sessionId, String parentSessionId) {
+        if (!supportsKvCacheAffinity()) {
+            return Map.of();
+        }
+        return com.openjiuwen.core.kvcache.AgentHint.buildInvokeKwargs(sessionId, parentSessionId);
+    }
+
+    /**
+     * Evict KV cache through the underlying affinity-capable client.
+     *
+     * @param sessionId lineage cache id
+     * @param parentSessionId lineage parent id
+     * @param range target and range parameters for the eviction
+     * @return whether the eviction succeeded
+     * @since 0.1.16
+     */
+    public java.util.concurrent.CompletableFuture<Boolean> evictKvc(String sessionId, String parentSessionId,
+            com.openjiuwen.core.kvcache.AgentHint.KvCacheRange range) {
+        if (!(client instanceof KvCacheAffinityClient affinityClient)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(false);
+        }
+        return affinityClient.evictKvc(sessionId, parentSessionId, range, null);
+    }
+
+    /**
+     * Offload KV cache through the underlying affinity-capable client.
+     *
+     * @param sessionId lineage cache id
+     * @param parentSessionId lineage parent id
+     * @return whether the offload succeeded
+     * @since 0.1.16
+     */
+    public java.util.concurrent.CompletableFuture<Boolean> offloadKvc(String sessionId, String parentSessionId) {
+        if (!(client instanceof KvCacheAffinityClient affinityClient)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(false);
+        }
+        return affinityClient.offloadKvc(sessionId, parentSessionId, null);
+    }
+
+    /**
+     * Prefetch KV cache through the underlying affinity-capable client.
+     *
+     * @param sessionId lineage cache id
+     * @param parentSessionId lineage parent id
+     * @return whether the prefetch succeeded
+     * @since 0.1.16
+     */
+    public java.util.concurrent.CompletableFuture<Boolean> prefetchKvc(String sessionId, String parentSessionId) {
+        if (!(client instanceof KvCacheAffinityClient affinityClient)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(false);
+        }
+        return affinityClient.prefetchKvc(sessionId, parentSessionId, null);
+    }
+
+    /**
+     * Capability interface implemented by affinity-capable model clients.
+     *
+     * <p>Mirrors the Python duck-typed {@code evict_kvc/offload_kvc/prefetch_kvc}
+     * client contract.</p>
+     *
+     * @since 0.1.16
+     */
+    public interface KvCacheAffinityClient {
+        /**
+         * Whether this client supports affinity actions and hints.
+         *
+         * @return true when supported
+         */
+        boolean supportsKvCacheAffinity();
+
+        /**
+         * Evict one session or range of remote KV cache.
+         *
+         * @param sessionId lineage cache id
+         * @param parentSessionId lineage parent id
+         * @param range target and range parameters for the eviction
+         * @param timeout explicit whole-action timeout in seconds
+         * @return completion with success flag
+         */
+        java.util.concurrent.CompletableFuture<Boolean> evictKvc(String sessionId, String parentSessionId,
+                com.openjiuwen.core.kvcache.AgentHint.KvCacheRange range, Double timeout);
+
+        /**
+         * Offload one session's remote KV cache to external storage.
+         *
+         * @param sessionId lineage cache id
+         * @param parentSessionId lineage parent id
+         * @param timeout explicit whole-action timeout in seconds
+         * @return completion with success flag
+         */
+        java.util.concurrent.CompletableFuture<Boolean> offloadKvc(String sessionId, String parentSessionId,
+                Double timeout);
+
+        /**
+         * Prefetch one session's remote KV cache back to device memory.
+         *
+         * @param sessionId lineage cache id
+         * @param parentSessionId lineage parent id
+         * @param timeout explicit whole-action timeout in seconds
+         * @return completion with success flag
+         */
+        java.util.concurrent.CompletableFuture<Boolean> prefetchKvc(String sessionId, String parentSessionId,
+                Double timeout);
     }
 
     public Map<String, Object> buildKvCacheInvokeKwargs(Object session, boolean enableKvCacheRelease) {

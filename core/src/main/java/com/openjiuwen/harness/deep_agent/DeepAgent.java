@@ -234,6 +234,7 @@ public class DeepAgent implements AutoCloseable {
                 .configureMaxIterations(this.config.getMaxIterations())
                 .configureMaxParallelToolCalls(this.config.getMaxParallelToolCalls())
                 .configureFailTaskOnToolError(this.config.isShouldFailTaskOnToolError());
+        runtimeConfig.setEnableKvCacheAffinity(this.config.isEnableKvCacheAffinity());
         applyModelConfig(runtimeConfig, this.config.getModel());
         applyBackendConfig(runtimeConfig, this.config.getBackend());
         return runtimeConfig;
@@ -1676,6 +1677,14 @@ public class DeepAgent implements AutoCloseable {
         }
         if (childConfig.getPromptMode() == null || childConfig.getPromptMode().isBlank()) {
             childConfig.setPromptMode(config.getPromptMode());
+        }
+        // A dynamically created subagent runs under its own conversation id,
+        // but it remains part of the parent's KVC-affinity lifecycle (Python
+        // deep_agent.py passes kv_cache_affinity_config to every subagent);
+        // without inheriting this switch the child ReActAgent never installs
+        // the affinity hooks, so its requests omit agent_hint.
+        if (!childConfig.isEnableKvCacheAffinity()) {
+            childConfig.setEnableKvCacheAffinity(config.isEnableKvCacheAffinity());
         }
         // general-purpose inherits parent tools/mcps/skills when the child spec left them empty
         // (Python factory._inject_general_purpose_subagent).
