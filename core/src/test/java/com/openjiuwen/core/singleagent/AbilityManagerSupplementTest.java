@@ -250,6 +250,105 @@ class AbilityManagerSupplementTest {
     }
 
     @Test
+    void malformedToolCallNamesReturnCorrectiveMessages() {
+        AgentCallbackContext ctx = AgentCallbackContext.builder().build();
+
+        for (String invalidName : new String[] {null, "", "   "}) {
+            ToolCall toolCall = ToolCall.builder().id("tc-malformed").name(invalidName).arguments("{}").build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, toolCall, null, null);
+
+            assertThat(results).singleElement().satisfies(entry -> {
+                assertThat(entry.result()).isNull();
+                assertThat(entry.toolMessage().getToolCallId()).isEqualTo("tc-malformed");
+                assertThat(entry.toolMessage().getContent().toString())
+                        .contains("Malformed tool call").contains("tool name");
+            });
+        }
+    }
+
+    @Test
+    void malformedToolCallNameReturnsCorrectiveMessageInStreamExecution() {
+        AgentCallbackContext ctx = AgentCallbackContext.builder().build();
+        ToolCall toolCall = ToolCall.builder().id("tc-malformed-stream").name(" ").arguments("{}").build();
+
+        List<AbilityManager.ToolExecutionEntry> results = manager.executeStream(ctx, toolCall, null, null, null);
+
+        assertThat(results).singleElement().satisfies(entry -> {
+            assertThat(entry.result()).isNull();
+            assertThat(entry.toolMessage().getToolCallId()).isEqualTo("tc-malformed-stream");
+            assertThat(entry.toolMessage().getContent().toString()).contains("Malformed tool call");
+        });
+    }
+
+    @Test
+    void malformedParallelToolCallDoesNotPreventValidCall() {
+        String toolId = "valid-after-malformed-" + UUID.randomUUID();
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("valid tool").build(),
+                inputs -> "valid-result");
+        Runner.resourceMgr().addTool(tool, null);
+        manager.add(tool.getCard());
+        try {
+            List<ToolCall> toolCalls = List.of(
+                    ToolCall.builder().id("tc-malformed-parallel").name("").arguments("{}").build(),
+                    ToolCall.builder().id("tc-valid-parallel").name(toolId).arguments("{}").build());
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    AgentCallbackContext.builder().build(), toolCalls, null, null);
+
+            assertThat(results).hasSize(2);
+            assertThat(results.get(0).toolMessage().getContent().toString()).contains("Malformed tool call");
+            assertThat(results.get(1).result()).isEqualTo("valid-result");
+        } finally {
+            removeTool(toolId);
+        }
+    }
+
+    @Test
+    void malformedToolCallHonorsFailTaskConfiguration() {
+        AgentCallbackContext ctx = AgentCallbackContext.builder()
+                .config(ReActAgentConfig.builder().shouldFailTaskOnToolError(true).build())
+                .build();
+        ToolCall toolCall = ToolCall.builder().id("tc-malformed-fail").name(null).arguments("{}").build();
+
+        List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, toolCall, null, null);
+
+        assertThat(results).hasSize(1);
+        assertThat(ctx.hasForceFinishRequest()).isTrue();
+        assertThat(ctx.consumeForceFinish().getResult()).containsEntry("result_type", "error");
+    }
+
+    @Test
+    void beforeToolCallRailCanRepairMalformedToolName() {
+        String toolId = "rail-repaired-tool-" + UUID.randomUUID();
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("rail repair test").build(),
+                inputs -> "repaired-result");
+        Runner.resourceMgr().addTool(tool, null);
+        manager.add(tool.getCard());
+        try {
+            IterationAgent agent = new IterationAgent();
+            agent.registerRail(new AgentRail() {
+                @Override
+                public void beforeToolCall(AgentCallbackContext ctx) {
+                    ((ToolCallInputs) ctx.getInputs()).setToolName(toolId);
+                }
+            });
+            AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).build();
+            ToolCall toolCall = ToolCall.builder().id("tc-rail-repair").name(" ").arguments("{}").build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, toolCall, null, null);
+
+            assertThat(results).singleElement().extracting(AbilityManager.ToolExecutionEntry::result)
+                    .isEqualTo("repaired-result");
+            assertThat(toolCall.getName()).isEqualTo(toolId);
+        } finally {
+            removeTool(toolId);
+        }
+    }
+
+    @Test
     void testExecutePreservesSkipToolMarkerThroughAfterToolCallThenClearsIt() {
         class SkippingAgent extends BaseAgent {
             SkippingAgent() {

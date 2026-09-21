@@ -774,6 +774,7 @@ public class AbilityManager implements ToolRegistry {
      * @since 0.1.7
      */
     public ToolExecutionEntry executeSingleToolCall(ToolCall toolCall, Session session, String tag) {
+        validateToolCallName(toolCall);
         String toolName = toolCall.getName();
 
         Map<String, Object> toolArgs = parseToolArgs(toolCall.getArguments());
@@ -905,6 +906,22 @@ public class AbilityManager implements ToolRegistry {
     private static AbilityExecutionError buildExecutionError(ToolCall toolCall, String message) {
         return new AbilityExecutionError(StatusCode.AGENT_TOOL_EXECUTION_ERROR, message,
                 ToolMessage.builder().content(message).toolCallId(toolCall.getId()).build());
+    }
+
+    /**
+     * Reject malformed tool calls after BEFORE_TOOL_CALL rails have had a chance to repair them.
+     *
+     * @param toolCall tool call to validate
+     * @since 0.1.16
+     */
+    private static void validateToolCallName(ToolCall toolCall) {
+        if (toolCall == null) {
+            throw new IllegalArgumentException("Tool call must not be null");
+        }
+        if (toolCall.getName() == null || toolCall.getName().isBlank()) {
+            throw buildExecutionError(toolCall,
+                    "Malformed tool call: tool name must not be null, empty, or blank");
+        }
     }
 
     /**
@@ -1439,6 +1456,7 @@ public class AbilityManager implements ToolRegistry {
             AgentSessionApi agentSession,
             int toolIndex
     ) {
+        validateToolCallName(toolCall);
         String toolName = toolCall.getName();
 
         Optional<Tool> sessionTool = resolveSessionTool(toolName, session);

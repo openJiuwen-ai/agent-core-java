@@ -895,12 +895,25 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                 return null;
             } catch (java.net.SocketTimeoutException e) {
                 // OkHttp readTimeout interrupts blocked readLine(); surface a clear SSE stall message.
+                evictConnectionsAfterStreamFailure(e);
                 throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, null, null, e,
                         Map.of("error_msg", "SSE stream read timeout (no data within OkHttp readTimeout)"));
             } catch (IOException e) {
+                evictConnectionsAfterStreamFailure(e);
                 throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, null, null, e,
                         Map.of("error_msg", "Failed to read streaming response"));
             }
+        }
+
+        /**
+         * Prevent a failed streaming connection from being reused by a later attempt.
+         *
+         * @param exception streaming read failure
+         * @since 0.1.16
+         */
+        private void evictConnectionsAfterStreamFailure(IOException exception) {
+            httpClient.connectionPool().evictAll();
+            LOG.warn("Evicted OkHttp connection pool after streaming read failure: {}", exception.toString());
         }
 
         // 关闭底层 reader，解除阻塞在 readLine() 的线程（readLine 不响应 interrupt）。
