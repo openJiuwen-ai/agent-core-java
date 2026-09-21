@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.resourcemanager.ResourceManagerBase;
@@ -73,6 +74,7 @@ import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.schema.DeepAgentState;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.schema.config.DeepAgentConfigConverter;
+import com.openjiuwen.harness.schema.config.ModelConfigEntry;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.security.PermissionFactory;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
@@ -107,6 +109,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -195,6 +198,7 @@ public class DeepAgent implements AutoCloseable {
         }
         this.agent = new ReActAgent(this.card);
         this.currentMode = this.config.getDefaultMode();
+        reconcileModelConfigs();
         this.agent.configure(buildReActAgentConfig());
         Model configuredModel = resolveConfiguredModel();
         if (configuredModel != null) {
@@ -351,6 +355,182 @@ public class DeepAgent implements AutoCloseable {
             }
         }
         return nullValue();
+    }
+
+    /**
+     * Reconciles {@code modelConfigs} with {@code model}/{@code backend} and registers models.
+     *
+     * @since 0.1.15
+     */
+    private void reconcileModelConfigs() {
+        List<ModelConfigEntry> entries = this.config.getModelConfigs();
+        if (entries == null) {
+            entries = new ArrayList<>();
+            this.config.setModelConfigs(entries);
+        }
+        mergeModelBackend(entries);
+        if (entries.isEmpty()) {
+            return;
+        }
+        validateAndNormalizeEntries(entries);
+        registerModelsAndSetDefault(entries);
+    }
+
+    private void validateAndNormalizeEntries(List<ModelConfigEntry> entries) {
+        Set<String> seenIds = new HashSet<>();
+        boolean hasDefault = false;
+        for (ModelConfigEntry entry : entries) {
+            if (entry.getModelId() == null || entry.getModelId().isBlank()) {
+                String generatedId = buildModelId(
+                        entry.getModelConfig() != null ? entry.getModelConfig().getModelName() : null,
+                        entry.getModelClient() != null ? entry.getModelClient().getClientProvider() : null);
+                Loggers.AGENT.warning("modelConfigs entry has blank modelId, generated: {}", generatedId);
+                entry.setModelId(generatedId);
+            }
+            if (!seenIds.add(entry.getModelId())) {
+                throw new IllegalArgumentException("duplicate modelId in modelConfigs: " + entry.getModelId());
+            }
+            if (entry.isDefault()) {
+                if (hasDefault) {
+                    throw new IllegalArgumentException("modelConfigs has more than one default entry");
+                }
+                hasDefault = true;
+            }
+        }
+        if (!hasDefault) {
+            entries.get(0).setDefault(true);
+        }
+    }
+
+    private void mergeModelBackend(List<ModelConfigEntry> entries) {
+        Object modelObj = this.config.getModel();
+        Object backendObj = this.config.getBackend();
+        if (modelObj == null || backendObj == null) {
+            return;
+        }
+        Optional<ModelRequestConfig> modelReqConfig = extractModelRequestConfig(modelObj);
+        Optional<ModelClientConfig> modelClientConfig = extractModelClientConfig(backendObj);
+        String modelId = buildModelId(
+                modelReqConfig.map(ModelRequestConfig::getModelName).orElse(null),
+                modelClientConfig.map(ModelClientConfig::getClientProvider).orElse(null));
+        boolean hasMatchingEntry = entries.stream().anyMatch(entry -> Objects.equals(entry.getModelId(), modelId));
+        if (!hasMatchingEntry) {
+            entries.add(ModelConfigEntry.builder()
+                    .modelId(modelId)
+                    .isDefault(entries.stream().noneMatch(ModelConfigEntry::isDefault))
+                    .modelConfig(modelReqConfig.orElse(null))
+                    .modelClient(modelClientConfig.orElse(null))
+                    .build());
+        }
+    }
+
+    private void registerModelsAndSetDefault(List<ModelConfigEntry> entries) {
+        for (ModelConfigEntry entry : entries) {
+            if (!Runner.resourceMgr().listModelIds().contains(entry.getModelId())) {
+                ModelConfigEntry registered = entry;
+                Runner.resourceMgr().addModel(registered.getModelId(), () -> {
+                    ModelClientConfig client = registered.getModelClient();
+                    ModelRequestConfig request = registered.getModelConfig();
+                    if (client != null && request != null) {
+                        return new Model(client, request);
+                    }
+                    return null;
+                }, null);
+            }
+        }
+        for (ModelConfigEntry entry : entries) {
+            if (!entry.isDefault()) {
+                continue;
+            }
+            // Only set the process-global default when none is set yet.
+            // Preserves an existing global default from other agents or prior calls.
+            String currentDefault = Runner.resourceMgr().getDefaultModelId();
+            if (currentDefault == null) {
+                Runner.resourceMgr().setDefaultModelId(entry.getModelId());
+            } else {
+                Loggers.AGENT.warning(
+                        "Skip setting global default model to \"{}\": global default already set to \"{}\"",
+                        entry.getModelId(), currentDefault);
+            }
+            if (this.config.getModel() == null && this.config.getBackend() == null) {
+                this.config.setModel(entry.getModelConfig());
+                this.config.setBackend(entry.getModelClient());
+            }
+            break;
+        }
+    }
+
+    private String buildModelId(String modelName, String provider) {
+        StringBuilder builder = new StringBuilder();
+        if (modelName != null && !modelName.isBlank()) {
+            builder.append(modelName);
+        }
+        if (provider != null && !provider.isBlank()) {
+            if (!builder.isEmpty()) {
+                builder.append('@');
+            }
+            builder.append(provider);
+        }
+        if (builder.isEmpty()) {
+            builder.append("model-").append(Integer.toHexString(System.identityHashCode(this)));
+        }
+        return builder.toString();
+    }
+
+    private Optional<ModelRequestConfig> extractModelRequestConfig(Object modelObj) {
+        if (modelObj == null) {
+            return Optional.empty();
+        }
+        if (modelObj instanceof Model model) {
+            return Optional.ofNullable(model.getModelConfig());
+        }
+        if (modelObj instanceof ModelRequestConfig requestConfig) {
+            return Optional.of(requestConfig);
+        }
+        if (modelObj instanceof String modelName && !modelName.isBlank()) {
+            return Optional.of(ModelRequestConfig.builder().modelName(modelName).build());
+        }
+        if (modelObj instanceof Map<?, ?> modelMap) {
+            return Optional.of(ModelRequestConfig.builder()
+                    .modelName(string(firstPresent(modelMap, new String[] {"model", "model_name", "modelName"})))
+                    .temperature(doubleValue(firstPresent(modelMap, new String[] {"temperature"})))
+                    .topP(doubleValue(firstPresent(modelMap, new String[] {"top_p", "topP"})))
+                    .maxTokens(integerValue(firstPresent(modelMap, new String[] {"max_tokens", "maxTokens"})))
+                    .stop(string(firstPresent(modelMap, new String[] {"stop"})))
+                    .user(string(firstPresent(modelMap, new String[] {"user"})))
+                    .seed(integerValue(firstPresent(modelMap, new String[] {"seed"})))
+                    .extraFields(extraFields(modelMap, "model", "model_name", "modelName", "temperature", "top_p",
+                            "topP", "max_tokens", "maxTokens", "stop", "user", "seed"))
+                    .build());
+        }
+        return Optional.empty();
+    }
+
+    private Optional<ModelClientConfig> extractModelClientConfig(Object backendObj) {
+        if (backendObj == null) {
+            return Optional.empty();
+        }
+        if (backendObj instanceof ModelClientConfig clientConfig) {
+            return Optional.of(clientConfig);
+        }
+        if (backendObj instanceof Map<?, ?> backendMap) {
+            String provider = string(firstPresent(backendMap, new String[] {"client_provider", "clientProvider",
+                    "model_provider", "modelProvider", "provider", "backend"}));
+            String apiKey = string(firstPresent(backendMap, new String[] {"api_key", "apiKey"}));
+            String apiBase = string(firstPresent(backendMap,
+                    new String[] {"api_base", "apiBase", "base_url", "baseUrl"}));
+            if (provider == null || apiKey == null || apiBase == null) {
+                return Optional.empty();
+            }
+            return Optional.of(ModelClientConfig.builder()
+                    .clientId(string(firstPresent(backendMap, new String[] {"client_id", "clientId"})))
+                    .clientProvider(provider)
+                    .apiKey(apiKey)
+                    .apiBase(apiBase)
+                    .timeout(doubleOrDefault(firstPresent(backendMap, new String[] {"timeout"}), 60.0))
+                    .build());
+        }
+        return Optional.empty();
     }
 
     private static Object firstPresent(Map<?, ?> source, String[] keys) {
@@ -866,6 +1046,7 @@ public class DeepAgent implements AutoCloseable {
         for (DeepAgentRail rail : rails) {
             rail.beforeInvoke(context);
         }
+        syncDynamicModelSelection(inputs, context);
         if (context.isRejected()) {
             Map<String, Object> rejected = new LinkedHashMap<>();
             rejected.put("type", "deep_agent_result");
@@ -882,6 +1063,35 @@ public class DeepAgent implements AutoCloseable {
         } finally {
             fireAfterInvoke(rails, context);
         }
+    }
+
+    /**
+     * Propagates outer-rail model selection into the invoke inputs map consumed by ReActAgent.
+     *
+     * @param inputs mutable invoke inputs
+     * @param context deep-agent callback context after {@code beforeInvoke}
+     */
+    private static void syncDynamicModelSelection(Map<String, Object> inputs, CallbackContext context) {
+        if (inputs == null || context == null) {
+            return;
+        }
+        String modelId = context.getDynamicModelId();
+        if (modelId == null || modelId.isBlank()) {
+            Object fromValues = context.get("target_model_id");
+            if (fromValues == null) {
+                fromValues = context.get("dynamic_model_id");
+            }
+            if (fromValues == null) {
+                fromValues = context.get("model_id");
+            }
+            modelId = fromValues instanceof String text ? text : null;
+        }
+        if (modelId == null || modelId.isBlank()) {
+            return;
+        }
+        inputs.put("model_id", modelId);
+        inputs.put("target_model_id", modelId);
+        inputs.put("dynamic_model_id", modelId);
     }
 
     private List<DeepAgentRail> snapshotDeepAgentRails() {
@@ -1635,7 +1845,8 @@ public class DeepAgent implements AutoCloseable {
                         roundQuery,
                         isFollowUp,
                         session,
-                        Boolean.TRUE.equals(normalized.get("_collect_inner_stream"))
+                        Boolean.TRUE.equals(normalized.get("_collect_inner_stream")),
+                        normalized
                 ));
                 roundResult.put("query", currentQuery);
                 if (!Objects.equals(roundQuery, currentQuery)) {
@@ -1792,7 +2003,8 @@ public class DeepAgent implements AutoCloseable {
     private Map<String, Object> executeCoreLoopRound(Object query,
                                                      boolean isFollowUp,
                                                      AgentSessionApi session,
-                                                     boolean isCollectInnerStream) {
+                                                     boolean isCollectInnerStream,
+                                                     Map<String, Object> outerInputs) {
         InputEvent event = query instanceof String || query instanceof InputEvent
                 ? InputEvent.fromUserInput(query)
                 : InputEvent.fromUserInput(Map.of(
@@ -1809,9 +2021,34 @@ public class DeepAgent implements AutoCloseable {
         if (isCollectInnerStream) {
             metadata.put("collect_inner_stream", true);
         }
+        copyModelSelectionKeys(outerInputs, metadata);
         event.setMetadata(metadata);
         eventQueue.publishEvent(card.getId(), session, event);
         return awaitRoundCompletion("round_" + handlerRound, session);
+    }
+
+    /**
+     * Copies request-scoped model selection keys into task-loop event metadata so the
+     * inner ReAct round can resolve {@code dynamicModelId} after the outer loop strips
+     * the invoke map down to {@code query}.
+     *
+     * @param source outer invoke inputs; may be null
+     * @param target metadata map to update
+     */
+    private static void copyModelSelectionKeys(Map<String, Object> source, Map<String, Object> target) {
+        if (source == null || target == null) {
+            return;
+        }
+        copyStringIfPresent(source, target, "model_id");
+        copyStringIfPresent(source, target, "target_model_id");
+        copyStringIfPresent(source, target, "dynamic_model_id");
+    }
+
+    private static void copyStringIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
+        Object value = source.get(key);
+        if (value instanceof String text && !text.isBlank()) {
+            target.put(key, text);
+        }
     }
 
     private Map<String, Object> awaitRoundCompletion(String taskId, AgentSessionApi session) {

@@ -74,6 +74,11 @@ public class DeepAgentConfig {
     private String skillMode = "auto_list";
     private Object model;
     private Object backend;
+    /**
+     * Multi-model configuration. When non-empty, entries are registered for dynamic selection.
+     */
+    @Builder.Default
+    private List<ModelConfigEntry> modelConfigs = new ArrayList<>();
     private String promptMode;
     @Builder.Default
     private List<String> skills = new ArrayList<>();

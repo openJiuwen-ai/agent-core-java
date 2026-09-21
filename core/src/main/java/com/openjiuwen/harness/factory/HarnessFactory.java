@@ -185,6 +185,8 @@ public final class HarnessFactory {
                 .skillMode(source.getSkillMode())
                 .model(source.getModel())
                 .backend(source.getBackend())
+                .modelConfigs(source.getModelConfigs() == null ? new ArrayList<>()
+                        : new ArrayList<>(source.getModelConfigs()))
                 .promptMode(source.getPromptMode())
                 .skills(new ArrayList<>(source.getSkills() != null ? source.getSkills() : List.of()))
                 .enableSkillDiscovery(source.isEnableSkillDiscovery())

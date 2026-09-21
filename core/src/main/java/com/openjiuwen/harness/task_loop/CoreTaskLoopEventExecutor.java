@@ -284,6 +284,9 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
         copyIfPresent(metadata, effective, "_handler_round_id");
         copyIfPresent(metadata, effective, "collect_inner_stream");
         copyIfPresent(metadata, effective, "loop_queues");
+        copyIfPresent(metadata, effective, "model_id");
+        copyIfPresent(metadata, effective, "target_model_id");
+        copyIfPresent(metadata, effective, "dynamic_model_id");
         LoopQueues queues = null;
         if (metadata.get("loop_queues") instanceof LoopQueues typed) {
             queues = typed;

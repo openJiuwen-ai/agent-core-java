@@ -4,7 +4,8 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
@@ -28,6 +29,16 @@ public class AbstractManager<T> {
         providers.put(resourceId, resource);
     }
 
+    /**
+     * Replaces or inserts a provider without uniqueness checks.
+     *
+     * @param resourceId resource identifier
+     * @param resource provider to store
+     */
+    protected void replaceResourceProvider(String resourceId, Supplier<?> resource) {
+        providers.put(resourceId, resource);
+    }
+
     @SuppressWarnings("unchecked")
     protected CompletionStage<T> getResource(String resourceId) {
         Supplier<?> provider = providers.get(resourceId);
@@ -44,6 +55,15 @@ public class AbstractManager<T> {
     @SuppressWarnings("unchecked")
     protected Supplier<?> unregisterResourceProvider(String resourceId) {
         return providers.pop(resourceId, null);
+    }
+
+    /**
+     * Returns a snapshot of registered provider ids in insertion order.
+     *
+     * @return registered ids
+     */
+    protected List<String> providerIds() {
+        return new ArrayList<>(providers.keys());
     }
 
     public void put(String resourceId, Object resource) {

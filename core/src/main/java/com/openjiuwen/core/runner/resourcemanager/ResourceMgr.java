@@ -9,6 +9,9 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
@@ -391,12 +394,115 @@ public class ResourceMgr {
                 TagMatchStrategy.ALL, false));
     }
 
+    /**
+     * Removes a model and optionally allows the registry to become empty.
+     *
+     * @param modelId the model id to remove
+     * @param isForce whether removing the last model is allowed
+     * @return the removed supplier, or null when absent
+     * @since 0.1.15
+     */
+    public Supplier<?> removeModelForce(String modelId, boolean isForce) {
+        tagManager.removeResource(modelId);
+        idToCard.remove(modelId);
+        return resourceRegistry.model().removeModel(modelId, isForce);
+    }
+
     public CompletionStage<Object> getModel(String modelId, Object session) {
         validateResourceId(modelId, "model");
         if (!tagManager.hasResource(modelId)) {
             return CompletableFuture.completedFuture(null);
         }
         return dispatchGet(ResourceKind.MODEL, modelId, session);
+    }
+
+    /**
+     * Gets a model by id without a session.
+     *
+     * @param modelId model identifier
+     * @return async model result
+     * @since 0.1.15
+     */
+    public CompletionStage<Object> getModel(String modelId) {
+        return getModel(modelId, null);
+    }
+
+    /**
+     * Updates an existing model, or registers it when missing.
+     *
+     * @param modelId model identifier
+     * @param model model supplier
+     * @return result containing the model id
+     * @since 0.1.15
+     */
+    public Result<?, ?> updateModel(String modelId, Supplier<?> model) {
+        return updateModel(modelId, model, null);
+    }
+
+    /**
+     * Updates an existing model, or registers it when missing.
+     *
+     * @param modelId model identifier
+     * @param model model supplier
+     * @param tag optional tags
+     * @return result containing the model id
+     * @since 0.1.15
+     */
+    public Result<?, ?> updateModel(String modelId, Supplier<?> model, Collection<String> tag) {
+        validateResourceId(modelId, "model");
+        validateProvider(model, "model");
+        validateOptionalTags(tag);
+        resourceRegistry.model().updateModel(modelId, model);
+        if (!tagManager.hasResource(modelId) || (tag != null && !tag.isEmpty())) {
+            tagManager.tagResource(modelId, effectiveTags(tag));
+        }
+        return new Ok<>(modelId);
+    }
+
+    /**
+     * Lists registered model ids.
+     *
+     * @return model ids
+     * @since 0.1.15
+     */
+    public List<String> listModelIds() {
+        return resourceRegistry.model().listModelIds();
+    }
+
+    /**
+     * Sets the default model id.
+     *
+     * @param modelId registered model id
+     * @since 0.1.15
+     */
+    public void setDefaultModelId(String modelId) {
+        resourceRegistry.model().setDefaultModelId(modelId);
+    }
+
+    /**
+     * Returns the default model id.
+     *
+     * @return default model id, or null when unset
+     * @since 0.1.15
+     */
+    public String getDefaultModelId() {
+        return resourceRegistry.model().getDefaultModelId();
+    }
+
+    /**
+     * Resolves a model with priority: dynamic id, fallback configs, then default.
+     *
+     * @param dynamicModelId request-scoped model id
+     * @param fallbackClientConfig fallback client config
+     * @param fallbackRequestConfig fallback request config
+     * @return resolved model
+     * @since 0.1.15
+     */
+    public Model resolveModel(String dynamicModelId,
+                              ModelClientConfig fallbackClientConfig,
+                              ModelRequestConfig fallbackRequestConfig) {
+        return resourceRegistry.model().resolveModel(
+                dynamicModelId, fallbackClientConfig, fallbackRequestConfig);
     }
 
     public Result<?, ?> addPrompt(String promptId, PromptTemplate template) {

@@ -27,6 +27,8 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.OperatorStream;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -209,6 +211,81 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    /**
+     * Resolves the model for the current request.
+     * <p>
+     * Priority: {@code ctx.dynamicModelId} / {@code target_model_id} extra, existing llm,
+     * ResourceMgr default, then lazy config load.
+     *
+     * @param ctx callback context providing a dynamic model id; may be null
+     * @return resolved model
+     * @since 0.1.15
+     */
+    protected Model getLlm(AgentCallbackContext ctx) {
+        String dynamicModelId = resolveDynamicModelId(ctx);
+        if (dynamicModelId != null && !dynamicModelId.isBlank()) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(
+                            dynamicModelId,
+                            config.getModelClientConfig(),
+                            config.getModelConfigObj()
+                    );
+                } catch (RuntimeException ignored) {
+                    // Fall through to existing llm / default resolution.
+                }
+            }
+        }
+        if (llm != null) {
+            return llm;
+        }
+        if (config.getModelClientConfig() == null) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(null, null, null);
+                } catch (RuntimeException ignored) {
+                    // Fall through to getLlm(), which throws a clearer config error.
+                }
+            }
+        }
+        return getLlm();
+    }
+
+    /**
+     * Resolves the effective model name from the given Model instance, falling back
+     * to {@code config.getModelName()} when the model or its modelConfig is null.
+     * <p>
+     * Ensures that when a dynamic model is selected via {@code ctx.dynamicModelId},
+     * the provider receives that model's name rather than the static default from
+     * {@code ReActAgentConfig}.
+     *
+     * @param model the resolved model, may be null
+     * @return the effective model name
+     * @since 0.1.15
+     */
+    private String resolveModelName(Model model) {
+        if (model != null && model.getModelConfig() != null) {
+            String modelName = model.getModelConfig().getModelName();
+            if (modelName != null && !modelName.isBlank()) {
+                return modelName;
+            }
+        }
+        return config.getModelName();
+    }
+
+    private static String resolveDynamicModelId(AgentCallbackContext ctx) {
+        if (ctx == null) {
+            return null;
+        }
+        if (ctx.getDynamicModelId() != null && !ctx.getDynamicModelId().isBlank()) {
+            return ctx.getDynamicModelId();
+        }
+        Object fromExtra = ctx.getExtra() == null ? null : ctx.getExtra().get("target_model_id");
+        return fromExtra instanceof String text ? text : null;
+    }
+
     public void addPromptBuilderSection(String name, String content, int priority) {
         String text = content == null ? "" : content.strip();
         if (text.isEmpty()) {
@@ -298,7 +375,7 @@ public class ReActAgent extends BaseAgent {
     public Object doRailedModelCall(AgentCallbackContext ctx) {
         ModelCallInputs modelInputs = (ModelCallInputs) ctx.getInputs();
         Map<String, String> requestHeaders = modelInputs.consumeRequestHeaders();
-        Model model = getLlm();
+        Model model = getLlm(ctx);
         List<ToolInfo> tools = toolInfoList(modelInputs.getTools());
         boolean enableKvRelease = config.getContextEngineConfig().isEnableKvCacheRelease();
         boolean supportsKvRelease = model.supportsKvCacheRelease();
@@ -340,8 +417,11 @@ public class ReActAgent extends BaseAgent {
             extraFields.put("top_logprobs", config.getLlmTopLogprobs());
         }
 
+        // Use the resolved model's name (may differ from config when a dynamic
+        // model was selected via ctx.dynamicModelId) so the provider receives
+        // the correct model name.
         ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder = ModelInvokeOptions.builder()
-                .model(config.getModelName())
+                .model(resolveModelName(model))
                 .tools(tools)
                 .requestHeaders(requestHeaders)
                 .extraFields(extraFields);
@@ -1331,6 +1411,10 @@ public class ReActAgent extends BaseAgent {
                 copyInvokeExtra(map, ctx, "run_context");
                 copyInvokeExtra(map, ctx, "is_follow_up");
                 copyInvokeExtra(map, ctx, "loop_queues");
+                copyInvokeExtra(map, ctx, "model_id");
+                copyInvokeExtra(map, ctx, "target_model_id");
+                copyInvokeExtra(map, ctx, "dynamic_model_id");
+                bindDynamicModelIdFromInputs(map, ctx);
                 Object rawSteeringQueue = map.get("_steering_queue");
                 if (rawSteeringQueue instanceof Queue<?> queue) {
                     @SuppressWarnings("unchecked")
@@ -2365,6 +2449,32 @@ public class ReActAgent extends BaseAgent {
         if (inputs.containsKey(key)) {
             ctx.getExtra().put(key, inputs.get(key));
         }
+    }
+
+    /**
+     * Binds request-scoped model selection from invoke inputs onto the callback context.
+     *
+     * @param inputs invoke input map
+     * @param ctx callback context to update
+     */
+    private static void bindDynamicModelIdFromInputs(Map<?, ?> inputs, AgentCallbackContext ctx) {
+        String modelId = firstString(inputs, "dynamic_model_id", "target_model_id", "model_id");
+        if (modelId == null || modelId.isBlank()) {
+            return;
+        }
+        ctx.setDynamicModelId(modelId);
+        ctx.getExtra().put("target_model_id", modelId);
+        ctx.getExtra().put("model_id", modelId);
+    }
+
+    private static String firstString(Map<?, ?> inputs, String... keys) {
+        for (String key : keys) {
+            Object value = inputs.get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                return text;
+            }
+        }
+        return null;
     }
 
     private static void bindSteeringQueue(AgentCallbackContext ctx, Queue<String> steeringQueue) {

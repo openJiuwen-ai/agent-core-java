@@ -138,7 +138,9 @@ public abstract class DeepAgentRail extends AgentRail {
     }
 
     /**
-     * Inner ReAct only gets model/tool hooks, matching Python {@code _BRIDGE_EVENTS}.
+     * Inner ReAct only receives model/tool callbacks. Outer {@code beforeInvoke}/{@code afterInvoke}
+     * and task-iteration hooks stay on the DeepAgent {@link CallbackContext} path so they are not
+     * double-fired through the inner agent rail registry.
      */
     @Override
     public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {
@@ -176,8 +178,14 @@ public abstract class DeepAgentRail extends AgentRail {
 
     private CompletionStage<Void> forward(AgentCallbackContext context, Consumer<CallbackContext> hook) {
         CallbackContext callback = toCallbackContext(context);
+        if (context != null && context.getDynamicModelId() != null) {
+            callback.setDynamicModelId(context.getDynamicModelId());
+        }
         hook.accept(callback);
         applyCallbackContext(context, callback);
+        if (callback.getDynamicModelId() != null && !callback.getDynamicModelId().isBlank()) {
+            context.setDynamicModelId(callback.getDynamicModelId());
+        }
         return completed();
     }
 
@@ -240,9 +248,30 @@ public abstract class DeepAgentRail extends AgentRail {
             }
             extra.put(entry.getKey(), entry.getValue());
         }
+        syncDynamicModelId(context, extra);
         applyRejection(extra, callback);
         applyToolCallRewrites(context.getInputs(), callback);
         applyForceFinish(context, callback);
+    }
+
+    private static void syncDynamicModelId(AgentCallbackContext context, Map<String, Object> extra) {
+        String modelId = stringValue(extra.get("target_model_id"));
+        if (modelId == null) {
+            modelId = stringValue(extra.get("dynamic_model_id"));
+        }
+        if (modelId == null) {
+            modelId = stringValue(extra.get("model_id"));
+        }
+        if (modelId != null) {
+            context.setDynamicModelId(modelId);
+        }
+    }
+
+    private static String stringValue(Object value) {
+        if (value instanceof String text && !text.isBlank()) {
+            return text;
+        }
+        return null;
     }
 
     private static Map<String, Object> ensureExtra(AgentCallbackContext context) {

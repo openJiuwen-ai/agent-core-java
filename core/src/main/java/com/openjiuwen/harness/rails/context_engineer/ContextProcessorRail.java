@@ -5,10 +5,19 @@
 package com.openjiuwen.harness.rails.context_engineer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.openjiuwen.core.common.eventbus.EventBus;
+import com.openjiuwen.core.common.eventbus.EventBusHolder;
+import com.openjiuwen.core.common.eventbus.Subscription;
+import com.openjiuwen.core.common.eventbus.events.ModelRemovedEvent;
+import com.openjiuwen.core.common.eventbus.events.ModelUpdatedEvent;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionMemoryConfig;
 import com.openjiuwen.core.context.context.SessionMemoryManager;
+import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressorConfig;
 import com.openjiuwen.core.context.processor.compressor.DialogueCompressorConfig;
 import com.openjiuwen.core.context.processor.compressor.FullCompactProcessorConfig;
@@ -16,14 +25,17 @@ import com.openjiuwen.core.context.processor.compressor.MicroCompactProcessorCon
 import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressorConfig;
 import com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloaderConfig;
 import com.openjiuwen.core.context.processor.offloader.ToolResultBudgetProcessorConfig;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -40,6 +52,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Configures context-engine processors for a DeepAgent/ReAct agent.
@@ -49,6 +62,7 @@ import java.util.Set;
  */
 public class ContextProcessorRail extends AgentRail {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final String DEFAULT_MODEL_KEY = "__default__";
 
     private final boolean preset;
     private final List<ContextEngine.ProcessorSpec> userProcessors = new ArrayList<>();
@@ -57,6 +71,24 @@ public class ContextProcessorRail extends AgentRail {
     private SessionMemoryManager sessionMemoryManager;
     private List<ContextEngine.ProcessorSpec> allProcessors = new ArrayList<>();
     private SystemPromptBuilder systemPromptBuilder;
+    private BaseAgent boundAgent;
+    private Subscription modelUpdatedSubscription;
+    private Subscription modelRemovedSubscription;
+    private String lastInstalledModelKey;
+
+    /**
+     * Processor specs keyed by model id. Evicts after 60 minutes idle; max 100 entries.
+     */
+    private final LoadingCache<String, List<ContextEngine.ProcessorSpec>> specsCache =
+            CacheBuilder.newBuilder()
+                    .maximumSize(100)
+                    .expireAfterAccess(60, TimeUnit.MINUTES)
+                    .build(new CacheLoader<>() {
+                        @Override
+                        public List<ContextEngine.ProcessorSpec> load(String modelId) {
+                            return loadSpecsForModel(modelId);
+                        }
+                    });
 
     public ContextProcessorRail() {
         this(null, true, null);
@@ -86,6 +118,7 @@ public class ContextProcessorRail extends AgentRail {
 
     @Override
     public void init(BaseAgent agent) {
+        this.boundAgent = agent;
         Object config = readReactConfig(agent).orElse(null);
         if (config == null) {
             return;
@@ -102,10 +135,14 @@ public class ContextProcessorRail extends AgentRail {
                 : mergeProcessors(List.of(), userProcessors, modelConfig, modelClientConfig);
         writeContextProcessors(config, mergedProcessors);
         allProcessors = new ArrayList<>(mergedProcessors);
+        lastInstalledModelKey = DEFAULT_MODEL_KEY;
+        subscribeModelEvents();
     }
 
     @Override
     public void uninit(BaseAgent agent) {
+        cancelModelEventSubscriptions();
+        invalidateAllSpecsCache();
         if (sessionMemoryManager != null) {
             sessionMemoryManager.shutdown();
         }
@@ -114,6 +151,7 @@ public class ContextProcessorRail extends AgentRail {
             systemPromptBuilder.removeSection("offload");
         }
         allProcessors = new ArrayList<>();
+        boundAgent = null;
     }
 
     @Override
@@ -125,6 +163,7 @@ public class ContextProcessorRail extends AgentRail {
     public void beforeModelCall(AgentCallbackContext context) {
         refreshTaskStateRuntime(context);
         maybeInjectOffloadSection(context);
+        refreshProcessorsForDynamicModel(context);
     }
 
     @Override
@@ -145,6 +184,141 @@ public class ContextProcessorRail extends AgentRail {
 
     public List<ContextEngine.ProcessorSpec> getAllProcessors() {
         return new ArrayList<>(allProcessors);
+    }
+
+    /**
+     * Invalidates cached processor specs for a model id.
+     *
+     * @param modelId model id; null or blank clears the default cache entry
+     * @since 0.1.15
+     */
+    public void invalidateSpecsCache(String modelId) {
+        specsCache.invalidate(cacheKey(modelId));
+        // Reset so the next beforeModelCall re-fetches specs rather than skipping
+        // due to stale key equality.
+        lastInstalledModelKey = null;
+    }
+
+    /**
+     * Invalidates all cached processor specs.
+     *
+     * @since 0.1.15
+     */
+    public void invalidateAllSpecsCache() {
+        specsCache.invalidateAll();
+        lastInstalledModelKey = null;
+    }
+
+    private void refreshProcessorsForDynamicModel(AgentCallbackContext context) {
+        String cacheKey = cacheKey(resolveActiveModelId(context));
+        if (Objects.equals(cacheKey, lastInstalledModelKey)) {
+            return;
+        }
+        List<ContextEngine.ProcessorSpec> specs = specsCache.getUnchecked(cacheKey);
+        applyProcessorSpecs(specs);
+        lastInstalledModelKey = cacheKey;
+        // initContext() already created the ModelContext with the previous processor
+        // specs. Rebuild instances from the new specs and swap them into the live
+        // context so subsequent context-window construction uses the updated processors.
+        reconfigureContextProcessors(context, specs);
+    }
+
+    /**
+     * Rebuilds processor instances from the new specs and swaps them into the
+     * live {@link ModelContext} carried by {@code context}.
+     * <p>
+     * {@code initContext()} runs before {@code beforeModelCall}, so the context was
+     * created with the old processor specs. Rebuilding here keeps context-window
+     * construction aligned with the dynamically selected model.
+     *
+     * @param context the callback context carrying the live ModelContext
+     * @param specs the new processor specs to instantiate
+     * @since 0.1.15
+     */
+    private void reconfigureContextProcessors(AgentCallbackContext context,
+            List<ContextEngine.ProcessorSpec> specs) {
+        if (context == null || !(context.getContext() instanceof SessionModelContext sessionContext)) {
+            return;
+        }
+        ContextEngine engine = resolveContextEngine();
+        if (engine == null) {
+            return;
+        }
+        List<SessionModelContext.ContextProcessorPort> newInstances = engine.createProcessorInstances(specs);
+        sessionContext.reconfigureProcessors(newInstances);
+    }
+
+    private ContextEngine resolveContextEngine() {
+        if (boundAgent instanceof ReActAgent reactAgent) {
+            return reactAgent.getContextEngine();
+        }
+        return null;
+    }
+
+    private List<ContextEngine.ProcessorSpec> loadSpecsForModel(String modelId) {
+        Object config = boundAgent == null ? null : readReactConfig(boundAgent).orElse(null);
+        ModelRequestConfig modelConfig = config == null ? null : readModelConfig(config);
+        ModelClientConfig modelClientConfig = config == null ? null : readModelClientConfig(config);
+        if (!DEFAULT_MODEL_KEY.equals(modelId)) {
+            Model resolved = Runner.resourceMgr().resolveModel(modelId, modelClientConfig, modelConfig);
+            if (resolved != null) {
+                modelConfig = resolved.getModelConfig();
+                modelClientConfig = resolved.getModelClientConfig();
+            }
+        }
+        if (sessionMemoryConfig != null) {
+            bindSessionMemoryDefaults(modelConfig, modelClientConfig);
+        }
+        if (preset) {
+            return mergeProcessors(buildPresetProcessors(modelConfig, modelClientConfig), userProcessors,
+                    modelConfig, modelClientConfig);
+        }
+        return mergeProcessors(List.of(), userProcessors, modelConfig, modelClientConfig);
+    }
+
+    private void applyProcessorSpecs(List<ContextEngine.ProcessorSpec> specs) {
+        allProcessors = new ArrayList<>(specs);
+        if (boundAgent == null) {
+            return;
+        }
+        readReactConfig(boundAgent).ifPresent(config -> writeContextProcessors(config, specs));
+    }
+
+    private void subscribeModelEvents() {
+        EventBus eventBus = EventBusHolder.getInstance();
+        modelUpdatedSubscription = eventBus.subscribe(ModelUpdatedEvent.class,
+                event -> invalidateSpecsCache(event.getModelId()));
+        modelRemovedSubscription = eventBus.subscribe(ModelRemovedEvent.class,
+                event -> invalidateSpecsCache(event.getModelId()));
+    }
+
+    private void cancelModelEventSubscriptions() {
+        if (modelUpdatedSubscription != null) {
+            modelUpdatedSubscription.cancel();
+            modelUpdatedSubscription = null;
+        }
+        if (modelRemovedSubscription != null) {
+            modelRemovedSubscription.cancel();
+            modelRemovedSubscription = null;
+        }
+    }
+
+    private static String cacheKey(String dynamicModelId) {
+        if (dynamicModelId == null || dynamicModelId.isBlank()) {
+            return DEFAULT_MODEL_KEY;
+        }
+        return dynamicModelId;
+    }
+
+    private static String resolveActiveModelId(AgentCallbackContext context) {
+        if (context == null) {
+            return null;
+        }
+        if (context.getDynamicModelId() != null && !context.getDynamicModelId().isBlank()) {
+            return context.getDynamicModelId();
+        }
+        Object fromExtra = context.getExtra() == null ? null : context.getExtra().get("target_model_id");
+        return fromExtra instanceof String text ? text : null;
     }
 
     public boolean isSessionMemoryEnabled() {
