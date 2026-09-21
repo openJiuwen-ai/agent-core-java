@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.IsolatedActions;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -34,8 +36,8 @@ public class AgentCallbackManager {
      * 
      * @since 0.1.7
      */
-    private final Map<String, Map<Consumer<AgentCallbackContext>, Function<Map<String, Object>, Object>>> wrappedCallbacks =
-        new ConcurrentHashMap<>();
+    private final Map<String, Map<Consumer<AgentCallbackContext>, Function<Map<String, Object>, Object>>>
+        wrappedCallbacks = new ConcurrentHashMap<>();
 
     /**
      * ConcurrentHashMap<>.
@@ -79,10 +81,22 @@ public class AgentCallbackManager {
             return null;
         };
         wrappedCallbacks.computeIfAbsent(agentEvent, key -> new ConcurrentHashMap<>()).put(callback, wrappedCallback);
-        localCallbacks
-                .computeIfAbsent(agentEvent, key -> Collections.synchronizedList(new ArrayList<RegisteredCallback>()))
-                .add(new RegisteredCallback(callback, priority));
-        localCallbacks.get(agentEvent).sort((left, right) -> Integer.compare(right.priority(), left.priority()));
+        // The list mutation (add + priority sort) runs inside the per-event
+        // map slot: compute serializes against unregister's computeIfPresent
+        // for the same event, so a concurrent unregister can never observe
+        // (and remove) an empty list between the add and the sort. The sort
+        // itself is NOT covered by SynchronizedList (no sort override in the
+        // JDK), so the manual synchronized section is also the only CME
+        // protection for concurrent register/register interleavings.
+        localCallbacks.compute(agentEvent, (key, existing) -> {
+            List<RegisteredCallback> callbacks = existing != null ? existing
+                    : Collections.synchronizedList(new ArrayList<RegisteredCallback>());
+            synchronized (callbacks) {
+                callbacks.add(new RegisteredCallback(callback, priority));
+                callbacks.sort((left, right) -> Integer.compare(right.priority(), left.priority()));
+            }
+            return callbacks;
+        });
         String callbackName = agentEvent + "_cb_" + Integer.toHexString(System.identityHashCode(callback));
         Runner.callbackFramework().register(agentEvent, wrappedCallback, priority, callbackName);
     }
@@ -125,7 +139,14 @@ public class AgentCallbackManager {
 
     /**
      * Unregister a rail instance.
-     * 
+     *
+     * <p>Each cleanup step (callback unregister, tool-card removal,
+     * rail uninit) is individually protected: a failure in
+     * one step is logged and the remaining steps still run, so a single
+     * broken rail cannot leave the whole rail batch half-destroyed. The
+     * broad {@code Exception} catch is the required isolation semantic
+     * (uninit runs user code outside core control), not a style choice.</p>
+     *
      * @param rail the AgentRail to unregister
      * @param agent the BaseAgent instance (for tool removal)
      * @since 0.1.7
@@ -134,21 +155,53 @@ public class AgentCallbackManager {
         List<RailRegistration> registrations = railRegistrations.remove(rail);
         if (registrations != null) {
             for (RailRegistration registration : registrations) {
-                unregister(registration.event(), registration.callback());
+                // Isolation semantic: one callback's unregister failure
+                // must not stop the remaining callbacks of the rail.
+                IsolatedActions.runIsolated(() -> {
+                    unregister(registration.event(), registration.callback());
+                    return null;
+                }).ifPresent(failure -> Loggers.AGENT.error(
+                        "[unregisterRail] rail '{}' callback unregister failed for '{}'; continue",
+                        railName(rail), registration.event(), failure));
             }
         }
 
-        if (rail.getTools() != null && !rail.getTools().isEmpty()) {
-            if (agent instanceof BaseAgent baseAgent) {
-                for (var toolCard : rail.getTools()) {
-                    if (toolCard.getName() != null) {
-                        baseAgent.getAbilityManager().remove(toolCard.getName());
-                    }
+        unregisterRailTools(rail, agent);
+        uninitRail(rail, agent);
+    }
+
+    private void unregisterRailTools(AgentRail rail, Object agent) {
+        // Isolation semantic: rail tool metadata and the ability removal run
+        // user code and must not abort the rest of the destroy sequence.
+        IsolatedActions.runIsolated(() -> {
+            if (rail.getTools() == null || rail.getTools().isEmpty()) {
+                return null;
+            }
+            if (!(agent instanceof BaseAgent baseAgent)) {
+                return null;
+            }
+            for (var toolCard : rail.getTools()) {
+                if (toolCard.getName() != null) {
+                    baseAgent.getAbilityManager().remove(toolCard.getName());
                 }
             }
-        }
+            return null;
+        }).ifPresent(failure -> Loggers.AGENT.error(
+                "[unregisterRail] rail '{}' tool-card removal failed; continue", railName(rail), failure));
+    }
 
-        rail.uninit(agent);
+    private static void uninitRail(AgentRail rail, Object agent) {
+        // Isolation semantic: user rail code must not abort the remaining
+        // cleanup, so the failure is captured and only logged.
+        IsolatedActions.runIsolated(() -> {
+            rail.uninit(agent);
+            return null;
+        }).ifPresent(failure -> Loggers.AGENT.error("[unregisterRail] rail '{}' uninit failed; continue",
+                railName(rail), failure));
+    }
+
+    private static String railName(AgentRail rail) {
+        return rail != null ? rail.getClass().getName() : "null";
     }
 
     /**
@@ -160,13 +213,23 @@ public class AgentCallbackManager {
      * callback alive, pinning the whole agent object graph. This snapshot
      * based bulk unregister releases all of them.</p>
      *
+     * <p>Per-rail isolation: one rail's cleanup failure is
+     * logged and the batch continues, so destroy always reaches every
+     * remaining rail.</p>
+     *
      * @param agent the BaseAgent instance (for tool removal)
      * @since 0.1.15
      */
     public void unregisterAllRails(Object agent) {
         List<AgentRail> rails = new ArrayList<>(railRegistrations.keySet());
         for (AgentRail rail : rails) {
-            unregisterRail(rail, agent);
+            // Isolation semantic: rail metadata access (getTools/getPriority)
+            // runs user code and must not abort the remaining rails.
+            IsolatedActions.runIsolated(() -> {
+                unregisterRail(rail, agent);
+                return null;
+            }).ifPresent(failure -> Loggers.AGENT.error(
+                    "[unregisterAllRails] rail '{}' cleanup failed; continue", railName(rail), failure));
         }
     }
 
@@ -190,13 +253,16 @@ public class AgentCallbackManager {
             return;
         }
 
-        List<RegisteredCallback> callbacksForAgentEvent = localCallbacks.get(agentEvent);
-        if (callbacksForAgentEvent != null) {
-            callbacksForAgentEvent.removeIf(registeredCallback -> registeredCallback.callback().equals(callback));
-            if (callbacksForAgentEvent.isEmpty()) {
-                localCallbacks.remove(agentEvent);
+        // Runs inside the per-event map slot so a concurrent registerCallback
+        // (compute on the same key) cannot add between the removeIf and the
+        // map removal: the list entry and its contents stay consistent.
+        localCallbacks.computeIfPresent(agentEvent, (key, callbacksForAgentEvent) -> {
+            synchronized (callbacksForAgentEvent) {
+                callbacksForAgentEvent.removeIf(
+                    registeredCallback -> registeredCallback.callback().equals(callback));
+                return callbacksForAgentEvent.isEmpty() ? null : callbacksForAgentEvent;
             }
-        }
+        });
 
         Runner.callbackFramework().unregister(agentEvent, wrappedCallback);
         if (callbacksForEvent.isEmpty()) {
@@ -254,7 +320,12 @@ public class AgentCallbackManager {
         if (callbacksForEvent == null) {
             return;
         }
-        List<RegisteredCallback> snapshot = new ArrayList<RegisteredCallback>(callbacksForEvent);
+        List<RegisteredCallback> snapshot;
+        // Copy under the list mutex: registerCallback mutates the list inside
+        // the same mutex, so an unguarded copy could hit a mid-sort iterator.
+        synchronized (callbacksForEvent) {
+            snapshot = new ArrayList<RegisteredCallback>(callbacksForEvent);
+        }
         snapshot.sort((left, right) -> Integer.compare(right.priority(), left.priority()));
         for (RegisteredCallback registeredCallback : snapshot) {
             registeredCallback.callback().accept(ctx);
