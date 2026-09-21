@@ -13,8 +13,10 @@ import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentTerminationReason;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
@@ -25,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,6 +41,41 @@ class AbilityManagerSupplementTest {
     @BeforeEach
     void setUp() {
         manager = new AbilityManager();
+    }
+
+    @Test
+    void toolContextCopiesLoopSnapshotWithoutTerminationReason() {
+        String toolId = "loop-state-" + UUID.randomUUID();
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("loop state").build(),
+                inputs -> "done");
+        Runner.resourceMgr().addTool(tool, null);
+        AtomicReference<LoopSnapshot> observed = new AtomicReference<>();
+        ReActAgent agent = new ReActAgent(AgentCard.builder().id("loop-agent").name("loop-agent").build());
+        agent.registerRail(new AgentRail() {
+            @Override
+            public void beforeToolCall(AgentCallbackContext ctx) {
+                observed.set(new LoopSnapshot(ctx.getIteration(), ctx.getMaxIterations(),
+                        ctx.getRemainingIterations(), ctx.getTerminationReason()));
+            }
+        }).toCompletableFuture().join();
+        AgentCallbackContext parent = new AgentCallbackContext(agent);
+        parent.initializeLoop(4);
+        parent.enterIteration(2);
+        parent.finish(AgentTerminationReason.TEXT_TERMINATION);
+        manager.add(tool.getCard());
+
+        try {
+            manager.execute(parent, ToolCall.builder().id("call-loop").name(toolId).arguments("{}").build(),
+                    false, null);
+            assertThat(observed.get()).isEqualTo(new LoopSnapshot(2, 4, 1, null));
+        } finally {
+            Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    private record LoopSnapshot(int iteration, int maxIterations, int remainingIterations,
+                                AgentTerminationReason terminationReason) {
     }
 
     // ========== WorkflowCard ==========

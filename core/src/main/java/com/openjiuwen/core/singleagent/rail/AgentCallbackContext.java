@@ -33,8 +33,12 @@ public class AgentCallbackContext {
     private int retryAttempt;
     private RetryRequest retryRequest;
     private ForceFinishRequest forceFinishRequest;
+    private boolean hasConsumedForceFinish;
     private Queue<String> steeringQueue;
     private String dynamicModelId;
+    private int iteration = -1;
+    private int maxIterations;
+    private AgentTerminationReason terminationReason;
 
     public AgentCallbackContext() {
     }
@@ -71,11 +75,69 @@ public class AgentCallbackContext {
     public ForceFinishRequest consumeForceFinish() {
         ForceFinishRequest request = forceFinishRequest;
         forceFinishRequest = null;
+        if (request != null) {
+            hasConsumedForceFinish = true;
+        }
         return request;
+    }
+
+    /**
+     * Return and clear whether a force-finish request was consumed by a nested rail executor.
+     *
+     * @return {@code true} when a request was consumed since the previous call
+     */
+    public boolean consumeForceFinishSignal() {
+        boolean hasConsumed = hasConsumedForceFinish;
+        hasConsumedForceFinish = false;
+        return hasConsumed;
     }
 
     public boolean hasForceFinishRequest() {
         return forceFinishRequest != null;
+    }
+
+    /**
+     * Initialize the request-local ReAct loop state.
+     *
+     * @param maxIterations configured iteration limit
+     * @since 0.1.16
+     */
+    public void initializeLoop(int maxIterations) {
+        iteration = -1;
+        this.maxIterations = Math.max(0, maxIterations);
+        terminationReason = null;
+        hasConsumedForceFinish = false;
+    }
+
+    /**
+     * Record the zero-based ReAct iteration currently being executed.
+     *
+     * @param iteration zero-based iteration
+     * @since 0.1.16
+     */
+    public void enterIteration(int iteration) {
+        this.iteration = iteration;
+    }
+
+    /**
+     * Record the terminal outcome before {@link AgentCallbackEvent#AFTER_INVOKE} is fired.
+     *
+     * @param reason terminal outcome
+     * @since 0.1.16
+     */
+    public void finish(AgentTerminationReason reason) {
+        terminationReason = reason;
+    }
+
+    /**
+     * Return the number of model iterations available after the current one.
+     * Before the first iteration this equals {@link #getMaxIterations()}.
+     *
+     * @return non-negative remaining iteration count
+     * @since 0.1.16
+     */
+    public int getRemainingIterations() {
+        return Math.max(0, maxIterations - iteration - 1);
     }
 
     public void bindSteeringQueue(Queue<String> queue) {
@@ -209,6 +271,18 @@ public class AgentCallbackContext {
 
     public Queue<String> getSteeringQueue() {
         return steeringQueue;
+    }
+
+    public int getIteration() {
+        return iteration;
+    }
+
+    public int getMaxIterations() {
+        return maxIterations;
+    }
+
+    public AgentTerminationReason getTerminationReason() {
+        return terminationReason;
     }
 
     /**

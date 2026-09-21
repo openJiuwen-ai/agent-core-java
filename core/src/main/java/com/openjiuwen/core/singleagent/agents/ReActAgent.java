@@ -49,6 +49,7 @@ import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentTerminationReason;
 import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
@@ -1016,6 +1017,7 @@ public class ReActAgent extends BaseAgent {
         if (finish != null) {
             contextEngine.saveContexts(session);
             invokeInputs.setResult(finish.getResult());
+            ctx.finish(AgentTerminationReason.FORCE_FINISH);
             return true;
         }
 
@@ -1032,6 +1034,7 @@ public class ReActAgent extends BaseAgent {
             }
             hitlHandler.commitInterrupt(hitlInterrupt.getState(), session, invokeInputs,
                     hitlInterrupt.getPayloads());
+            ctx.finish(AgentTerminationReason.TOOL_INTERRUPT);
             return true;
         }
 
@@ -1047,6 +1050,7 @@ public class ReActAgent extends BaseAgent {
                 contextEngine.saveContexts(session);
             }
             commitInterrupt(workflowInterrupt, session, invokeInputs);
+            ctx.finish(AgentTerminationReason.TOOL_INTERRUPT);
             return true;
         }
 
@@ -1399,6 +1403,7 @@ public class ReActAgent extends BaseAgent {
             ctx.setInputs(invokeInputs);
             ctx.setSession(session);
             ctx.setConfig(config);
+            ctx.initializeLoop(config.getMaxIterations());
             streaming = Boolean.TRUE.equals(kwargs.get("_streaming"));
             ctx.getExtra().put("_streaming", streaming);
             if (streaming) {
@@ -1428,9 +1433,26 @@ public class ReActAgent extends BaseAgent {
             Object userInput = invokeInputs.getQuery();
             ExternalToolPendingState externalPending = loadExternalToolPendingState(session);
             boolean externalResume = externalPending != null && isExternalToolResumeInput(inputs);
+            ToolInterruptionState hitlState = externalResume ? null : hitlHandler.load(session);
+            Object interruptionState = hitlState != null ? hitlState
+                    : (externalResume ? null : loadInterruptionState(session));
+            if (externalPending == null && interruptionState == null) {
+                ForceFinishRequest earlyFinish = ctx.consumeForceFinish();
+                if (earlyFinish != null) {
+                    invokeInputs.setResult(earlyFinish.getResult());
+                    ctx.finish(AgentTerminationReason.FORCE_FINISH);
+                    ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
+                    Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
+                    if (streaming && result instanceof Map<?, ?> map) {
+                        writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx));
+                    }
+                    return result;
+                }
+            }
             if (externalPending != null && !externalResume) {
                 invokeInputs.setResult(buildExternalToolResultsRequiredResult());
-                fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
+                ctx.finish(AgentTerminationReason.ERROR);
+                ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
                 Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
                 if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && result instanceof Map<?, ?> map) {
                     writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx));
@@ -1441,9 +1463,6 @@ public class ReActAgent extends BaseAgent {
                 throw new IllegalArgumentException("Input must contain 'query'");
             }
 
-            ToolInterruptionState hitlState = externalResume ? null : hitlHandler.load(session);
-            Object interruptionState = hitlState != null ? hitlState
-                    : (externalResume ? null : loadInterruptionState(session));
             if (interruptionState != null) {
                 if (hitlState != null) {
                     hitlHandler.clear(session);
@@ -1472,16 +1491,19 @@ public class ReActAgent extends BaseAgent {
 
             int startIteration = 0;
             if (externalResume) {
+                ctx.enterIteration(externalPending.getIteration());
                 Object resumeResult = handleExternalToolResume(externalPending, inputs, ctx, context, session,
                         invokeInputs);
                 if (resumeResult == null) {
                     startIteration = popInt(ctx.getExtra(), InterruptConstants.RESUME_START_ITERATION_KEY, 0);
                 }
             } else if (interruptionState != null) {
-                if (interruptionState instanceof ToolInterruptionState) {
+                if (interruptionState instanceof ToolInterruptionState toolInterruptionState) {
+                    ctx.enterIteration(toolInterruptionState.getIteration());
                     handleResume(interruptionState, userInput, ctx, context, session, invokeInputs);
                     startIteration = popInt(ctx.getExtra(), InterruptConstants.RESUME_START_ITERATION_KEY, 0);
-                } else {
+                } else if (interruptionState instanceof InterruptionState workflowState) {
+                    ctx.enterIteration(workflowState.getIteration());
                     context.addMessages(new UserMessage(extractUserText(userInput))).toCompletableFuture().join();
                     Object resumeResult = handleResume(interruptionState, userInput, ctx, context, session,
                             invokeInputs);
@@ -1494,10 +1516,11 @@ public class ReActAgent extends BaseAgent {
             }
 
             if (invokeInputs.getResult() == null) {
-                for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
+                for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
+                    ctx.enterIteration(iteration);
                     int iterationNumber = iteration + 1;
                     Loggers.AGENT.info("ReAct iteration {}/{} started",
-                            iterationNumber, config.getMaxIterations());
+                            iterationNumber, ctx.getMaxIterations());
                     try {
                         List<String> steering = ctx.drainSteering();
                         if (!steering.isEmpty()) {
@@ -1506,11 +1529,21 @@ public class ReActAgent extends BaseAgent {
                                     .join();
                         }
                         List<ToolInfo> tools = listEffectiveToolInfo(session);
-                        Object modelResult = callModel(ctx, context, tools);
+                        Object modelResult;
+                        try {
+                            modelResult = callModel(ctx, context, tools);
+                        } catch (RuntimeException exception) {
+                            ctx.finish(AgentTerminationReason.MODEL_ERROR);
+                            throw exception;
+                        }
                         ForceFinishRequest finish = ctx.consumeForceFinish();
-                        if (finish != null) {
+                        boolean hasForceFinishSignal = ctx.consumeForceFinishSignal();
+                        if (finish != null || hasForceFinishSignal) {
                             contextEngine.saveContexts(session);
-                            invokeInputs.setResult(finish.getResult());
+                            invokeInputs.setResult(finish == null
+                                    ? terminationResult(modelResult)
+                                    : finish.getResult());
+                            ctx.finish(AgentTerminationReason.FORCE_FINISH);
                             break;
                         }
                         if (!(modelResult instanceof AssistantMessage aiMessage)) {
@@ -1519,6 +1552,7 @@ public class ReActAgent extends BaseAgent {
                             }
                             invokeInputs.setResult(
                                     modelResult instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of());
+                            ctx.finish(terminationReasonForResult(modelResult, AgentTerminationReason.MODEL_ERROR));
                             break;
                         }
                         List<ToolCall> toolCalls = aiMessage.getToolCalls();
@@ -1534,6 +1568,7 @@ public class ReActAgent extends BaseAgent {
                                     "output", Objects.toString(aiMessage.getContent(), ""),
                                     "result_type", "answer"
                             )));
+                            ctx.finish(AgentTerminationReason.TEXT_TERMINATION);
                             break;
                         }
                         writeToolCallOutputs(ctx, session, toolCalls);
@@ -1550,6 +1585,7 @@ public class ReActAgent extends BaseAgent {
                             contextEngine.saveContexts(session);
                             writeExternalToolPendingOutput(ctx, session, pendingState);
                             invokeInputs.setResult(buildExternalToolPendingResult(pendingState));
+                            ctx.finish(AgentTerminationReason.TOOL_INTERRUPT);
                             break;
                         }
                         List<AbilityManager.ExecutionResult> results = executeToolCall(
@@ -1572,28 +1608,32 @@ public class ReActAgent extends BaseAgent {
                         iterationFailureLogged = true;
                         Loggers.AGENT.exception(
                                 "ReAct iteration %d/%d failed"
-                                        .formatted(iterationNumber, config.getMaxIterations()),
+                                        .formatted(iterationNumber, ctx.getMaxIterations()),
                                 exception
                         );
                         throw exception;
                     } finally {
                         Loggers.AGENT.info("ReAct iteration {}/{} ended",
-                                iterationNumber, config.getMaxIterations());
+                                iterationNumber, ctx.getMaxIterations());
                     }
                 }
                 if (invokeInputs.getResult() == null) {
                     Loggers.AGENT.error(
                             "ReActAgent reached max iterations without completion: {}",
-                            config.getMaxIterations()
+                            ctx.getMaxIterations()
                     );
                     contextEngine.saveContexts(session);
                     invokeInputs.setResult(new LinkedHashMap<>(Map.of(
                             "output", "Max iterations reached without completion",
                             "result_type", "error"
                     )));
+                    ctx.finish(AgentTerminationReason.MAX_ITERATIONS);
                 }
             }
-            fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
+            if (ctx.getTerminationReason() == null) {
+                ctx.finish(terminationReasonForResult(invokeInputs.getResult(), AgentTerminationReason.ERROR));
+            }
+            ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
             Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
             if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
                 if (result instanceof Map<?, ?> map) {
@@ -1606,6 +1646,12 @@ public class ReActAgent extends BaseAgent {
             }
             return result;
         } catch (RuntimeException exception) {
+            if (ctx != null && ctx.getTerminationReason() == null) {
+                ctx.finish(AgentTerminationReason.ERROR);
+            }
+            if (initializationComplete && ctx.getEvent() != AgentCallbackEvent.AFTER_INVOKE) {
+                ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
+            }
             if (!iterationFailureLogged) {
                 Loggers.AGENT.exception("ReActAgent invoke failed", exception);
             }
@@ -1638,6 +1684,31 @@ public class ReActAgent extends BaseAgent {
                 SessionContextHolder.restoreCurrentSession(previousSession);
             }
         }
+    }
+
+    private static AgentTerminationReason terminationReasonForResult(Object result,
+                                                                     AgentTerminationReason fallback) {
+        if (!(result instanceof Map<?, ?> map)) {
+            return fallback;
+        }
+        Object resultType = map.get("result_type");
+        if ("answer".equals(resultType)) {
+            return AgentTerminationReason.TEXT_TERMINATION;
+        }
+        if ("interrupt".equals(resultType) || "external_tool_call_required".equals(resultType)) {
+            return AgentTerminationReason.TOOL_INTERRUPT;
+        }
+        return fallback;
+    }
+
+    private static Map<String, Object> terminationResult(Object result) {
+        if (result instanceof Map<?, ?> map) {
+            return stringObjectMap(map);
+        }
+        return new LinkedHashMap<>(Map.of(
+                "output", Objects.toString(result, ""),
+                "result_type", "answer"
+        ));
     }
 
     private int[] streamIndexRef(AgentCallbackContext ctx) {
