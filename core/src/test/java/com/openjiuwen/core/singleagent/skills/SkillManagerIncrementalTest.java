@@ -163,8 +163,7 @@ class SkillManagerIncrementalTest {
     }
 
     @Test
-    void refreshIncrementally_whenSkillsUnderGroupingDirs_findsNestedSkills(@TempDir Path tempDir)
-            throws IOException {
+    void refreshIncrementallyFindsSkillsInGroups(@TempDir Path tempDir) throws IOException {
         writeSkill(tempDir.resolve("lark").resolve("lark-doc"), "Edit Feishu docs");
         writeSkill(tempDir.resolve("lark").resolve("deep").resolve("lark-base"), "Query Feishu Base");
         writeSkill(tempDir.resolve("invoice-parser"), "Parse invoice pdf files");
@@ -177,8 +176,7 @@ class SkillManagerIncrementalTest {
     }
 
     @Test
-    void refreshIncrementally_whenSkillNestedInsideSkill_doesNotPromoteChild(@TempDir Path tempDir)
-            throws IOException {
+    void refreshIncrementallyKeepsNestedSkillPrivate(@TempDir Path tempDir) throws IOException {
         Path parent = writeSkill(tempDir.resolve("writing"), "Write documents");
         writeSkill(parent.resolve("designer"), "Internal sub-step of writing");
 

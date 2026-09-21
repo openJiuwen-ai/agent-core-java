@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -58,6 +59,16 @@ public class SkillManager {
     private String description = "";
 
     /**
+     * SkillManager.
+     * 
+     * @param sysOperationId sysOperationId
+     * @since 0.1.7
+     */
+    public SkillManager(String sysOperationId) {
+        this.sysOperationId = sysOperationId;
+    }
+
+    /**
      * A skill directory discovered under a library root, with its SKILL.md mtime.
      *
      * @param skillDir skill package directory
@@ -66,16 +77,6 @@ public class SkillManager {
      * @since 0.1.16
      */
     private record DiscoveredSkill(Path skillDir, File skillMd, long mtime) {
-    }
-
-    /**
-     * SkillManager.
-     * 
-     * @param sysOperationId sysOperationId
-     * @since 0.1.7
-     */
-    public SkillManager(String sysOperationId) {
-        this.sysOperationId = sysOperationId;
     }
 
     /**
@@ -495,9 +496,10 @@ public class SkillManager {
                 continue;
             }
             Path child = childFile.toPath();
-            File skillMd = resolveSkillMdFile(childFile);
-            if (skillMd != null) {
-                found.add(new DiscoveredSkill(child, skillMd, skillMd.lastModified()));
+            Optional<File> skillMd = resolveSkillMdFile(childFile);
+            if (skillMd.isPresent()) {
+                File skillFile = skillMd.get();
+                found.add(new DiscoveredSkill(child, skillFile, skillFile.lastModified()));
                 continue;
             }
             walkSkillDirs(child, found, visited);
@@ -508,19 +510,19 @@ public class SkillManager {
      * Resolve {@code SKILL.md} or {@code Skill.md} directly under {@code dir}.
      *
      * @param dir candidate skill directory
-     * @return the skill markdown file, or null when absent
+     * @return the skill markdown file when present
      * @since 0.1.16
      */
-    private static File resolveSkillMdFile(File dir) {
+    private static Optional<File> resolveSkillMdFile(File dir) {
         File skillMd = new File(dir, "SKILL.md");
         if (skillMd.isFile()) {
-            return skillMd;
+            return Optional.of(skillMd);
         }
-        skillMd = new File(dir, "Skill.md");
-        if (skillMd.isFile()) {
-            return skillMd;
+        File alternateSkillMd = new File(dir, "Skill.md");
+        if (alternateSkillMd.isFile()) {
+            return Optional.of(alternateSkillMd);
         }
-        return null;
+        return Optional.empty();
     }
 
     /**
