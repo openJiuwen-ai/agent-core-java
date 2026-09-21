@@ -132,6 +132,27 @@ public class AgentGroupSession implements AgentSessionApi {
         return inner.getEnvs();
     }
 
+    /**
+     * Create a member session that writes to this team's stream.
+     *
+     * @param card member agent card
+     * @param agentId member agent identifier
+     * @return a member session sharing this team's stream writer
+     */
+    public AgentSession createAgentSession(Object card, String agentId) {
+        LinkedHashMap<String, Object> sourceMetadata = new LinkedHashMap<>();
+        sourceMetadata.put("source_agent_id", agentId);
+        sourceMetadata.put("source_team_id", teamId);
+        return new AgentSession(
+                getSessionId(),
+                getEnvs(),
+                card,
+                getInner().streamWriterManager(),
+                false,
+                sourceMetadata
+        );
+    }
+
     @Override
     public String getSessionId() {
         return inner.getSessionId();
