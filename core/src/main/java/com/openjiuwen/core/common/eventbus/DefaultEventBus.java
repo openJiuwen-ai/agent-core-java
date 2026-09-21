@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -66,7 +67,8 @@ public class DefaultEventBus implements EventBus {
         for (SubscriberEntry entry : list) {
             try {
                 entry.subscriber().accept(event);
-            } catch (RuntimeException exception) {
+            } catch (IllegalArgumentException | IllegalStateException | NullPointerException
+                    | ClassCastException | CompletionException | UnsupportedOperationException exception) {
                 Loggers.AGENT.warning("EventBus subscriber error for event type {}: {}",
                         type.getSimpleName(), exception.getMessage(), exception);
             }

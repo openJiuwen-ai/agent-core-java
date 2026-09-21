@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.tools.worktree;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +16,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Git CLI wrapper for worktree operations.
@@ -22,6 +28,8 @@ import java.util.concurrent.CompletableFuture;
  * {@code openjiuwen/harness/tools/worktree/git.py}.
  */
 public final class Git {
+    private static final ExecutorService GIT_STREAM_POOL =
+            OpenJiuwenExecutors.newBoundedModulePool("git-stream", true);
 
     private Git() {
     }
@@ -324,13 +332,13 @@ public final class Git {
         env.put("GIT_TERMINAL_PROMPT", "0");
         env.put("GIT_ASKPASS", "");
 
+        Process process = null;
         try {
-            Process process = builder.start();
+            process = builder.start();
             process.getOutputStream().close();
-            // Drain pipes on dedicated named threads — not the common ForkJoinPool — so nested
-            // git supplyAsync workers cannot starve while waiting for stdout/stderr readers.
-            StreamDrain stdout = StreamDrain.start(process.getInputStream(), "git-stdout-drain");
-            StreamDrain stderr = StreamDrain.start(process.getErrorStream(), "git-stderr-drain");
+            // Drain pipes via a bounded pool so nested git supplyAsync workers cannot starve.
+            StreamDrain stdout = StreamDrain.start(process.getInputStream());
+            StreamDrain stderr = StreamDrain.start(process.getErrorStream());
             int exitCode = process.waitFor();
             stdout.await();
             stderr.await();
@@ -339,37 +347,42 @@ public final class Git {
                 throw new GitError(args, result.returncode(), result.stderr());
             }
             return result;
-        } catch (IOException e) {
-            if (check) {
-                throw new GitError(args, 127, e.getMessage());
+        } catch (IOException failure) {
+            return gitFailure(args, check, 127, failure.getMessage());
+        } catch (InterruptedException interrupted) {
+            return gitFailure(args, check, 130, "Interrupted");
+        } catch (ExecutionException failure) {
+            String message = failure.getMessage() == null ? "git stream failed" : failure.getMessage();
+            return gitFailure(args, check, 130, message);
+        } catch (RejectedExecutionException rejected) {
+            if (process != null) {
+                process.destroyForcibly();
             }
-            return new GitResult(127, "", e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            if (check) {
-                throw new GitError(args, 130, "Interrupted");
-            }
-            return new GitResult(130, "", "Interrupted");
+            return gitFailure(args, check, 130, "git stream pool rejected the drain task");
         }
     }
 
+    private static GitResult gitFailure(List<String> args, boolean check, int code, String message) {
+        if (check) {
+            throw new GitError(args, code, message);
+        }
+        return new GitResult(code, "", message == null ? "" : message);
+    }
+
     private static final class StreamDrain {
-        private final Thread thread;
+        private final Future<?> completion;
         private volatile String text = "";
 
-        private StreamDrain(InputStream stream, String threadName) {
-            thread = new Thread(() -> text = readAllBytes(stream), threadName);
-            thread.setDaemon(true);
+        private StreamDrain(InputStream stream) {
+            completion = GIT_STREAM_POOL.submit(() -> text = readAllBytes(stream));
         }
 
-        static StreamDrain start(InputStream stream, String threadName) {
-            StreamDrain drain = new StreamDrain(stream, threadName);
-            drain.thread.start();
-            return drain;
+        static StreamDrain start(InputStream stream) {
+            return new StreamDrain(stream);
         }
 
-        void await() throws InterruptedException {
-            thread.join();
+        void await() throws InterruptedException, ExecutionException {
+            completion.get();
         }
 
         String text() {
@@ -379,7 +392,7 @@ public final class Git {
         private static String readAllBytes(InputStream stream) {
             try (stream) {
                 return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-            } catch (IOException e) {
+            } catch (IOException failure) {
                 return "";
             }
         }

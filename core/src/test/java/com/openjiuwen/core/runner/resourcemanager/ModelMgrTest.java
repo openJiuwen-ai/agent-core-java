@@ -188,10 +188,16 @@ class ModelMgrTest {
         void updateModel_overwritesWithoutThrow() {
             String id = PREFIX + "m1";
             modelMgr.addModel(id, mockSupplier("model-1"));
-            Model original = (Model) modelMgr.getModel(id).toCompletableFuture().join();
+            Object loaded = modelMgr.getModel(id).toCompletableFuture().join();
+            if (!(loaded instanceof Model original)) {
+                throw new IllegalStateException("expected Model instance");
+            }
 
             modelMgr.updateModel(id, mockSupplier("model-1-updated"));
-            Model updated = (Model) modelMgr.getModel(id).toCompletableFuture().join();
+            Object updatedRaw = modelMgr.getModel(id).toCompletableFuture().join();
+            if (!(updatedRaw instanceof Model updated)) {
+                throw new IllegalStateException("expected updated Model instance");
+            }
 
             assertNotNull(updated);
             // Different supplier ->different Model instance

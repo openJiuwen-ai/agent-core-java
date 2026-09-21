@@ -232,7 +232,7 @@ public class ReActAgent extends BaseAgent {
                             config.getModelClientConfig(),
                             config.getModelConfigObj()
                     );
-                } catch (RuntimeException ignored) {
+                } catch (IllegalStateException | IllegalArgumentException | CompletionException ignored) {
                     // Fall through to existing llm / default resolution.
                 }
             }
@@ -245,7 +245,7 @@ public class ReActAgent extends BaseAgent {
             if (resourceMgr != null) {
                 try {
                     return resourceMgr.resolveModel(null, null, null);
-                } catch (RuntimeException ignored) {
+                } catch (IllegalStateException | IllegalArgumentException | CompletionException ignored) {
                     // Fall through to getLlm(), which throws a clearer config error.
                 }
             }
@@ -1944,7 +1944,6 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.15
      */
     private static ContextEngineConfig copyContextEngineConfig(ContextEngineConfig source) {
-        Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
         ContextEngineConfig.Builder snapshotBuilder = ContextEngineConfig.builder()
                 .maxContextMessageNum(source.getMaxContextMessageNum())
                 .defaultWindowMessageNum(source.getDefaultWindowMessageNum())
@@ -1956,6 +1955,7 @@ public class ReActAgent extends BaseAgent {
                 .modelName(source.getModelName())
                 .enableOpenrouterModelContextWindowTokens(source.isEnableOpenrouterModelContextWindowTokens())
                 .openrouterRequestTimeout(source.getOpenrouterRequestTimeout());
+        Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
         if (modelWindowTokens != null) {
             snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
         }

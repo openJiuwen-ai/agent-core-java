@@ -221,10 +221,13 @@ public class ModelManager extends AbstractManager<Object> {
             Object value = getResource(modelId).toCompletableFuture().get();
             return value instanceof Model model ? model : null;
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new CompletionException(interrupted);
+            throw new CompletionException("model lookup interrupted: " + modelId, interrupted);
         } catch (ExecutionException error) {
-            throw new CompletionException(error.getCause());
+            Throwable cause = error.getCause() == null ? error : error.getCause();
+            if (cause instanceof Error failure) {
+                throw failure;
+            }
+            throw new CompletionException("model lookup failed: " + modelId, cause);
         }
     }
 }
