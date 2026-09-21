@@ -4,7 +4,9 @@
 
 package com.openjiuwen.retrieval;
 
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -15,20 +17,21 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.retrieval.common.Document;
+import com.openjiuwen.core.retrieval.common.RetrievalResult;
+import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.retrieval.common.IndexConfig;
 import com.openjiuwen.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.retrieval.common.RetrievalConfig;
-import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.retrieval.common.TextChunk;
 import com.openjiuwen.retrieval.common.Triple;
-import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.retrieval.indexing.indexer.Indexer;
 import com.openjiuwen.retrieval.indexing.processor.chunker.Chunker;
 import com.openjiuwen.retrieval.indexing.processor.extractor.Extractor;
 import com.openjiuwen.retrieval.indexing.processor.parser.Parser;
 import com.openjiuwen.retrieval.retriever.GraphRetriever;
 import com.openjiuwen.retrieval.retriever.Retriever;
-import com.openjiuwen.core.retrieval.vector_store.VectorStore;
+
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -39,8 +42,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Mirrors Python's {@code TestGraphKnowledgeBase} tests in

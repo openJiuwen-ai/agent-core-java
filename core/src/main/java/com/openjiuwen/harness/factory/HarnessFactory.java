@@ -255,6 +255,7 @@ public final class HarnessFactory {
                 .shouldFailTaskOnToolError(source.isShouldFailTaskOnToolError())
                 .isTaskLoopEnabled(source.isEnableTaskLoop())
                 .isTaskPlanningEnabled(source.isEnableTaskPlanning())
+                .isEnableKvCacheAffinity(source.isEnableKvCacheAffinity())
                 .language(parts.language())
                 .defaultMode(source.getDefaultMode())
                 .workspacePath(parts.workspacePath())

@@ -135,4 +135,79 @@ public interface AgentSessionApi {
     default AgentSessionApi withTenantContext(TenantContext ctx) {
         return this;
     }
+
+    /**
+     * Return the provider-facing KV cache identity owned by this session.
+     *
+     * <p>Mirrors Python's {@code Session.get_cache_identity}. The default
+     * derives a self-pointing identity from the runtime session id.</p>
+     *
+     * @return lineage identity, never {@code null}
+     * @since 0.1.16
+     */
+    default com.openjiuwen.core.kvcache.KVCacheIdentity getCacheIdentity() {
+        return new com.openjiuwen.core.kvcache.KVCacheIdentity(getSessionId(), getSessionId());
+    }
+
+    /**
+     * Return the session envs snapshot.
+     *
+     * <p>Mirrors Python's {@code Session.get_envs}. Defaults to an empty map
+     * so lightweight sessions need not implement it.</p>
+     *
+     * @return envs map, never {@code null}
+     * @since 0.1.16
+     */
+    default Map<String, Object> getEnvs() {
+        return Map.of();
+    }
+
+    /**
+     * Return the process-local KV cache runtime while this session is live.
+     *
+     * <p>Mirrors Python's {@code Session.get_kv_cache_runtime}.</p>
+     *
+     * @return runtime, empty when affinity is not wired
+     * @since 0.1.16
+     */
+    default java.util.Optional<com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol> getKvCacheRuntime() {
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * Start best-effort cache preparation for this session.
+     *
+     * <p>Mirrors Python's {@code Session.prepare_kvc}: never throws.</p>
+     *
+     * @return completion with whether preparation succeeded
+     * @since 0.1.16
+     */
+    default java.util.concurrent.CompletableFuture<Boolean> prepareKvc() {
+        return java.util.concurrent.CompletableFuture.completedFuture(false);
+    }
+
+    /**
+     * Start best-effort cache offload for this session.
+     *
+     * <p>Mirrors Python's {@code Session.suspend_kvc}: never throws.</p>
+     *
+     * @return completion with whether offload was scheduled
+     * @since 0.1.16
+     */
+    default java.util.concurrent.CompletableFuture<Boolean> suspendKvc() {
+        return java.util.concurrent.CompletableFuture.completedFuture(false);
+    }
+
+    /**
+     * Permanently release this session's remote cache only.
+     *
+     * <p>Mirrors Python's {@code Session.release_kvc}: idempotent and
+     * never throws.</p>
+     *
+     * @return completion with whether any eviction succeeded
+     * @since 0.1.16
+     */
+    default java.util.concurrent.CompletableFuture<Boolean> releaseKvc() {
+        return java.util.concurrent.CompletableFuture.completedFuture(false);
+    }
 }

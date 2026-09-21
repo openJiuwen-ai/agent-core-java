@@ -4,7 +4,9 @@
 
 package com.openjiuwen.core.foundation.llm;
 
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -15,9 +17,10 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import reactor.test.StepVerifier;
+
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,8 +30,6 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 验证 {@code Model} 的 invokeAsync/streamAsync 正确委托到底层同步 invoke/stream。
