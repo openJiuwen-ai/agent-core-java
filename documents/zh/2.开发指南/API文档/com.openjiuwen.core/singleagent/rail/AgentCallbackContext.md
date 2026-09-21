@@ -22,6 +22,9 @@ public class AgentCallbackContext
 | `exception` | `Exception` | `-` | 异常事件中记录的异常对象。 |
 | `retryAttempt` | `int` | `0` | 当前重试序号。 |
 | `retryRequest` | `RetryRequest` | `-` | 待消费的重试请求。 |
+| `iteration` | `int` | `-1` | 当前 ReAct 模型轮次，从 `0` 开始；首轮开始前为 `-1`。 |
+| `maxIterations` | `int` | `0` | 本次调用开始时快照的最大轮次。 |
+| `terminationReason` | `AgentTerminationReason` | `null` | 最终终止原因；执行期间为 `null`。 |
 
 ## 方法
 
@@ -30,9 +33,15 @@ public class AgentCallbackContext
 | `public void fire(AgentCallbackEvent event)` | 触发指定事件上的全部已注册回调。 |
 | `public void requestRetry(double delaySeconds)` | 请求当前 rail 包装的方法在延迟后再重试一次。 |
 | `public RetryRequest consumeRetryRequest()` | 读取并清空待消费的重试请求。 |
+| `public int getIteration()` | 返回当前从 `0` 开始的 ReAct 模型轮次。 |
+| `public int getMaxIterations()` | 返回本次调用的最大轮次快照。 |
+| `public int getRemainingIterations()` | 返回当前轮结束后还可执行的模型轮次数；首轮开始前等于最大轮次。 |
+| `public AgentTerminationReason getTerminationReason()` | 返回最终终止原因，尚未终止时返回 `null`。 |
 | `public void lifecycle(AgentCallbackEvent before, AgentCallbackEvent after, Runnable body)` | 在 `before` / `after` 生命周期事件之间执行一段代码。 |
 
 ## 说明
 
 - 相关测试：`AbilityManagerSupplementTest`、`AgentCallbackManagerTest`、`ReActAgentEvolveTest`、`ReActAgentTest`、`BaseAgentTest`、`DataClassCoverageTest`、`AgentCallbackContextTest`、`AgentRailTest`、`RailExecutorTest`。
 - `lifecycle(...)` 会自动保存并恢复进入方法前的 `inputs`，便于模型调用和工具调用阶段覆写临时载荷。
+- 模型调用重试不增加 `iteration`；并行工具调用的子 context 会继承父 context 的当轮轮次快照，但不会继承或回写终止原因。
+- 轮次和终止状态由 ReActAgent 管理。Rail 应通过 getter 观察，不应调用框架推进状态的方法。

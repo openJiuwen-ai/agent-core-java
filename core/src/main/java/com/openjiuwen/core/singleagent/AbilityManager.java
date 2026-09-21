@@ -506,6 +506,8 @@ public class AbilityManager implements ToolRegistry {
                 .session(session)
                 .context(ctx.getContext())
                 .extra(copyToolExtra(ctx.getExtra()))
+                .iteration(ctx.getIteration())
+                .maxIterations(ctx.getMaxIterations())
                 .build();
         if (ctx.hasSteeringQueue()) {
             toolCtx.bindSteeringQueue(ctx.getSteeringQueue());

@@ -22,6 +22,7 @@ import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentTerminationReason;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
@@ -33,8 +34,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -342,6 +345,43 @@ class AbilityManagerSupplementTest {
             assertThat(String.valueOf(results.get(0).result())).startsWith(firstToolId + ":parallel=true");
             assertThat(String.valueOf(results.get(1).result())).startsWith(secondToolId + ":parallel=true");
             assertThat(elapsedMillis).isLessThan(1500L);
+        } finally {
+            removeTool(firstToolId);
+            removeTool(secondToolId);
+        }
+    }
+
+    @Test
+    void parallelToolContextsInheritIterationSnapshotWithoutTermination() {
+        Queue<String> observations = new ConcurrentLinkedQueue<>();
+        IterationAgent agent = new IterationAgent();
+        agent.registerRail(new AgentRail() {
+            @Override
+            public void beforeToolCall(AgentCallbackContext ctx) {
+                observations.add(ctx.getIteration() + ":" + ctx.getMaxIterations() + ":"
+                        + ctx.getRemainingIterations() + ":" + ctx.getTerminationReason());
+            }
+        });
+
+        String firstToolId = "iteration-first-" + UUID.randomUUID();
+        String secondToolId = "iteration-second-" + UUID.randomUUID();
+        LocalFunction firstTool = iterationTool(firstToolId, "first");
+        LocalFunction secondTool = iterationTool(secondToolId, "second");
+        Runner.resourceMgr().addTool(firstTool, null);
+        Runner.resourceMgr().addTool(secondTool, null);
+        manager.add(List.of(firstTool.getCard(), secondTool.getCard()));
+        try {
+            AgentCallbackContext parent = AgentCallbackContext.builder().agent(agent).build();
+            parent.initializeLoop(5);
+            parent.enterIteration(2);
+            parent.finish(AgentTerminationReason.TEXT_TERMINATION);
+
+            manager.execute(parent, List.of(
+                    ToolCall.builder().id("tc-first").name(firstToolId).arguments("{}").build(),
+                    ToolCall.builder().id("tc-second").name(secondToolId).arguments("{}").build()), null, null);
+
+            assertThat(observations).containsExactlyInAnyOrder("2:5:2:null", "2:5:2:null");
+            assertThat(parent.getTerminationReason()).isEqualTo(AgentTerminationReason.TEXT_TERMINATION);
         } finally {
             removeTool(firstToolId);
             removeTool(secondToolId);
@@ -1148,6 +1188,13 @@ class AbilityManagerSupplementTest {
         );
     }
 
+    private static LocalFunction iterationTool(String toolId, String result) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("iteration").build(),
+                inputs -> result
+        );
+    }
+
     private static boolean await(CountDownLatch latch, long timeout, TimeUnit unit) {
         try {
             return latch.await(timeout, unit);
@@ -1159,5 +1206,33 @@ class AbilityManagerSupplementTest {
 
     private static void removeTool(String toolId) {
         Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
+    }
+
+    private static final class IterationAgent extends BaseAgent {
+        private IterationAgent() {
+            super(AgentCard.builder().id("iteration-agent").name("iteration-agent").build());
+        }
+
+        @Override
+        public BaseAgent configure(Object config) {
+            return this;
+        }
+
+        @Override
+        public Object getConfig() {
+            return null;
+        }
+
+        @Override
+        public Object invoke(Object inputs, com.openjiuwen.core.session.Session session) {
+            return null;
+        }
+
+        @Override
+        public java.util.Iterator<Object> stream(Object inputs,
+                com.openjiuwen.core.session.Session session,
+                List<com.openjiuwen.core.session.stream.StreamMode> streamModes) {
+            return List.of().iterator();
+        }
     }
 }

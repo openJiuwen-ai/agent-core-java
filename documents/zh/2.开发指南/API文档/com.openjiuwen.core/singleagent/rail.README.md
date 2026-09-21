@@ -11,6 +11,7 @@
 | [`AgentCallbackEvent`](./rail/AgentCallbackEvent.md) | 单智能体生命周期中的标准回调事件枚举。 |
 | [`AgentCallbackFirer`](./rail/AgentCallbackFirer.md) | 供 `AgentCallbackContext` 触发事件时调用的分发接口。 |
 | [`AgentRail`](./rail/AgentRail.md) | 定义 8 个生命周期 hook、优先级与自动注册工具列表的基类。 |
+| [`AgentTerminationReason`](./rail/AgentTerminationReason.md) | ReActAgent 调用的最终终止原因。 |
 | [`EventInputs`](./rail/EventInputs.md) | 所有事件输入载荷的标记接口。 |
 | [`InvokeInputs`](./rail/InvokeInputs.md) | 用于 `BEFORE_INVOKE` / `AFTER_INVOKE` 的输入载荷。 |
 | [`ModelCallInputs`](./rail/ModelCallInputs.md) | 用于模型调用阶段的消息、工具与响应载荷。 |

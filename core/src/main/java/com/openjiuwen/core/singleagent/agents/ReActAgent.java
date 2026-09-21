@@ -44,6 +44,7 @@ import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentTerminationReason;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
@@ -1025,6 +1026,7 @@ public class ReActAgent extends BaseAgent {
 
         AgentCallbackContext ctx = AgentCallbackContext.builder().agent(this).inputs(invokeInputs).config(config)
                 .session(session).extra(callbackExtra).build();
+        ctx.initializeLoop(config.getMaxIterations());
         bindSteeringQueue(ctx);
         Object invokeLifecycleInputs = ctx.getInputs();
 
@@ -1034,8 +1036,8 @@ public class ReActAgent extends BaseAgent {
         try {
             AgentCallbackContext.ForceFinishRequest earlyFinish = ctx.consumeForceFinish();
             if (earlyFinish != null) {
-                invokeInputs.setResult(earlyFinish.getResult());
-                return earlyFinish.getResult();
+                return finishInvocation(invokeInputs, ctx, earlyFinish.getResult(),
+                        AgentTerminationReason.FORCE_FINISH);
             }
 
             ModelContext context = initContext(session);
@@ -1063,6 +1065,7 @@ public class ReActAgent extends BaseAgent {
             int startIteration = 0;
 
             if (interruptionState != null) {
+                ctx.enterIteration(interruptionState.getIteration());
                 Optional<Object> resumePayload =
                     normalizeResumePayload(invokeInputs.getQueryPayload(), interruptionState);
                 if (resumePayload.isEmpty()) {
@@ -1084,36 +1087,42 @@ public class ReActAgent extends BaseAgent {
                 if (resumedState != null) {
                     contextEngine.saveContexts(session, null);
                     Map<String, Object> interruptResult = commitInterrupt(session, resumedState);
-                    invokeInputs.setResult(interruptResult);
-                    return interruptResult;
+                    return finishInvocation(invokeInputs, ctx, interruptResult,
+                            AgentTerminationReason.TOOL_INTERRUPT);
                 }
                 startIteration = interruptionState.getIteration() + 1;
             }
             List<ToolInfo> tools = getAbilityManager().listToolInfo();
 
-            for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
-                Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+            for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
+                ctx.enterIteration(iteration);
+                Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + ctx.getMaxIterations());
 
                 injectPendingSteering(ctx, context);
-                AssistantMessage aiMessage = callModel(ctx, context, systemMessages, tools);
+                AssistantMessage aiMessage;
+                try {
+                    aiMessage = callModel(ctx, context, systemMessages, tools);
+                } catch (RuntimeException | Error exception) {
+                    ctx.finish(AgentTerminationReason.MODEL_ERROR);
+                    throw exception;
+                }
                 logLlmResponse(aiMessage);
                 AgentCallbackContext.ForceFinishRequest finishAfterModel = ctx.consumeForceFinish();
                 if (finishAfterModel != null) {
                     contextEngine.saveContexts(session, null);
-                    invokeInputs.setResult(finishAfterModel.getResult());
-                    return finishAfterModel.getResult();
+                    return finishInvocation(invokeInputs, ctx, finishAfterModel.getResult(),
+                            AgentTerminationReason.FORCE_FINISH);
                 }
                 if (aiMessage == null) {
                     if (ctx.hasPendingSteering()) {
                         continue;
                     }
                     Map<String, Object> result = buildErrorResult("Model call skipped without terminal result");
-                    invokeInputs.setResult(result);
-                    return result;
+                    return finishInvocation(invokeInputs, ctx, result, AgentTerminationReason.MODEL_ERROR);
                 }
 
                 boolean hasToolCalls = aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
-                if (hasToolCalls && iteration + 1 >= config.getMaxIterations()) {
+                if (hasToolCalls && iteration + 1 >= ctx.getMaxIterations()) {
                     break;
                 }
 
@@ -1129,8 +1138,8 @@ public class ReActAgent extends BaseAgent {
                     AgentCallbackContext.ForceFinishRequest finishAfterTool = ctx.consumeForceFinish();
                     if (finishAfterTool != null) {
                         contextEngine.saveContexts(session, null);
-                        invokeInputs.setResult(finishAfterTool.getResult());
-                        return finishAfterTool.getResult();
+                        return finishInvocation(invokeInputs, ctx, finishAfterTool.getResult(),
+                                AgentTerminationReason.FORCE_FINISH);
                     }
 
                     ToolInterruptionState toolInterruptionState = collectToolInterrupts(ctx, results,
@@ -1138,8 +1147,8 @@ public class ReActAgent extends BaseAgent {
                     if (toolInterruptionState != null) {
                         contextEngine.saveContexts(session, null);
                         Map<String, Object> interruptResult = commitInterrupt(session, toolInterruptionState);
-                        invokeInputs.setResult(interruptResult);
-                        return interruptResult;
+                        return finishInvocation(invokeInputs, ctx, interruptResult,
+                                AgentTerminationReason.TOOL_INTERRUPT);
                     }
                 } else {
                     if (ctx.hasPendingSteering()) {
@@ -1149,15 +1158,19 @@ public class ReActAgent extends BaseAgent {
                     Map<String, Object> result = new HashMap<String, Object>();
                     result.put("output", aiMessage.getContent());
                     result.put("result_type", "answer");
-                    invokeInputs.setResult(result);
-                    return result;
+                    return finishInvocation(invokeInputs, ctx, result,
+                            AgentTerminationReason.TEXT_TERMINATION);
                 }
             }
 
             contextEngine.saveContexts(session, null);
             Map<String, Object> result = buildErrorResult("Max iterations reached without completion");
-            invokeInputs.setResult(result);
-            return result;
+            return finishInvocation(invokeInputs, ctx, result, AgentTerminationReason.MAX_ITERATIONS);
+        } catch (RuntimeException | Error exception) {
+            if (ctx.getTerminationReason() == null) {
+                ctx.finish(AgentTerminationReason.ERROR);
+            }
+            throw exception;
         } finally {
             if (invokeLifecycleInputs instanceof com.openjiuwen.core.singleagent.rail.EventInputs ei) {
                 ctx.setInputs(ei);
@@ -1633,6 +1646,13 @@ public class ReActAgent extends BaseAgent {
         return result;
     }
 
+    private static Map<String, Object> finishInvocation(InvokeInputs inputs, AgentCallbackContext ctx,
+            Map<String, Object> result, AgentTerminationReason reason) {
+        inputs.setResult(result);
+        ctx.finish(reason);
+        return result;
+    }
+
     /**
      * invokeForStream.
      * 
@@ -1671,6 +1691,7 @@ public class ReActAgent extends BaseAgent {
 
         AgentCallbackContext ctx = AgentCallbackContext.builder().agent(this).inputs(invokeInputs).config(config)
                 .session(session).extra(callbackExtra).build();
+        ctx.initializeLoop(config.getMaxIterations());
         bindSteeringQueue(ctx);
         Object invokeLifecycleInputs = ctx.getInputs();
 
@@ -1680,8 +1701,8 @@ public class ReActAgent extends BaseAgent {
         try {
             AgentCallbackContext.ForceFinishRequest earlyFinish = ctx.consumeForceFinish();
             if (earlyFinish != null) {
-                invokeInputs.setResult(earlyFinish.getResult());
-                return earlyFinish.getResult();
+                return finishInvocation(invokeInputs, ctx, earlyFinish.getResult(),
+                        AgentTerminationReason.FORCE_FINISH);
             }
 
             ModelContext context = initContext(session);
@@ -1698,6 +1719,7 @@ public class ReActAgent extends BaseAgent {
                 context.addMessages(new UserMessage(activeQuery));
             } else {
                 clearInterruptionState(session);
+                ctx.enterIteration(interruptionState.getIteration());
                 Optional<Object> resumePayload =
                     normalizeResumePayload(invokeInputs.getQueryPayload(), interruptionState);
                 if (resumePayload.isEmpty()) {
@@ -1719,8 +1741,8 @@ public class ReActAgent extends BaseAgent {
                 if (resumedState != null) {
                     contextEngine.saveContexts(session, null);
                     Map<String, Object> interruptResult = commitInterrupt(session, resumedState);
-                    invokeInputs.setResult(interruptResult);
-                    return interruptResult;
+                    return finishInvocation(invokeInputs, ctx, interruptResult,
+                            AgentTerminationReason.TOOL_INTERRUPT);
                 }
                 startIteration = interruptionState.getIteration() + 1;
             }
@@ -1733,29 +1755,34 @@ public class ReActAgent extends BaseAgent {
             }
             List<ToolInfo> tools = getAbilityManager().listToolInfo();
 
-            for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
-                Loggers.AGENT.info("ReAct stream iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+            for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
+                ctx.enterIteration(iteration);
+                Loggers.AGENT.info("ReAct stream iteration " + (iteration + 1) + "/" + ctx.getMaxIterations());
 
                 injectPendingSteering(ctx, context);
                 // 流式失败时重试（仅空响应）；异常时不重试，空响应回退非流式并包装为流式发送
-                AssistantMessage aiMessage = callModelStreamWithRetry(ctx, context, systemMessages, tools,
-                        agentSession);
+                AssistantMessage aiMessage;
+                try {
+                    aiMessage = callModelStreamWithRetry(ctx, context, systemMessages, tools, agentSession);
+                } catch (RuntimeException | Error exception) {
+                    ctx.finish(AgentTerminationReason.MODEL_ERROR);
+                    throw exception;
+                }
                 logLlmResponse(aiMessage);
                 AgentCallbackContext.ForceFinishRequest finishAfterModel = ctx.consumeForceFinish();
                 if (finishAfterModel != null) {
                     contextEngine.saveContexts(session, null);
-                    invokeInputs.setResult(finishAfterModel.getResult());
-                    return finishAfterModel.getResult();
+                    return finishInvocation(invokeInputs, ctx, finishAfterModel.getResult(),
+                            AgentTerminationReason.FORCE_FINISH);
                 }
                 if (aiMessage == null) {
                     Map<String, Object> result =
                         buildErrorResult("Model stream failed after retries, no terminal result");
-                    invokeInputs.setResult(result);
-                    return result;
+                    return finishInvocation(invokeInputs, ctx, result, AgentTerminationReason.MODEL_ERROR);
                 }
 
                 boolean hasToolCalls = aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
-                if (hasToolCalls && iteration + 1 >= config.getMaxIterations()) {
+                if (hasToolCalls && iteration + 1 >= ctx.getMaxIterations()) {
                     break;
                 }
 
@@ -1771,8 +1798,8 @@ public class ReActAgent extends BaseAgent {
                     AgentCallbackContext.ForceFinishRequest finishAfterTool = ctx.consumeForceFinish();
                     if (finishAfterTool != null) {
                         contextEngine.saveContexts(session, null);
-                        invokeInputs.setResult(finishAfterTool.getResult());
-                        return finishAfterTool.getResult();
+                        return finishInvocation(invokeInputs, ctx, finishAfterTool.getResult(),
+                                AgentTerminationReason.FORCE_FINISH);
                     }
 
                     ToolInterruptionState toolInterruptionState = collectToolInterrupts(ctx, results,
@@ -1780,9 +1807,13 @@ public class ReActAgent extends BaseAgent {
                     if (toolInterruptionState != null) {
                         contextEngine.saveContexts(session, null);
                         Map<String, Object> interruptResult = commitInterrupt(session, toolInterruptionState);
-                        invokeInputs.setResult(interruptResult);
-                        return interruptResult;
+                        return finishInvocation(invokeInputs, ctx, interruptResult,
+                                AgentTerminationReason.TOOL_INTERRUPT);
                     }
+                    continue;
+                }
+
+                if (ctx.hasPendingSteering()) {
                     continue;
                 }
 
@@ -1793,14 +1824,18 @@ public class ReActAgent extends BaseAgent {
                 if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
                     result.put("tool_calls", aiMessage.getToolCalls());
                 }
-                invokeInputs.setResult(result);
-                return result;
+                return finishInvocation(invokeInputs, ctx, result,
+                        AgentTerminationReason.TEXT_TERMINATION);
             }
 
             contextEngine.saveContexts(session, null);
             Map<String, Object> result = buildErrorResult("Max iterations reached without completion");
-            invokeInputs.setResult(result);
-            return result;
+            return finishInvocation(invokeInputs, ctx, result, AgentTerminationReason.MAX_ITERATIONS);
+        } catch (RuntimeException | Error exception) {
+            if (ctx.getTerminationReason() == null) {
+                ctx.finish(AgentTerminationReason.ERROR);
+            }
+            throw exception;
         } finally {
             if (invokeLifecycleInputs instanceof com.openjiuwen.core.singleagent.rail.EventInputs ei) {
                 ctx.setInputs(ei);
