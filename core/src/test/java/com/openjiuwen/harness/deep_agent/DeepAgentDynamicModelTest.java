@@ -399,5 +399,25 @@ class DeepAgentDynamicModelTest {
             // First entry should become default
             assertEquals(m1, Runner.resourceMgr().getDefaultModelId());
         }
+
+        @Test
+        @DisplayName("UT-D-11: map model without temperature/topP does not NPE on reconcile")
+        void reconcile_mapModelWithoutOptionalDoubles() {
+            DeepAgentConfig config = baseConfig()
+                    .model(Map.of("model", "map-only-model"))
+                    .backend(Map.of(
+                            "client_provider", TEST_PROVIDER,
+                            "api_key", "test-key",
+                            "api_base", "https://test.example.com"))
+                    .build();
+
+            DeepAgent agent = assertDoesNotThrow(() -> HarnessFactory.createDeepAgent(config));
+            agent.ensureInitialized();
+
+            Runner.resourceMgr().listModelIds().stream()
+                    .filter(id -> id.contains("map-only-model"))
+                    .forEach(registeredModelIds::add);
+            assertNotNull(agent.getCard());
+        }
     }
 }

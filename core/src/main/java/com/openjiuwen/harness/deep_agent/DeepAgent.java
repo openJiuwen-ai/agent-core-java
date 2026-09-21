@@ -493,8 +493,8 @@ public class DeepAgent implements AutoCloseable {
         if (modelObj instanceof Map<?, ?> modelMap) {
             return Optional.of(ModelRequestConfig.builder()
                     .modelName(string(firstPresent(modelMap, new String[] {"model", "model_name", "modelName"})))
-                    .temperature(doubleValue(firstPresent(modelMap, new String[] {"temperature"})))
-                    .topP(doubleValue(firstPresent(modelMap, new String[] {"top_p", "topP"})))
+                    .temperature(doubleOrDefault(firstPresent(modelMap, new String[] {"temperature"}), 0.7))
+                    .topP(doubleOrDefault(firstPresent(modelMap, new String[] {"top_p", "topP"}), 1.0))
                     .maxTokens(integerValue(firstPresent(modelMap, new String[] {"max_tokens", "maxTokens"})))
                     .stop(string(firstPresent(modelMap, new String[] {"stop"})))
                     .user(string(firstPresent(modelMap, new String[] {"user"})))

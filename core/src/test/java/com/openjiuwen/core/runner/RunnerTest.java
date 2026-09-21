@@ -23,6 +23,7 @@ import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
@@ -37,6 +38,7 @@ import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -225,6 +227,32 @@ class RunnerTest {
     }
 
     @Test
+    void runAgentPassesThePreparedSessionToDeepAgent() {
+        RecordingDeepAgent agent = new RecordingDeepAgent();
+
+        Object result = Runner.runAgent(agent, Map.of("query", "hello"), null, null, null)
+                .toCompletableFuture().join();
+
+        assertEquals(Map.of("query", "hello"), result);
+        assertNotNull(agent.lastSession);
+        assertEquals("default_session", agent.lastSession.getSessionId());
+    }
+
+    @Test
+    void streamAgentPassesThePreparedSessionToDeepAgent() {
+        RecordingDeepAgent agent = new RecordingDeepAgent();
+
+        Iterator<Object> stream = Runner.runAgentStreaming(agent, Map.of("query", "hello"), null, null,
+                List.of(StreamMode.OUTPUT), null).toCompletableFuture().join();
+
+        assertTrue(stream.hasNext());
+        assertEquals("stream-output", stream.next());
+        assertFalse(stream.hasNext());
+        assertNotNull(agent.lastSession);
+        assertEquals("default_session", agent.lastSession.getSessionId());
+    }
+
+    @Test
     void runAgentTeamRejectsUnknownTeamName() {
         assertThrows(RuntimeException.class, () -> Runner.runAgentTeam(
                 "no-such-team",
@@ -266,6 +294,8 @@ class RunnerTest {
 
         assertEquals("base:base-session:{payload=base}", result);
         assertEquals(1, team.invokeCalls);
+        AgentGroupSession session = assertInstanceOf(AgentGroupSession.class, team.lastSession);
+        assertEquals("base-team", session.getTeamId());
     }
 
     @Test
@@ -345,6 +375,40 @@ class RunnerTest {
         }
     }
 
+    /** Records whether Runner uses DeepAgent's session-aware invoke and stream overloads. */
+    private static final class RecordingDeepAgent extends DeepAgent {
+        private AgentSessionApi lastSession;
+
+        private RecordingDeepAgent() {
+            super(new AgentCard("runner-deep-agent", "runner-deep-agent", ""));
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+            lastSession = session;
+            session.markPostRunDone();
+            return inputs;
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> inputs) {
+            throw new AssertionError("Runner must use the session-aware DeepAgent invoke overload");
+        }
+
+        @Override
+        public Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session,
+                                       List<StreamMode> streamModes) {
+            lastSession = session;
+            session.markPostRunDone();
+            return List.<Object>of("stream-output").iterator();
+        }
+
+        @Override
+        public Iterator<Object> stream(Map<String, Object> inputs, List<StreamMode> streamModes) {
+            throw new AssertionError("Runner must use the session-aware DeepAgent stream overload");
+        }
+    }
+
     private static final class CloseTrackingCheckpointer extends Checkpointer implements AutoCloseable {
         private boolean closed;
 
@@ -360,6 +424,7 @@ class RunnerTest {
      */
     private static final class RecordingBaseTeam extends BaseTeam {
         private int invokeCalls;
+        private AgentSessionApi lastSession;
 
         private RecordingBaseTeam() {
             super(new TeamCard("base-team", "base-team", ""), new TeamConfig());
@@ -368,11 +433,13 @@ class RunnerTest {
         @Override
         public CompletionStage<Object> invoke(Object message, AgentSessionApi session) {
             invokeCalls += 1;
+            lastSession = session;
             return CompletableFuture.completedFuture("base:" + session.getSessionId() + ":" + message);
         }
 
         @Override
         public Stream<Object> stream(Object message, AgentSessionApi session) {
+            lastSession = session;
             return Stream.of("stream:" + session.getSessionId() + ":" + message);
         }
     }
