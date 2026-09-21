@@ -10,6 +10,7 @@
 | [中断恢复](中断恢复.md) | `InteractiveInput`、检查点与同一 `sessionId` 的恢复语义 | `session.interaction`、`session.checkpointer`、`examples/interact` |
 | [流式输出](流式输出.md) | `stream mode`、chunk、writer、queue / emitter 以及与 workflow / agent 流式接口的关系 | `session.stream`、`Workflow.stream(...)`、`Runner.run*Streaming(...)` |
 | [状态管理](状态管理.md) | 会话状态分区、读写生命周期、提交 / 回滚与恢复边界 | `session.state`、`session.checkpointer` |
+| [多次调用与文件工件](多次调用与文件工件.md) | ReActAgent 多阶段调用、上下文延续与文件工件交接 | `ReActAgent`、`ContextEngine`、`AgentSessionApi` |
 | [调测能力](调测能力.md) | callback、tracer、trace stream 与自定义调试入口 | `session.callback`、`session.tracer`、`session.stream` |
 
 ## 阅读顺序
@@ -19,7 +20,8 @@
 3. 如果你关心补问、失败重试或继续执行，再读 [中断恢复](中断恢复.md)。
 4. 如果你关心流块是怎么发出来、怎样被 `workflow.stream(...)` 或 `Runner.runAgentStreaming(...)` 消费，再读 [流式输出](流式输出.md)。
 5. 如果你关心状态为什么分成全局 / 组件 / workflow 几层，以及提交 / 回滚发生在什么时候，再读 [状态管理](状态管理.md)。
-6. 如果你要做 trace 观测、挂 callback handler，或向组件注入调试信息，再读 [调测能力](调测能力.md)。
+6. 如果任务需要拆成多个 ReActAgent 调用，阅读 [多次调用与文件工件](多次调用与文件工件.md)。
+7. 如果你要做 trace 观测、挂 callback handler，或向组件注入调试信息，再读 [调测能力](调测能力.md)。
 
 ## 和高阶用法根目录的分工
 

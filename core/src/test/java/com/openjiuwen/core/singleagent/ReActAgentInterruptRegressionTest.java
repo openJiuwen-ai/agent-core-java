@@ -41,6 +41,7 @@ import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentTerminationReason;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.rails.interrupt.BaseInterruptRail;
 import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
@@ -55,6 +56,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 class ReActAgentInterruptRegressionTest {
@@ -92,10 +94,16 @@ class ReActAgentInterruptRegressionTest {
     @Test
     void beforeInvokeForceFinishSkipsAgentLoop() {
         ReActAgent agent = newAgent("force-finish-agent");
+        AtomicReference<AgentTerminationReason> terminationReason = new AtomicReference<>();
         agent.registerRail(new AgentRail() {
             @Override
             public void beforeInvoke(AgentCallbackContext ctx) {
                 ctx.requestForceFinish(Map.of("output", "FORCE_FINISHED", "result_type", "answer"));
+            }
+
+            @Override
+            public void afterInvoke(AgentCallbackContext ctx) {
+                terminationReason.set(ctx.getTerminationReason());
             }
         });
 
@@ -106,6 +114,7 @@ class ReActAgentInterruptRegressionTest {
 
         assertEquals("FORCE_FINISHED", result.get("output"));
         assertEquals("answer", result.get("result_type"));
+        assertEquals(AgentTerminationReason.FORCE_FINISH, terminationReason.get());
     }
 
     @Test
@@ -115,12 +124,16 @@ class ReActAgentInterruptRegressionTest {
         Runner.resourceMgr().addTool(askUserTool, agent.getCard().getId());
         agent.getAbilityManager().add(askUserTool.getCard());
         agent.registerRail(new AskUserInterruptRail());
+        AtomicReference<AgentTerminationReason> terminationReason = new AtomicReference<>();
+        agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE,
+                ctx -> terminationReason.set(ctx.getTerminationReason()), 50);
 
         List<Object> firstTurn =
             runStream(agent, Map.of("query", "start interrupt flow", "conversation_id", "interrupt-session"));
 
         OutputSchema interactionChunk = findInteractionChunk(firstTurn);
         assertNotNull(interactionChunk, "first turn should emit an interaction chunk");
+        assertEquals(AgentTerminationReason.TOOL_INTERRUPT, terminationReason.get());
         InteractionOutput interactionOutput = assertInstanceOf(InteractionOutput.class, interactionChunk.getPayload());
         assertEquals("ask-user-call", interactionOutput.getId());
 
