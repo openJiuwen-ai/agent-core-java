@@ -277,7 +277,10 @@ abstract class AbstractHttpMcpClient implements McpClient {
         Map<String, Object> result = callRpc("tools/call",
                 Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), timeout);
         Object flattened = flattenToolTextContent(result.get("content"));
-        return flattened != null ? flattened : result;
+        if (flattened != null) {
+            return flattened;
+        }
+        return result;
     }
 
     /**
@@ -290,12 +293,9 @@ abstract class AbstractHttpMcpClient implements McpClient {
      * @throws Exception when the operation or reconnect fails
      * @since 0.1.16
      */
-    private <T> T executeWithReconnect(float timeout, McpOperation<T> operation) throws Exception {
+    private <T extends Object> T executeWithReconnect(float timeout, McpOperation<T> operation) throws Exception {
         try {
             return operation.execute();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw interrupted;
         } catch (IOException transportError) {
             return retryAfterReconnect(timeout, operation, transportError);
         } catch (IllegalStateException stateError) {
@@ -306,7 +306,7 @@ abstract class AbstractHttpMcpClient implements McpClient {
         }
     }
 
-    private <T> T retryAfterReconnect(float timeout, McpOperation<T> operation, Exception firstError)
+    private <T extends Object> T retryAfterReconnect(float timeout, McpOperation<T> operation, Exception firstError)
             throws Exception {
         LOG.warning("MCP transport error, reconnecting once: server={}, error={}", config.getServerPath(),
                 firstError.toString());
@@ -333,8 +333,21 @@ abstract class AbstractHttpMcpClient implements McpClient {
                 || lower.contains("broken pipe") || lower.contains("connection closed");
     }
 
+    /**
+     * Callable MCP RPC body used by reconnect wrappers.
+     *
+     * @param <T> operation result type
+     * @since 0.1.16
+     */
     @FunctionalInterface
-    private interface McpOperation<T> {
+    private interface McpOperation<T extends Object> {
+        /**
+         * Executes one MCP RPC attempt.
+         *
+         * @return operation result
+         * @throws IOException when the HTTP transport fails
+         * @throws InterruptedException when the HTTP call is interrupted
+         */
         T execute() throws IOException, InterruptedException;
     }
 

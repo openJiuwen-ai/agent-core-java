@@ -186,7 +186,8 @@ class AbstractHttpMcpClientTest {
                 return;
             }
             if ("tools/call".equals(method)) {
-                writeJson(exchange, rpcResult(id, Map.of("content", List.of(Map.of("type", "text", "text", "recovered")))));
+                writeJson(exchange, rpcResult(id, Map.of("content",
+                        List.of(Map.of("type", "text", "text", "recovered")))));
                 return;
             }
             writeJson(exchange, Map.of("jsonrpc", "2.0", "id", id, "error", Map.of("message", "unexpected")));
@@ -221,7 +222,8 @@ class AbstractHttpMcpClientTest {
 
         StreamableHttpClient client = newClient();
         assertTrue(client.connect(0, 5f));
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> client.callTool("echo", Map.of(), 5f));
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> client.callTool("echo", Map.of(), 5f));
         assertTrue(ex.getMessage().contains("boom"));
         assertEquals(1, initializeCount.get());
     }
