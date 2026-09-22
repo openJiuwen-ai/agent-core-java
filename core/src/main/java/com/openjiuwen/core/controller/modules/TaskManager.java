@@ -178,6 +178,61 @@ public class TaskManager {
     }
 
     /**
+     * Load task manager state for a specific session only, preserving tasks
+     * from other sessions. This is the session-safe variant of
+     * {@link #loadState(TaskManagerState)} for use in concurrent multi-session
+     * scenarios where a shared TaskManager is used across sessions.
+     *
+     * @param sessionId the session whose state is being loaded
+     * @param state the task manager state to load for this session
+     * @since 0.1.16
+     */
+    public void loadStateForSession(String sessionId, TaskManagerState state) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        lock.lock();
+        try {
+            // Remove existing tasks for this session first
+            List<String> toRemove = new ArrayList<>();
+            for (Task task : tasks.values()) {
+                if (sessionId.equals(task.getSessionId())) {
+                    toRemove.add(task.getTaskId());
+                }
+            }
+            for (String tid : toRemove) {
+                removeTaskInternal(tid, new HashSet<>(toRemove));
+            }
+
+            // Merge in the restored state for this session (only tasks matching
+            // the session id; defensive guard against stale state from other sessions)
+            if (state != null && state.getTasks() != null) {
+                for (var entry : state.getTasks().entrySet()) {
+                    Task task = entry.getValue();
+                    if (task == null) {
+                        continue;
+                    }
+                    // Only load tasks that belong to this session
+                    if (sessionId.equals(task.getSessionId())) {
+                        tasks.put(entry.getKey(), task.copy());
+                        priorityIndex.computeIfAbsent(task.getPriority(), k -> new ArrayList<>())
+                                .add(task.getTaskId());
+                        if (task.getParentTaskId() != null) {
+                            parentToChildren.computeIfAbsent(task.getParentTaskId(), k -> new HashSet<>())
+                                    .add(task.getTaskId());
+                            childToParent.put(task.getTaskId(), task.getParentTaskId());
+                        } else {
+                            rootTasks.add(task.getTaskId());
+                        }
+                    }
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
      * Clear all task manager state.
      * 
      * @since 0.1.7
@@ -190,6 +245,35 @@ public class TaskManager {
             parentToChildren.clear();
             childToParent.clear();
             rootTasks.clear();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Clear only the tasks belonging to the given session, leaving tasks from
+     * other sessions intact. This is the session-safe variant of
+     * {@link #clearState()} for use in concurrent multi-session scenarios where
+     * a shared TaskManager is used across sessions.
+     *
+     * @param sessionId the session whose tasks should be removed
+     * @since 0.1.16
+     */
+    public void clearStateForSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        lock.lock();
+        try {
+            List<String> toRemove = new ArrayList<>();
+            for (Task task : tasks.values()) {
+                if (sessionId.equals(task.getSessionId())) {
+                    toRemove.add(task.getTaskId());
+                }
+            }
+            for (String tid : toRemove) {
+                removeTaskInternal(tid, new HashSet<>(toRemove));
+            }
         } finally {
             lock.unlock();
         }
