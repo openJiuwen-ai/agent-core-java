@@ -6,6 +6,8 @@ package com.openjiuwen.core.foundation.tool.mcp.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
@@ -22,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.StringJoiner;
@@ -31,6 +34,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Base class for HTTP-based MCP transports.
  */
 abstract class AbstractHttpMcpClient implements McpClient {
+    private static final LoggerProtocol LOG = Loggers.MCP;
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final long DEFAULT_CONNECT_TIMEOUT_SECONDS = 10L;
 
@@ -64,6 +68,13 @@ abstract class AbstractHttpMcpClient implements McpClient {
      * @since 0.1.7
      */
     protected volatile boolean connected;
+
+    /**
+     * Serializes reconnect so concurrent tool calls after a network blip share one handshake.
+     *
+     * @since 0.1.16
+     */
+    private final Object reconnectLock = new Object();
 
     /**
      * AbstractHttpMcpClient.
@@ -165,6 +176,22 @@ abstract class AbstractHttpMcpClient implements McpClient {
     }
 
     /**
+     * Disconnect then connect under a lock so concurrent callers share one handshake.
+     *
+     * @param timeout timeout in seconds for disconnect and connect
+     * @return {@code true} when reconnect succeeds
+     * @throws Exception declared for {@link McpClient} compatibility
+     * @since 0.1.16
+     */
+    @Override
+    public boolean reconnect(float timeout) throws Exception {
+        synchronized (reconnectLock) {
+            disconnect(timeout);
+            return connect(1, timeout);
+        }
+    }
+
+    /**
      * listTools.
      * 
      * @param timeout timeout
@@ -174,6 +201,10 @@ abstract class AbstractHttpMcpClient implements McpClient {
      */
     @Override
     public List<Object> listTools(float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doListTools(timeout));
+    }
+
+    private List<Object> doListTools(float timeout) throws IOException, InterruptedException {
         Map<String, Object> result = callRpc("tools/list", Map.of(), resolveDiscoveryTimeout(timeout));
         List<Object> tools = new ArrayList<>();
         for (Map<String, Object> item : asListOfMaps(result.get("tools"))) {
@@ -192,6 +223,10 @@ abstract class AbstractHttpMcpClient implements McpClient {
      */
     @Override
     public List<Object> listResources(float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doListResources(timeout));
+    }
+
+    private List<Object> doListResources(float timeout) throws IOException, InterruptedException {
         Map<String, Object> result = callRpc("resources/list", Map.of(), timeout);
         return new ArrayList<>(asListOfMaps(result.get("resources")));
     }
@@ -207,6 +242,10 @@ abstract class AbstractHttpMcpClient implements McpClient {
      */
     @Override
     public List<Object> readResource(String uri, float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doReadResource(uri, timeout));
+    }
+
+    private List<Object> doReadResource(String uri, float timeout) throws IOException, InterruptedException {
         Map<String, Object> result = callRpc("resources/read", Map.of("uri", uri), timeout);
         return new ArrayList<>(asListOfMaps(result.get("contents")));
     }
@@ -216,6 +255,7 @@ abstract class AbstractHttpMcpClient implements McpClient {
      * <p>
      * When the result {@code content} list has multiple text parts, they are joined with {@code \n};
      * a single text part is returned as a plain string; otherwise the raw result map is returned.
+     * On a retryable transport failure, reconnects once and retries the call.
      *
      * @param toolName MCP tool name
      * @param arguments tool arguments; {@code null} is treated as empty
@@ -229,10 +269,86 @@ abstract class AbstractHttpMcpClient implements McpClient {
      */
     @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doCallTool(toolName, arguments, timeout));
+    }
+
+    private Object doCallTool(String toolName, Map<String, Object> arguments, float timeout)
+            throws IOException, InterruptedException {
         Map<String, Object> result = callRpc("tools/call",
                 Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), timeout);
         Object flattened = flattenToolTextContent(result.get("content"));
-        return flattened != null ? flattened : result;
+        if (flattened != null) {
+            return flattened;
+        }
+        return result;
+    }
+
+    /**
+     * Runs an MCP operation and, on a retryable transport error, reconnects once then retries.
+     *
+     * @param timeout reconnect timeout in seconds
+     * @param operation the operation to run
+     * @param <T> result type
+     * @return operation result
+     * @throws Exception when the operation or reconnect fails
+     * @since 0.1.16
+     */
+    private <T extends Object> T executeWithReconnect(float timeout, McpOperation<T> operation) throws Exception {
+        try {
+            return operation.execute();
+        } catch (IOException transportError) {
+            return retryAfterReconnect(timeout, operation, transportError);
+        } catch (IllegalStateException stateError) {
+            if (!isRetryableStateError(stateError)) {
+                throw stateError;
+            }
+            return retryAfterReconnect(timeout, operation, stateError);
+        }
+    }
+
+    private <T extends Object> T retryAfterReconnect(float timeout, McpOperation<T> operation, Exception firstError)
+            throws Exception {
+        LOG.warning("MCP transport error, reconnecting once: server={}, error={}", config.getServerPath(),
+                firstError.toString());
+        if (!reconnect(timeout)) {
+            throw firstError;
+        }
+        return operation.execute();
+    }
+
+    /**
+     * Whether an {@link IllegalStateException} is a transient disconnect rather than an RPC protocol error.
+     *
+     * @param error the state error from {@link #callRpc} or {@link #ensureConnected}
+     * @return {@code true} when a single reconnect may recover the call
+     * @since 0.1.16
+     */
+    private static boolean isRetryableStateError(IllegalStateException error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("not connected") || lower.contains("connection reset")
+                || lower.contains("broken pipe") || lower.contains("connection closed");
+    }
+
+    /**
+     * Callable MCP RPC body used by reconnect wrappers.
+     *
+     * @param <T> operation result type
+     * @since 0.1.16
+     */
+    @FunctionalInterface
+    private interface McpOperation<T extends Object> {
+        /**
+         * Executes one MCP RPC attempt.
+         *
+         * @return operation result
+         * @throws IOException when the HTTP transport fails
+         * @throws InterruptedException when the HTTP call is interrupted
+         */
+        T execute() throws IOException, InterruptedException;
     }
 
     /**
