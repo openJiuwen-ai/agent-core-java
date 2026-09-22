@@ -792,6 +792,10 @@ public class AbilityManager {
         if (toolCall == null) {
             return new ExecutionResult(null, null);
         }
+        if (toolCall.getName() == null || toolCall.getName().isBlank()) {
+            throw AbilityExecutionError.of(toolCall,
+                    "Ability execution error: Malformed tool call; tool name must not be null, empty, or blank");
+        }
         Optional<Tool> sessionTool = resolveSessionTool(toolCall.getName(), session);
         if (sessionTool.isPresent()) {
             Object parsedArguments;

@@ -30,6 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 /**
  * Supplementary tests for {@link AbilityManager} — execute, WorkflowCard, McpServerConfig.
@@ -276,6 +277,86 @@ class AbilityManagerSupplementTest {
     void testExecuteWithNullToolCall() {
         List<AbilityManager.ExecutionResult> results = manager.execute((ToolCall) null);
         assertThat(results).isEmpty();
+    }
+
+    @Test
+    void malformedToolCallNamesReturnCorrectiveMessages() {
+        for (String invalidName : new String[] {null, "", "   "}) {
+            ToolCall toolCall = ToolCall.builder()
+                    .id("tc-malformed")
+                    .name(invalidName)
+                    .arguments("{}")
+                    .build();
+
+            List<AbilityManager.ExecutionResult> results = manager.execute(toolCall);
+
+            assertThat(results).singleElement().satisfies(result -> {
+                assertThat(result.result()).isNull();
+                assertThat(result.toolMessage().getToolCallId()).isEqualTo("tc-malformed");
+                assertThat(String.valueOf(result.toolMessage().getContent()))
+                        .contains("Malformed tool call", "tool name");
+            });
+        }
+    }
+
+    @Test
+    void malformedParallelToolCallDoesNotPreventValidCall() {
+        String toolId = "valid-after-malformed-" + UUID.randomUUID();
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("valid tool").build(),
+                inputs -> "valid-result");
+        Runner.resourceMgr().addTool(tool, null);
+        manager.add(tool.getCard());
+        try {
+            List<ToolCall> toolCalls = List.of(
+                    ToolCall.builder().id("tc-malformed-parallel").name(" ").arguments("{}").build(),
+                    ToolCall.builder().id("tc-valid-parallel").name(toolId).arguments("{}").build());
+
+            List<AbilityManager.ExecutionResult> results = manager.execute(toolCalls, true);
+
+            assertThat(results).hasSize(2);
+            assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
+                    .contains("Malformed tool call");
+            assertThat(results.get(1).result()).isEqualTo("valid-result");
+        } finally {
+            Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
+    void beforeToolCallRailCanRepairMalformedToolName() {
+        String toolId = "rail-repaired-tool-" + UUID.randomUUID();
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("rail repair test").build(),
+                inputs -> "repaired-result");
+        Runner.resourceMgr().addTool(tool, null);
+        manager.add(tool.getCard());
+        try {
+            ReActAgent agent = new ReActAgent(
+                    AgentCard.builder().id("rail-repair-agent").name("rail-repair-agent").build());
+            agent.registerRail(new AgentRail() {
+                @Override
+                public void beforeToolCall(AgentCallbackContext ctx) {
+                    ToolCallInputs inputs = assertInstanceOf(ToolCallInputs.class, ctx.getInputs());
+                    inputs.setToolName(toolId);
+                }
+            }).toCompletableFuture().join();
+            AgentCallbackContext ctx = new AgentCallbackContext(agent);
+            ToolCall toolCall = ToolCall.builder()
+                    .id("tc-rail-repair")
+                    .name(" ")
+                    .arguments("{}")
+                    .build();
+
+            List<AbilityManager.ExecutionResult> results = manager.execute(ctx, toolCall, false, null);
+
+            assertThat(results).singleElement()
+                    .extracting(AbilityManager.ExecutionResult::result)
+                    .isEqualTo("repaired-result");
+            assertThat(toolCall.getName()).isEqualTo(toolId);
+        } finally {
+            Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
+        }
     }
 
     @Test
