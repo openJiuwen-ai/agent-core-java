@@ -40,6 +40,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Public class TaskPlanningRail used by the Java parity implementation.
@@ -68,18 +70,23 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     private final List<Tool> tools = new ArrayList<>();
 
     /**
-     * HashMap<>.
-     * 
-     * @since 0.1.7
+     * ConcurrentMap — thread-safe because parallel tool execution causes
+     * multiple afterToolCall callbacks to fire concurrently on different
+     * worker threads (Issue #151).
+     *
+     * @since 0.1.16
      */
-    private final Map<String, Integer> toolCallCounts = new HashMap<>();
+    private final ConcurrentMap<String, Integer> toolCallCounts = new ConcurrentHashMap<>();
 
     /**
-     * HashMap<>.
-     * 
-     * @since 0.1.7
+     * ConcurrentMap — thread-safe Todo cache. In the parallel-tool-execution
+     * model, multiple tools execute concurrently and their afterToolCall
+     * callbacks may read/refresh the cache simultaneously. Using
+     * ConcurrentHashMap prevents lost updates and inconsistent reads.
+     *
+     * @since 0.1.16
      */
-    private final Map<String, List<TodoItem>> todosCache = new HashMap<>();
+    private final ConcurrentMap<String, List<TodoItem>> todosCache = new ConcurrentHashMap<>();
 
     /**
      * LinkedHashMap<>.
@@ -407,6 +414,22 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     /**
      * afterToolCall.
      * 
+     * <p>In the parallel-tool-execution model, multiple tools may execute
+     * concurrently. When a {@code todo_create} or {@code todo_modify} tool
+     * completes, it updates the persisted Todo state and refreshes the cache.
+     * Other concurrent tools' afterToolCall callbacks must see the latest
+     * Todo state when building progress reminders.</p>
+     *
+     * <p>The cache refresh and progress-reminder logic are synchronized on
+     * the session id to ensure that:</p>
+     * <ol>
+     *   <li>A {@code todo_*} tool's state update is visible to other tools'
+     *       progress-reminder reads within the same tool-call batch.</li>
+     *   <li>The {@code validateSingleInProgress} constraint (at most one
+     *       IN_PROGRESS task) is preserved — task-level concurrency is not
+     *       allowed, only tool-level parallelism within a single task.</li>
+     * </ol>
+     *
      * @param ctx ctx
      * @since 0.1.7
      */
@@ -419,25 +442,30 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         if (sessionId == null || sessionId.isBlank()) {
             return;
         }
-        refreshTodosCacheAfterTodoToolCall(ctx, sessionId);
-        if (!isProgressRepeatEnabled || ctx.getContext() == null) {
-            return;
+        // Synchronize on the session id to ensure cache refresh and
+        // progress-reminder reads are atomic within a session, even when
+        // multiple tools execute in parallel.
+        synchronized (sessionId.intern()) {
+            refreshTodosCacheAfterTodoToolCall(ctx, sessionId);
+            if (!isProgressRepeatEnabled || ctx.getContext() == null) {
+                return;
+            }
+            int count = toolCallCounts.getOrDefault(sessionId, 0) + 1;
+            toolCallCounts.put(sessionId, count);
+            if (listToolCallInterval <= 0 || count % listToolCallInterval != 0) {
+                return;
+            }
+            List<TodoItem> todos;
+            try {
+                todos = loadTodos(sessionId);
+            } catch (java.io.IOException ignored) {
+                return;
+            }
+            if (todos == null || todos.isEmpty()) {
+                return;
+            }
+            ctx.getContext().addMessages(new UserMessage(buildProgressReminder(todos)));
         }
-        int count = toolCallCounts.getOrDefault(sessionId, 0) + 1;
-        toolCallCounts.put(sessionId, count);
-        if (listToolCallInterval <= 0 || count % listToolCallInterval != 0) {
-            return;
-        }
-        List<TodoItem> todos;
-        try {
-            todos = loadTodos(sessionId);
-        } catch (java.io.IOException ignored) {
-            return;
-        }
-        if (todos == null || todos.isEmpty()) {
-            return;
-        }
-        ctx.getContext().addMessages(new UserMessage(buildProgressReminder(todos)));
     }
 
     /**
@@ -814,7 +842,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
 
     /**
      * loadTodos.
-     * 
+     *
+     * <p>Thread-safe read via {@link ConcurrentMap#get}. The returned list
+     * should be treated as read-only by callers; mutations go through
+     * {@link #refreshTodosCacheAfterTodoToolCall} or {@link #syncTodosFromTaskPlan}
+     * which replace the cached entry wholesale.</p>
+     *
      * @param sessionId sessionId
      * @return the result
      * @throws java.io.IOException java.io.IOException
@@ -826,13 +859,20 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
             return cached;
         }
         List<TodoItem> loaded = todoTool.load(sessionId);
-        todosCache.put(sessionId, loaded);
-        return loaded;
+        // Use putIfAbsent to avoid clobbering a concurrent refresh from another thread
+        todosCache.putIfAbsent(sessionId, loaded);
+        return todosCache.get(sessionId);
     }
 
     /**
      * refreshTodosCacheAfterTodoToolCall.
-     * 
+     *
+     * <p>Called from {@link #afterToolCall} within a session-scoped
+     * synchronized block. Replaces the cached todo list with a fresh
+     * snapshot from storage so that other concurrent tools in the same
+     * batch see the updated state (e.g. a task transitioned from PENDING
+     * to IN_PROGRESS via {@code todo_modify}).</p>
+     *
      * @param ctx ctx
      * @param sessionId sessionId
      * @since 0.1.7
