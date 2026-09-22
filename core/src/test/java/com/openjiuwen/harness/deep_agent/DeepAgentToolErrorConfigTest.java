@@ -32,12 +32,12 @@ class DeepAgentToolErrorConfigTest {
     }
 
     @Test
-    void defaultsToFalseWhenUnset() {
+    void defaultsToTrueWhenUnset() {
         DeepAgentConfig config = DeepAgentConfig.builder()
                 .workspacePath(baseDir.toString())
                 .build();
         DeepAgent agent = newAgent(config);
-        assertThat(runtimeShouldFailTaskOnToolError(agent)).isFalse();
+        assertThat(runtimeShouldFailTaskOnToolError(agent)).isTrue();
     }
 
     @Test
@@ -67,12 +67,12 @@ class DeepAgentToolErrorConfigTest {
     }
 
     @Test
-    void factoryPathDefaultsToFalseWhenUnset() {
+    void factoryPathDefaultsToTrueWhenUnset() {
         DeepAgentConfig config = DeepAgentConfig.builder()
                 .workspacePath(baseDir.toString())
                 .build();
         DeepAgent agent = factoryAgent(config, "factory_default_agent");
-        assertThat(runtimeShouldFailTaskOnToolError(agent)).isFalse();
+        assertThat(runtimeShouldFailTaskOnToolError(agent)).isTrue();
     }
 
     @Test

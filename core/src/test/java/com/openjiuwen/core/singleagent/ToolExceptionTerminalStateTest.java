@@ -38,7 +38,7 @@ class ToolExceptionTerminalStateTest {
     }
 
     @Test
-    void defaultConfig_toolExceptionBecomesRecoverableMessageNotFailed() {
+    void recoverableMode_toolExceptionBecomesRecoverableMessageNotFailed() {
         String toolId = "failing-default-" + UUID.randomUUID();
         LocalFunction failingTool = new LocalFunction(
                 ToolCard.builder().id(toolId).name(toolId).description("always fails").build(),
