@@ -2123,8 +2123,8 @@ public class ReActAgent extends BaseAgent {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             StreamAttempt streamAttempt = new StreamAttempt();
             try {
-                AssistantMessage aiMessage = streamModelResponse(
-                        ctx, model, messages, options, modelInputs, streamAttempt);
+                AssistantMessage aiMessage = streamModelResponse(ctx, model, messages, options, streamAttempt);
+                modelInputs.setResponse(aiMessage);
                 if (!isEmptyStreamResult(aiMessage)) {
                     return aiMessage;
                 }
@@ -2187,8 +2187,7 @@ public class ReActAgent extends BaseAgent {
     }
 
     private AssistantMessage streamModelResponse(AgentCallbackContext ctx, Model model, List<BaseMessage> messages,
-                                                 ModelInvokeOptions options, ModelCallInputs modelInputs,
-                                                 StreamAttempt streamAttempt) {
+                                                 ModelInvokeOptions options, StreamAttempt streamAttempt) {
         logModelCallStarted(ctx, messages, options == null ? List.of() : options.getTools(), true);
         long callStartTime = System.nanoTime();
         Iterator<AssistantMessageChunk> iterator = null;
@@ -2238,11 +2237,9 @@ public class ReActAgent extends BaseAgent {
                     .build();
         }
         if (isEmptyStreamResult(aiMessage)) {
-            modelInputs.setResponse(aiMessage);
             logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
             return aiMessage;
         }
-        modelInputs.setResponse(aiMessage);
         logModelResponse(ctx, aiMessage);
         logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
         if (ctx.getSession() != null && aiMessage.getUsageMetadata() != null) {
