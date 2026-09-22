@@ -26,6 +26,7 @@
 ### Session 子目录
 
 - [执行期（Session）](Session/README.md)
+- [ReActAgent 多次调用与文件工件](Session/多次调用与文件工件.md)
 - 该子目录会继续拆分 `概述`、`中断恢复`、`流式输出`、`状态管理`、`调测能力` 五页。
 - 主要依据：`com.openjiuwen.core.session` 根包及其 `interaction`、`checkpointer`、`stream`、`state`、`tracer`、`callback` 子包。
 

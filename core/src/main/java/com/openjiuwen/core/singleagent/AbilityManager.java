@@ -632,6 +632,8 @@ public class AbilityManager {
         }
         toolCtx.setContext(parent.getContext());
         toolCtx.setExtra(parent.getExtra());
+        toolCtx.initializeLoop(parent.getMaxIterations());
+        toolCtx.enterIteration(parent.getIteration());
         toolCtx.bindSteeringQueue(parent.getSteeringQueue());
         return toolCtx;
     }

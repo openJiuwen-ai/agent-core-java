@@ -11,6 +11,7 @@
 | [流式输出](流式输出.md) | `stream mode`、chunk、writer、queue / emitter 以及与 workflow / agent 流式接口的关系 | `session.stream`、`Workflow.stream(...)`、`Runner.run*Streaming(...)` |
 | [状态管理](状态管理.md) | 会话状态分区、读写生命周期、提交 / 回滚与恢复边界 | `session.state`、`session.checkpointer` |
 | [调测能力](调测能力.md) | callback、tracer、trace stream 与自定义调试入口 | `session.callback`、`session.tracer`、`session.stream` |
+| [ReActAgent 多次调用与文件工件](多次调用与文件工件.md) | 多阶段任务中的 Session 复用、上下文恢复和文件工件交接 | `ReActAgent`、`ContextEngine`、`AgentSessionApi` |
 
 ## 阅读顺序
 
