@@ -67,11 +67,9 @@ class ConfirmResumeCheckpointTest {
         AgentSession next = new AgentSession(SESSION_ID, new Config(), checkpointer);
         checkpointer.preAgentExecute(next, null);
 
-        Object restored = next.state().get(Constant.INTERACTIVE_INPUT);
-        assertInstanceOf(List.class, restored);
-        Object first = ((List<?>) restored).get(0);
-        assertInstanceOf(PermissionConfirmResponse.class, first);
-        PermissionConfirmResponse response = (PermissionConfirmResponse) first;
+        List<?> restored = assertInstanceOf(List.class, next.state().get(Constant.INTERACTIVE_INPUT));
+        PermissionConfirmResponse response =
+                assertInstanceOf(PermissionConfirmResponse.class, restored.get(0));
         assertTrue(response.isApproved());
         assertEquals("looks fine", response.getFeedback());
     }
