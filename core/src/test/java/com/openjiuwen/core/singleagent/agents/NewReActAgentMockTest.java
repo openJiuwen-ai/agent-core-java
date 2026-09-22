@@ -285,6 +285,23 @@ class NewReActAgentMockTest {
     }
 
     @Test
+    void malformedToolCallHonorsFailTaskConfiguration() {
+        ScriptedReActAgent agent = scriptedAgent(AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(toolCall("call-malformed", " ", "{}")))
+                .build());
+        agent.configure(new ReActAgentConfig()
+                .configureMaxIterations(5)
+                .configureFailTaskOnToolError(true));
+
+        Map<String, Object> result = invokeMap(agent, Map.of("query", "trigger malformed tool call"));
+
+        assertThat(result).containsEntry("result_type", "error");
+        assertThat(String.valueOf(result.get("output"))).contains("Malformed tool call");
+        assertThat(agent.getCallCount()).isEqualTo(1);
+    }
+
+    @Test
     void invokeWithStringInput() {
         ScriptedReActAgent agent = scriptedAgent(new AssistantMessage("string answer"));
 

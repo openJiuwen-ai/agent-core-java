@@ -1414,6 +1414,10 @@ public class OpenAIModelClient extends BaseModelClient {
         return httpClient;
     }
 
+    Duration requestTimeoutForTesting(Float timeout) {
+        return timeoutDuration(timeout);
+    }
+
     private HttpClient createHttpClient(ModelClientConfig clientConfig) {
         return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
                 .connectTimeout(timeoutDuration(null))

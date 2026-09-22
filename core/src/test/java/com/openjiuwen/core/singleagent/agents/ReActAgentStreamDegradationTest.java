@@ -18,10 +18,14 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -202,6 +206,99 @@ class ReActAgentStreamDegradationTest {
     }
 
     @Test
+    void streamRetriesIoFailureBeforeFirstChunk() throws Exception {
+        ReActAgent agent = newAgent("retry-transport-before-first-chunk");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(2)
+                .streamMaxRetries(1)
+                .streamRetryDelayMs(0)
+                .build());
+        Model model = mock(Model.class);
+        when(model.supportsKvCacheRelease()).thenReturn(false);
+        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
+        when(model.stream(anyList(), any(ModelInvokeOptions.class)))
+                .thenReturn(failingStreamBeforeFirstChunk())
+                .thenReturn(List.of(AssistantMessageChunk.builder()
+                        .content("recovered after io")
+                        .build()).iterator());
+        agent.setLlm(model);
+
+        AgentSessionApi session = new AgentSession("retry-transport-session", null, agent.getCard());
+        List<Object> collected = new ArrayList<>();
+        var iterator = agent.stream(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT));
+        while (iterator.hasNext()) {
+            collected.add(iterator.next());
+        }
+
+        assertThat(collected).anyMatch(item -> String.valueOf(item).contains("recovered after io"));
+        verify(model, times(2)).stream(anyList(), any(ModelInvokeOptions.class));
+        verify(model, never()).invoke(anyList(), any(ModelInvokeOptions.class));
+    }
+
+    @Test
+    void streamDoesNotRetryIoFailureAfterFirstChunk() throws Exception {
+        ReActAgent agent = newAgent("no-retry-after-first-chunk");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(2)
+                .streamMaxRetries(2)
+                .streamRetryDelayMs(0)
+                .build());
+        Model model = mock(Model.class);
+        when(model.supportsKvCacheRelease()).thenReturn(false);
+        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
+        when(model.stream(anyList(), any(ModelInvokeOptions.class)))
+                .thenReturn(failingStreamAfterChunk("partial content"));
+        agent.setLlm(model);
+
+        AgentSessionApi session = new AgentSession("partial-transport-session", null, agent.getCard());
+        List<Object> collected = new ArrayList<>();
+        var iterator = agent.stream(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT));
+        while (iterator.hasNext()) {
+            collected.add(iterator.next());
+        }
+
+        assertThat(collected.stream()
+                .filter(item -> String.valueOf(item).contains("partial content")))
+                .hasSize(1);
+        verify(model, times(1)).stream(anyList(), any(ModelInvokeOptions.class));
+        verify(model, never()).invoke(anyList(), any(ModelInvokeOptions.class));
+    }
+
+    @Test
+    void reasoningOnlyStreamFallsBackToNonStreamAnswerWithoutRetry() throws Exception {
+        ReActAgent agent = newAgent("reasoning-only-fallback");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(2)
+                .streamMaxRetries(2)
+                .streamRetryDelayMs(0)
+                .build());
+        Model model = mock(Model.class);
+        when(model.supportsKvCacheRelease()).thenReturn(false);
+        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
+        when(model.stream(anyList(), any(ModelInvokeOptions.class)))
+                .thenReturn(List.of(AssistantMessageChunk.builder()
+                        .content("")
+                        .reasoningContent("thinking")
+                        .finishReason("stop")
+                        .build()).iterator());
+        when(model.invoke(anyList(), any(ModelInvokeOptions.class)))
+                .thenReturn(CompletableFuture.completedFuture(
+                        AssistantMessage.builder().content("fallback answer").build()));
+        agent.setLlm(model);
+
+        AgentSessionApi session = new AgentSession("reasoning-only-session", null, agent.getCard());
+        List<Object> collected = new ArrayList<>();
+        var iterator = agent.stream(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT));
+        while (iterator.hasNext()) {
+            collected.add(iterator.next());
+        }
+
+        assertThat(collected).anyMatch(item -> String.valueOf(item).contains("fallback answer"));
+        verify(model, times(1)).stream(anyList(), any(ModelInvokeOptions.class));
+        verify(model, times(1)).invoke(anyList(), any(ModelInvokeOptions.class));
+    }
+
+    @Test
     void normalStreamNotAffected() throws Exception {
         ReActAgent agent = newAgent("normal-stream");
         Model model = mock(Model.class);
@@ -239,5 +336,42 @@ class ReActAgentStreamDegradationTest {
                 .build());
         agent.configure(ReActAgentConfig.builder().maxIterations(2).streamRetryDelayMs(0).build());
         return agent;
+    }
+
+    private static Iterator<AssistantMessageChunk> failingStreamBeforeFirstChunk() {
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                throw new UncheckedIOException(new IOException("connection reset before first chunk"));
+            }
+
+            @Override
+            public AssistantMessageChunk next() {
+                throw new NoSuchElementException();
+            }
+        };
+    }
+
+    private static Iterator<AssistantMessageChunk> failingStreamAfterChunk(String content) {
+        return new Iterator<>() {
+            private boolean emitted;
+
+            @Override
+            public boolean hasNext() {
+                if (!emitted) {
+                    return true;
+                }
+                throw new UncheckedIOException(new IOException("connection reset after first chunk"));
+            }
+
+            @Override
+            public AssistantMessageChunk next() {
+                if (emitted) {
+                    throw new NoSuchElementException();
+                }
+                emitted = true;
+                return AssistantMessageChunk.builder().content(content).build();
+            }
+        };
     }
 }

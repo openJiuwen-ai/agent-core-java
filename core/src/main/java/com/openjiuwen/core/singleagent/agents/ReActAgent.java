@@ -65,6 +65,7 @@ import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
 import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
+import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -82,6 +83,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.logging.Logger;
 
 /**
@@ -2108,8 +2111,8 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * Stream with retry on empty responses; exceptions are not retried.
-     * After retries are exhausted, fall back to non-stream invoke and wrap content as stream chunks.
+     * Retry empty streams and transport failures before the first chunk. Once a chunk is visible,
+     * never replay the request. Empty or reasoning-only results fall back to a blocking invocation.
      */
     private AssistantMessage streamModelResponseWithRetry(AgentCallbackContext ctx, Model model,
                                                           List<BaseMessage> messages, ModelInvokeOptions options,
@@ -2118,35 +2121,50 @@ public class ReActAgent extends BaseAgent {
         long retryDelayMs = config.getStreamRetryDelayMs();
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            StreamAttempt streamAttempt = new StreamAttempt();
             try {
-                AssistantMessage aiMessage = streamModelResponse(ctx, model, messages, options, modelInputs);
+                AssistantMessage aiMessage = streamModelResponse(
+                        ctx, model, messages, options, modelInputs, streamAttempt);
                 if (!isEmptyStreamResult(aiMessage)) {
                     return aiMessage;
+                }
+                if (hasReasoningContent(aiMessage)) {
+                    Loggers.AGENT.warning("ReAct stream completed with reasoning but no answer content or "
+                            + "tool calls; falling back to non-stream");
+                    return fallbackToNonStream(ctx, model, messages, options, modelInputs);
                 }
                 Loggers.AGENT.warning("ReAct stream returned empty (attempt "
                         + (attempt + 1) + "/" + (maxRetries + 1) + ")");
             } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
                     | IllegalStateException | NullPointerException | ClassCastException
-                    | UnsupportedOperationException exception) {
-                // Partial chunks may already have been sent; do not retry.
+                    | UnsupportedOperationException | UncheckedIOException exception) {
+                if (!streamAttempt.hasReceivedChunks() && hasIoCause(exception) && attempt < maxRetries) {
+                    Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
+                            + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
+                            + exception.getMessage());
+                    if (delayStreamRetry(retryDelayMs)) {
+                        continue;
+                    }
+                }
                 Loggers.AGENT.error("ReAct stream error (attempt "
                         + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: "
                         + exception.getMessage());
                 throw exception;
             }
 
-            if (attempt < maxRetries && retryDelayMs > 0) {
-                try {
-                    Thread.sleep(retryDelayMs);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+            if (attempt < maxRetries && !delayStreamRetry(retryDelayMs)) {
+                break;
             }
         }
 
         Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
                 + " attempts, falling back to non-stream with stream wrapping");
+        return fallbackToNonStream(ctx, model, messages, options, modelInputs);
+    }
+
+    private AssistantMessage fallbackToNonStream(AgentCallbackContext ctx, Model model,
+                                                  List<BaseMessage> messages, ModelInvokeOptions options,
+                                                  ModelCallInputs modelInputs) {
         logModelCallStarted(ctx, messages, options == null ? List.of() : options.getTools(), false);
         long callStartTime = System.nanoTime();
         AssistantMessage aiMessage;
@@ -2169,7 +2187,8 @@ public class ReActAgent extends BaseAgent {
     }
 
     private AssistantMessage streamModelResponse(AgentCallbackContext ctx, Model model, List<BaseMessage> messages,
-                                                 ModelInvokeOptions options, ModelCallInputs modelInputs) {
+                                                 ModelInvokeOptions options, ModelCallInputs modelInputs,
+                                                 StreamAttempt streamAttempt) {
         logModelCallStarted(ctx, messages, options == null ? List.of() : options.getTools(), true);
         long callStartTime = System.nanoTime();
         Iterator<AssistantMessageChunk> iterator = null;
@@ -2181,6 +2200,7 @@ public class ReActAgent extends BaseAgent {
             iterator = model.stream(messages, options);
             while (iterator.hasNext()) {
                 AssistantMessageChunk chunk = iterator.next();
+                streamAttempt.markChunkReceived();
                 accumulatedChunk = accumulatedChunk == null ? chunk : (AssistantMessageChunk) accumulatedChunk.merge(chunk);
                 if (firstTokenTime == null) {
                     firstTokenTime = System.nanoTime();
@@ -2248,6 +2268,42 @@ public class ReActAgent extends BaseAgent {
         String content = message.getContent() == null ? "" : String.valueOf(message.getContent()).trim();
         boolean hasToolCalls = message.getToolCalls() != null && !message.getToolCalls().isEmpty();
         return content.isEmpty() && !hasToolCalls;
+    }
+
+    private static boolean hasReasoningContent(AssistantMessage message) {
+        return message != null && message.getReasoningContent() != null
+                && !message.getReasoningContent().isBlank();
+    }
+
+    private static boolean hasIoCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof java.io.IOException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean delayStreamRetry(long retryDelayMs) {
+        if (retryDelayMs <= 0) {
+            return true;
+        }
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(retryDelayMs));
+        return !Thread.currentThread().isInterrupted();
+    }
+
+    private static final class StreamAttempt {
+        private boolean receivedChunks;
+
+        private void markChunkReceived() {
+            receivedChunks = true;
+        }
+
+        private boolean hasReceivedChunks() {
+            return receivedChunks;
+        }
     }
 
     /**
