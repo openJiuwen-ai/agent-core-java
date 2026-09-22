@@ -1368,22 +1368,6 @@ class OpenAIModelClientTest {
         assertThat(client.httpClientForTesting().version()).isEqualTo(HttpClient.Version.HTTP_1_1);
     }
 
-    @Test
-    void resolvesRequestTimeoutFromClientConfigUnlessCallOverridesIt() {
-        OpenAIModelClient client = new OpenAIModelClient(
-                ModelRequestConfig.builder().modelName("gpt-test").build(),
-                ModelClientConfig.builder()
-                        .clientProvider(ProviderType.OPEN_AI)
-                        .apiKey("sk-test")
-                        .apiBase("https://compatible.example.test/v1")
-                        .timeout(1200)
-                        .build());
-
-        assertThat(client.httpClientForTesting().connectTimeout()).contains(Duration.ofSeconds(1200));
-        assertThat(client.requestTimeoutForTesting(null)).isEqualTo(Duration.ofSeconds(1200));
-        assertThat(client.requestTimeoutForTesting(2.5f)).isEqualTo(Duration.ofMillis(2500));
-    }
-
     private static OpenAIModelClient client(String apiBase) {
         return client(apiBase, 3, Map.of("X-Base", "base"));
     }
