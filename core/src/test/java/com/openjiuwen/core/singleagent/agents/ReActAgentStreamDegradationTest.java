@@ -449,6 +449,7 @@ class ReActAgentStreamDegradationTest {
         ReActAgent agent = new ReActAgent(AgentCard.builder().id(id).name(id).description(id).build());
         agent.configure(ReActAgentConfig.builder()
                 .maxIterations(3)
+                .shouldFailTaskOnToolError(false)
                 .streamMaxRetries(0)
                 .streamRetryDelayMs(0)
                 .build());
