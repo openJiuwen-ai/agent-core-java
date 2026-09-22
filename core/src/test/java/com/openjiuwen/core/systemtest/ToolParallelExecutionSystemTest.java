@@ -4,22 +4,9 @@
 package com.openjiuwen.core.systemtest;
 
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
-import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
-import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.Session;
@@ -33,8 +20,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -57,8 +42,13 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
     @DisplayName("ReActAgent executes multiple tool calls in parallel and preserves observations")
     void testReActAgentExecutesMultipleToolCallsInParallel() {
         CountDownLatch bothToolsStarted = new CountDownLatch(2);
-        SequencedToolCallingClient modelClient = new SequencedToolCallingClient();
-        ReActAgent agent = newAgent(modelClient);
+        SequencedToolCallingClient modelClient = SequencedToolCallingClient.withFixedFirstTurn(
+                List.of(
+                        ToolCall.builder().id("tc-seat").name(SEAT_TOOL).arguments("{}").index(0).build(),
+                        ToolCall.builder().id("tc-ac").name(AC_TOOL).arguments("{}").index(1).build()),
+                "tool observations: ", TEST_PROVIDER);
+        Model model = modelClient.registerSharedModel();
+        ReActAgent agent = newAgent(model);
         LocalFunction seatTool = carControlTool(SEAT_TOOL, "seat_massage_on", bothToolsStarted);
         LocalFunction acTool = carControlTool(AC_TOOL, "air_conditioner_on", bothToolsStarted);
 
@@ -77,10 +67,10 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
                     sessionId
             );
 
-            assertThat(modelClient.invokeCount).isEqualTo(2);
-            assertThat(modelClient.firstCallToolNames).contains(SEAT_TOOL, AC_TOOL);
-            assertThat(modelClient.observedToolCallIds).containsExactly("tc-seat", "tc-ac");
-            assertThat(modelClient.observedToolMessages)
+            assertThat(modelClient.modelCallCount()).isEqualTo(2);
+            assertThat(modelClient.firstCallToolNames()).contains(SEAT_TOOL, AC_TOOL);
+            assertThat(modelClient.observedToolCallIds()).containsExactly("tc-seat", "tc-ac");
+            assertThat(modelClient.observedToolMessages())
                     .allMatch(content -> content.contains("parallel=true"))
                     .allMatch(content -> content.contains("session=" + sessionId));
             assertThat(capture.flattenedText())
@@ -93,7 +83,7 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
         }
     }
 
-    private static ReActAgent newAgent(SequencedToolCallingClient modelClient) {
+    private static ReActAgent newAgent(Model model) {
         ReActAgent agent = new ReActAgent(AgentCard.builder()
                 .id("parallel-tools-agent")
                 .name("parallel-tools-agent")
@@ -106,29 +96,8 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
                         "content", "You are a deterministic vehicle control assistant."
                 )))
                 .build());
-        agent.setLlm(newModel(modelClient));
+        agent.setLlm(model);
         return agent;
-    }
-
-    private static Model newModel(SequencedToolCallingClient modelClient) {
-        Model.registerFactory(new Model.ModelClientFactory() {
-            @Override
-            public String providerName() {
-                return TEST_PROVIDER;
-            }
-
-            @Override
-            public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
-                return modelClient;
-            }
-        });
-        ModelClientConfig clientConfig = ModelClientConfig.builder()
-                .clientId("tool-parallel-system-test")
-                .clientProvider(TEST_PROVIDER)
-                .apiKey("test-key")
-                .apiBase("mirror://tool-parallel-system-test")
-                .build();
-        return new Model(clientConfig, ModelRequestConfig.builder().modelName("fake-model").build());
     }
 
     private static LocalFunction carControlTool(String toolName, String resultPrefix, CountDownLatch bothToolsStarted) {
@@ -164,119 +133,5 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
 
     private static void removeTool(String toolName) {
         Runner.resourceMgr().removeTool(toolName, null, TagMatchStrategy.ALL, true);
-    }
-
-    private static final class SequencedToolCallingClient extends BaseModelClient {
-        private int invokeCount;
-        private List<String> firstCallToolNames = List.of();
-        private final List<String> observedToolCallIds = new ArrayList<>();
-        private final List<String> observedToolMessages = new ArrayList<>();
-
-        private SequencedToolCallingClient() {
-            super(ModelRequestConfig.builder().modelName("fake-model").build(),
-                    ModelClientConfig.builder()
-                            .clientId("tool-parallel-system-test")
-                            .clientProvider(TEST_PROVIDER)
-                            .apiKey("test-key")
-                            .apiBase("mirror://tool-parallel-system-test")
-                            .build());
-        }
-
-        @Override
-        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP,
-                                       String model, Integer maxTokens, String stop,
-                                       BaseOutputParser outputParser, Float timeout,
-                                       Map<String, Object> kwargs) {
-            invokeCount++;
-            if (invokeCount == 1) {
-                firstCallToolNames = extractToolNames(tools);
-                return AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(
-                                ToolCall.builder()
-                                        .id("tc-seat")
-                                        .name(SEAT_TOOL)
-                                        .arguments("{}")
-                                        .index(0)
-                                        .build(),
-                                ToolCall.builder()
-                                        .id("tc-ac")
-                                        .name(AC_TOOL)
-                                        .arguments("{}")
-                                        .index(1)
-                                        .build()
-                        ))
-                        .finishReason("tool_calls")
-                        .build();
-            }
-
-            collectToolMessages(messages);
-            return AssistantMessage.builder()
-                    .content("tool observations: " + String.join(" | ", observedToolMessages)
-                            + " order=" + String.join(">", observedToolCallIds))
-                    .finishReason("stop")
-                    .build();
-        }
-
-        @Override
-        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature,
-                                                      Float topP, String model, Integer maxTokens,
-                                                      String stop, BaseOutputParser outputParser,
-                                                      Float timeout, Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException("stream is not used in this system test");
-        }
-
-        @Override
-        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model,
-                                                     String size, String negativePrompt, int n,
-                                                     boolean promptExtend, boolean watermark, int seed,
-                                                     Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException("image generation is not used in this system test");
-        }
-
-        @Override
-        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model,
-                                                      String voice, String languageType,
-                                                      Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException("speech generation is not used in this system test");
-        }
-
-        @Override
-        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl,
-                                                     String audioUrl, String model, String size,
-                                                     String resolution, int duration, boolean promptExtend,
-                                                     boolean watermark, String negativePrompt, Integer seed,
-                                                     Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException("video generation is not used in this system test");
-        }
-
-        private static List<String> extractToolNames(Object tools) {
-            if (!(tools instanceof List<?> toolList)) {
-                return List.of();
-            }
-            List<String> names = new ArrayList<>();
-            for (Object tool : toolList) {
-                if (tool instanceof ToolInfo toolInfo) {
-                    names.add(toolInfo.getName());
-                }
-            }
-            return names;
-        }
-
-        private void collectToolMessages(Object messages) {
-            observedToolCallIds.clear();
-            observedToolMessages.clear();
-            if (!(messages instanceof List<?> messageList)) {
-                return;
-            }
-            for (Object message : messageList) {
-                if (message instanceof ToolMessage toolMessage) {
-                    observedToolCallIds.add(toolMessage.getToolCallId());
-                    observedToolMessages.add(String.valueOf(toolMessage.getContent()));
-                } else if (message instanceof BaseMessage) {
-                    // Other message types are irrelevant for this assertion.
-                }
-            }
-        }
     }
 }
