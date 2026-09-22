@@ -30,6 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 /**
  * Supplementary tests for {@link AbilityManager} — execute, WorkflowCard, McpServerConfig.
@@ -336,7 +337,8 @@ class AbilityManagerSupplementTest {
             agent.registerRail(new AgentRail() {
                 @Override
                 public void beforeToolCall(AgentCallbackContext ctx) {
-                    ((ToolCallInputs) ctx.getInputs()).setToolName(toolId);
+                    ToolCallInputs inputs = assertInstanceOf(ToolCallInputs.class, ctx.getInputs());
+                    inputs.setToolName(toolId);
                 }
             }).toCompletableFuture().join();
             AgentCallbackContext ctx = new AgentCallbackContext(agent);

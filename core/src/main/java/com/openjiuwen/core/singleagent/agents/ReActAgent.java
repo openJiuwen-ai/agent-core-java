@@ -2294,15 +2294,26 @@ public class ReActAgent extends BaseAgent {
         return !Thread.currentThread().isInterrupted();
     }
 
+    /**
+     * Tracks whether an attempt has emitted anything to downstream consumers.
+     */
     private static final class StreamAttempt {
-        private boolean receivedChunks;
+        private boolean hasReceivedChunks;
 
+        /**
+         * Mark the attempt as externally observable.
+         */
         private void markChunkReceived() {
-            receivedChunks = true;
+            hasReceivedChunks = true;
         }
 
+        /**
+         * Return whether at least one chunk was received.
+         *
+         * @return {@code true} after the first chunk
+         */
         private boolean hasReceivedChunks() {
-            return receivedChunks;
+            return hasReceivedChunks;
         }
     }
 

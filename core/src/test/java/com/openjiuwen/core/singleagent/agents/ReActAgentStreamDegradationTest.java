@@ -354,11 +354,11 @@ class ReActAgentStreamDegradationTest {
 
     private static Iterator<AssistantMessageChunk> failingStreamAfterChunk(String content) {
         return new Iterator<>() {
-            private boolean emitted;
+            private boolean hasEmitted;
 
             @Override
             public boolean hasNext() {
-                if (!emitted) {
+                if (!hasEmitted) {
                     return true;
                 }
                 throw new UncheckedIOException(new IOException("connection reset after first chunk"));
@@ -366,10 +366,10 @@ class ReActAgentStreamDegradationTest {
 
             @Override
             public AssistantMessageChunk next() {
-                if (emitted) {
+                if (hasEmitted) {
                     throw new NoSuchElementException();
                 }
-                emitted = true;
+                hasEmitted = true;
                 return AssistantMessageChunk.builder().content(content).build();
             }
         };
