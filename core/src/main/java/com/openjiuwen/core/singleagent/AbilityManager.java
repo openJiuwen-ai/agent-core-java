@@ -629,21 +629,52 @@ public class AbilityManager implements ToolRegistry {
                     .build();
         }
 
-        if (isFailTaskOnToolError(toolCtx)) {
-            Map<String, Object> outcome = new LinkedHashMap<>();
-            outcome.put("tool_name", singleToolCall.getName());
-            outcome.put("tool_call_id", singleToolCall.getId());
-            outcome.put("status", "failed");
-            outcome.put("error", errorMsg);
+        // Build the tool error outcome record — always recorded so that callers
+        // and downstream consumers can observe tool failures via metadata even
+        // when shouldFailTaskOnToolError is false (the default).
+        Map<String, Object> outcome = new LinkedHashMap<>();
+        outcome.put("tool_name", singleToolCall.getName());
+        outcome.put("tool_call_id", singleToolCall.getId());
+        outcome.put("status", "failed");
+        outcome.put("error", errorMsg);
 
+        if (isFailTaskOnToolError(toolCtx)) {
             Map<String, Object> finishResult = new LinkedHashMap<>();
             finishResult.put("output", errorMsg);
             finishResult.put("result_type", "error");
             finishResult.put("tool_outcomes", List.of(outcome));
             toolCtx.requestForceFinish(finishResult);
+        } else {
+            // Even when the task is not force-finished, record the tool error
+            // in the callback context's extra metadata so downstream consumers
+            // (rails, task plan sync, progress reminders) can observe that a
+            // tool failure occurred during this iteration.
+            recordToolErrorInContext(toolCtx, outcome);
         }
 
         return new ToolExecutionEntry(toolResult, toolMessage);
+    }
+
+    /**
+     * Records a tool error outcome into the callback context's extra map under
+     * the {@code tool_errors} key. Multiple tool errors within the same
+     * iteration are accumulated into a list, preserving insertion order.
+     *
+     * @param toolCtx tool execution callback context; may be null
+     * @param outcome the tool error outcome record (tool_name, error, etc.)
+     * @since 0.1.16
+     */
+    @SuppressWarnings("unchecked")
+    private static void recordToolErrorInContext(AgentCallbackContext toolCtx, Map<String, Object> outcome) {
+        if (toolCtx == null || toolCtx.getExtra() == null) {
+            return;
+        }
+        Object existing = toolCtx.getExtra().computeIfAbsent("tool_errors", k -> new ArrayList<>());
+        if (existing instanceof List<?> list) {
+            @SuppressWarnings("unchecked")
+            List<Object> objectList = (List<Object>) list;
+            objectList.add(outcome);
+        }
     }
 
     /**
