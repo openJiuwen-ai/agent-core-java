@@ -7,6 +7,8 @@ package com.openjiuwen.harness.rails.interrupt;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.harness.rails.CallbackContext;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -105,11 +107,18 @@ public class ConfirmInterruptRail extends BaseInterruptRail {
      * <p>Mirrors Python's {@code ConfirmPayload} in
      * {@code openjiuwen/harness/rails/interrupt/confirm_rail.py}.</p>
      *
+     * <p>Travels as a resume input, which a persisting checkpointer keeps in the session state
+     * and writes with Java serialization, so it has to be {@link Serializable}.</p>
+     *
      * @param approved whether the tool call is approved
      * @param feedback rejection feedback
      * @param autoConfirm whether the response requests future auto-confirmation
      */
-    public record ConfirmPayload(boolean approved, String feedback, boolean autoConfirm) {
+    public record ConfirmPayload(boolean approved, String feedback, boolean autoConfirm)
+            implements Serializable {
+
+        @Serial
+        private static final long serialVersionUID = 1L;
 
         public static ConfirmPayload from(Object raw) {
             if (raw instanceof ConfirmPayload payload) {

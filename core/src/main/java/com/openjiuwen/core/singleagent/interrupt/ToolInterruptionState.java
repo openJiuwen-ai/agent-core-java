@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.interrupt;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.io.Serial;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -18,6 +19,9 @@ import java.util.Map;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolInterruptionState extends BaseInterruptionState {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     @JsonProperty("interrupted_tools")
     private Map<String, ToolInterruptEntry> interruptedTools = new LinkedHashMap<>();
 

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.singleagent.interrupt.BaseInterruptionState;
 
+import java.io.Serial;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -19,6 +20,9 @@ import java.util.Map;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class InterruptionState extends BaseInterruptionState {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     @JsonProperty("interrupted_workflows")
     private Map<String, WorkflowInterruptEntry> interruptedWorkflows = new LinkedHashMap<>();
 

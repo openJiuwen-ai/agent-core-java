@@ -4,6 +4,9 @@
 
 package com.openjiuwen.harness.security;
 
+import java.io.Serial;
+import java.io.Serializable;
+
 /**
  * Mirrors Python's {@code PermissionConfirmResponse} in
  * {@code openjiuwen/harness/security/models.py}.
@@ -12,8 +15,17 @@ package com.openjiuwen.harness.security;
  * approved + autoConfirm + persistAllow writes a permanent allow rule to disk;
  * approved + autoConfirm without persistAllow stores a session-scoped auto-confirm;
  * approved alone allows this single invocation; not approved rejects.
+ *
+ * <p>A resume input is kept in the session state by {@code Checkpointer#preAgentExecute}, and a
+ * persisting checkpointer writes that state with Java serialization. This type is therefore
+ * {@link Serializable}: without it the save of the resuming turn fails as a whole, the snapshot
+ * taken when the tool was interrupted stays in the store, and the next turn of the same session
+ * recovers it and replays the tool call that was just answered.
  */
-public final class PermissionConfirmResponse {
+public final class PermissionConfirmResponse implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private final boolean approved;
     private final String feedback;

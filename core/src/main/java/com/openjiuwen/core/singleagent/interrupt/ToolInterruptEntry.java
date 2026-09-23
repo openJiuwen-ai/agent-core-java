@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -16,9 +18,15 @@ import java.util.Map;
  *
  * <p>Mirrors Python's {@code ToolInterruptEntry} in
  * {@code openjiuwen/core/single_agent/interrupt/state.py}.</p>
+ *
+ * <p>Reachable from {@link ToolInterruptionState}, so it has to be {@link Serializable} for a
+ * persisting checkpointer to write the interrupted turn.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ToolInterruptEntry {
+public class ToolInterruptEntry implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     @JsonProperty("tool_call")
     private ToolCall toolCall;
 
