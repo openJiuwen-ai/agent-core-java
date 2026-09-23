@@ -13,6 +13,8 @@ import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.tools.AskUserTool;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -274,9 +276,16 @@ public class AskUserRail extends BaseInterruptRail {
      * Mirrors Python's {@code AskUserPayload} in
      * {@code openjiuwen/harness/rails/interrupt/ask_user_rail.py}.
      *
+     * <p>Travels as a resume input, which a persisting checkpointer keeps in the session state
+     * and writes with Java serialization, so it has to be {@link Serializable}.</p>
+     *
      * @param answers question text to answer mapping
      */
-    public record AskUserPayload(Map<String, String> answers) {
+    public record AskUserPayload(Map<String, String> answers) implements Serializable {
+
+        @Serial
+        private static final long serialVersionUID = 1L;
+
         public AskUserPayload() {
             this(Map.of());
         }

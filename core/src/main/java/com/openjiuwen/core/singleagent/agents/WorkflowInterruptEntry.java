@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,9 +18,17 @@ import java.util.List;
  *
  * <p>Mirrors Python's {@code WorkflowInterruptEntry} in
  * {@code openjiuwen/core/single_agent/agents/react_agent.py}.</p>
+ *
+ * <p>Reachable from {@link InterruptionState}, so it has to be {@link Serializable} for a
+ * persisting checkpointer to write the interrupted turn. The workflow execution state and the
+ * collected input are declared as {@code Object}, so a caller that stores a value of its own
+ * must supply a serializable one for that write to succeed.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class WorkflowInterruptEntry {
+public class WorkflowInterruptEntry implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     @JsonProperty("tool_call")
     private ToolCall toolCall;
 
