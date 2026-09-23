@@ -193,42 +193,44 @@ public class TaskManager {
         }
         lock.lock();
         try {
-            // Remove existing tasks for this session first
-            List<String> toRemove = new ArrayList<>();
-            for (Task task : tasks.values()) {
-                if (sessionId.equals(task.getSessionId())) {
-                    toRemove.add(task.getTaskId());
-                }
-            }
-            for (String tid : toRemove) {
-                removeTaskInternal(tid, new HashSet<>(toRemove));
-            }
-
-            // Merge in the restored state for this session (only tasks matching
-            // the session id; defensive guard against stale state from other sessions)
-            if (state != null && state.getTasks() != null) {
-                for (var entry : state.getTasks().entrySet()) {
-                    Task task = entry.getValue();
-                    if (task == null) {
-                        continue;
-                    }
-                    // Only load tasks that belong to this session
-                    if (sessionId.equals(task.getSessionId())) {
-                        tasks.put(entry.getKey(), task.copy());
-                        priorityIndex.computeIfAbsent(task.getPriority(), k -> new ArrayList<>())
-                                .add(task.getTaskId());
-                        if (task.getParentTaskId() != null) {
-                            parentToChildren.computeIfAbsent(task.getParentTaskId(), k -> new HashSet<>())
-                                    .add(task.getTaskId());
-                            childToParent.put(task.getTaskId(), task.getParentTaskId());
-                        } else {
-                            rootTasks.add(task.getTaskId());
-                        }
-                    }
-                }
-            }
+            removeTasksForSessionInternal(sessionId);
+            mergeRestoredStateForSession(sessionId, state);
         } finally {
             lock.unlock();
+        }
+    }
+
+    private void removeTasksForSessionInternal(String sessionId) {
+        List<String> toRemove = new ArrayList<>();
+        for (Task task : tasks.values()) {
+            if (sessionId.equals(task.getSessionId())) {
+                toRemove.add(task.getTaskId());
+            }
+        }
+        for (String tid : toRemove) {
+            removeTaskInternal(tid, new HashSet<>(toRemove));
+        }
+    }
+
+    private void mergeRestoredStateForSession(String sessionId, TaskManagerState state) {
+        if (state == null || state.getTasks() == null) {
+            return;
+        }
+        for (var entry : state.getTasks().entrySet()) {
+            Task task = entry.getValue();
+            if (task == null || !sessionId.equals(task.getSessionId())) {
+                continue;
+            }
+            tasks.put(entry.getKey(), task.copy());
+            priorityIndex.computeIfAbsent(task.getPriority(), k -> new ArrayList<>())
+                    .add(task.getTaskId());
+            if (task.getParentTaskId() != null) {
+                parentToChildren.computeIfAbsent(task.getParentTaskId(), k -> new HashSet<>())
+                        .add(task.getTaskId());
+                childToParent.put(task.getTaskId(), task.getParentTaskId());
+            } else {
+                rootTasks.add(task.getTaskId());
+            }
         }
     }
 

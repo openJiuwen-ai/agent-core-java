@@ -283,7 +283,8 @@ public class Controller {
                     sessionId, taskManagerState.getTasks().size(), taskManagerState.getRootTasks().size());
             return true;
         } catch (Exception e) {
-            Loggers.CONTROLLER.error("Failed to restore TaskManager state for session {}: {}, clearing this session only",
+            Loggers.CONTROLLER.error(
+                    "Failed to restore TaskManager state for session {}: {}, clearing this session only",
                     sessionId, e.getMessage());
             // Only clear this session's tasks, not all sessions' tasks (session-safe)
             taskManager.clearStateForSession(sessionId);

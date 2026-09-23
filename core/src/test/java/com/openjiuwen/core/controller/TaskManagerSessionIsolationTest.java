@@ -4,7 +4,8 @@
 
 package com.openjiuwen.core.controller;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.modules.TaskManager;
@@ -16,7 +17,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,15 +42,15 @@ class TaskManagerSessionIsolationTest {
 
         // Add tasks from two sessions
         taskManager.addTask(List.of(
-                createTask("session-A", "task-a1", "test_task", "Task A1", 1, TaskStatus.WORKING),
-                createTask("session-A", "task-a2", "test_task", "Task A2", 1, TaskStatus.SUBMITTED),
-                createTask("session-B", "task-b1", "test_task", "Task B1", 1, TaskStatus.WORKING)));
+                createTask("session-A", "task-a1", "test_task", 1, TaskStatus.WORKING),
+                createTask("session-A", "task-a2", "test_task", 1, TaskStatus.SUBMITTED),
+                createTask("session-B", "task-b1", "test_task", 1, TaskStatus.WORKING)));
     }
 
-    private Task createTask(String sessionId, String taskId, String taskType, String description, int priority,
+    private Task createTask(String sessionId, String taskId, String taskType, int priority,
             TaskStatus status) {
         Task task = new Task(sessionId, taskId, taskType);
-        task.setDescription(description);
+        task.setDescription(taskId);
         task.setPriority(priority);
         task.setStatus(status);
         return task;
@@ -90,7 +90,7 @@ class TaskManagerSessionIsolationTest {
     void loadStateForSessionShouldPreserveOtherSessions() {
         // Build a state snapshot for session-B with one new task
         Map<String, Task> tasks = new HashMap<>();
-        Task b2 = createTask("session-B", "task-b2", "test_task", "Task B2", 1, TaskStatus.SUBMITTED);
+        Task b2 = createTask("session-B", "task-b2", "test_task", 1, TaskStatus.SUBMITTED);
         tasks.put("task-b2", b2.copy());
         TaskManagerState state = new TaskManagerState(tasks, new HashMap<>(), new HashMap<>(), new HashMap<>(),
                 new HashSet<>(Set.of("task-b2")));
