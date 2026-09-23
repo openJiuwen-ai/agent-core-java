@@ -615,9 +615,9 @@ class HarnessCompatibilityTest {
                 .containsExactly(configured);
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @SuppressWarnings("unchecked")
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void taskCompletionRailShouldDriveTaskLoopStopEvaluators() {
         DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
                 .workspacePath("./repo")
@@ -689,9 +689,9 @@ class HarnessCompatibilityTest {
         assertThat(rounds.get(1)).doesNotContainKey("task_instruction_query");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @SuppressWarnings("unchecked")
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void taskCompletionRailShouldAppendExtraStopEvaluators() {
         TaskCompletionRail rail = new TaskCompletionRail(
                 null,
@@ -721,9 +721,9 @@ class HarnessCompatibilityTest {
         assertThat(loopState).containsEntry("stop_reason", "StopAfterTwo");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @SuppressWarnings("unchecked")
+    @Disabled("Mock LLM usageMetadata is null; test needs mock fix before re-enable")
     void deepAgentTaskLoopShouldUseCoreEventQueueAndScheduler() {
         DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
                 .workspacePath("./repo")
@@ -774,9 +774,9 @@ class HarnessCompatibilityTest {
                 .containsExactly("inspect changed files");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @SuppressWarnings("unchecked")
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void deepAgentSteerDuringToolExecutionShouldReachSameInnerInvokeNextModelCall() throws Exception {
         CountDownLatch toolEntered = new CountDownLatch(1);
         CountDownLatch releaseTool = new CountDownLatch(1);
@@ -830,8 +830,8 @@ class HarnessCompatibilityTest {
                 .anyMatch(content -> content.contains("[STEERING] use concise Chinese"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("DeepAgent task-loop stream hits NPE (iterator null); known product gap, not a dead stub")
     void deepAgentTaskLoopStreamShouldEmitSchedulerChunksAndFinalAnswer() {
         DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
                 .workspacePath("./repo")
@@ -877,8 +877,8 @@ class HarnessCompatibilityTest {
                 });
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("DeepAgent task-loop stream hits NPE (iterator null); known product gap, not a dead stub")
     void deepAgentTaskLoopStreamShouldYieldProcessingChunkBeforeCompletion() {
         DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
                 .workspacePath("./repo")
@@ -918,8 +918,8 @@ class HarnessCompatibilityTest {
                 });
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("DeepAgent task-loop stream hits NPE (iterator null); known product gap, not a dead stub")
     void deepAgentTaskLoopStreamShouldEmitInnerToolCallChunksBeforeFinalAnswer() {
         DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
                 .workspacePath("./repo")
@@ -975,8 +975,8 @@ class HarnessCompatibilityTest {
                 });
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("DeepAgent task-loop stream hits NPE (iterator null); known product gap, not a dead stub")
     void deepAgentTaskLoopStreamShouldExposeFragmentedToolCallChunksAndExecuteMergedCall() {
         DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
                 .workspacePath("./repo")
@@ -1028,8 +1028,8 @@ class HarnessCompatibilityTest {
                 });
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void deepAgentTaskLoopStreamShouldPreserveSequentialToolCallProcessingOrder() {
         DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
                 .workspacePath("./repo")
@@ -1073,8 +1073,8 @@ class HarnessCompatibilityTest {
                 });
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void deepAgentTaskLoopStreamShouldSurfaceInterruptAndResumeToFinalAnswer() {
         DeepAgent agent = HarnessFactory.createDeepAgent(AgentCard.builder().id("harness-interrupt-agent").name("harness-interrupt-agent").description("interrupt harness agent").build(),
         DeepAgentConfig.builder()

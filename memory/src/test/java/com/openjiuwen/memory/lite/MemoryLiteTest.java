@@ -16,8 +16,8 @@ class MemoryLiteTest {
     @TempDir
     Path tempDir;
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void memoryIndexManagerShouldIndexAndSearchGeneralMemory() throws Exception {
         Path root = tempDir.resolve("workspace");
         Files.createDirectories(root.resolve("memory"));
@@ -39,8 +39,8 @@ class MemoryLiteTest {
         assertThat(String.valueOf(results.get(0).get("text"))).contains("release");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void memoryToolOpsShouldWriteReadAndSearch() throws Exception {
         Path root = tempDir.resolve("workspace-tools");
         Files.createDirectories(root.resolve("memory"));
@@ -63,8 +63,8 @@ class MemoryLiteTest {
         assertThat(String.valueOf(search)).contains("regression");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void codingMemoryToolOpsShouldWriteEditAndUpdateIndex() throws Exception {
         Path root = tempDir.resolve("workspace-coding");
         Files.createDirectories(root.resolve("coding_memory"));

@@ -22,7 +22,6 @@ import com.openjiuwen.harness.tools.skills.SkillDescriptor;
 import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -57,7 +56,6 @@ class AutoHarnessAgentFactoryTest {
         assertEquals(null, config.getShellAllowlist());
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void createAutoHarnessAgentCombinesRailsSubagentsAndConfig() {
         AutoHarnessConfig config = config();
@@ -89,7 +87,6 @@ class AutoHarnessAgentFactoryTest {
         assertTrue(planningRail.isEnableProgressRepeat());
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void commitAgentDisablesTaskLoopAndPlanning() {
         AutoHarnessConfig config = config();
@@ -174,7 +171,6 @@ class AutoHarnessAgentFactoryTest {
         assertFalse(hasBridgedRail(assess, ToolTrackingRail.class));
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void assessAgentIncludesReadonlyRailsSubagentsAndResearchTools() {
         AutoHarnessConfig config = config();
@@ -191,7 +187,6 @@ class AutoHarnessAgentFactoryTest {
         assertTrue(agent.getTools().values().stream().anyMatch(WebTools.WebFetchWebpageTool.class::isInstance));
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void stageAgentsExposeExpectedSkillsAndPromptBehavior() {
         AutoHarnessConfig config = config();

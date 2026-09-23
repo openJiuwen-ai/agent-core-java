@@ -36,8 +36,8 @@ class HarnessPermissionCompatibilityTest {
         return config;
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void permissionEngineShouldEvaluateAllowAskDeny() {
         PermissionEngine engine = new PermissionEngine(permissions(), null, null, Path.of(".").toAbsolutePath());
 

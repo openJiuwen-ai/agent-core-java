@@ -141,9 +141,9 @@ class PromptAssembleTest {
             assertEquals("", var.getValue());
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("Variable with null inputKeys uses empty list")
+        @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
         void testVariableNullInputKeys() {
             Variable var = new TestVariable("test_var", null);
             assertNotNull(var.getInputKeys());
@@ -308,7 +308,6 @@ class PromptAssembleTest {
             assertEquals(Map.of("info", "Author is Bob"), var.getValue());
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("Non-string values converted via toString")
         @SuppressWarnings("unchecked")

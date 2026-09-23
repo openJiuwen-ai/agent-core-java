@@ -5,7 +5,6 @@
 package com.openjiuwen.core.common.task_manager;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -114,7 +113,6 @@ class TaskTest {
                 .hasMessage("Task timeout");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void managedCancelRecordsReasonAndCancelledBy() throws Exception {
         TaskManager manager = TaskManager.getInstance();

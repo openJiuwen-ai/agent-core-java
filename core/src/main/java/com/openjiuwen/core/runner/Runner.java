@@ -809,7 +809,7 @@ public final class Runner {
         }
 
         private static Iterator<Object> postRunAfterIterator(Iterator<Object> delegate, AgentSession session) {
-            return new Iterator<>() {
+            class PostRunIterator implements Iterator<Object>, AutoCloseable {
                 private boolean closed;
 
                 @Override
@@ -818,11 +818,11 @@ public final class Runner {
                     try {
                         hasNext = delegate != null && delegate.hasNext();
                     } catch (RuntimeException error) {
-                        close();
+                        closeQuietly();
                         throw error;
                     }
                     if (!hasNext) {
-                        close();
+                        closeQuietly();
                     }
                     return hasNext;
                 }
@@ -835,13 +835,35 @@ public final class Runner {
                     return delegate.next();
                 }
 
-                private void close() {
-                    if (!closed) {
-                        session.postRun();
-                        closed = true;
+                @Override
+                public void close() throws Exception {
+                    if (closed) {
+                        return;
+                    }
+                    closed = true;
+                    Exception delegateError = null;
+                    if (delegate instanceof AutoCloseable closeable) {
+                        try {
+                            closeable.close();
+                        } catch (Exception error) {
+                            delegateError = error;
+                        }
+                    }
+                    session.postRun();
+                    if (delegateError != null) {
+                        throw delegateError;
                     }
                 }
-            };
+
+                private void closeQuietly() {
+                    try {
+                        close();
+                    } catch (Exception ignored) {
+                        // Exhaust/error path must not mask the original signal with close failures.
+                    }
+                }
+            }
+            return new PostRunIterator();
         }
 
         /**

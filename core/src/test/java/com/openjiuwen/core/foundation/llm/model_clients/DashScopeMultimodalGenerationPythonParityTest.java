@@ -11,7 +11,6 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -33,36 +32,6 @@ class DashScopeMultimodalGenerationPythonParityTest {
     @Nested
     @DisplayName("TestDashScopeImageGeneration")
     class ImageGenerationTests {
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateImageBasic() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateImageWithSize() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateImageWithNegativePrompt() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateImageWithReferenceImage() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateImageBatchGeneration() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateImageMultipleReferenceImages() {
-        }
 
         @Test
         void testGenerateImageEmptyMessagesValidation() {
@@ -136,26 +105,6 @@ class DashScopeMultimodalGenerationPythonParityTest {
     class SpeechGenerationTests {
 
         @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateSpeechBasic() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateSpeechWithCustomVoice() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateSpeechLongText() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateSpeechEnglish() {
-        }
-
-        @Test
         void testGenerateSpeechEmptyContentValidation() {
             DashScopeModelClient client = client("qwen3-tts-flash", new FailingTransport());
 
@@ -193,36 +142,6 @@ class DashScopeMultimodalGenerationPythonParityTest {
     @Nested
     @DisplayName("TestDashScopeVideoGeneration")
     class VideoGenerationTests {
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateVideoTextToVideoBasic() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateVideoWithCustomSizeAndDuration() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateVideoImageToVideo() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateVideoWithNegativePrompt() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateVideoWithAudio() {
-        }
-
-        @Test
-        @Disabled(PYTHON_SKIP_REASON)
-        void testGenerateVideoImageToVideoWithAudio() {
-        }
 
         @Test
         void testGenerateVideoEmptyMessagesValidation() {

@@ -31,7 +31,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -47,11 +46,6 @@ class DeepAgentE2eMissingTest {
 
     @TempDir
     Path tempDir;
-
-    @Test
-    @Disabled(PYTHON_SKIP_REASON)
-    void deepAgentInvokeE2eRequireApiKeyBase() {
-    }
 
     @Test
     void deepAgentComplexTaskMultiToolChain() throws Exception {
@@ -148,11 +142,6 @@ class DeepAgentE2eMissingTest {
     }
 
     @Test
-    @Disabled(PYTHON_SKIP_REASON)
-    void deepAgentTaskLoopRealMultistepSteerFollowUp() {
-    }
-
-    @Test
     void deepAgentAutoRailsCreationE2e() {
         DeepAgentConfig config = new DeepAgentConfig();
         config.setEnablePlanMode(true);
@@ -165,16 +154,6 @@ class DeepAgentE2eMissingTest {
         assertThat(agent.findRailsByType(TaskPlanningRail.class)).hasSize(1);
         assertThat(agent.findRailsByType(SkillUseRail.class)).hasSize(1);
         assertThat(toolIds(agent)).contains("todo_create", "skill_tool", "list_skill");
-    }
-
-    @Test
-    @Disabled(PYTHON_SKIP_REASON)
-    void deepAgentStreamE2eRequireApiKeyBase() {
-    }
-
-    @Test
-    @Disabled(PYTHON_SKIP_REASON)
-    void deepAgentTaskLoopStreamE2e() {
     }
 
     private static DeepAgent configuredAgentWithPlanMode() {

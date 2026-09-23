@@ -29,7 +29,6 @@ import com.openjiuwen.core.workflow.component.Start;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -133,36 +132,6 @@ class LLMComponentMissingTest {
         WorkflowOutput result = workflow.invoke(Map.of("query", "yzq test query"), workflowSession(), null);
 
         assertNotNull(result);
-    }
-
-    @Disabled("Skipped in Python source: skip system test")
-    @Test
-    void testRealWorkflowAgentStreamStartLlmEndWithStreamWriter() {
-    }
-
-    @Disabled("Skipped in Python source: skip system test")
-    @Test
-    void testRealWorkflowInvokeStartLlmEndWithStreamWriter() {
-    }
-
-    @Disabled("Skipped in Python source: skip system test")
-    @Test
-    void testRealWorkflowInvokeStartLlmEndWithJsonOutput() {
-    }
-
-    @Disabled("Skipped in Python source: skip system test")
-    @Test
-    void testRealWorkflowStreamStartLlmEndWithComponentStreaming() {
-    }
-
-    @Disabled("Skipped in Python source: skip system test")
-    @Test
-    void testRealWorkflowStreamStartLlmEndWithComponentStreamingWithJsonOutputSchema() {
-    }
-
-    @Disabled("Skipped in Python source: skip system test")
-    @Test
-    void testRealWorkflowAgentInvokeStartLlmEndWithStreamWriter() {
     }
 
     @Test

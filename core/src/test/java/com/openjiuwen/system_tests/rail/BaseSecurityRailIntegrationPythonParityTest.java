@@ -13,7 +13,6 @@ import com.openjiuwen.harness.rails.security.SecurityCheckContext;
 import com.openjiuwen.harness.rails.security.SecurityDecision;
 import com.openjiuwen.harness.rails.security.SecurityInterrupt;
 import com.openjiuwen.harness.rails.security.SecurityReject;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -81,16 +80,6 @@ class BaseSecurityRailIntegrationPythonParityTest {
         rails.forEach(rail -> rail.afterToolCall(ctx));
 
         assertEquals(List.of("high_priority", "low_priority"), order);
-    }
-
-    @Disabled("Skipped in Python source: Requires proper session setup for HITL interrupt flow")
-    @Test
-    void securityInterruptWithHumanApproval() {
-    }
-
-    @Disabled("Skipped in Python source: Requires proper session setup for HITL interrupt flow")
-    @Test
-    void securityInterruptWithHumanRejection() {
     }
 
     @Test

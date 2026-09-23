@@ -63,8 +63,8 @@ class DefaultEvaluatorTest {
         assertThat(evaluator.seenQuestions).containsExactlyInAnyOrder("q1", "q2");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void defaultEvaluatorParsesPassingJsonResultFromModel() {
         List<List<BaseMessage>> capturedMessages = new ArrayList<>();
         Model model = new Model((messages, modelConfig, modelClientConfig, options) -> {

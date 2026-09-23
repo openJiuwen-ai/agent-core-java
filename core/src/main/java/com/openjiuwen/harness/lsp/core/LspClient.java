@@ -145,6 +145,12 @@ public class LspClient {
     }
 
     private void cleanupAfterStop() {
+        // Fail pending requests with the intentional stop reason before tearing down I/O.
+        // Closing streams can wake readLoop with EOF/IOException; that path must not overwrite
+        // pending futures with "LSP server crashed".
+        completePending(new IllegalStateException("LSP client stopped"));
+        pending.clear();
+
         cancelFuture(readerTask);
         cancelFuture(stderrTask);
         closeQuietly(process.getOutputStream(), "stdin");
@@ -161,8 +167,6 @@ public class LspClient {
             process.destroyForcibly();
         }
 
-        completePending(new IllegalStateException("LSP client stopped"));
-        pending.clear();
         isInitialized = false;
         capabilities = null;
         OpenJiuwenExecutors.shutdownNow(ioExecutor);
@@ -219,8 +223,12 @@ public class LspClient {
                 dispatch(message);
             }
         } catch (Exception error) {
-            LOGGER.error("[readLoop] crashed: %s", error.getMessage());
-            onCrash(null);
+            if (isStopping) {
+                LOGGER.debug("[readLoop] stopped during shutdown: %s", error.getMessage());
+            } else {
+                LOGGER.error("[readLoop] crashed: %s", error.getMessage());
+                onCrash(null);
+            }
         } finally {
             cancelFuture(stderrTask);
             stderrTask = null;
@@ -374,6 +382,9 @@ public class LspClient {
     }
 
     private void onCrash(Integer code) {
+        if (isStopping) {
+            return;
+        }
         if (!crashReported.compareAndSet(false, true)) {
             return;
         }

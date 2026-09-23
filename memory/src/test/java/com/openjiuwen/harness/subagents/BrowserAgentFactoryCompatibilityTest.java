@@ -12,7 +12,6 @@ import com.openjiuwen.harness.tools.browser_move.playwright_runtime.BrowserRunGu
 import com.openjiuwen.harness.tools.browser.BrowserRuntimeSettings;
 import com.openjiuwen.harness.workspace.Workspace;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 import java.util.Map;
 
@@ -36,63 +35,76 @@ class BrowserAgentFactoryCompatibilityTest {
         );
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void buildBrowserAgentConfigShouldExposeFactoryMetadata() {
-        DeepAgentConfig.SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(settings());
+        RuntimeSettings settings = settings();
+        DeepAgentConfig.SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(
+                null,
+                null,
+                null,
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(),
+                settings,
+                "en",
+                false,
+                25
+        );
 
         assertThat(spec.getAgentCard().getName()).isEqualTo("browser_agent");
         assertThat(spec.getSystemPrompt()).isEqualTo(BrowserAgentFactory.DEFAULT_BROWSER_AGENT_SYSTEM_PROMPT.get("en"));
         assertThat(spec.getFactoryName()).isEqualTo(BrowserAgentFactory.BROWSER_AGENT_FACTORY_NAME);
-        assertThat(spec.getFactoryKwargs()).containsKey("settings");
+        assertThat(spec.getFactoryKwargs()).containsEntry("settings", settings);
     }
 
     @Test
     void buildBrowserAgentConfigShouldPreserveCustomRails() {
         MemoryRail memoryRail = new MemoryRail();
+        RuntimeSettings settings = settings();
 
         DeepAgentConfig.SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(
-                settings(),
                 null,
-                "en",
+                null,
+                null,
                 java.util.List.of(),
                 java.util.List.of(),
                 java.util.List.of(memoryRail),
-                null,
+                settings,
                 "en",
                 false,
                 25
         );
 
         assertThat(spec.getRails()).containsExactly(memoryRail);
-        assertThat(spec.getFactoryKwargs()).containsKey("settings");
+        assertThat(spec.getFactoryKwargs()).containsEntry("settings", settings);
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void createBrowserAgentShouldReturnDeepAgent() {
         DeepAgent agent = BrowserAgentFactory.createBrowserAgent(
-                settings(),
+                null,
                 java.util.List.of(),
                 java.util.List.of(),
                 java.util.List.of(),
                 null,
-                "cn",
-                null
+                "en",
+                settings()
         );
 
         assertThat(agent.getCard().getName()).isEqualTo("browser_agent");
         assertThat(agent.getTools())
-                .hasSize(5);
+                .hasSize(7);
         assertThat(agent.getTools().values())
-                .hasSize(5)
+                .hasSize(7)
                 .allSatisfy(tool -> assertThat(tool).isInstanceOf(Tool.class));
         assertThat(agent.getTools().keySet())
-                .containsExactly(
-                        "browser_cancel",
+                .containsExactlyInAnyOrder(
+                        "browser_cancel_run",
                         "browser_clear_cancel",
                         "browser_custom_action",
-                        "browser_list_actions",
+                        "browser_list_custom_actions",
+                        "browser_probe_cards",
+                        "browser_probe_interactives",
                         "browser_runtime_health"
                 );
         assertThat(agent.getRails())
@@ -104,26 +116,26 @@ class BrowserAgentFactoryCompatibilityTest {
         MemoryRail memoryRail = new MemoryRail();
         RuntimeSettings browserSettings = settings();
         DeepAgentConfig.SubAgentConfig spec = BrowserAgentFactory.buildBrowserAgentConfig(
-                browserSettings,
                 null,
-                "en",
+                null,
+                null,
                 java.util.List.of(),
                 java.util.List.of(),
                 java.util.List.of(memoryRail),
-                null,
+                browserSettings,
                 "en",
                 false,
                 25
         );
 
         DeepAgent agent = BrowserAgentFactory.createBrowserAgent(
-                browserSettings,
+                null,
                 java.util.List.of(),
                 java.util.List.of(),
                 java.util.List.of(memoryRail),
                 null,
                 "en",
-                null
+                browserSettings
         );
 
         assertThat(spec.getRails()).contains(memoryRail);

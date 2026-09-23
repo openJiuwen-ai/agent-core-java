@@ -28,8 +28,8 @@ class GeneratorTest {
         com.openjiuwen.memory.prompt.PromptApplier.getInstance().clearCache();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void genAllMemoryFiltersFragmentTypesByIndependentSwitches() throws Exception {
         Model model = mock(Model.class);
         doReturn(new AssistantMessage("""
@@ -76,8 +76,8 @@ class GeneratorTest {
         assertTrue(memories.containsKey(MemoryType.EPISODIC_MEMORY.getValue()));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void genAllMemoryAcceptsPythonFragmentItemShapes() throws Exception {
         Model model = mock(Model.class);
         doReturn(new AssistantMessage("""

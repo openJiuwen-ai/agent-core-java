@@ -148,8 +148,8 @@ class WorkflowControllerTest {
         assertThat(intent.getMetadata()).isEmpty();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void interruptTaskStoresComponentIdsAndFirstInterruptOnly() {
         WorkflowController controller = controller(List.of(workflow("flow", "Flow", "1", Map.of())), null);
         MemorySession session = new MemorySession("s1");

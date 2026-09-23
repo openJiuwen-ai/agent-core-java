@@ -19,8 +19,8 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 
 import java.util.Iterator;
 import java.util.List;
@@ -123,8 +123,8 @@ class HandoffCompatibilityTest {
         assertThat(result).isEqualTo(Map.of("result", "billing:invoice"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void handoffTeamShouldRejectDisallowedRoute() {
         TeamCard card = new TeamCard("handoff-team", "handoff-team", "");
         HandoffConfig handoff = new HandoffConfig();

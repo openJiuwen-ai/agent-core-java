@@ -67,8 +67,8 @@ class TaskTypesTest {
         assertThat(dependency.getDataMapping()).isEmpty();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void taskNestedModelsPreserveExplicitValues() {
         TaskInput input = new TaskInput("plugin-id", "search", Map.of("query", "hello"));
         TaskResult result = new TaskResult(TaskStatus.SUCCESS, "done", null, null);

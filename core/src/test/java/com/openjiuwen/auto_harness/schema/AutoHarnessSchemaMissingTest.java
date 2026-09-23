@@ -14,7 +14,6 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ProjectProfile;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ResearchContext;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -42,7 +41,6 @@ class AutoHarnessSchemaMissingTest {
     @TempDir
     private Path tempDir;
 
-    @Disabled("remote env do not support node")
     @ParameterizedTest(name = "{0}")
     @MethodSource("passedPythonNodes")
     void passedPythonNodeParity(String nodeId) throws Exception {
@@ -315,46 +313,6 @@ class AutoHarnessSchemaMissingTest {
             }
             default -> throw new IllegalArgumentException("Unhandled node id: " + nodeId);
         }
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testExperienceDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testWorktreesDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testRunsDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testRuntimeExtensionsDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testCacheRepoDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testBuildPathsIncludesRuntimeExtensionsDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testCacheRepoDirUsesUpstreamRepoDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_UNIX_SKIP_REASON)
-    void testUnixCandidatesDisabledWithPythonSkip() {
     }
 
     private static Stream<String> passedPythonNodes() {

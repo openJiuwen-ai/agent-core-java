@@ -5,7 +5,6 @@
 package com.openjiuwen.core.sysop.local;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,7 +54,6 @@ class LocalUtilsTest {
         assertThat(result.getException()).isNull();
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void invokeTimeoutReturnsPartialBuffersAndTimeoutException() throws Exception {
         Process process = startScript("Write-Output 'before'; Start-Sleep -Milliseconds 1500; Write-Output 'after'");

@@ -273,7 +273,13 @@ public class StreamableHttpClient implements McpClient {
     }
 
     @FunctionalInterface
-    private interface McpOperation<T> {
+    private interface McpOperation<T extends Object> {
+        /**
+         * Runs one MCP client operation over the streamable-http transport.
+         *
+         * @return operation result
+         * @throws Exception when the transport or session call fails
+         */
         T execute() throws Exception;
     }
 

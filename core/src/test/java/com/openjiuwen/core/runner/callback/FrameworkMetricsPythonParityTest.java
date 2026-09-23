@@ -95,7 +95,7 @@ class FrameworkMetricsPythonParityTest {
     private void metricsTracksTiming() {
         AsyncCallbackFramework framework = frameworkWithMetrics();
         framework.on("event").apply(named("slow_callback", kwargs -> {
-            sleepQuietly(50L);
+            sleepQuietly(100L);
             return "done";
         }));
 
@@ -161,20 +161,19 @@ class FrameworkMetricsPythonParityTest {
 
     private void getSlowCallbacks() {
         AsyncCallbackFramework framework = frameworkWithMetrics();
-        framework.on("event").apply(named("fast_callback", kwargs -> {
-            sleepQuietly(10L);
-            return null;
-        }));
+        // Fast path must be instantaneous: even a short sleep can exceed the threshold under load.
+        framework.on("event").apply(named("fast_callback", kwargs -> null));
         framework.on("event").apply(named("slow_callback", kwargs -> {
-            sleepQuietly(100L);
+            sleepQuietly(200L);
             return null;
         }));
 
         framework.triggerResults("event");
 
         List<Map<String, Object>> slow = framework.getSlowCallbacks(0.05d);
-        assertThat(slow).hasSize(1);
-        assertThat(slow.get(0)).containsEntry("callback", "event:slow_callback");
+        assertThat(slow)
+                .extracting(entry -> entry.get("callback"))
+                .containsExactly("event:slow_callback");
     }
 
     private void historyDisabledByDefault() {

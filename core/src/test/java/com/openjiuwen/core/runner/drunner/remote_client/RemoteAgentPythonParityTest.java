@@ -13,7 +13,6 @@ import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -168,16 +167,6 @@ class RemoteAgentPythonParityTest {
                         .join());
 
         assertThat(error.getCode()).isEqualTo(StatusCode.DIST_MESSAGE_QUEUE_CLIENT_START_ERROR.getCode());
-    }
-
-    @Disabled("Skipped in Python source: Skip performance tests")
-    @Test
-    void testConcurrentVsSequentialPerformanceComparison() {
-    }
-
-    @Disabled("Skipped in Python source: Skip performance tests")
-    @Test
-    void testConcurrentStreaming() {
     }
 
     private void registerRemoteAgent(String resourceId, String agentId) {

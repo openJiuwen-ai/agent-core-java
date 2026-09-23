@@ -15,7 +15,6 @@ import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 import java.util.Map;
 
@@ -29,7 +28,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ContextAssembleRailTest {
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void initResolvesBuilderAndAbilityManagerFromReactAgent() {
         DeepAgent deepAgent = deepAgentWithWorkspace(new Workspace("/repo/project", "en"));
@@ -44,7 +42,6 @@ class ContextAssembleRailTest {
         assertThat(rail.getAbilityManager()).isSameAs(reactAgent.getAbilityManager());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void beforeModelCallInjectsWorkspaceToolsAndContextSections() {
         DeepAgent deepAgent = deepAgentWithWorkspace(new Workspace("/repo/project", "en"));

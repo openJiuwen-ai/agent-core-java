@@ -36,11 +36,21 @@ public class LexicalReranker extends Reranker {
         Map<String, Double> scores = new LinkedHashMap<>();
         Set<String> queryTokens = tokens(query);
         for (Object item : doc) {
-            String text = item instanceof String s ? s : String.valueOf(item);
+            String text = textOf(item);
             double overlap = score(queryTokens, tokens(text));
             scores.put(text, overlap);
         }
         return scores;
+    }
+
+    private static String textOf(Object item) {
+        if (item instanceof String text) {
+            return text;
+        }
+        if (item instanceof RetrievalResult result) {
+            return result.getText() == null ? "" : result.getText();
+        }
+        return String.valueOf(item);
     }
 
     /**

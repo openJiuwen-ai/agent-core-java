@@ -32,7 +32,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,8 +42,6 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code tests/system_tests/harness/test_deep_agent_subagent.py}.</p>
  */
 class DeepAgentSubagentMissingTest {
-
-    private static final String PYTHON_SKIP_REASON = "Skipped in Python source: skip system test";
 
     @TempDir
     Path tempDir;
@@ -62,26 +59,6 @@ class DeepAgentSubagentMissingTest {
     @Test
     void testDeepAgentE2eHeartbeat() {
         assertHeartbeat();
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void testDeepAgentE2eInvokeE2eRequireApiKeyBase() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void testDeepAgentE2eStreamE2eRequireApiKeyBase() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void testDeepAgentE2eTaskLoopRealMultistepSteerFollowUp() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void testDeepAgentE2eTaskLoopStreamE2e() {
     }
 
     @Test
@@ -109,26 +86,6 @@ class DeepAgentSubagentMissingTest {
         assertHeartbeat();
     }
 
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void subagentRailInvokeE2eRequireApiKeyBase() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void subagentRailStreamE2eRequireApiKeyBase() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void subagentRailTaskLoopRealMultistepSteerFollowUp() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void subagentRailTaskLoopStreamE2e() {
-    }
-
     @Test
     void subagentRailTaskPlanning() {
         assertTaskPlanning();
@@ -137,36 +94,6 @@ class DeepAgentSubagentMissingTest {
     @Test
     void subagentRailTaskPlanningWithProgressReminder() {
         assertTaskPlanningWithProgressReminder();
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void subagentRailTasksUsingPredefinedSubagents() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void subagentRailTasksUsingSubagents() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailAsyncSpawnQuery2NotBlocked() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailAsyncSpawnSteeringVisibleDuringQuery3() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailAutoInvokeDedupMultiSpawn() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailAutoInvokeOnSpawnDoneNoQuery2() {
     }
 
     @Test
@@ -184,26 +111,6 @@ class DeepAgentSubagentMissingTest {
         assertHeartbeat();
     }
 
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailDeepAgentInvokeE2eRequireApiKeyBase() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailDeepAgentStreamE2eRequireApiKeyBase() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailDeepAgentTaskLoopRealMultistepSteerFollowUp() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailDeepAgentTaskLoopStreamE2e() {
-    }
-
     @Test
     void sessionRailDeepAgentTaskPlanning() {
         assertTaskPlanning();
@@ -212,11 +119,6 @@ class DeepAgentSubagentMissingTest {
     @Test
     void sessionRailDeepAgentTaskPlanningWithProgressReminder() {
         assertTaskPlanningWithProgressReminder();
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void sessionRailRealLlmTwoSpawnCancelOneOtherCompletes() {
     }
 
     @Test
@@ -232,26 +134,6 @@ class DeepAgentSubagentMissingTest {
     @Test
     void cancelMockDeepAgentHeartbeat() {
         assertHeartbeat();
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void cancelMockDeepAgentInvokeE2eRequireApiKeyBase() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void cancelMockDeepAgentStreamE2eRequireApiKeyBase() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void cancelMockDeepAgentTaskLoopRealMultistepSteerFollowUp() {
-    }
-
-    @Disabled(PYTHON_SKIP_REASON)
-    @Test
-    void cancelMockDeepAgentTaskLoopStreamE2e() {
     }
 
     @Test

@@ -221,7 +221,6 @@ class MessageSummaryOffloaderTest {
                 .contains("LONG_TOOL_RESPONSE");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void nonStringContentIsMeasuredAndSerializedForCompression() {
         List<List<BaseMessage>> calls = new ArrayList<>();
@@ -288,8 +287,8 @@ class MessageSummaryOffloaderTest {
         assertThat(context.getMessages().get(2).getContentAsString()).contains("after retry");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void preciseStepUsesRecentUserAndAssistantConversation() {
         List<List<BaseMessage>> calls = new ArrayList<>();
         AtomicInteger count = new AtomicInteger();

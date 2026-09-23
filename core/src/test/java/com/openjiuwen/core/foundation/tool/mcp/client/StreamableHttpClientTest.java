@@ -105,7 +105,7 @@ class StreamableHttpClientTest {
                 new McpServerConfig("stream", "https://mcp.example.test/mcp"),
                 new CapturingFactory(new FakeSession()));
 
-        RuntimeException error = assertThrows(RuntimeException.class,
+        IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> unconnected.listTools(McpServerConfig.NO_TIMEOUT));
         assertEquals("Not connected to streamable-http server", error.getMessage());
 
@@ -341,8 +341,8 @@ class StreamableHttpClientTest {
     private static final class FakeSession implements StreamableHttpClient.TransportSession {
         private final List<Object> tools = new ArrayList<>();
         private final List<Object> resources = new ArrayList<>();
-        private RuntimeException initializeError;
-        private RuntimeException callError;
+        private IllegalStateException initializeError;
+        private IllegalStateException callError;
         private boolean initialized;
         private boolean closed;
         private String calledToolName;

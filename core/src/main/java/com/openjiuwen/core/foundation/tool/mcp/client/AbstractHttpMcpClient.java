@@ -204,7 +204,14 @@ abstract class AbstractHttpMcpClient implements McpClient {
     }
 
     @FunctionalInterface
-    private interface McpOperation<T> {
+    private interface McpOperation<T extends Object> {
+        /**
+         * Runs one MCP client operation over the current HTTP transport.
+         *
+         * @return operation result
+         * @throws IOException when the transport fails
+         * @throws InterruptedException when the call is interrupted
+         */
         T execute() throws IOException, InterruptedException;
     }
 

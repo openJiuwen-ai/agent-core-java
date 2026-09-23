@@ -26,7 +26,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 /**
  * Focused verification for Python's JSON-RPC LSP client behavior in
@@ -103,7 +102,6 @@ class LspClientTest {
         process.respondToShutdownAndReadExit(client);
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void stopResolvesPendingRequests() throws Exception {
         InitializedClient initializedClient = bootInitializedClient();

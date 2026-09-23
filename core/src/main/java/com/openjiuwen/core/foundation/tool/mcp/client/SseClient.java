@@ -127,7 +127,7 @@ public class SseClient extends McpClient {
                 disconnected = true;
                 Loggers.TOOL.info("SSE client disconnected successfully");
                 return Boolean.TRUE;
-            } catch (RuntimeException error) {
+            } catch (IllegalStateException error) {
                 Loggers.TOOL.error("SSE disconnection failed: {}", error.getMessage());
                 return Boolean.FALSE;
             }
@@ -216,7 +216,7 @@ public class SseClient extends McpClient {
     private <T> T executeWithReconnect(double timeout, Callable<T> operation) throws Exception {
         try {
             return operation.call();
-        } catch (RuntimeException stateError) {
+        } catch (IllegalStateException stateError) {
             if (!shouldRetryAfterStateError(stateError)) {
                 throw stateError;
             }
@@ -234,7 +234,7 @@ public class SseClient extends McpClient {
         return operation.call();
     }
 
-    private boolean shouldRetryAfterStateError(RuntimeException error) {
+    private boolean shouldRetryAfterStateError(IllegalStateException error) {
         if (!isRetryableTransportError(error)) {
             return false;
         }
@@ -246,7 +246,7 @@ public class SseClient extends McpClient {
         return true;
     }
 
-    private static boolean isRetryableTransportError(RuntimeException error) {
+    private static boolean isRetryableTransportError(IllegalStateException error) {
         Throwable cause = error.getCause();
         if (cause instanceof java.io.IOException) {
             return true;

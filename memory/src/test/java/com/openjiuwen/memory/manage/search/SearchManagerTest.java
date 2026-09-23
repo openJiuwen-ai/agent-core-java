@@ -81,8 +81,8 @@ class SearchManagerTest {
         assertEquals("test_value", searchManager.getUserVariable("user", "scope", "test_variable").toCompletableFuture().join());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void listUserProfileAggregatesTypedFragmentMemories() {
         Map<String, List<BaseMemoryUnit>> memories = Map.of(
                 MemoryType.USER_PROFILE.getValue(), List.of(
@@ -152,8 +152,8 @@ class SearchManagerTest {
                 .build()).toCompletableFuture().join());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void listUserSummaryDelegatesToSummaryManager() {
         InMemoryKVStore kvStore = new InMemoryKVStore();
         UserMemStore store = new UserMemStore(kvStore);

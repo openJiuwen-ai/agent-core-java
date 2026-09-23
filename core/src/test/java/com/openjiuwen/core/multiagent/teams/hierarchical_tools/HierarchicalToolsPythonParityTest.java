@@ -15,7 +15,6 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.DynamicTest;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.function.Executable;
 
@@ -44,7 +43,6 @@ class HierarchicalToolsPythonParityTest {
 
     private static final Set<String> RUNNER_AGENT_IDS = ConcurrentHashMap.newKeySet();
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @TestFactory
     Stream<DynamicTest> mirrorsPythonPytestNodes() {
         List<TestCase> testCases = List.of(
