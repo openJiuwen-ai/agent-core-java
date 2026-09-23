@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -147,6 +148,7 @@ class McpToolTest {
          */
         private static class MockMcpClient implements McpClient {
             private final Map<String, Object> callResults = new HashMap<>();
+            private final List<Float> callTimeouts = new ArrayList<>();
             private String lastCalledTool;
             private Map<String, Object> lastArguments;
 
@@ -173,6 +175,7 @@ class McpToolTest {
             public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
                 lastCalledTool = toolName;
                 lastArguments = arguments;
+                callTimeouts.add(timeout);
                 return callResults.getOrDefault(toolName, "ok:" + toolName);
             }
 
@@ -206,6 +209,32 @@ class McpToolTest {
             assertEquals("navigation completed", resultMap.get("result"));
             assertEquals("browser_navigate", client.lastCalledTool);
             assertEquals("https://example.com", client.lastArguments.get("url"));
+        }
+
+        @Test
+        @DisplayName("McpTool invoke passes the configured execution timeout to the client")
+        void testInvokePassesConfiguredTimeout() throws Exception {
+            MockMcpClient client = new MockMcpClient();
+            McpToolCard card = McpToolCard.builder().name("slow_tool").description("slow").serverName("server")
+                    .build();
+
+            McpTool tool = new McpTool(client, card, 300f);
+            tool.invoke(Map.of());
+
+            assertEquals(List.of(300f), client.callTimeouts);
+        }
+
+        @Test
+        @DisplayName("McpTool two-arg constructor keeps the NO_TIMEOUT sentinel for the client default")
+        void testTwoArgConstructorKeepsSentinel() throws Exception {
+            MockMcpClient client = new MockMcpClient();
+            McpToolCard card = McpToolCard.builder().name("default_tool").description("default")
+                    .serverName("server").build();
+
+            McpTool tool = new McpTool(client, card);
+            tool.invoke(Map.of());
+
+            assertEquals(List.of(McpServerConfig.NO_TIMEOUT), client.callTimeouts);
         }
 
         @Test

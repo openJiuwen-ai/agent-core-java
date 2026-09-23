@@ -5,6 +5,7 @@
 package com.openjiuwen.extensions.store.kv;
 
 import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.spi.store.ExpirableKVStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
 
 import redis.clients.jedis.AbstractPipeline;
@@ -24,6 +25,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -47,7 +49,7 @@ import java.util.Optional;
  *
  * @since 0.1.7
  */
-public class RedisStore extends BaseKVStore {
+public class RedisStore extends BaseKVStore implements ExpirableKVStore {
     private static final int CLUSTER_SCAN_COUNT = 1000;
     private static final Logger logger = LoggerFactory.getLogger(RedisStore.class);
 
@@ -75,6 +77,60 @@ public class RedisStore extends BaseKVStore {
     @Override
     public void set(String key, Object value) {
         setInternal(key, value, null);
+    }
+
+    /**
+     * Writes a value and its expiration atomically, including for supplied Redis clients.
+     *
+     * @param key the key to write
+     * @param value the value to store
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the key or TTL is invalid
+     * @throws IllegalStateException if the client cannot perform the atomic write
+     * @since 0.1.16
+     */
+    @Override
+    public void set(String key, Object value, Duration ttl) {
+        requireKey(key);
+        int seconds = expirySeconds(ttl);
+        Object redisKey = value instanceof byte[] ? key.getBytes(StandardCharsets.UTF_8) : key;
+        Object redisValue = value instanceof byte[] ? value : String.valueOf(value);
+        try {
+            invokeRequired(redisClient, new String[]{"setex"}, redisKey, seconds, redisValue);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Redis client failed to perform an atomic TTL write", e);
+        }
+    }
+
+    /**
+     * Refreshes expiration and propagates failures; the legacy int overload is unchanged.
+     *
+     * @param keys the existing keys whose expiration should be refreshed
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the TTL is invalid
+     * @throws IllegalStateException if refreshing a key fails
+     * @since 0.1.16
+     */
+    @Override
+    public void refreshTtl(List<String> keys, Duration ttl) {
+        int seconds = expirySeconds(ttl);
+        Objects.requireNonNull(keys, "keys");
+        try {
+            for (String key : keys) {
+                requireKey(key);
+                expireKey(key, seconds);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Redis client failed to refresh TTL", e);
+        }
+    }
+
+    private static int expirySeconds(Duration ttl) {
+        Objects.requireNonNull(ttl, "ttl");
+        if (ttl.isNegative() || ttl.isZero() || ttl.getNano() != 0 || ttl.getSeconds() > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("TTL must be positive whole seconds within integer range");
+        }
+        return (int) ttl.getSeconds();
     }
 
     /**

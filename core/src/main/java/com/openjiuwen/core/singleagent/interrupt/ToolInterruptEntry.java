@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.interrupt;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,7 +25,7 @@ import java.util.List;
 @Data
 @Builder
 @NoArgsConstructor
-@AllArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ToolInterruptEntry implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;

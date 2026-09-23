@@ -531,19 +531,18 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             BaseOutputParser outputParser) throws Exception {
         List<Map<String, Object>> choices = asListOfMaps(responseMap.get("choices"));
         if (choices == null || choices.isEmpty()) {
-            throw new RuntimeException("No choices in response: " + responseMap);
+            throw ErrorHelper.buildError(StatusCode.MODEL_RESPONSE_INVALID, "error_msg",
+                    "No choices in response");
         }
 
         Map<String, Object> choice = choices.get(0);
         Map<String, Object> message = asMap(choice.get("message"));
         if (message == null) {
-            throw new RuntimeException("No message in response choice: " + choice);
+            throw ErrorHelper.buildError(StatusCode.MODEL_RESPONSE_INVALID, "error_msg",
+                    "No message in response choice");
         }
 
-        Object content = message.get("content");
-        if (content == null) {
-            content = "";
-        }
+        Object content = requireStringOrNullContent(message.get("content"), "choices[0].message.content");
         Object parserContent = parseWithOutputParser(content, outputParser);
         List<ToolCall> toolCalls = AssistantMessage.convertOpenAiToolCalls(asListOfMaps(message.get("tool_calls")));
 
@@ -578,7 +577,8 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
         Map<String, Object> choice = choices.get(0);
         Map<String, Object> delta = asMap(choice.get("delta"));
-        Object content = delta != null ? delta.get("content") : "";
+        Object rawContent = delta != null ? delta.get("content") : null;
+        Object content = requireStringOrNullContent(rawContent, "choices[0].delta.content");
         List<ToolCall> toolCalls =
             delta == null ? null : AssistantMessage.convertOpenAiToolCalls(asListOfMaps(delta.get("tool_calls")));
         String reasoningContent = delta == null ? null : asString(delta.get("reasoning_content"));
@@ -591,9 +591,29 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             return null;
         }
 
-        return AssistantMessageChunk.builder().content(content == null ? "" : content).toolCalls(toolCalls)
+        return AssistantMessageChunk.builder().content(content).toolCalls(toolCalls)
                 .usageMetadata(usageMetadata).finishReason(normalizedFinishReason).parserContent(parserContent)
                 .reasoningContent(reasoningContent).build();
+    }
+
+    /**
+     * Require {@code content} to be a JSON string or null (normalized to empty string).
+     * Non-string types (array/object/number/boolean) must not be stringified and leaked downstream.
+     *
+     * @param content content field from the model response
+     * @param fieldPath field path for the error message
+     * @return string content, empty when null
+     * @since 0.1.16
+     */
+    private static Object requireStringOrNullContent(Object content, String fieldPath) {
+        if (content == null) {
+            return "";
+        }
+        if (content instanceof String) {
+            return content;
+        }
+        throw ErrorHelper.buildError(StatusCode.MODEL_RESPONSE_TYPE_ERROR, "error_msg",
+                fieldPath + " must be a string, got " + content.getClass().getSimpleName());
     }
 
     /**

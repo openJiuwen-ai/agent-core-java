@@ -12,7 +12,6 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
-import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.SessionContextHolder;
@@ -25,6 +24,7 @@ import com.openjiuwen.harness.task_loop.TaskIterationContext;
 import com.openjiuwen.harness.task_loop.TaskPlan;
 import com.openjiuwen.harness.task_loop.TaskPlanSnapshot;
 import com.openjiuwen.harness.tools.FileTodoStorage;
+import com.openjiuwen.harness.tools.CheckpointerRedisTodoStorageProvider;
 import com.openjiuwen.harness.tools.TodoStorage;
 import com.openjiuwen.harness.tools.TodoStorageFactory;
 import com.openjiuwen.harness.tools.TodoTool;
@@ -90,7 +90,7 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     private TodoTool todoTool;
     private DeepAgent owner;
     private String language = "cn";
-    private Model defaultLlm;
+    private String defaultLlm;
     private boolean isDefaultLlmCaptured;
 
     /**
@@ -171,6 +171,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     private TodoStorage resolveTodoStorage(DeepAgent deepAgent, String todoStorageType) {
+        if (CheckpointerRedisTodoStorageProvider.TYPE.equals(todoStorageType)) {
+            if (deepAgent.getKvStore() != null || deepAgent.getConfig().getKvStoreConfig() != null
+                    && !deepAgent.getConfig().getKvStoreConfig().isEmpty()) {
+                throw new IllegalArgumentException("checkpointer_redis cannot use an independent KV store");
+            }
+            return TodoStorageFactory.create(todoStorageType, deepAgent.getConfig().getTodoStorageConfig());
+        }
         if (TodoStorageFactory.hasProvider(todoStorageType)) {
             Map<String, Object> conf = buildTodoStorageConfig(deepAgent, todoStorageType);
             return TodoStorageFactory.create(todoStorageType, conf);
@@ -184,6 +191,9 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
 
     private static Map<String, Object> buildTodoStorageConfig(DeepAgent deepAgent, String todoStorageType) {
         Map<String, Object> conf = new HashMap<>();
+        if (deepAgent.getConfig().getTodoStorageConfig() != null) {
+            conf.putAll(deepAgent.getConfig().getTodoStorageConfig());
+        }
         if (!"kv".equals(todoStorageType)) {
             conf.put("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
             return conf;
@@ -320,7 +330,7 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         if (modelSelection.isEmpty() || todoTool == null || ctx == null || ctx.getSession() == null) {
             return;
         }
-        if (!(ctx.getAgent() instanceof com.openjiuwen.core.singleagent.agents.ReActAgent reactAgent)) {
+        if (!(ctx.getAgent() instanceof com.openjiuwen.core.singleagent.agents.ReActAgent)) {
             return;
         }
         String sessionId = ctx.getSession().getSessionId();
@@ -333,11 +343,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
                         .findFirst().orElse(null);
             String modelId = inProgress != null ? inProgress.getSelectedModelId() : null;
             if (!isDefaultLlmCaptured) {
-                defaultLlm = reactAgent.peekLlm();
+                defaultLlm = Runner.resourceMgr().getDefaultModelId();
                 isDefaultLlmCaptured = true;
             }
             if (modelId == null || modelId.isBlank()) {
-                reactAgent.setLlm(defaultLlm);
+                // Use default model: clear dynamic model ID so framework falls back to default
+                ctx.setDynamicModelId(defaultLlm);
                 if (ctx.getExtra() != null) {
                     ctx.getExtra().remove(TASK_PLANNING_MODEL_ID);
                 }
@@ -346,12 +357,10 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
             if (!modelSelection.containsKey(modelId)) {
                 return;
             }
-            Object model = Runner.resourceMgr().getModel(modelId);
-            if (model instanceof Model resolvedModel) {
-                reactAgent.setLlm(resolvedModel);
-                if (ctx.getExtra() != null) {
-                    ctx.getExtra().put(TASK_PLANNING_MODEL_ID, modelId);
-                }
+            // Set dynamic model ID on ctx — framework's getLlm(ctx) will resolve it via ModelMgr
+            ctx.setDynamicModelId(modelId);
+            if (ctx.getExtra() != null) {
+                ctx.getExtra().put(TASK_PLANNING_MODEL_ID, modelId);
             }
         } catch (RuntimeException | java.io.IOException ignored) {
             // Model selection is advisory; never fail the model call because todo state is unavailable.
@@ -948,15 +957,15 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         if (!(ctx.getAgent() instanceof com.openjiuwen.core.singleagent.agents.ReActAgent reactAgent)) {
             return "";
         }
-        Model active = reactAgent.peekLlm();
-        if (active == null) {
-            return "";
+        // Check the dynamic model ID set on the context first
+        String dynamicId = ctx.getDynamicModelId();
+        if (dynamicId != null && !dynamicId.isBlank() && modelSelection.containsKey(dynamicId)) {
+            return dynamicId;
         }
-        for (String modelId : modelSelection.keySet()) {
-            Object candidate = Runner.resourceMgr().getModel(modelId);
-            if (Objects.equals(candidate, active)) {
-                return modelId;
-            }
+        // Fall back to default model ID from ModelMgr
+        String defaultId = Runner.resourceMgr().getDefaultModelId();
+        if (defaultId != null && modelSelection.containsKey(defaultId)) {
+            return defaultId;
         }
         return "";
     }

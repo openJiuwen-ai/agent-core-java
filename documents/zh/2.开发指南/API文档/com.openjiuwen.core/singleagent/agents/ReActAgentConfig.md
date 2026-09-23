@@ -47,3 +47,4 @@ public class ReActAgentConfig
 
 - 相关测试：`ReActAgentConfigTest`、`ReActAgentEvolveTest`、`ReActAgentTest`、`BaseAgentTest`。
 - 该类型使用 Lombok 生成 builder / getter / setter；默认 `modelProvider` 为 `openai`，默认 `maxIterations` 为 `5`，默认 `maxParallelToolCalls` 为 `3`，默认 `shouldFailTaskOnToolError` 为 `false`。
+- 配置对象保持可变。通过 `ReActAgent.getConfig()` 获得配置并原地修改上下文配置后，agent 会在下一次读取上下文引擎或执行请求时重建引擎；配置修改应发生在两次请求之间。

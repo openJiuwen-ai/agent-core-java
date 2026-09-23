@@ -4,7 +4,10 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
+import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackFirer;
@@ -21,6 +24,7 @@ import reactor.core.publisher.Mono;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -43,8 +47,19 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private final Object skillUtilLock = new Object();
 
     /**
+     * Owner token for global resource registration. Generated per instance
+     * at creation time and propagated from the harness layer, it is the
+     * ownership key the agent uses when claiming shared registry entries,
+     * so same-card instances stay distinguishable and one instance's
+     * destroy only releases its own claims.
+     *
+     * @since 0.1.16
+     */
+    private volatile String ownerToken;
+
+    /**
      * BaseAgent.
-     * 
+     *
      * @param card card
      * @since 0.1.7
      */
@@ -53,6 +68,30 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         this.abilityManager = new AbilityManager();
         this.agentCallbackManager = new AgentCallbackManager(card.getId());
         lazyInitSkill();
+    }
+
+    /**
+     * throwIfAddResourceFailed.
+     *
+     * <p>Fails fast when a ResourceMgr add result is an error: rethrows the
+     * original runtime error, or wraps a checked exception with the
+     * resource id for context.</p>
+     *
+     * @param result add result returned by ResourceMgr
+     * @param resourceId resource id used for error context
+     * @since 0.1.16
+     */
+    protected static void throwIfAddResourceFailed(Result<?> result, String resourceId) {
+        if (!result.isError()) {
+            return;
+        }
+        Exception error = result.getError();
+        if (error instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        String reason = error != null && error.getMessage() != null ? error.getMessage() : "add resource failed";
+        throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR, null, null, error,
+                Map.of("card", resourceId, "reason", reason));
     }
 
     /**
@@ -151,12 +190,42 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * getSkillUtil.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
     public SkillUtil getSkillUtil() {
         return skillUtil;
+    }
+
+    /**
+     * getOwnerToken.
+     *
+     * @return the owner token used for global resource registration, or
+     *         null when none was propagated (legacy single-agent mode)
+     * @since 0.1.16
+     */
+    public String getOwnerToken() {
+        return ownerToken;
+    }
+
+    /**
+     * setOwnerToken.
+     *
+     * <p>Must be set before the first resource registration or invoke:
+     * claims made on the global ResourceMgr under this token are released
+     * by the instance teardown (per-owner release). The harness
+     * construction path assigns the token automatically; direct
+     * constructions that register global resources must set it first.
+     * The token string must be unique per agent instance (the harness
+     * derives it from the agent identity), because teardown releases
+     * every claim registered under the same token.</p>
+     *
+     * @param ownerToken owner token used for global resource registration
+     * @since 0.1.16
+     */
+    public void setOwnerToken(String ownerToken) {
+        this.ownerToken = ownerToken;
     }
 
     /**

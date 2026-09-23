@@ -241,6 +241,22 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
         copyIfPresent(metadata, effective, "is_follow_up");
         copyIfPresent(metadata, effective, "collect_inner_stream");
         copyIfPresent(metadata, effective, "loop_queues");
+        // Forward top-level invoke extras (e.g. model_id, llm_id) to ReActAgent's ctx.getExtra()
+        Object extrasObj = metadata.get("_invoke_extras");
+        if (extrasObj instanceof Map<?, ?> extras) {
+            for (Map.Entry<?, ?> entry : extras.entrySet()) {
+                Object keyObj = entry.getKey();
+                if (!(keyObj instanceof String)) {
+                    continue;
+                }
+                String key = (String) keyObj;
+                // Skip reserved keys and framework-internal metadata keys
+                if (!"query".equals(key) && !"conversation_id".equals(key)
+                        && !effective.containsKey(key) && entry.getValue() != null) {
+                    effective.put(key, entry.getValue());
+                }
+            }
+        }
         return effective;
     }
 

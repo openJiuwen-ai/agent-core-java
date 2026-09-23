@@ -19,10 +19,12 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.runner.base.Result;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.SessionContextHolder;
@@ -42,6 +44,7 @@ import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentTerminationReason;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
@@ -61,6 +64,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * ReAct paradigm Agent implementation.
@@ -100,10 +105,12 @@ public class ReActAgent extends BaseAgent {
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
-    private ReActAgentConfig config;
-    private ContextEngine contextEngine;
-    private volatile Model llm;
+    private final Object contextEngineLock = new Object();
     private final Object llmLock = new Object();
+    private volatile Model llm;
+    private ReActAgentConfig config;
+    private volatile ContextEngine contextEngine;
+    private ContextEngineConfig appliedContextEngineConfig;
     private SystemPromptBuilder promptBuilder;
     private SystemPromptBuilder systemPromptBuilder;
     private boolean isKvReleaseWarningLogged;
@@ -117,7 +124,9 @@ public class ReActAgent extends BaseAgent {
     public ReActAgent(AgentCard card) {
         super(card);
         this.config = createDefaultConfig();
-        this.contextEngine = new ContextEngine(config.getContextEngineConfig());
+        ContextEngineConfig initialConfig = effectiveContextEngineConfig(config.getContextEngineConfig());
+        this.appliedContextEngineConfig = copyContextEngineConfig(initialConfig);
+        this.contextEngine = new ContextEngine(appliedContextEngineConfig);
         this.llm = null;
         this.promptBuilder = new SystemPromptBuilder();
         this.systemPromptBuilder = this.promptBuilder;
@@ -169,11 +178,7 @@ public class ReActAgent extends BaseAgent {
             this.llm = null;
         }
 
-        // Update context engine if config changed
-        if (!safeEquals(oldConfig.getContextEngineConfig(), newConfig.getContextEngineConfig())) {
-            this.contextEngine = new ContextEngine(newConfig.getContextEngineConfig());
-            this.isKvReleaseWarningLogged = false;
-        }
+        refreshContextEngineIfNeeded();
 
         // Update memory scope if changed
         if (!safeEquals(oldConfig.getMemScopeId(), newConfig.getMemScopeId())) {
@@ -208,7 +213,61 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
-        return contextEngine;
+        return refreshContextEngineIfNeeded();
+    }
+
+    /**
+     * Refresh the context engine when the mutable agent configuration changed.
+     *
+     * @return the active context engine
+     * @since 0.1.15
+     */
+    private ContextEngine refreshContextEngineIfNeeded() {
+        synchronized (contextEngineLock) {
+            ContextEngineConfig currentConfig = effectiveContextEngineConfig(config.getContextEngineConfig());
+            if (safeEquals(appliedContextEngineConfig, currentConfig)) {
+                return contextEngine;
+            }
+            ContextEngineConfig configSnapshot = copyContextEngineConfig(currentConfig);
+            ContextEngine refreshedContextEngine = new ContextEngine(configSnapshot);
+            appliedContextEngineConfig = configSnapshot;
+            contextEngine = refreshedContextEngine;
+            isKvReleaseWarningLogged = false;
+            return contextEngine;
+        }
+    }
+
+    /**
+     * Copy context-engine settings so later in-place mutations remain detectable.
+     *
+     * @param source source configuration
+     * @return an independent configuration snapshot
+     * @since 0.1.15
+     */
+    private static ContextEngineConfig copyContextEngineConfig(ContextEngineConfig source) {
+        Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
+        ContextEngineConfig.ContextEngineConfigBuilder snapshotBuilder =
+                ContextEngineConfig.builder().maxContextMessageNum(source.getMaxContextMessageNum())
+                        .defaultWindowMessageNum(source.getDefaultWindowMessageNum())
+                        .defaultWindowRoundNum(source.getDefaultWindowRoundNum())
+                        .enableKvCacheRelease(source.isEnableKvCacheRelease()).enableReload(source.isEnableReload())
+                        .enableTiktokenCounter(source.isTiktokenCounterEnabled())
+                        .contextWindowTokens(source.getContextWindowTokens()).modelName(source.getModelName());
+        if (modelWindowTokens != null) {
+            snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
+        }
+        return snapshotBuilder.build();
+    }
+
+    /**
+     * Normalize an absent context-engine configuration to the engine defaults.
+     *
+     * @param source configured settings, possibly absent
+     * @return configured settings or an empty default configuration
+     * @since 0.1.15
+     */
+    private static ContextEngineConfig effectiveContextEngineConfig(ContextEngineConfig source) {
+        return source != null ? source : ContextEngineConfig.builder().build();
     }
 
     /**
@@ -353,6 +412,84 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
+     * Resolve the effective model name from the given Model instance, falling back
+     * to {@code config.getModelName()} when the model or its modelConfig is null.
+     * <p>
+     * This ensures that when a dynamic model is selected via
+     * {@code ctx.dynamicModelId}, the provider receives that model's name rather
+     * than the static default from {@code ReActAgentConfig}.
+     *
+     * @param model the resolved model, may be null
+     * @return the effective model name
+     * @since 0.1.16
+     */
+    private String resolveModelName(Model model) {
+        if (model != null && model.getModelConfig() != null) {
+            return model.getModelConfig().getModelName();
+        }
+        return config.getModelName();
+    }
+
+    /**
+     * Get LLM instance for the current request, resolving dynamically via
+     * {@code ResourceMgr.resolveModel()}.
+     * <p>
+     * Resolution priority:
+     * <ol>
+     * <li>{@code ctx.dynamicModelId} — if set, resolve via ModelMgr.resolveModel()</li>
+     * <li>Existing llm instance (set via {@link #setLlm(Model)} or lazy-loaded from config)</li>
+     * <li>If llm is null and no modelClientConfig, resolve via ModelMgr default model</li>
+     * </ol>
+     * When {@code dynamicModelId} is null/blank, this method first checks the existing
+     * {@code llm} field (preserving backward compatibility with {@link #setLlm(Model)}).
+     * If not yet initialized and the agent has no modelClientConfig, it delegates to
+     * {@link #getLlm()} which may throw {@link IllegalStateException}.
+     * <p>
+     * This method is stateless and thread-safe: it does not modify any instance
+     * field, and {@code ModelMgr.resolveModel()} is backed by a
+     * {@code ConcurrentHashMap}.
+     *
+     * @param ctx the callback context providing {@code dynamicModelId}; may be null
+     * @return the resolved Model instance
+     * @since 0.1.16
+     */
+    protected Model getLlm(AgentCallbackContext ctx) {
+        // 1. If a dynamic model ID is specified, resolve via ModelMgr
+        String dynamicModelId = ctx != null ? ctx.getDynamicModelId() : null;
+        if (dynamicModelId != null && !dynamicModelId.isBlank()) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(
+                        dynamicModelId,
+                        config.getModelClientConfig(),
+                        config.getModelConfigObj()
+                    );
+                } catch (RuntimeException e) {
+                    // Dynamic model resolution failed — fall through to existing llm
+                }
+            }
+        }
+        // 2. Check existing llm (set via setLlm or already lazy-loaded)
+        if (llm != null) {
+            return llm;
+        }
+        // 3. If no llm and no modelClientConfig, try ModelMgr default model
+        if (config.getModelClientConfig() == null) {
+            ResourceMgr resourceMgr = Runner.resourceMgr();
+            if (resourceMgr != null) {
+                try {
+                    return resourceMgr.resolveModel(null, null, null);
+                } catch (RuntimeException e) {
+                    // No default model available — fall through to getLlm() which will throw
+                }
+            }
+        }
+        // 4. Fallback: lazy-load from config (may throw if no modelClientConfig)
+        return getLlm();
+    }
+
+    /**
      * Prepare context and call model with rail lifecycle events.
      *
      * @param ctx ctx
@@ -365,7 +502,7 @@ public class ReActAgent extends BaseAgent {
     private AssistantMessage callModel(AgentCallbackContext ctx, ModelContext context, List<BaseMessage> systemMessages,
             List<ToolInfo> tools) {
         var contextWindow = context.getContextWindow(systemMessages, tools != null ? tools : null,
-                null, null, buildContextWindowKwargs());
+                null, null, buildContextWindowKwargs(ctx));
 
         ctx.setInputs(ModelCallInputs.builder().messages(new ArrayList<>(contextWindow.getMessages()))
                 .tools(contextWindow.getToolList()).build());
@@ -386,14 +523,15 @@ public class ReActAgent extends BaseAgent {
      * @return kwargs map (possibly containing {@code "model"})
      * @since 0.1.7
      */
-    private Map<String, Object> buildContextWindowKwargs() {
+    private Map<String, Object> buildContextWindowKwargs(AgentCallbackContext ctx) {
         Map<String, Object> kwargs = new HashMap<>();
-        if (llm == null) {
+        Model activeModel = (ctx != null) ? getLlm(ctx) : peekLlm();
+        if (activeModel == null) {
             return kwargs;
         }
         ContextEngineConfig ceConfig = config.getContextEngineConfig();
         boolean isKvReleaseEnabled = ceConfig != null && ceConfig.isEnableKvCacheRelease();
-        boolean isKvReleaseSupported = llm.supportsKvCacheRelease();
+        boolean isKvReleaseSupported = activeModel.supportsKvCacheRelease();
 
         if (isKvReleaseEnabled && !isKvReleaseSupported && !isKvReleaseWarningLogged) {
             Loggers.AGENT.warning("ContextEngineConfig.enable_kv_cache_release is True, "
@@ -403,7 +541,7 @@ public class ReActAgent extends BaseAgent {
         }
 
         if (isKvReleaseEnabled && isKvReleaseSupported) {
-            kwargs.put("model", llm);
+            kwargs.put("model", activeModel);
         }
         return kwargs;
     }
@@ -423,12 +561,13 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.15
      */
     private Map<String, Object> buildKvCacheInvokeKwargs(AgentCallbackContext ctx) {
-        if (llm == null) {
+        Model activeModel = (ctx != null) ? getLlm(ctx) : peekLlm();
+        if (activeModel == null) {
             return Map.of();
         }
         ContextEngineConfig ceConfig = config.getContextEngineConfig();
         boolean isKvReleaseEnabled = ceConfig != null && ceConfig.isEnableKvCacheRelease();
-        return new LinkedHashMap<>(llm.buildKvCacheInvokeKwargs(ctx.getSession(), isKvReleaseEnabled));
+        return new LinkedHashMap<>(activeModel.buildKvCacheInvokeKwargs(ctx.getSession(), isKvReleaseEnabled));
     }
 
     /**
@@ -575,13 +714,18 @@ public class ReActAgent extends BaseAgent {
     private Optional<AssistantMessage> railedModelCall(AgentCallbackContext ctx, Map<String, Object> extraKwargs) {
         return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_MODEL_CALL, AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION, () -> {
-                    Model model = getLlm();
+                    Model model = getLlm(ctx);
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
                     logLlmRequest(inputs.getMessages());
 
+                    // Use the resolved model's name (may differ from config when a dynamic
+                    // model was selected via ctx.dynamicModelId) so the provider receives
+                    // the correct model name. Fall back to config.getModelName() only when
+                    // the resolved model has no modelConfig.
+                    String effectiveModelName = resolveModelName(model);
                     AssistantMessage aiMessage = model.invoke(inputs.getMessages(),
                             inputs.getTools() != null && !inputs.getTools().isEmpty() ? inputs.getTools() : null, null,
-                            null, config.getModelName(), null, null, null, null, extraKwargs);
+                            null, effectiveModelName, null, null, null, null, extraKwargs);
 
                     inputs.setResponse(aiMessage);
                     return aiMessage;
@@ -600,17 +744,22 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.15
      */
     private Optional<AssistantMessage> railedModelStreamCall(AgentCallbackContext ctx, AgentSessionApi agentSession,
-            Map<String, Object> extraKwargs) {
+            Map<String, Object> extraKwargs, StreamAttempt streamAttempt) {
         return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_MODEL_CALL, AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION, () -> {
-                    Model model = getLlm();
+                    Model model = getLlm(ctx);
                     if (!(ctx.getInputs() instanceof ModelCallInputs inputs)) {
                         return null;
                     }
                     logLlmRequest(inputs.getMessages());
+                    // Use the resolved model's name (may differ from config when a dynamic
+                    // model was selected via ctx.dynamicModelId) so the provider receives
+                    // the correct model name. Fall back to config.getModelName() only when
+                    // the resolved model has no modelConfig.
+                    String effectiveModelName = resolveModelName(model);
                     Iterator<AssistantMessageChunk> stream = model.stream(inputs.getMessages(),
                             inputs.getTools() != null && !inputs.getTools().isEmpty() ? inputs.getTools() : null, null,
-                            null, config.getModelName(), null, null, null, null, extraKwargs);
+                            null, effectiveModelName, null, null, null, null, extraKwargs);
                     AssistantMessageChunk merged = null;
                     int chunkIndex = 0;
                     try {
@@ -630,6 +779,7 @@ public class ReActAgent extends BaseAgent {
                             if (chunk == null) {
                                 continue;
                             }
+                            streamAttempt.markChunkReceived();
                             merged = merged == null ? chunk : merged.merge(chunk);
                             inputs.setResponse(merged);
                             writeAssistantStreamChunk(agentSession, chunk, chunkIndex++);
@@ -810,6 +960,7 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.7
      */
     private ModelContext initContext(Session session) {
+        ContextEngine activeContextEngine = refreshContextEngineIfNeeded();
         ModelContext context;
         if (config.getContextProcessors() != null) {
             // With context processors and token counter
@@ -819,23 +970,19 @@ public class ReActAgent extends BaseAgent {
                     specs.add(spec);
                 }
             }
-            context = contextEngine.createContext(null, session, specs, null, null);
+            context = activeContextEngine.createContext(null, session, specs, null, null);
         } else {
-            context = contextEngine.createContext(null, session);
+            context = activeContextEngine.createContext(null, session);
         }
 
         Tool contextReloader = context.reloaderTool();
-        if (config.getContextEngineConfig().isEnableReload()) {
+        if (appliedContextEngineConfig.isEnableReload()) {
             getAbilityManager().add(contextReloader.getCard());
             getAbilityManager().registerSessionTool(
                     session != null ? session.getSessionId() : null, contextReloader);
             String agentTag = getCard() != null ? getCard().getId() : null;
-            Object existing = agentTag != null && !agentTag.isBlank()
-                    ? Runner.resourceMgr().getTool(contextReloader.getCard().getId(), agentTag, TagMatchStrategy.ALL)
-                    : Runner.resourceMgr().getTool(contextReloader.getCard().getId());
-            if (existing == null) {
-                Runner.resourceMgr().addTool(contextReloader, agentTag);
-            }
+            Result<ToolCard> added = Runner.resourceMgr().addTool(contextReloader, agentTag, getOwnerToken());
+            throwIfAddResourceFailed(added, contextReloader.getCard().getId());
         } else {
             getAbilityManager().remove(contextReloader.getCard().getName());
         }
@@ -866,10 +1013,7 @@ public class ReActAgent extends BaseAgent {
             Map<?, ?> map = (Map<?, ?>) inputs;
             queryPayload = map.get("query");
             conversationId = map.containsKey("conversation_id") ? String.valueOf(map.get("conversation_id")) : null;
-            copyInvokeExtra(map, callbackExtra, "run_kind");
-            copyInvokeExtra(map, callbackExtra, "run_context");
-            copyInvokeExtra(map, callbackExtra, "is_follow_up");
-            copyInvokeExtra(map, callbackExtra, "loop_queues");
+            copyRemainingExtras(map, callbackExtra);
         } else {
             queryPayload = inputs;
         }
@@ -881,6 +1025,7 @@ public class ReActAgent extends BaseAgent {
 
         AgentCallbackContext ctx = AgentCallbackContext.builder().agent(this).inputs(invokeInputs).config(config)
                 .session(session).extra(callbackExtra).build();
+        ctx.initializeLoop(config.getMaxIterations());
         bindSteeringQueue(ctx);
         Object invokeLifecycleInputs = ctx.getInputs();
 
@@ -890,8 +1035,8 @@ public class ReActAgent extends BaseAgent {
         try {
             AgentCallbackContext.ForceFinishRequest earlyFinish = ctx.consumeForceFinish();
             if (earlyFinish != null) {
-                invokeInputs.setResult(earlyFinish.getResult());
-                return earlyFinish.getResult();
+                return finishInvocation(invokeInputs, ctx, earlyFinish.getResult(),
+                        AgentTerminationReason.FORCE_FINISH);
             }
 
             ModelContext context = initContext(session);
@@ -919,6 +1064,7 @@ public class ReActAgent extends BaseAgent {
             int startIteration = 0;
 
             if (interruptionState != null) {
+                ctx.enterIteration(interruptionState.getIteration());
                 Optional<Object> resumePayload =
                     normalizeResumePayload(invokeInputs.getQueryPayload(), interruptionState);
                 if (resumePayload.isEmpty()) {
@@ -940,36 +1086,42 @@ public class ReActAgent extends BaseAgent {
                 if (resumedState != null) {
                     contextEngine.saveContexts(session, null);
                     Map<String, Object> interruptResult = commitInterrupt(session, resumedState);
-                    invokeInputs.setResult(interruptResult);
-                    return interruptResult;
+                    return finishInvocation(invokeInputs, ctx, interruptResult,
+                            AgentTerminationReason.TOOL_INTERRUPT);
                 }
                 startIteration = interruptionState.getIteration() + 1;
             }
             List<ToolInfo> tools = getAbilityManager().listToolInfo();
 
-            for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
-                Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+            for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
+                ctx.enterIteration(iteration);
+                Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + ctx.getMaxIterations());
 
                 injectPendingSteering(ctx, context);
-                AssistantMessage aiMessage = callModel(ctx, context, systemMessages, tools);
+                AssistantMessage aiMessage;
+                try {
+                    aiMessage = callModel(ctx, context, systemMessages, tools);
+                } catch (RuntimeException | Error exception) {
+                    ctx.finish(AgentTerminationReason.MODEL_ERROR);
+                    throw exception;
+                }
                 logLlmResponse(aiMessage);
                 AgentCallbackContext.ForceFinishRequest finishAfterModel = ctx.consumeForceFinish();
                 if (finishAfterModel != null) {
                     contextEngine.saveContexts(session, null);
-                    invokeInputs.setResult(finishAfterModel.getResult());
-                    return finishAfterModel.getResult();
+                    return finishInvocation(invokeInputs, ctx, finishAfterModel.getResult(),
+                            AgentTerminationReason.FORCE_FINISH);
                 }
                 if (aiMessage == null) {
                     if (ctx.hasPendingSteering()) {
                         continue;
                     }
                     Map<String, Object> result = buildErrorResult("Model call skipped without terminal result");
-                    invokeInputs.setResult(result);
-                    return result;
+                    return finishInvocation(invokeInputs, ctx, result, AgentTerminationReason.MODEL_ERROR);
                 }
 
                 boolean hasToolCalls = aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
-                if (hasToolCalls && iteration + 1 >= config.getMaxIterations()) {
+                if (hasToolCalls && iteration + 1 >= ctx.getMaxIterations()) {
                     break;
                 }
 
@@ -985,8 +1137,8 @@ public class ReActAgent extends BaseAgent {
                     AgentCallbackContext.ForceFinishRequest finishAfterTool = ctx.consumeForceFinish();
                     if (finishAfterTool != null) {
                         contextEngine.saveContexts(session, null);
-                        invokeInputs.setResult(finishAfterTool.getResult());
-                        return finishAfterTool.getResult();
+                        return finishInvocation(invokeInputs, ctx, finishAfterTool.getResult(),
+                                AgentTerminationReason.FORCE_FINISH);
                     }
 
                     ToolInterruptionState toolInterruptionState = collectToolInterrupts(ctx, results,
@@ -994,8 +1146,8 @@ public class ReActAgent extends BaseAgent {
                     if (toolInterruptionState != null) {
                         contextEngine.saveContexts(session, null);
                         Map<String, Object> interruptResult = commitInterrupt(session, toolInterruptionState);
-                        invokeInputs.setResult(interruptResult);
-                        return interruptResult;
+                        return finishInvocation(invokeInputs, ctx, interruptResult,
+                                AgentTerminationReason.TOOL_INTERRUPT);
                     }
                 } else {
                     if (ctx.hasPendingSteering()) {
@@ -1005,15 +1157,19 @@ public class ReActAgent extends BaseAgent {
                     Map<String, Object> result = new HashMap<String, Object>();
                     result.put("output", aiMessage.getContent());
                     result.put("result_type", "answer");
-                    invokeInputs.setResult(result);
-                    return result;
+                    return finishInvocation(invokeInputs, ctx, result,
+                            AgentTerminationReason.TEXT_TERMINATION);
                 }
             }
 
             contextEngine.saveContexts(session, null);
             Map<String, Object> result = buildErrorResult("Max iterations reached without completion");
-            invokeInputs.setResult(result);
-            return result;
+            return finishInvocation(invokeInputs, ctx, result, AgentTerminationReason.MAX_ITERATIONS);
+        } catch (RuntimeException | Error exception) {
+            if (ctx.getTerminationReason() == null) {
+                ctx.finish(AgentTerminationReason.ERROR);
+            }
+            throw exception;
         } finally {
             if (invokeLifecycleInputs instanceof com.openjiuwen.core.singleagent.rail.EventInputs ei) {
                 ctx.setInputs(ei);
@@ -1024,18 +1180,29 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * copyInvokeExtra.
-     * 
-     * @param inputs inputs
-     * @param target target
-     * @param key key
-     * @since 0.1.7
+     * Copy all String-keyed entries from {@code inputs} into {@code target}, skipping
+     * the reserved keys {@code "query"} and {@code "conversation_id"} which are handled
+     * separately. This allows any custom parameter name (e.g. {@code model_id},
+     * {@code llm_id}, or any user-defined key) to be transparently forwarded to
+     * {@code ctx.getExtra()}.
+     *
+     * @param inputs the invoke inputs map
+     * @param target the callback extra map to populate
+     * @since 0.1.16
      */
-    private static void copyInvokeExtra(Map<?, ?> inputs, Map<String, Object> target, String key) {
-        if (inputs.containsKey(key)) {
-            target.put(key, inputs.get(key));
+    private static void copyRemainingExtras(Map<?, ?> inputs, Map<String, Object> target) {
+        for (Map.Entry<?, ?> entry : inputs.entrySet()) {
+            Object keyObj = entry.getKey();
+            if (!(keyObj instanceof String)) {
+                continue;
+            }
+            String key = (String) keyObj;
+            if (!"query".equals(key) && !"conversation_id".equals(key)) {
+                target.put(key, entry.getValue());
+            }
         }
     }
+
 
     /**
      * bindSteeringQueue.
@@ -1489,6 +1656,13 @@ public class ReActAgent extends BaseAgent {
         return result;
     }
 
+    private static Map<String, Object> finishInvocation(InvokeInputs inputs, AgentCallbackContext ctx,
+            Map<String, Object> result, AgentTerminationReason reason) {
+        inputs.setResult(result);
+        ctx.finish(reason);
+        return result;
+    }
+
     /**
      * invokeForStream.
      * 
@@ -1512,10 +1686,7 @@ public class ReActAgent extends BaseAgent {
             Map<?, ?> map = (Map<?, ?>) inputs;
             queryPayload = map.get("query");
             conversationId = map.containsKey("conversation_id") ? String.valueOf(map.get("conversation_id")) : null;
-            copyInvokeExtra(map, callbackExtra, "run_kind");
-            copyInvokeExtra(map, callbackExtra, "run_context");
-            copyInvokeExtra(map, callbackExtra, "is_follow_up");
-            copyInvokeExtra(map, callbackExtra, "loop_queues");
+            copyRemainingExtras(map, callbackExtra);
         } else {
             queryPayload = inputs;
         }
@@ -1526,6 +1697,7 @@ public class ReActAgent extends BaseAgent {
 
         AgentCallbackContext ctx = AgentCallbackContext.builder().agent(this).inputs(invokeInputs).config(config)
                 .session(session).extra(callbackExtra).build();
+        ctx.initializeLoop(config.getMaxIterations());
         bindSteeringQueue(ctx);
         Object invokeLifecycleInputs = ctx.getInputs();
 
@@ -1535,8 +1707,8 @@ public class ReActAgent extends BaseAgent {
         try {
             AgentCallbackContext.ForceFinishRequest earlyFinish = ctx.consumeForceFinish();
             if (earlyFinish != null) {
-                invokeInputs.setResult(earlyFinish.getResult());
-                return earlyFinish.getResult();
+                return finishInvocation(invokeInputs, ctx, earlyFinish.getResult(),
+                        AgentTerminationReason.FORCE_FINISH);
             }
 
             ModelContext context = initContext(session);
@@ -1553,6 +1725,7 @@ public class ReActAgent extends BaseAgent {
                 context.addMessages(new UserMessage(activeQuery));
             } else {
                 clearInterruptionState(session);
+                ctx.enterIteration(interruptionState.getIteration());
                 Optional<Object> resumePayload =
                     normalizeResumePayload(invokeInputs.getQueryPayload(), interruptionState);
                 if (resumePayload.isEmpty()) {
@@ -1574,8 +1747,8 @@ public class ReActAgent extends BaseAgent {
                 if (resumedState != null) {
                     contextEngine.saveContexts(session, null);
                     Map<String, Object> interruptResult = commitInterrupt(session, resumedState);
-                    invokeInputs.setResult(interruptResult);
-                    return interruptResult;
+                    return finishInvocation(invokeInputs, ctx, interruptResult,
+                            AgentTerminationReason.TOOL_INTERRUPT);
                 }
                 startIteration = interruptionState.getIteration() + 1;
             }
@@ -1588,29 +1761,34 @@ public class ReActAgent extends BaseAgent {
             }
             List<ToolInfo> tools = getAbilityManager().listToolInfo();
 
-            for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
-                Loggers.AGENT.info("ReAct stream iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+            for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
+                ctx.enterIteration(iteration);
+                Loggers.AGENT.info("ReAct stream iteration " + (iteration + 1) + "/" + ctx.getMaxIterations());
 
                 injectPendingSteering(ctx, context);
                 // 流式失败时重试（仅空响应）；异常时不重试，空响应回退非流式并包装为流式发送
-                AssistantMessage aiMessage = callModelStreamWithRetry(ctx, context, systemMessages, tools,
-                        agentSession);
+                AssistantMessage aiMessage;
+                try {
+                    aiMessage = callModelStreamWithRetry(ctx, context, systemMessages, tools, agentSession);
+                } catch (RuntimeException | Error exception) {
+                    ctx.finish(AgentTerminationReason.MODEL_ERROR);
+                    throw exception;
+                }
                 logLlmResponse(aiMessage);
                 AgentCallbackContext.ForceFinishRequest finishAfterModel = ctx.consumeForceFinish();
                 if (finishAfterModel != null) {
                     contextEngine.saveContexts(session, null);
-                    invokeInputs.setResult(finishAfterModel.getResult());
-                    return finishAfterModel.getResult();
+                    return finishInvocation(invokeInputs, ctx, finishAfterModel.getResult(),
+                            AgentTerminationReason.FORCE_FINISH);
                 }
                 if (aiMessage == null) {
                     Map<String, Object> result =
                         buildErrorResult("Model stream failed after retries, no terminal result");
-                    invokeInputs.setResult(result);
-                    return result;
+                    return finishInvocation(invokeInputs, ctx, result, AgentTerminationReason.MODEL_ERROR);
                 }
 
                 boolean hasToolCalls = aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
-                if (hasToolCalls && iteration + 1 >= config.getMaxIterations()) {
+                if (hasToolCalls && iteration + 1 >= ctx.getMaxIterations()) {
                     break;
                 }
 
@@ -1626,8 +1804,8 @@ public class ReActAgent extends BaseAgent {
                     AgentCallbackContext.ForceFinishRequest finishAfterTool = ctx.consumeForceFinish();
                     if (finishAfterTool != null) {
                         contextEngine.saveContexts(session, null);
-                        invokeInputs.setResult(finishAfterTool.getResult());
-                        return finishAfterTool.getResult();
+                        return finishInvocation(invokeInputs, ctx, finishAfterTool.getResult(),
+                                AgentTerminationReason.FORCE_FINISH);
                     }
 
                     ToolInterruptionState toolInterruptionState = collectToolInterrupts(ctx, results,
@@ -1635,9 +1813,13 @@ public class ReActAgent extends BaseAgent {
                     if (toolInterruptionState != null) {
                         contextEngine.saveContexts(session, null);
                         Map<String, Object> interruptResult = commitInterrupt(session, toolInterruptionState);
-                        invokeInputs.setResult(interruptResult);
-                        return interruptResult;
+                        return finishInvocation(invokeInputs, ctx, interruptResult,
+                                AgentTerminationReason.TOOL_INTERRUPT);
                     }
+                    continue;
+                }
+
+                if (ctx.hasPendingSteering()) {
                     continue;
                 }
 
@@ -1648,14 +1830,18 @@ public class ReActAgent extends BaseAgent {
                 if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
                     result.put("tool_calls", aiMessage.getToolCalls());
                 }
-                invokeInputs.setResult(result);
-                return result;
+                return finishInvocation(invokeInputs, ctx, result,
+                        AgentTerminationReason.TEXT_TERMINATION);
             }
 
             contextEngine.saveContexts(session, null);
             Map<String, Object> result = buildErrorResult("Max iterations reached without completion");
-            invokeInputs.setResult(result);
-            return result;
+            return finishInvocation(invokeInputs, ctx, result, AgentTerminationReason.MAX_ITERATIONS);
+        } catch (RuntimeException | Error exception) {
+            if (ctx.getTerminationReason() == null) {
+                ctx.finish(AgentTerminationReason.ERROR);
+            }
+            throw exception;
         } finally {
             if (invokeLifecycleInputs instanceof com.openjiuwen.core.singleagent.rail.EventInputs ei) {
                 ctx.setInputs(ei);
@@ -1666,30 +1852,27 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * callModelStream.
-     * 
+     * Prepare callback inputs for a streaming model attempt.
+     *
      * @param ctx ctx
      * @param context context
      * @param systemMessages systemMessages
      * @param tools tools
-     * @param agentSession agentSession
-     * @return the result
-     * @since 0.1.7
+     * @since 0.1.16
      */
-    private AssistantMessage callModelStream(AgentCallbackContext ctx, ModelContext context,
-            List<BaseMessage> systemMessages, List<ToolInfo> tools, AgentSessionApi agentSession) {
+    private void prepareModelStreamCall(AgentCallbackContext ctx, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools) {
         var contextWindow = context.getContextWindow(systemMessages, tools != null ? tools : null,
-                null, null, buildContextWindowKwargs());
+                null, null, buildContextWindowKwargs(ctx));
 
         ctx.setInputs(ModelCallInputs.builder().messages(new ArrayList<>(contextWindow.getMessages()))
                 .tools(contextWindow.getToolList()).build());
-
-        return railedModelStreamCall(ctx, agentSession, buildKvCacheInvokeKwargs(ctx)).orElse(null);
     }
 
     /**
-     * 带重试的流式模型调用。流式请求返回空时按配置重试；若重试仍为空，
-     * 回退为非流式调用并包装为流式 chunk 发送。流式异常时不重试（避免部分 chunk 重复发送）。
+     * 带重试的流式模型调用。空响应和首个 chunk 前的传输失败按配置重试；若响应只有
+     * reasoning 而没有正文或工具调用，则回退为非流式调用。已经收到 chunk 后不重试，
+     * 避免向下游重复发送部分响应。
      *
      * @param ctx ctx
      * @param context context
@@ -1705,33 +1888,61 @@ public class ReActAgent extends BaseAgent {
         long retryDelayMs = config.getStreamRetryDelayMs();
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            StreamAttempt streamAttempt = new StreamAttempt();
             try {
-                AssistantMessage aiMessage = callModelStream(ctx, context, systemMessages, tools, agentSession);
-                if (aiMessage != null) {
+                prepareModelStreamCall(ctx, context, systemMessages, tools);
+                AssistantMessage aiMessage = railedModelStreamCall(ctx, agentSession,
+                        buildKvCacheInvokeKwargs(ctx), streamAttempt).orElse(null);
+                if (hasActionableResponse(aiMessage)) {
                     return aiMessage;
+                }
+                if (aiMessage != null) {
+                    Loggers.AGENT.warning("ReAct stream completed without answer content or tool calls; "
+                            + "falling back to non-stream");
+                    return fallbackToNonStream(ctx, context, systemMessages, tools, agentSession);
                 }
                 Loggers.AGENT.warning("ReAct stream returned empty (attempt "
                     + (attempt + 1) + "/" + (maxRetries + 1) + ")");
             } catch (Exception e) {
-                // 异常时已可能有部分 chunk 被发送，不重试避免重复发送
+                boolean canRetry = !streamAttempt.hasReceivedChunks() && hasIoCause(e) && attempt < maxRetries;
+                if (canRetry) {
+                    Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
+                            + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
+                            + describeStreamThrowable(e));
+                    if (!delayStreamRetry(retryDelayMs)) {
+                        break;
+                    }
+                    continue;
+                }
                 Loggers.AGENT.error("ReAct stream error (attempt "
                     + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: " + e.getMessage());
                 return null;
             }
 
-            if (attempt < maxRetries && retryDelayMs > 0) {
-                try {
-                    Thread.sleep(retryDelayMs);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+            if (attempt < maxRetries && !delayStreamRetry(retryDelayMs)) {
+                break;
             }
         }
 
         // 流式重试全部返回空（非异常）→ 模型可能不支持流式，回退到非流式并包装为流式发送
         Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
             + " attempts, falling back to non-stream with stream wrapping");
+        return fallbackToNonStream(ctx, context, systemMessages, tools, agentSession);
+    }
+
+    /**
+     * Invoke the model without streaming and adapt its response to the active stream session.
+     *
+     * @param ctx callback context
+     * @param context model context
+     * @param systemMessages system messages
+     * @param tools available tools
+     * @param agentSession stream session
+     * @return model response, or {@code null}
+     * @since 0.1.16
+     */
+    private AssistantMessage fallbackToNonStream(AgentCallbackContext ctx, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools, AgentSessionApi agentSession) {
         AssistantMessage aiMessage = callModel(ctx, context, systemMessages, tools);
         if (aiMessage != null) {
             // 有 tool_call 时：content 必须通过流式发送（因为循环会 continue，writeStreamResult 不会发送此轮 content）
@@ -1740,6 +1951,80 @@ public class ReActAgent extends BaseAgent {
             writeNonStreamAsStreamChunks(agentSession, aiMessage, 0, hasToolCalls);
         }
         return aiMessage;
+    }
+
+    /**
+     * Check whether a streamed response can advance the ReAct loop.
+     *
+     * @param message merged stream response
+     * @return {@code true} when answer content or tool calls are present
+     * @since 0.1.16
+     */
+    private static boolean hasActionableResponse(AssistantMessage message) {
+        if (message == null) {
+            return false;
+        }
+        if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
+            return true;
+        }
+        Object content = message.getContent();
+        return content != null && (!(content instanceof String text) || !text.isBlank());
+    }
+
+    /**
+     * Check whether a failure was caused by transport I/O.
+     *
+     * @param throwable failure to inspect
+     * @return {@code true} when the cause chain contains an I/O exception
+     * @since 0.1.16
+     */
+    private static boolean hasIoCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof java.io.IOException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    /**
+     * Wait before another stream attempt while preserving interruption.
+     *
+     * @param retryDelayMs delay in milliseconds
+     * @return {@code false} when the wait was interrupted
+     * @since 0.1.16
+     */
+    private static boolean delayStreamRetry(long retryDelayMs) {
+        if (retryDelayMs <= 0) {
+            return true;
+        }
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(retryDelayMs));
+        return !Thread.currentThread().isInterrupted();
+    }
+
+    /**
+     * Tracks whether an attempt has emitted anything to downstream consumers.
+     */
+    private static final class StreamAttempt {
+        private boolean hasReceivedChunks;
+
+        /**
+         * Mark the attempt as externally observable.
+         */
+        private void markChunkReceived() {
+            hasReceivedChunks = true;
+        }
+
+        /**
+         * Return whether at least one chunk was received.
+         *
+         * @return {@code true} after the first chunk
+         */
+        private boolean hasReceivedChunks() {
+            return hasReceivedChunks;
+        }
     }
 
     /**

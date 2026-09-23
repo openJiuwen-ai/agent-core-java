@@ -25,10 +25,14 @@ import org.junit.jupiter.api.Test;
 
 import reactor.test.StepVerifier;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * Tests for ReActAgent streaming degradation removal and retry behavior.
@@ -37,7 +41,7 @@ import java.util.Map;
  * <ul>
  * <li>Stream failures retry instead of silently degrading to non-stream</li>
  * <li>Empty stream responses fall back to non-stream with content wrapped as stream chunks</li>
- * <li>Stream exceptions (network errors) return errors without falling back</li>
+ * <li>Transport failures retry only before the first chunk</li>
  * <li>Normal streaming behavior is unaffected</li>
  * </ul>
  */
@@ -147,6 +151,108 @@ class ReActAgentStreamDegradationTest {
         // 验证 stream 仅被调用一次（异常时不重试）
         verify(model, times(1))
                 .stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void streamRetriesIoFailureBeforeFirstChunk() throws Exception {
+        ReActAgent agent = newAgent("retry-transport-before-first-chunk");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(3)
+                .streamMaxRetries(1)
+                .streamRetryDelayMs(0)
+                .build());
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(failingStreamBeforeFirstChunk())
+                .thenReturn(List.of(AssistantMessageChunk.builder().content("recovered after io").build()).iterator());
+        agent.setLlm(model);
+
+        AgentSessionApi session = new AgentSessionApi("retry-transport-session", null, agent.getCard(),
+                List.of(StreamMode.OUTPUT));
+
+        StepVerifier.create(agent.streamAsync(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT)))
+                .thenConsumeWhile(item -> !(item instanceof OutputSchema output
+                        && "answer".equals(output.getType())
+                        && String.valueOf(output.getPayload()).contains("recovered after io")))
+                .expectNextMatches(item -> item instanceof OutputSchema output
+                        && "answer".equals(output.getType())
+                        && String.valueOf(output.getPayload()).contains("recovered after io"))
+                .verifyComplete();
+
+        verify(model, times(2))
+                .stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(model, never()).invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void streamDoesNotRetryIoFailureAfterFirstChunk() throws Exception {
+        ReActAgent agent = newAgent("no-retry-after-first-chunk");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(3)
+                .streamMaxRetries(2)
+                .streamRetryDelayMs(0)
+                .build());
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(failingStreamAfterChunk("partial content"));
+        agent.setLlm(model);
+
+        AgentSessionApi session = new AgentSessionApi("partial-transport-session", null, agent.getCard(),
+                List.of(StreamMode.OUTPUT));
+        List<Object> collected = new ArrayList<>();
+
+        StepVerifier.create(agent.streamAsync(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT)))
+                .thenConsumeWhile(item -> {
+                    collected.add(item);
+                    return true;
+                })
+                .verifyComplete();
+
+        assertThat(collected.stream()
+                .filter(OutputSchema.class::isInstance)
+                .map(OutputSchema.class::cast)
+                .filter(output -> String.valueOf(output.getPayload()).contains("partial content")))
+                .hasSize(1);
+        verify(model, times(1))
+                .stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(model, never()).invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void reasoningOnlyStreamFallsBackToNonStreamAnswer() throws Exception {
+        ReActAgent agent = newAgent("reasoning-only-fallback");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(3)
+                .streamMaxRetries(2)
+                .streamRetryDelayMs(0)
+                .build());
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(AssistantMessageChunk.builder()
+                        .content("")
+                        .reasoningContent("thinking")
+                        .finishReason("stop")
+                        .build()).iterator());
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(AssistantMessage.builder().content("fallback answer").build());
+        agent.setLlm(model);
+
+        AgentSessionApi session = new AgentSessionApi("reasoning-only-session", null, agent.getCard(),
+                List.of(StreamMode.OUTPUT));
+
+        StepVerifier.create(agent.streamAsync(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT)))
+                .thenConsumeWhile(item -> !(item instanceof OutputSchema output
+                        && "answer".equals(output.getType())
+                        && String.valueOf(output.getPayload()).contains("fallback answer")))
+                .expectNextMatches(item -> item instanceof OutputSchema output
+                        && "answer".equals(output.getType())
+                        && String.valueOf(output.getPayload()).contains("fallback answer"))
+                .verifyComplete();
+
+        verify(model, times(1))
+                .stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(model, times(1))
+                .invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -347,5 +453,42 @@ class ReActAgentStreamDegradationTest {
                 .streamRetryDelayMs(0)
                 .build());
         return agent;
+    }
+
+    private static Iterator<AssistantMessageChunk> failingStreamBeforeFirstChunk() {
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                throw new UncheckedIOException(new IOException("connection reset before first chunk"));
+            }
+
+            @Override
+            public AssistantMessageChunk next() {
+                throw new NoSuchElementException();
+            }
+        };
+    }
+
+    private static Iterator<AssistantMessageChunk> failingStreamAfterChunk(String content) {
+        return new Iterator<>() {
+            private boolean hasEmitted;
+
+            @Override
+            public boolean hasNext() {
+                if (!hasEmitted) {
+                    return true;
+                }
+                throw new UncheckedIOException(new IOException("connection reset after first chunk"));
+            }
+
+            @Override
+            public AssistantMessageChunk next() {
+                if (hasEmitted) {
+                    throw new NoSuchElementException();
+                }
+                hasEmitted = true;
+                return AssistantMessageChunk.builder().content(content).build();
+            }
+        };
     }
 }

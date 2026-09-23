@@ -60,6 +60,7 @@ public final class StatusMapping {
         putIfExists(overrides, "TOOL_NOT_FOUND_ERROR", "ValidationError");
         putIfExists(overrides, "AGENT_GROUP_EXECUTION_ERROR", "AgentError");
         putIfExists(overrides, "AGENT_RL_REWARD_NOT_FOUND", "ValidationError");
+        putIfExists(overrides, "MODEL_RESPONSE_TYPE_ERROR", "ValidationError");
         MANUAL_OVERRIDES = Collections.unmodifiableMap(overrides);
     }
 

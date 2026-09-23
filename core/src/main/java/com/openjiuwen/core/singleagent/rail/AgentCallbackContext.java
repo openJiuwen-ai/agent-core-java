@@ -8,8 +8,10 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.Session;
 
+import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Data;
+import lombok.Setter;
 
 import java.util.HashMap;
 import java.util.List;
@@ -44,18 +46,82 @@ public class AgentCallbackContext {
     private Session session;
     private ModelContext context;
     @Builder.Default
+
     /**
      * HashMap<>.
      * 
      * @since 0.1.7
      */
     private Map<String, Object> extra = new HashMap<>();
+
+    /**
+     * Dynamic model ID for the current request.
+     * <p>
+     * Set by a user-defined Rail in {@code beforeInvoke} to specify which model
+     * should be used for this query. The framework's {@code getLlm(ctx)} method
+     * reads this value and resolves the model via {@code ModelMgr.resolveModel()}.
+     * When null or blank, the default model is used.
+     *
+     * @since 0.1.16
+     */
+    private String dynamicModelId;
     private Exception exception;
     @Builder.Default
     private int retryAttempt = 0;
     private RetryRequest retryRequest;
     private ForceFinishRequest forceFinishRequest;
     private SteeringQueue steeringQueue;
+    @Builder.Default
+    @Setter(AccessLevel.NONE)
+    private int iteration = -1;
+    @Builder.Default
+    @Setter(AccessLevel.NONE)
+    private int maxIterations = 0;
+    @Setter(AccessLevel.NONE)
+    private AgentTerminationReason terminationReason;
+
+    /**
+     * Initialize the request-local ReAct loop state.
+     *
+     * @param maxIterations configured iteration limit
+     * @since 0.1.16
+     */
+    public void initializeLoop(int maxIterations) {
+        this.iteration = -1;
+        this.maxIterations = Math.max(0, maxIterations);
+        this.terminationReason = null;
+    }
+
+    /**
+     * Record the zero-based ReAct iteration currently being executed.
+     *
+     * @param iteration zero-based iteration
+     * @since 0.1.16
+     */
+    public void enterIteration(int iteration) {
+        this.iteration = iteration;
+    }
+
+    /**
+     * Record the terminal outcome before {@link AgentCallbackEvent#AFTER_INVOKE} is fired.
+     *
+     * @param reason terminal outcome
+     * @since 0.1.16
+     */
+    public void finish(AgentTerminationReason reason) {
+        this.terminationReason = reason;
+    }
+
+    /**
+     * Return the number of model iterations available after the current one.
+     * Before the first iteration this equals {@link #getMaxIterations()}.
+     *
+     * @return non-negative remaining iteration count
+     * @since 0.1.16
+     */
+    public int getRemainingIterations() {
+        return Math.max(0, maxIterations - iteration - 1);
+    }
 
     /**
      * Trigger all registered callbacks for an event.

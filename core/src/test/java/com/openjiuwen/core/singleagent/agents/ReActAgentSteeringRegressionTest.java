@@ -13,8 +13,12 @@ import ch.qos.logback.core.read.ListAppender;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -218,6 +222,51 @@ class ReActAgentSteeringRegressionTest {
         assertThat(queues.drainSteering())
                 .as("steering must be consumed by the second iteration")
                 .isEmpty();
+    }
+
+    @Test
+    void streamAnswerBranchContinuesOnPendingSteering() throws Exception {
+        agent.configure(ReActAgentConfig.builder().maxIterations(3).build());
+        List<List<BaseMessage>> capturedRequests = new ArrayList<>();
+        AtomicInteger callCount = new AtomicInteger(0);
+        AtomicBoolean pushed = new AtomicBoolean(false);
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<BaseMessage> messages = (List<BaseMessage>) invocation.getArgument(0);
+                    capturedRequests.add(new ArrayList<>(messages));
+                    String content = callCount.incrementAndGet() == 1 ? "intermediate" : "done";
+                    return List.of(AssistantMessageChunk.builder().content(content).build()).iterator();
+                });
+        agent.setLlm(model);
+        agent.registerRail(new AgentRail() {
+            @Override
+            public void afterModelCall(AgentCallbackContext ctx) {
+                if (pushed.compareAndSet(false, true)) {
+                    ctx.pushSteering("continue");
+                }
+            }
+        });
+        AgentSessionApi session = new AgentSessionApi("steering-stream", null, agent.getCard(),
+                List.of(StreamMode.OUTPUT));
+
+        LoopQueues queues = new LoopQueues();
+        List<Object> outputs = new ArrayList<>();
+        agent.stream(Map.of("query", "run", "loop_queues", queues), session, List.of(StreamMode.OUTPUT))
+                .forEachRemaining(outputs::add);
+
+        assertThat(capturedRequests).hasSize(2);
+        assertThat(secondRequestSteering(capturedRequests)).isTrue();
+        assertThat(outputs).anyMatch(output -> output instanceof OutputSchema schema
+                && "llm_output".equals(schema.getType())
+                && String.valueOf(schema.getPayload()).contains("intermediate"));
+        assertThat(outputs.stream()
+                .filter(output -> output instanceof OutputSchema schema && "answer".equals(schema.getType())))
+                .singleElement()
+                .isInstanceOfSatisfying(OutputSchema.class,
+                        schema -> assertThat(String.valueOf(schema.getPayload())).contains("done"));
+        assertThat(queues.drainSteering()).isEmpty();
     }
 
     @Test

@@ -29,7 +29,9 @@ public interface McpClient {
     boolean connect(int retryTimes, float timeout) throws Exception;
 
     /**
-     * Connect with defaults (1 retry, no timeout).
+     * Connect with defaults (1 retry, the sentinel; the HTTP and stdio
+     * transports bound it with their 30s discovery default — the OpenAPI
+     * transport connects locally and needs no bound).
      * 
      * @return the result
      * @throws Exception Exception
@@ -50,7 +52,9 @@ public interface McpClient {
     boolean disconnect(float timeout) throws Exception;
 
     /**
-     * Disconnect with no timeout.
+     * Disconnect with the baseline default
+     * {@link McpServerConfig#NO_TIMEOUT} sentinel (the transports
+     * currently ignore the disconnect timeout — baseline behavior).
      * 
      * @return the result
      * @throws Exception Exception
@@ -58,6 +62,35 @@ public interface McpClient {
      */
     default boolean disconnect() throws Exception {
         return disconnect(McpServerConfig.NO_TIMEOUT);
+    }
+
+    /**
+     * Tear down and re-establish the transport after a transient failure.
+     * <p>
+     * Default implementation is {@code disconnect} followed by {@code connect}.
+     * HTTP transports serialize concurrent reconnects so a network blip does not
+     * leave tools permanently unusable.
+     * </p>
+     *
+     * @param timeout timeout in seconds for disconnect and connect
+     * @return {@code true} when reconnect succeeds
+     * @throws Exception when reconnect fails hard
+     * @since 0.1.16
+     */
+    default boolean reconnect(float timeout) throws Exception {
+        disconnect(timeout);
+        return connect(1, timeout);
+    }
+
+    /**
+     * Reconnect using the {@link McpServerConfig#NO_TIMEOUT} sentinel.
+     *
+     * @return {@code true} when reconnect succeeds
+     * @throws Exception when reconnect fails hard
+     * @since 0.1.16
+     */
+    default boolean reconnect() throws Exception {
+        return reconnect(McpServerConfig.NO_TIMEOUT);
     }
 
     /**
@@ -71,8 +104,12 @@ public interface McpClient {
     List<Object> listTools(float timeout) throws Exception;
 
     /**
-     * List tools with no timeout.
-     * 
+     * List tools with the discovery default: the
+     * {@link McpServerConfig#NO_TIMEOUT} sentinel, which the HTTP and
+     * stdio transports resolve to their bounded 30s discovery default
+     * (the OpenAPI transport serves discovery locally and needs no
+     * bound).
+     *
      * @return the result
      * @throws Exception Exception
      * @since 0.1.7
@@ -94,7 +131,9 @@ public interface McpClient {
     }
 
     /**
-     * List resources with no timeout.
+     * List resources with the baseline default: the
+     * {@link McpServerConfig#NO_TIMEOUT} sentinel disables the
+     * client-side bound (pass a positive timeout to bound it).
      * 
      * @return the result
      * @throws Exception Exception
@@ -118,7 +157,9 @@ public interface McpClient {
     }
 
     /**
-     * Read one MCP resource with no timeout.
+     * Read one MCP resource with the baseline default: the
+     * {@link McpServerConfig#NO_TIMEOUT} sentinel disables the
+     * client-side execution bound (pass a positive timeout to bound it).
      * 
      * @param uri uri
      * @return the result
@@ -142,8 +183,12 @@ public interface McpClient {
     Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception;
 
     /**
-     * Call a tool with no timeout.
-     * 
+     * Call a tool with the baseline default: the
+     * {@link McpServerConfig#NO_TIMEOUT} sentinel, which disables the
+     * client-side execution bound. Pass a positive timeout to bound the
+     * call — the registration path (ToolMgr) passes the configured
+     * callTimeoutSeconds when one is set.
+     *
      * @param toolName toolName
      * @param arguments arguments
      * @return the result

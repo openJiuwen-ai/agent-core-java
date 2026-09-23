@@ -7,14 +7,18 @@ package com.openjiuwen.harness.tools;
 import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.spi.store.ExpirableKVStore;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * KvTodoStorage.
@@ -24,9 +28,38 @@ import java.util.Objects;
 public class KvTodoStorage implements TodoStorage {
     private static final Logger logger = LoggerFactory.getLogger(KvTodoStorage.class);
     private final BaseKVStore kvStore;
+    private final BiConsumer<String, String> write;
+    private final Consumer<String> afterRead;
 
     public KvTodoStorage(BaseKVStore kvStore) {
+        this(kvStore, null, false);
+    }
+
+    /**
+     * Resolves expiry behavior once, while assembling this Todo storage.
+     *
+     * @param kvStore the store used for Todo data
+     * @param ttl the Todo TTL, or null to retain ordinary writes without expiration
+     * @param shouldRefreshOnRead whether successful reads renew the configured TTL
+     * @throws IllegalArgumentException if the TTL is invalid or unsupported by the store
+     * @since 0.1.16
+     */
+    public KvTodoStorage(BaseKVStore kvStore, Duration ttl, boolean shouldRefreshOnRead) {
         this.kvStore = Objects.requireNonNull(kvStore);
+        if (ttl == null) {
+            write = kvStore::set;
+            afterRead = key -> { };
+        } else {
+            if (ttl.isNegative() || ttl.isZero() || ttl.getNano() != 0
+                    || ttl.getSeconds() > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("Todo TTL must be positive whole seconds within integer range");
+            }
+            if (!(kvStore instanceof ExpirableKVStore expirable)) {
+                throw new IllegalArgumentException("Selected KV store does not support Todo TTL");
+            }
+            write = (key, value) -> expirable.set(key, value, ttl);
+            afterRead = shouldRefreshOnRead ? key -> expirable.refreshTtl(List.of(key), ttl) : key -> { };
+        }
     }
 
     private String buildKey(String sessionId) {
@@ -55,13 +88,14 @@ public class KvTodoStorage implements TodoStorage {
             return new ArrayList<>();
         }
         TodoItem[] items = JsonUtils.safeJsonLoads(json, TodoItem[].class, new TodoItem[0]);
+        afterRead.accept(key);
         return new ArrayList<>(List.of(items));
     }
 
     @Override
     public void save(String sessionId, List<TodoItem> todos) throws IOException {
         String key = buildKey(sessionId);
-        kvStore.set(key, JsonUtils.safeJsonDumps(todos, "[]"));
+        write.accept(key, JsonUtils.safeJsonDumps(todos, "[]"));
     }
 
     @Override

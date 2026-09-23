@@ -26,6 +26,33 @@ class AgentCallbackContextTest {
         assertThat(ctx.getException()).isNull();
         assertThat(ctx.getRetryAttempt()).isZero();
         assertThat(ctx.getRetryRequest()).isNull();
+        assertThat(ctx.getIteration()).isEqualTo(-1);
+        assertThat(ctx.getMaxIterations()).isZero();
+        assertThat(ctx.getRemainingIterations()).isZero();
+        assertThat(ctx.getTerminationReason()).isNull();
+    }
+
+    @Test
+    void testLoopStateLifecycle() {
+        AgentCallbackContext ctx = AgentCallbackContext.builder().build();
+
+        ctx.initializeLoop(4);
+        assertThat(ctx.getIteration()).isEqualTo(-1);
+        assertThat(ctx.getMaxIterations()).isEqualTo(4);
+        assertThat(ctx.getRemainingIterations()).isEqualTo(4);
+
+        ctx.enterIteration(1);
+        assertThat(ctx.getRemainingIterations()).isEqualTo(2);
+
+        ctx.finish(AgentTerminationReason.TEXT_TERMINATION);
+        assertThat(ctx.getTerminationReason()).isEqualTo(AgentTerminationReason.TEXT_TERMINATION);
+    }
+
+    @Test
+    void testLoopObservationHasNoBeanSetters() {
+        assertThat(AgentCallbackContext.class.getMethods())
+                .extracting(java.lang.reflect.Method::getName)
+                .doesNotContain("setIteration", "setMaxIterations", "setTerminationReason");
     }
 
     @Test

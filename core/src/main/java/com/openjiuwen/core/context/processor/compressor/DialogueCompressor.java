@@ -21,6 +21,7 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.runner.Runner;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -133,7 +134,7 @@ public class DialogueCompressor extends ContextProcessor {
         this.isKeepLastRound = config.isKeepLastRound();
         this.compressionTargetTokens = config.getCompressionTargetTokens();
         this.model = config.getModelClient() != null && config.getModel() != null
-                ? new Model(config.getModelClient(), config.getModel())
+                ? Runner.resourceMgr().resolveModel(null, config.getModelClient(), config.getModel())
                 : null;
     }
 

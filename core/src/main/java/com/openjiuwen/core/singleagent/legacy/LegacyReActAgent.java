@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
@@ -287,7 +288,7 @@ public class LegacyReActAgent extends BaseAgent {
                             : new java.util.LinkedHashMap<>())
                     .build();
 
-            llm = new Model(modelClientConfig, modelRequestConfig);
+            llm = Runner.resourceMgr().resolveModel(null, modelClientConfig, modelRequestConfig);
         }
         return llm;
     }

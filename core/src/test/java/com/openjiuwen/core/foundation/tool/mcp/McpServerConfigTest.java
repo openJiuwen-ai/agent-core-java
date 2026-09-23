@@ -10,8 +10,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests for {@link McpServerConfig} serverId defaulting.
+ * Tests for {@link McpServerConfig} serverId defaulting and
+ * connection-semantics equivalence.
  */
+@DisplayName("McpServerConfig")
 class McpServerConfigTest {
 
     @Test
@@ -62,11 +64,66 @@ class McpServerConfigTest {
 
     @Test
     @DisplayName("normalizeServerId fills blank serverId from serverName")
-    void normalizeServerIdFillsBlankFromServerName() {
+    void normalizeServerIdFillsBlankFromName() {
         McpServerConfig config = new McpServerConfig();
         config.setServerName("from-name");
         config.setServerId("  ");
         config.normalizeServerId();
         assertThat(config.getServerId()).isEqualTo("from-name");
+    }
+
+    @Test
+    @DisplayName("sameConnectionAs: equal fields and alias client types are equivalent")
+    void sameConnectionAsTreatsAliasesAsEquivalent() {
+        McpServerConfig base = McpServerConfig.builder()
+                .serverId("lib")
+                .serverName("lib")
+                .serverPath("http://127.0.0.1:9/mcp")
+                .clientType("streamable-http")
+                .build();
+        McpServerConfig identical = McpServerConfig.builder()
+                .serverId("lib")
+                .serverName("lib")
+                .serverPath("http://127.0.0.1:9/mcp")
+                .clientType("streamable-http")
+                .build();
+        assertThat(base.sameConnectionAs(identical)).isTrue();
+
+        McpServerConfig alias = McpServerConfig.builder()
+                .serverId("lib")
+                .serverName("lib")
+                .serverPath("http://127.0.0.1:9/mcp")
+                .clientType("streamable_http")
+                .build();
+        assertThat(alias.sameConnectionAs(base)).as("alias normalization applies both ways").isTrue();
+        assertThat(base.sameConnectionAs(base)).isTrue();
+    }
+
+    @Test
+    @DisplayName("sameConnectionAs: path, name, id, or client type differences break equivalence")
+    void sameConnectionAsDistinguishesConnectionCarriers() {
+        McpServerConfig base = McpServerConfig.builder()
+                .serverId("lib")
+                .serverName("lib")
+                .serverPath("http://127.0.0.1:9/mcp")
+                .clientType("sse")
+                .build();
+        McpServerConfig otherPath = McpServerConfig.builder()
+                .serverId("lib").serverName("lib")
+                .serverPath("http://127.0.0.1:10/mcp").clientType("sse").build();
+        assertThat(base.sameConnectionAs(otherPath)).isFalse();
+        McpServerConfig otherName = McpServerConfig.builder()
+                .serverId("lib").serverName("lib-2")
+                .serverPath("http://127.0.0.1:9/mcp").clientType("sse").build();
+        assertThat(base.sameConnectionAs(otherName)).isFalse();
+        McpServerConfig otherId = McpServerConfig.builder()
+                .serverId("lib-2").serverName("lib")
+                .serverPath("http://127.0.0.1:9/mcp").clientType("sse").build();
+        assertThat(base.sameConnectionAs(otherId)).isFalse();
+        McpServerConfig otherType = McpServerConfig.builder()
+                .serverId("lib").serverName("lib")
+                .serverPath("http://127.0.0.1:9/mcp").clientType("stdio").build();
+        assertThat(base.sameConnectionAs(otherType)).isFalse();
+        assertThat(base.sameConnectionAs(null)).isFalse();
     }
 }
