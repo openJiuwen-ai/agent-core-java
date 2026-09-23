@@ -58,7 +58,7 @@ public class ReActAgentConfig {
     private int maxIterations = 5;
 
     @Builder.Default
-    private boolean shouldFailTaskOnToolError = false;
+    private boolean shouldFailTaskOnToolError = true;
 
     @Builder.Default
     private int maxParallelToolCalls = 3;

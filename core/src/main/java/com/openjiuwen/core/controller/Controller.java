@@ -256,11 +256,13 @@ public class Controller {
      * @since 0.1.7
      */
     private boolean restoreTaskManagerState(AgentSessionApi session) {
+        String sessionId = session.getSessionId();
         Object controllerState = session.getState("controller");
         if (controllerState == null) {
-            Loggers.CONTROLLER.info("No saved state found for session {}, clearing task manager",
-                    session.getSessionId());
-            taskManager.clearState();
+            Loggers.CONTROLLER.info("No saved state found for session {}, clearing tasks for this session only",
+                    sessionId);
+            // Only clear this session's tasks, not all sessions' tasks (session-safe)
+            taskManager.clearStateForSession(sessionId);
             return false;
         }
 
@@ -268,20 +270,24 @@ public class Controller {
             Map<String, Object> stateMap = (Map<String, Object>) controllerState;
             Object tmState = stateMap.get("task_manager_state");
             if (tmState == null) {
-                taskManager.clearState();
+                // Only clear this session's tasks, not all sessions' tasks (session-safe)
+                taskManager.clearStateForSession(sessionId);
                 return false;
             }
 
-            Loggers.CONTROLLER.info("Restoring TaskManager state for session {}", session.getSessionId());
+            Loggers.CONTROLLER.info("Restoring TaskManager state for session {}", sessionId);
             TaskManagerState taskManagerState = TaskManagerState.fromMap((Map<String, Object>) tmState);
-            taskManager.loadState(taskManagerState);
-            Loggers.CONTROLLER.info("Successfully restored TaskManager state: {} tasks, {} root tasks",
-                    taskManagerState.getTasks().size(), taskManagerState.getRootTasks().size());
+            // Load state for this session only, preserving other sessions' tasks (session-safe)
+            taskManager.loadStateForSession(sessionId, taskManagerState);
+            Loggers.CONTROLLER.info("Successfully restored TaskManager state for session {}: {} tasks, {} root tasks",
+                    sessionId, taskManagerState.getTasks().size(), taskManagerState.getRootTasks().size());
             return true;
         } catch (Exception e) {
-            Loggers.CONTROLLER.error("Failed to restore TaskManager state for session {}: {}, clearing instead",
-                    session.getSessionId(), e.getMessage());
-            taskManager.clearState();
+            Loggers.CONTROLLER.error(
+                    "Failed to restore TaskManager state for session {}: {}, clearing this session only",
+                    sessionId, e.getMessage());
+            // Only clear this session's tasks, not all sessions' tasks (session-safe)
+            taskManager.clearStateForSession(sessionId);
             return false;
         }
     }

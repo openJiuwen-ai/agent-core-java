@@ -468,7 +468,7 @@ public class AbilityManager implements ToolRegistry {
             SessionContextHolder.setCurrentSession(session);
             ToolExecutionEntry result;
             try {
-                result = railedExecuteSingleToolCall(toolCtx, singleToolCall, session, tag);
+                result = executeSingleToolCallWithTimeout(toolCtx, singleToolCall, session, tag);
             } finally {
                 toolCtx.getExtra().remove("_skip_tool");
             }
@@ -487,6 +487,72 @@ public class AbilityManager implements ToolRegistry {
             return handleToolExecutionException(singleToolCall, toolCtx, e);
         } finally {
             SessionContextHolder.restoreCurrentSession(previousSession);
+        }
+    }
+
+    /**
+     * Wraps the single-tool execution path with a configurable timeout.
+     * <p>
+     * When {@link OpenJiuwenExecutors#toolCallTimeoutMillis()} returns a positive
+     * value, the tool execution is submitted to the shared tool-call executor and
+     * awaited with a timeout. On timeout, the underlying future is cancelled (best
+     * effort) and a timeout ToolMessage is returned so the caller (ReAct loop) can
+     * observe the failure instead of blocking indefinitely.
+     * <p>
+     * When the timeout is not configured (≤ 0), execution is synchronous — the
+     * original behaviour — preserving backward compatibility.
+     *
+     * @param toolCtx tool callback context
+     * @param singleToolCall tool call to execute
+     * @param session session
+     * @param tag optional tag
+     * @return the execution result, or a timeout result if the tool exceeded the configured timeout
+     * @since 0.1.16
+     */
+    private ToolExecutionEntry executeSingleToolCallWithTimeout(
+            AgentCallbackContext toolCtx,
+            ToolCall singleToolCall,
+            Session session,
+            String tag
+    ) {
+        long timeoutMillis = OpenJiuwenExecutors.toolCallTimeoutMillis();
+        if (timeoutMillis <= 0) {
+            // No timeout configured: execute synchronously (original behaviour)
+            return railedExecuteSingleToolCall(toolCtx, singleToolCall, session, tag);
+        }
+
+        // Submit to the tool-call executor so the timeout can interrupt the waiting thread.
+        // The execution itself runs on the worker thread; the current thread awaits the
+        // result with a bounded timeout.
+        CompletableFuture<ToolExecutionEntry> execution = OpenJiuwenExecutors.supplyToolCallAsync(
+                () -> railedExecuteSingleToolCall(toolCtx, singleToolCall, session, tag));
+        CompletableFuture<ToolExecutionEntry> timed = OpenJiuwenExecutors.withToolCallTimeout(execution);
+
+        try {
+            return timed.join();
+        } catch (CancellationException e) {
+            return cancelledToolExecution(singleToolCall);
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            // orTimeout produces TimeoutException
+            if (cause instanceof java.util.concurrent.TimeoutException) {
+                String timeoutMsg = "Tool execution timed out after " + timeoutMillis + "ms for tool: "
+                        + singleToolCall.getName();
+                Loggers.AGENT.warning(timeoutMsg);
+                // Best-effort cancel the underlying execution to release the worker thread.
+                execution.cancel(true);
+                ToolMessage toolMsg = ToolMessage.builder()
+                        .content(timeoutMsg)
+                        .toolCallId(singleToolCall.getId())
+                        .build();
+                return new ToolExecutionEntry(null, toolMsg);
+            }
+            // Re-throw non-timeout errors (e.g. AbilityExecutionError, ToolInterruptException)
+            // so the caller's catch block handles them as before.
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new CompletionException(cause);
         }
     }
 
@@ -655,7 +721,7 @@ public class AbilityManager implements ToolRegistry {
      */
     private static boolean isFailTaskOnToolError(AgentCallbackContext toolCtx) {
         if (toolCtx == null) {
-            return false;
+            return true;
         }
         Object config = toolCtx.getConfig();
         if (config instanceof ReActAgentConfig reactConfig) {
@@ -668,7 +734,7 @@ public class AbilityManager implements ToolRegistry {
                 return reactConfig.isShouldFailTaskOnToolError();
             }
         }
-        return false;
+        return true;
     }
 
     /**
