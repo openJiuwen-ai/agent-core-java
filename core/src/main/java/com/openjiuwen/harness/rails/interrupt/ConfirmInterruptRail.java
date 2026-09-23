@@ -67,7 +67,7 @@ public class ConfirmInterruptRail extends BaseInterruptRail {
                     request.payloadSchema(),
                     autoConfirmKey));
         }
-        if (payload.approved()) {
+        if (payload.isApproved()) {
             return new ApproveResult();
         }
         return new RejectResult(payload.feedback().isBlank()
@@ -110,11 +110,11 @@ public class ConfirmInterruptRail extends BaseInterruptRail {
      * <p>Travels as a resume input, which a persisting checkpointer keeps in the session state
      * and writes with Java serialization, so it has to be {@link Serializable}.</p>
      *
-     * @param approved whether the tool call is approved
+     * @param isApproved whether the tool call is approved
      * @param feedback rejection feedback
-     * @param autoConfirm whether the response requests future auto-confirmation
+     * @param isAutoConfirm whether the response requests future auto-confirmation
      */
-    public record ConfirmPayload(boolean approved, String feedback, boolean autoConfirm)
+    public record ConfirmPayload(boolean isApproved, String feedback, boolean isAutoConfirm)
             implements Serializable {
 
         @Serial

@@ -463,7 +463,7 @@ public class PermissionInterruptRail extends BaseSecurityRail {
             return response;
         }
         if (userInput instanceof ConfirmPayload payload) {
-            return new PermissionConfirmResponse(payload.approved(), payload.feedback(), payload.autoConfirm());
+            return new PermissionConfirmResponse(payload.isApproved(), payload.feedback(), payload.isAutoConfirm());
         }
         if (!(userInput instanceof Map<?, ?> map)) {
             return null;
