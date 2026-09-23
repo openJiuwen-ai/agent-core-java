@@ -92,6 +92,7 @@ public final class StatusMapping {
         putIfExists(overrides, "MODEL_CONFIG_ERROR", "ModelError");
         putIfExists(overrides, "MODEL_INVOKE_PARAM_ERROR", "ModelError");
         putIfExists(overrides, "MODEL_CLIENT_CONFIG_INVALID", "ModelError");
+        putIfExists(overrides, "MODEL_RESPONSE_TYPE_ERROR", "ValidationError");
         putIfExists(overrides, "TOOL_EXECUTION_ERROR", "ToolError");
         putIfExists(overrides, "TOOL_NOT_FOUND_ERROR", "ValidationError");
         putIfExists(overrides, "AGENT_TEAM_EXECUTION_ERROR", "AgentError");

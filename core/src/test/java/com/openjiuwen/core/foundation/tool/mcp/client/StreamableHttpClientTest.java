@@ -236,6 +236,57 @@ class StreamableHttpClientTest {
         assertEquals("[image content: image/png, 6 base64 chars]", result);
     }
 
+    @Test
+    void callToolReconnectsOnceAfterTransportFailure() throws Exception {
+        FakeSession failing = new FakeSession();
+        failing.callError = new IllegalStateException("connection reset by peer");
+        FakeSession recovered = new FakeSession();
+        recovered.callResult = Map.of("content", List.of(Map.of("text", "ok")));
+        SwitchingFactory factory = new SwitchingFactory(failing, recovered);
+        StreamableHttpClient client = new StreamableHttpClient(
+                new McpServerConfig("stream", "https://mcp.example.test/mcp"), factory);
+
+        assertTrue(client.connect(1, McpServerConfig.NO_TIMEOUT));
+        Object result = client.callTool("echo", Map.of(), McpServerConfig.NO_TIMEOUT);
+
+        assertEquals("ok", result);
+        assertEquals(2, factory.openCount);
+        assertTrue(failing.closed);
+        assertTrue(recovered.initialized);
+    }
+
+    @Test
+    void callToolReconnectsWhenDisconnected() throws Exception {
+        FakeSession first = new FakeSession();
+        FakeSession second = new FakeSession();
+        second.callResult = Map.of("content", List.of(Map.of("text", "recovered")));
+        SwitchingFactory factory = new SwitchingFactory(first, second);
+        StreamableHttpClient client = new StreamableHttpClient(
+                new McpServerConfig("stream", "https://mcp.example.test/mcp"), factory);
+
+        assertTrue(client.connect(1, McpServerConfig.NO_TIMEOUT));
+        assertTrue(client.disconnect(McpServerConfig.NO_TIMEOUT));
+        Object result = client.callTool("echo", Map.of(), McpServerConfig.NO_TIMEOUT);
+
+        assertEquals("recovered", result);
+        assertEquals(2, factory.openCount);
+    }
+
+    @Test
+    void callToolDoesNotReconnectOnBusinessError() throws Exception {
+        FakeSession session = new FakeSession();
+        session.callError = new IllegalStateException("boom");
+        CapturingFactory factory = new CapturingFactory(session);
+        StreamableHttpClient client = new StreamableHttpClient(
+                new McpServerConfig("stream", "https://mcp.example.test/mcp"), factory);
+
+        assertTrue(client.connect(1, McpServerConfig.NO_TIMEOUT));
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> client.callTool("echo", Map.of(), McpServerConfig.NO_TIMEOUT));
+        assertTrue(error.getMessage().contains("boom"));
+        assertEquals(1, factory.openCount);
+    }
+
     /**
      * Mirrors Python's injected streamable HTTP client context in
      * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.
@@ -246,6 +297,7 @@ class StreamableHttpClientTest {
         private McpServerConfig config;
         private float timeout;
         private AuthHeaderAndQueryProvider authProvider;
+        private int openCount;
 
         private CapturingFactory(FakeSession session) {
             this.session = session;
@@ -258,6 +310,26 @@ class StreamableHttpClientTest {
             this.config = config;
             this.timeout = timeout;
             this.authProvider = authProvider;
+            openCount++;
+            return session;
+        }
+    }
+
+    private static final class SwitchingFactory implements StreamableHttpClient.TransportFactory {
+        private final FakeSession first;
+        private final FakeSession second;
+        private int openCount;
+
+        private SwitchingFactory(FakeSession first, FakeSession second) {
+            this.first = first;
+            this.second = second;
+        }
+
+        @Override
+        public StreamableHttpClient.TransportSession open(String serverPath, McpServerConfig config, float timeout,
+                                                          AuthHeaderAndQueryProvider authProvider) {
+            FakeSession session = openCount == 0 ? first : second;
+            openCount++;
             return session;
         }
     }
@@ -270,6 +342,7 @@ class StreamableHttpClientTest {
         private final List<Object> tools = new ArrayList<>();
         private final List<Object> resources = new ArrayList<>();
         private RuntimeException initializeError;
+        private RuntimeException callError;
         private boolean initialized;
         private boolean closed;
         private String calledToolName;
@@ -293,6 +366,9 @@ class StreamableHttpClientTest {
 
         @Override
         public Object callTool(String toolName, Map<String, Object> arguments) {
+            if (callError != null) {
+                throw callError;
+            }
             calledToolName = toolName;
             calledArguments = arguments;
             return callResult;

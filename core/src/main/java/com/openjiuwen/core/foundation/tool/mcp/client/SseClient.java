@@ -34,6 +34,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -69,6 +70,7 @@ public class SseClient extends McpClient {
     private SseTransportSession session;
     private Object authProvider;
     private boolean disconnected;
+    private final Object reconnectLock = new Object();
 
     public SseClient(McpServerConfig config) {
         this(config, new SdkSseTransportFactory(), AuthTrigger.defaultAuth());
@@ -122,48 +124,59 @@ public class SseClient extends McpClient {
                     session.close();
                     session = null;
                 }
+                disconnected = true;
                 Loggers.TOOL.info("SSE client disconnected successfully");
                 return Boolean.TRUE;
-            } catch (Exception error) {
+            } catch (RuntimeException error) {
                 Loggers.TOOL.error("SSE disconnection failed: {}", error.getMessage());
                 return Boolean.FALSE;
             }
         });
     }
 
-    @Override
-    public CompletableFuture<List<Object>> listTools(double timeout) {
+    /**
+     * Disconnect then connect under a lock so concurrent callers share one handshake.
+     *
+     * @param timeout timeout in seconds for disconnect and connect
+     * @return future completing with {@code true} when reconnect succeeds
+     * @since 0.1.18
+     */
+    public CompletableFuture<Boolean> reconnect(double timeout) {
         return runAsync(() -> {
-            SseTransportSession connectedSession = requireSession();
-            try {
-                List<Object> tools = new ArrayList<>();
-                for (Object rawTool : connectedSession.listTools()) {
-                    tools.add(toToolCard(rawTool));
-                }
-                Loggers.TOOL.info("Retrieved {} tools from SSE server", tools.size());
-                return tools;
-            } catch (Exception error) {
-                Loggers.TOOL.error("Failed to list tools via SSE: {}", error.getMessage());
-                throw error;
+            synchronized (reconnectLock) {
+                disconnect(timeout).join();
+                return connect(1, timeout).join();
             }
         });
     }
 
     @Override
+    public CompletableFuture<List<Object>> listTools(double timeout) {
+        return runAsync(() -> executeWithReconnect(timeout, this::doListTools));
+    }
+
+    private List<Object> doListTools() throws Exception {
+        SseTransportSession connectedSession = requireSession();
+        List<Object> tools = new ArrayList<>();
+        for (Object rawTool : connectedSession.listTools()) {
+            tools.add(toToolCard(rawTool));
+        }
+        Loggers.TOOL.info("Retrieved {} tools from SSE server", tools.size());
+        return tools;
+    }
+
+    @Override
     public CompletableFuture<Object> callTool(String toolName, Map<String, Object> arguments, double timeout) {
-        return runAsync(() -> {
-            SseTransportSession connectedSession = requireSession();
-            try {
-                Loggers.TOOL.info("Calling tool '{}' via SSE with arguments: {}", toolName, arguments);
-                Object toolResult = connectedSession.callTool(toolName, arguments);
-                Object resultContent = McpBase.extractMcpToolResultContent(toolResult);
-                Loggers.TOOL.info("Tool '{}' call completed via SSE", toolName);
-                return resultContent;
-            } catch (Exception error) {
-                Loggers.TOOL.error("Tool call failed via SSE: {}", error.getMessage());
-                throw error;
-            }
-        });
+        return runAsync(() -> executeWithReconnect(timeout, () -> doCallTool(toolName, arguments)));
+    }
+
+    private Object doCallTool(String toolName, Map<String, Object> arguments) throws Exception {
+        SseTransportSession connectedSession = requireSession();
+        Loggers.TOOL.info("Calling tool '{}' via SSE with arguments: {}", toolName, arguments);
+        Object toolResult = connectedSession.callTool(toolName, arguments);
+        Object resultContent = McpBase.extractMcpToolResultContent(toolResult);
+        Loggers.TOOL.info("Tool '{}' call completed via SSE", toolName);
+        return resultContent;
     }
 
     @Override
@@ -182,28 +195,69 @@ public class SseClient extends McpClient {
 
     @Override
     public CompletableFuture<List<Object>> listResources(double timeout) {
-        return runAsync(() -> {
-            SseTransportSession connectedSession = requireSession();
-            try {
-                return copyObjectList(connectedSession.listResources());
-            } catch (Exception error) {
-                Loggers.TOOL.error("Failed to list resources via SSE: {}", error.getMessage());
-                throw error;
-            }
-        });
+        return runAsync(() -> executeWithReconnect(timeout, this::doListResources));
+    }
+
+    private List<Object> doListResources() throws Exception {
+        SseTransportSession connectedSession = requireSession();
+        return copyObjectList(connectedSession.listResources());
     }
 
     @Override
     public CompletableFuture<Object> readResource(String uri, double timeout) {
-        return runAsync(() -> {
-            SseTransportSession connectedSession = requireSession();
-            try {
-                return connectedSession.readResource(uri);
-            } catch (Exception error) {
-                Loggers.TOOL.error("Failed to read resource '{}' via SSE: {}", uri, error.getMessage());
-                throw error;
+        return runAsync(() -> executeWithReconnect(timeout, () -> doReadResource(uri)));
+    }
+
+    private Object doReadResource(String uri) throws Exception {
+        SseTransportSession connectedSession = requireSession();
+        return connectedSession.readResource(uri);
+    }
+
+    private <T> T executeWithReconnect(double timeout, Callable<T> operation) throws Exception {
+        try {
+            return operation.call();
+        } catch (RuntimeException stateError) {
+            if (!shouldRetryAfterStateError(stateError)) {
+                throw stateError;
             }
-        });
+            return retryAfterReconnect(timeout, operation, stateError);
+        }
+    }
+
+    private <T> T retryAfterReconnect(double timeout, Callable<T> operation, Exception firstError)
+            throws Exception {
+        Loggers.TOOL.warning("MCP transport error, reconnecting once: server={}, error={}",
+                getServerPath(), firstError.toString());
+        if (!Boolean.TRUE.equals(reconnect(timeout).join())) {
+            throw firstError;
+        }
+        return operation.call();
+    }
+
+    private boolean shouldRetryAfterStateError(RuntimeException error) {
+        if (!isRetryableTransportError(error)) {
+            return false;
+        }
+        String message = error.getMessage();
+        String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        if (lower.contains("not connected") && session == null && !disconnected) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean isRetryableTransportError(RuntimeException error) {
+        Throwable cause = error.getCause();
+        if (cause instanceof java.io.IOException) {
+            return true;
+        }
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("not connected") || lower.contains("connection reset")
+                || lower.contains("broken pipe") || lower.contains("connection closed");
     }
 
     @Override
@@ -252,7 +306,7 @@ public class SseClient extends McpClient {
 
     private SseTransportSession requireSession() {
         if (session == null) {
-            throw new RuntimeException("Not connected to SSE server");
+            throw new IllegalStateException("Not connected to SSE server");
         }
         return session;
     }

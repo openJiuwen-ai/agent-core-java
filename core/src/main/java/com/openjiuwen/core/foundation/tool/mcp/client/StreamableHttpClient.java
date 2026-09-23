@@ -22,6 +22,7 @@ import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTranspor
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
@@ -31,6 +32,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.StringJoiner;
@@ -59,6 +61,7 @@ public class StreamableHttpClient implements McpClient {
     private TransportSession session;
     private AuthHeaderAndQueryProvider authProvider;
     private boolean disconnected;
+    private final Object reconnectLock = new Object();
 
     public StreamableHttpClient(McpServerConfig config) {
         this(config, new SdkTransportFactory());
@@ -123,42 +126,60 @@ public class StreamableHttpClient implements McpClient {
             Loggers.TOOL.info("Streamable-http client disconnected successfully");
             return true;
         } catch (Exception error) {
+            // AutoCloseable.close may throw checked Exception from transport teardown.
             Loggers.TOOL.error("Streamable-http disconnection failed: {}", error.getMessage());
+            session = null;
+            authProvider = null;
+            disconnected = true;
             return false;
+        }
+    }
+
+    /**
+     * Disconnect then connect under a lock so concurrent callers share one handshake.
+     *
+     * @param timeout timeout in seconds for disconnect and connect
+     * @return {@code true} when reconnect succeeds
+     * @throws Exception declared for {@link McpClient} compatibility
+     * @since 0.1.18
+     */
+    @Override
+    public boolean reconnect(float timeout) throws Exception {
+        synchronized (reconnectLock) {
+            disconnect(timeout);
+            return connect(1, timeout);
         }
     }
 
     @Override
     public List<Object> listTools(float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doListTools());
+    }
+
+    private List<Object> doListTools() throws Exception {
         TransportSession connectedSession = requireSession();
-        try {
-            List<Object> tools = new ArrayList<>();
-            for (Object rawTool : connectedSession.listTools()) {
-                tools.add(toToolCard(rawTool));
-            }
-            Loggers.TOOL.info("Retrieved {} tools from streamable-http server", tools.size());
-            return tools;
-        } catch (Exception error) {
-            Loggers.TOOL.error("Failed to list tools via streamable-http: {}", error.getMessage());
-            throw error;
+        List<Object> tools = new ArrayList<>();
+        for (Object rawTool : connectedSession.listTools()) {
+            tools.add(toToolCard(rawTool));
         }
+        Loggers.TOOL.info("Retrieved {} tools from streamable-http server", tools.size());
+        return tools;
     }
 
     @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doCallTool(toolName, arguments));
+    }
+
+    private Object doCallTool(String toolName, Map<String, Object> arguments) throws Exception {
         TransportSession connectedSession = requireSession();
-        try {
-            Map<String, Object> normalizedArguments = arguments == null ? Map.of() : arguments;
-            Loggers.TOOL.info("Calling tool '{}' via streamable-http with arguments: {}", toolName,
-                    normalizedArguments);
-            Object toolResult = connectedSession.callTool(toolName, normalizedArguments);
-            Object resultContent = McpBase.extractMcpToolResultContent(toolResult);
-            Loggers.TOOL.info("Tool '{}' call completed via streamable-http", toolName);
-            return resultContent;
-        } catch (Exception error) {
-            Loggers.TOOL.error("Tool call failed via streamable-http: {}", error.getMessage());
-            throw error;
-        }
+        Map<String, Object> normalizedArguments = arguments == null ? Map.of() : arguments;
+        Loggers.TOOL.info("Calling tool '{}' via streamable-http with arguments: {}", toolName,
+                normalizedArguments);
+        Object toolResult = connectedSession.callTool(toolName, normalizedArguments);
+        Object resultContent = McpBase.extractMcpToolResultContent(toolResult);
+        Loggers.TOOL.info("Tool '{}' call completed via streamable-http", toolName);
+        return resultContent;
     }
 
     @Override
@@ -175,24 +196,22 @@ public class StreamableHttpClient implements McpClient {
 
     @Override
     public List<Object> listResources(float timeout) throws Exception {
+        return executeWithReconnect(timeout, this::doListResources);
+    }
+
+    private List<Object> doListResources() throws Exception {
         TransportSession connectedSession = requireSession();
-        try {
-            return new ArrayList<>(connectedSession.listResources());
-        } catch (Exception error) {
-            Loggers.TOOL.error("Failed to list resources via streamable-http: {}", error.getMessage());
-            throw error;
-        }
+        return new ArrayList<>(connectedSession.listResources());
     }
 
     @Override
     public Object readResource(String uri, float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doReadResource(uri));
+    }
+
+    private Object doReadResource(String uri) throws Exception {
         TransportSession connectedSession = requireSession();
-        try {
-            return connectedSession.readResource(uri);
-        } catch (Exception error) {
-            Loggers.TOOL.error("Failed to read resource '{}' via streamable-http: {}", uri, error.getMessage());
-            throw error;
-        }
+        return connectedSession.readResource(uri);
     }
 
     @Override
@@ -208,9 +227,59 @@ public class StreamableHttpClient implements McpClient {
         return disconnected;
     }
 
+    private <T> T executeWithReconnect(float timeout, McpOperation<T> operation) throws Exception {
+        try {
+            return operation.execute();
+        } catch (IOException transportError) {
+            return retryAfterReconnect(timeout, operation, transportError);
+        } catch (RuntimeException stateError) {
+            if (!shouldRetryAfterStateError(stateError)) {
+                throw stateError;
+            }
+            return retryAfterReconnect(timeout, operation, stateError);
+        }
+    }
+
+    private boolean shouldRetryAfterStateError(RuntimeException error) {
+        if (!isRetryableTransportError(error)) {
+            return false;
+        }
+        String message = error.getMessage();
+        String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        if (lower.contains("not connected") && session == null && !disconnected) {
+            return false;
+        }
+        return true;
+    }
+
+    private <T> T retryAfterReconnect(float timeout, McpOperation<T> operation, Exception firstError)
+            throws Exception {
+        Loggers.TOOL.warning("MCP transport error, reconnecting once: server={}, error={}",
+                config.getServerPath(), firstError.toString());
+        if (!reconnect(timeout)) {
+            throw firstError;
+        }
+        return operation.execute();
+    }
+
+    private static boolean isRetryableTransportError(RuntimeException error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("not connected") || lower.contains("connection reset")
+                || lower.contains("broken pipe") || lower.contains("connection closed");
+    }
+
+    @FunctionalInterface
+    private interface McpOperation<T> {
+        T execute() throws Exception;
+    }
+
     private TransportSession requireSession() {
         if (session == null) {
-            throw new RuntimeException("Not connected to streamable-http server");
+            throw new IllegalStateException("Not connected to streamable-http server");
         }
         return session;
     }

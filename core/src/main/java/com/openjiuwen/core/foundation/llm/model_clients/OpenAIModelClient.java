@@ -361,14 +361,20 @@ public class OpenAIModelClient extends BaseModelClient {
     protected AssistantMessage parseResponse(Map<String, Object> response, BaseOutputParser parser) {
         List<Map<String, Object>> choices = asListOfObjectMaps(response.get("choices"));
         if (choices.isEmpty()) {
-            throw new IllegalArgumentException("No choices in response: " + response);
+            throw ErrorHelper.buildError(StatusCode.MODEL_RESPONSE_INVALID, "error_msg",
+                    "No choices in response");
         }
         Map<String, Object> choice = choices.get(0);
-        Map<String, Object> message = asObjectMap(choice.get("message"));
+        Object rawMessage = choice.get("message");
+        if (!(rawMessage instanceof Map<?, ?>)) {
+            throw ErrorHelper.buildError(StatusCode.MODEL_RESPONSE_INVALID, "error_msg",
+                    "No message in response choice");
+        }
+        Map<String, Object> message = asObjectMap(rawMessage);
 
         List<ToolCall> toolCalls = parseToolCalls(message.get("tool_calls"), true);
         UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), true);
-        Object content = pythonTruthy(message.get("content")) ? message.get("content") : "";
+        Object content = requireStringOrNullContent(message.get("content"), "choices[0].message.content");
         Object parserContent = parseContent(parser, content);
 
         return AssistantMessage.builder()
@@ -408,7 +414,9 @@ public class OpenAIModelClient extends BaseModelClient {
         }
 
         Map<String, Object> choice = choices.get(0);
-        Map<String, Object> delta = asObjectMap(choice.get("delta"));
+        Object rawDelta = choice.get("delta");
+        Map<String, Object> delta = rawDelta instanceof Map<?, ?> ? asObjectMap(rawDelta) : Map.of();
+        Object content = requireStringOrNullContent(delta.get("content"), "choices[0].delta.content");
         List<ToolCall> toolCalls = parseToolCalls(delta.get("tool_calls"), false, toolCallStates);
         List<Integer> completionTokenIds = firstNonNull(
                 integerList(choice.get("token_ids")),
@@ -416,7 +424,7 @@ public class OpenAIModelClient extends BaseModelClient {
         );
 
         return AssistantMessageChunk.builder()
-                .content(pythonTruthy(delta.get("content")) ? delta.get("content") : "")
+                .content(content)
                 .reasoningContent(reasoningContentFrom(delta))
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
@@ -427,6 +435,26 @@ public class OpenAIModelClient extends BaseModelClient {
                 .completionTokenIds(completionTokenIds)
                 .logprobs(normalizeLogprobs(choice.get("logprobs")))
                 .build();
+    }
+
+    /**
+     * Require {@code content} to be a JSON string or null (normalized to empty string).
+     * Non-string types must not be stringified and leaked downstream.
+     *
+     * @param content content field from the model response
+     * @param fieldPath field path for the error message
+     * @return string content, empty when null
+     * @since 0.1.18
+     */
+    private static Object requireStringOrNullContent(Object content, String fieldPath) {
+        if (content == null) {
+            return "";
+        }
+        if (content instanceof String) {
+            return content;
+        }
+        throw ErrorHelper.buildError(StatusCode.MODEL_RESPONSE_TYPE_ERROR, "error_msg",
+                fieldPath + " must be a string, got " + content.getClass().getSimpleName());
     }
 
     private Map<String, Object> postJson(

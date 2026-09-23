@@ -169,6 +169,64 @@ class SkillManagerIncrementalTest {
         assertThat(manager.has("legacy_skill")).isTrue();
     }
 
+    @Test
+    void refreshIncrementallyFindsSkillsInGroups() throws IOException {
+        writeSkill(tempDir.resolve("lark").resolve("lark-doc"), "Edit Feishu docs");
+        writeSkill(tempDir.resolve("lark").resolve("deep").resolve("lark-base"), "Query Feishu Base");
+        writeSkill(tempDir.resolve("invoice-parser"), "Parse invoice pdf files");
+
+        manager.refreshIncrementally(List.of(tempDir));
+
+        assertThat(manager.getNames()).containsExactlyInAnyOrder("invoice-parser", "lark-base", "lark-doc");
+        List<Map.Entry<String, Long>> signature = manager.buildSnapshotSignature(List.of(tempDir));
+        assertThat(signature).hasSize(3);
+    }
+
+    @Test
+    void refreshIncrementallyKeepsNestedSkillPrivate() throws IOException {
+        Path parent = writeSkill(tempDir.resolve("writing"), "Write documents");
+        writeSkill(parent.resolve("designer"), "Internal sub-step of writing");
+
+        manager.refreshIncrementally(List.of(tempDir));
+
+        assertThat(manager.getNames()).containsExactly("writing");
+        assertThat(manager.has("designer")).isFalse();
+    }
+
+    @Test
+    void refreshIncrementallyWhenSkipDirContainsSkillIgnoresIt() throws IOException {
+        writeSkill(tempDir.resolve("visible"), "Visible skill");
+        writeSkill(tempDir.resolve("assets").resolve("hidden"), "Should stay hidden");
+        writeSkill(tempDir.resolve("node_modules").resolve("pkg"), "Should stay hidden");
+
+        manager.refreshIncrementally(List.of(tempDir));
+
+        assertThat(manager.getNames()).containsExactly("visible");
+    }
+
+    @Test
+    void refreshIncrementallyWhenSymlinkCycleDoesNotLoop() throws IOException {
+        Path group = tempDir.resolve("group");
+        writeSkill(group.resolve("shared"), "A shared skill");
+        Path loop = group.resolve("loop");
+        try {
+            Files.createSymbolicLink(loop, tempDir);
+        } catch (UnsupportedOperationException | IOException error) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "symlinks unavailable on this platform");
+        }
+
+        manager.refreshIncrementally(List.of(tempDir));
+
+        assertThat(manager.getNames()).containsExactly("shared");
+    }
+
+    private static Path writeSkill(Path skillDir, String description) throws IOException {
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\ndescription: " + description + "\n---\n# " + skillDir.getFileName());
+        return skillDir;
+    }
+
     private void forceMtimeChange(Path file) throws IOException {
         try {
             Thread.sleep(100);
