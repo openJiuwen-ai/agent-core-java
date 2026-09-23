@@ -66,13 +66,17 @@ Runner.start();
 
 ## 运行时线程池配置
 
-OpenJiuwen 通过 `OpenJiuwenExecutors` 统一创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用**共享线程池**；Workflow、Pregel、DeepAgent stream 等模块使用**模块有界线程池**（`newBoundedModulePool`），由同一入口管理，统一使用 `core=max + ArrayBlockingQueue` 排队语义与 `AbortPolicy` 拒绝策略。
+OpenJiuwen 通过 `OpenJiuwenExecutors` 统一创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用**共享线程池**；Workflow、Pregel、DeepAgent stream 等模块使用**模块有界线程池**（`newBoundedModulePool`），由同一入口管理。
+
+> **平台/虚拟双形态线程模型**：`OpenJiuwenExecutors` 在启动期探测运行环境 JDK 版本（`VirtualThreadSupport`），自动选型线程模型——**JDK 17 及更早**按下文配置运行平台线程池（共享池 `core=0 + max + SynchronousQueue + CallerRunsPolicy`，模块池 `core=max + ArrayBlockingQueue + AbortPolicy`）；**JDK 21 及以上**自动切换为 per-task 虚拟线程，下文所有线程数 / 队列容量 / 拒绝策略配置**不再生效**（并发能力不再受池上限约束，由上层准入控制统一管控）。业务代码无需任何改造，同一制品随 JDK 运行环境自动升级并发能力。可用 `OpenJiuwenExecutors.isVirtualThreadSupported()` 探测当前运行时的线程模型。
 
 AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。同一轮提交到线程池的并发 tool 数量默认上限为 **3**。DeepAgent 创建时通过 `DeepAgentConfig.maxParallelToolCalls` 配置（用法与 `maxIterations` 相同）；直接使用 ReAct 时可通过 `ReActAgentConfig.maxParallelToolCalls` 调整，避免一次规划出的大量 tool call 把共享线程池打满。
 
 ### 配置读取规则
 
 下列配置均支持 **JVM 系统属性** 或 **环境变量** 两种方式。均为进程启动参数，在对应线程池**首次创建时**读取，**不支持运行期热更新**。
+
+> **仅 JDK 17 平台线程路径生效**：JDK 21+ 虚拟线程路径下，本节所有 max-size / queue-size / keep-alive / 拒绝策略配置整体忽略。
 
 读取顺序（`OpenJiuwenExecutors` 内整数配置统一遵循）：
 
@@ -96,6 +100,8 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 
 ### 共享线程池
 
+> 本节为 **JDK 17 平台线程路径**下的共享池配置；JDK 21+ 虚拟线程路径不适用。
+
 | 配置含义 | JVM 系统属性 | 环境变量 | 默认值 |
 | --- | --- | --- | --- |
 | 工具或能力调用最大线程数 | `openjiuwen.executor.tool-call.max-size` | `OPENJIUWEN_EXECUTOR_TOOL_CALL_MAX_SIZE` | `max(8, CPU 核数 * 2)` |
@@ -115,6 +121,8 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 每类最大线程数是当前 JVM 进程内对应共享线程池的上限，多个会话或请求会共同竞争该池。
 
 ### 模块有界线程池
+
+> 本节为 **JDK 17 平台线程路径**下的模块池默认值；JDK 21+ 虚拟线程路径下由 per-task 虚拟线程取代，下述 max/queue 与拒绝策略不生效。
 
 由 `OpenJiuwenExecutors.newBoundedModulePool(模块前缀, isDaemon)` 创建的池均纳入统一注册与 JVM 退出回收。未在表中列出的前缀会使用 **GENERIC** 默认（max=`32`，queue=`256`）。
 
@@ -163,6 +171,8 @@ java -jar app.jar
 ```
 
 高并发场景建议结合业务压测结果调大；模块池与共享池的上限均为**进程内全局**，多会话会共同竞争。
+
+> **JDK 21+ 调优口径变化**：虚拟线程路径下 max-size / queue-size 配置不再约束并发，实际并发由**上层准入控制**统一管控（core `TaskScheduler.maxConcurrentTasks` 在 JDK 21+ 自动放开、`deep-agent-stream` 池对 stream 会话的并发控制同样让位于准入闸），LLM 侧 HTTP 并发与厂商配额成为主要限流点。
 
 ## `DistributedConfig` 负责什么
 
