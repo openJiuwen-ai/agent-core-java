@@ -46,8 +46,8 @@ class GraphParseStateTest {
         assertThat(entities.get(0).getObjType()).isEqualTo("Human");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void inMemoryGraphStoreShouldUpsertGraphObjectsByUuid() throws Exception {
         GraphStore store = InMemoryGraphStore.fromConfig(GraphConfig.builder()
                 .uri(tempDir.resolve("upsert.db").toString())
@@ -129,8 +129,8 @@ class GraphParseStateTest {
         assertThat(merged.getRemovedRelation()).contains("r1");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void postprocessHelpersShouldWork() throws Exception {
         GraphStore store = InMemoryGraphStore.fromConfig(GraphConfig.builder().uri(tempDir.resolve("graph.db").toString()).backend("in_memory").build());
         States.GraphMemState state = new States.GraphMemState();

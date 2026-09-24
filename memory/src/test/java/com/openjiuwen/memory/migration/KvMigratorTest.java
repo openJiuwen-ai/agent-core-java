@@ -141,8 +141,8 @@ class KvMigratorTest {
         assertEquals("3", kvStore.get(KvMigrator.KV_SCHEMA_VERSION).join());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void tryMigrateRejectsInvalidVersionFormat() {
         InMemoryKVStore kvStore = new InMemoryKVStore();
         kvStore.set(KvMigrator.KV_SCHEMA_VERSION, "invalid_version").join();
@@ -279,8 +279,8 @@ class KvMigratorTest {
         assertEquals("1000000", largeStore.getDirect(KvMigrator.KV_SCHEMA_VERSION));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void tryMigrateRejectsFloatVersionType() {
         TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
         kvStore.put(KvMigrator.KV_SCHEMA_VERSION, 1.5d);

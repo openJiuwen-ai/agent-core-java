@@ -109,8 +109,8 @@ class AgentBuilderCompatibilityTest {
         assertThat(builder.getBuildStatus("session_003")).containsEntry("state", "not_found");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void getProgressShouldReturnProgressMapWhenSessionExists() {
         AgentBuilder builder = createTestBuilder();
         builder.buildWorkflow("Create a workflow with explicit steps for onboarding review and approval.", "session_004");

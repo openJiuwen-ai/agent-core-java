@@ -290,30 +290,45 @@ public final class AsyncProcessHandler {
 
     private void killProcessTree() {
         ProcessHandle handle = process.toHandle();
+        List<ProcessHandle> descendants = listDescendants(handle);
         if (isWindows()) {
-            try {
-                new ProcessBuilder("taskkill", "/PID", String.valueOf(handle.pid()), "/T", "/F")
-                        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                        .redirectError(ProcessBuilder.Redirect.DISCARD)
-                        .start()
-                        .waitFor(5, TimeUnit.SECONDS);
-            } catch (Exception exception) {
-                LOGGER.warning("Failed to taskkill process tree: {}", exception.getMessage());
-            }
+            killWindowsProcessTree(handle.pid());
         } else {
-            killUnixChildren(handle.pid(), "TERM");
+            // Kill the root process first. Killing children first lets a shell continue past a
+            // terminated `sleep` and flush trailing output (e.g. "after") before the parent dies.
+            handle.destroyForcibly();
             killUnixChildren(handle.pid(), "KILL");
         }
-        try {
-            List<ProcessHandle> descendants = new ArrayList<>(handle.descendants().toList());
-            for (int i = descendants.size() - 1; i >= 0; i--) {
-                ProcessHandle descendant = descendants.get(i);
-                descendant.destroyForcibly();
-            }
-        } catch (RuntimeException exception) {
-            LOGGER.warning("Failed to enumerate subprocess descendants: {}", exception.getMessage());
+        for (int index = descendants.size() - 1; index >= 0; index--) {
+            descendants.get(index).destroyForcibly();
         }
-        handle.destroyForcibly();
+        if (process.isAlive()) {
+            handle.destroyForcibly();
+        }
+    }
+
+    private static List<ProcessHandle> listDescendants(ProcessHandle handle) {
+        try {
+            return new ArrayList<>(handle.descendants().toList());
+        } catch (IllegalStateException | SecurityException exception) {
+            LOGGER.warning("Failed to enumerate subprocess descendants: {}", exception.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    private void killWindowsProcessTree(long pid) {
+        try {
+            new ProcessBuilder("taskkill", "/PID", String.valueOf(pid), "/T", "/F")
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start()
+                    .waitFor(5, TimeUnit.SECONDS);
+        } catch (IOException exception) {
+            LOGGER.warning("Failed to taskkill process tree: {}", exception.getMessage());
+        } catch (InterruptedException interrupted) {
+            // Best-effort kill; do not call Thread.interrupt() (G.CON.10).
+            LOGGER.warning("Failed to taskkill process tree: {}", interrupted.getMessage());
+        }
     }
 
     private void killUnixChildren(long pid, String signal) {
@@ -323,8 +338,11 @@ public final class AsyncProcessHandler {
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start()
                     .waitFor(2, TimeUnit.SECONDS);
-        } catch (Exception exception) {
+        } catch (IOException exception) {
             LOGGER.warning("Failed to pkill child processes for {}: {}", pid, exception.getMessage());
+        } catch (InterruptedException interrupted) {
+            // Best-effort kill; do not call Thread.interrupt() (G.CON.10).
+            LOGGER.warning("Failed to pkill child processes for {}: {}", pid, interrupted.getMessage());
         }
     }
 
@@ -344,7 +362,8 @@ public final class AsyncProcessHandler {
         try {
             queue.put(event);
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+            // Drop the event on interrupt; do not call Thread.interrupt() (G.CON.10).
+            LOGGER.warning("Failed to enqueue stream event: {}", interrupted.getMessage());
         }
     }
 

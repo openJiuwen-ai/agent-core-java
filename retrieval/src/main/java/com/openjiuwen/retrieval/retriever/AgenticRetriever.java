@@ -167,7 +167,8 @@ public class AgenticRetriever implements Retriever {
     ) {
         GraphRetriever graph = (GraphRetriever) retriever;
         Map<String, Object> downstreamOptions = new LinkedHashMap<>(options);
-        boolean graphExpansion = !Boolean.FALSE.equals(downstreamOptions.get("graph_expansion"));
+        // graph_expansion is AgenticRetriever-local; do not forward it to chunk/triple retrievers.
+        boolean isGraphExpansion = !Boolean.FALSE.equals(downstreamOptions.remove("graph_expansion"));
         List<String> queries = new ArrayList<>();
         queries.add(query);
         List<List<RetrievalResult>> historyResults = new ArrayList<>();
@@ -184,7 +185,7 @@ public class AgenticRetriever implements Retriever {
                     downstreamOptions
             );
 
-            if (graphExpansion) {
+            if (isGraphExpansion) {
                 List<List<String>> proximalTriples = read(currentQuery, chunkResults, null);
                 List<RetrievalResult> linkedTriples = linkTriples(graph, proximalTriples, mode, downstreamOptions);
                 chunkResults = graph.graphExpansion(

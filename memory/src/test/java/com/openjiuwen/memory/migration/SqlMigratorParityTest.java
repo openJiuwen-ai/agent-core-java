@@ -27,7 +27,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.h2.jdbcx.JdbcDataSource;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -76,66 +75,6 @@ class SqlMigratorParityTest {
         return PASSED_PYTHON_TESTS.stream()
                 .map(name -> dynamicTest(name, () -> runPassedPythonCase(name)))
                 .toList();
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlTryMigrateEmptyOperationsSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlAddColumnUserMessageSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlAddColumnScopeUserMappingSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlRenameColumnSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlUpdateColumnTypeSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlVersionControlSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlMultipleOperationsSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlBatchMigrateSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlAddColumnWithDefaultSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlMigrationIdempotencySkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlUpdateTypeDataPreservationSkippedInPython() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: Skipping MySQL tests")
-    void mysqlSkipLowerVersionOperationsSkippedInPython() {
     }
 
     private void runPassedPythonCase(String name) throws Exception {

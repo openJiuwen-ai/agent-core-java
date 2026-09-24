@@ -35,6 +35,8 @@ import com.openjiuwen.harness.subagents.ExploreAgent;
 import com.openjiuwen.harness.tools.WebTools;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,6 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -605,6 +608,10 @@ public final class AutoHarnessAgentFactory {
     }
 
     private static Path resolvePackageDir() {
+        Optional<Path> fromClasspath = resolvePackageDirFromClasspath();
+        if (fromClasspath.isPresent()) {
+            return fromClasspath.get();
+        }
         List<Path> candidates = List.of(
                 Path.of("openjiuwen", "auto_harness"),
                 Path.of("..", "agent-core-0.1.14", "openjiuwen", "auto_harness"),
@@ -616,6 +623,39 @@ public final class AutoHarnessAgentFactory {
             }
         }
         return Path.of("openjiuwen", "auto_harness").toAbsolutePath().normalize();
+    }
+
+    private static Optional<Path> resolvePackageDirFromClasspath() {
+        ClassLoader classLoader = AutoHarnessAgentFactory.class.getClassLoader();
+        if (classLoader == null) {
+            return Optional.empty();
+        }
+        try {
+            var resources = classLoader.getResources("openjiuwen/auto_harness");
+            Path preferred = null;
+            Path fallback = null;
+            while (resources.hasMoreElements()) {
+                URL resource = resources.nextElement();
+                if (!"file".equals(resource.getProtocol())) {
+                    continue;
+                }
+                Path path = Path.of(resource.toURI());
+                if (!Files.isDirectory(path)) {
+                    continue;
+                }
+                Path normalized = path.toAbsolutePath().normalize();
+                String pathText = normalized.toString().replace('\\', '/');
+                if (pathText.contains("/test-classes/")) {
+                    fallback = normalized;
+                    continue;
+                }
+                preferred = normalized;
+                break;
+            }
+            return Optional.ofNullable(preferred != null ? preferred : fallback);
+        } catch (IOException | URISyntaxException | IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
     }
 
     /**

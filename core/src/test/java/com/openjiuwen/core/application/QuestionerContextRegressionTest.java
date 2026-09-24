@@ -75,8 +75,8 @@ public class QuestionerContextRegressionTest {
 
     // ==================== Tests ====================
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     public void reservedMaxChatRoundsLimitsAgentContextMessages() {
         // Test 095 parity: reserved_max_chat_rounds=3 → agent context capped at 6 messages
         String sessionId = "agent_095";
@@ -135,8 +135,8 @@ public class QuestionerContextRegressionTest {
         }
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     public void contextEngineConfigDerivedFromConstrainConfig() {
         // Direct wiring verification: reservedMaxChatRounds = 3 → buffer caps at 6
         LlmAgentConfig config = LlmAgentConfig.builder().id("wiring-test").model(agentModelConfig())

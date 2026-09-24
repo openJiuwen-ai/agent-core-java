@@ -113,8 +113,8 @@ class ReActAgentInterruptRegressionTest {
         assertEquals("answer", result.get("result_type"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void askUserInterruptResumesAndToolReceivesSession() {
         ReActAgent agent = newAgent("interrupt-regression-agent");
         Tool askUserTool = createAskUserTool();
@@ -146,8 +146,8 @@ class ReActAgentInterruptRegressionTest {
         assertTrue(finalOutput.contains("Alice"), "final answer should contain resumed user input");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void streamShouldYieldAssistantDeltaBeforeFinalAnswer() {
         ReActAgent agent = newAgent("streaming-regression-agent");
         Model model = Mockito.mock(Model.class);

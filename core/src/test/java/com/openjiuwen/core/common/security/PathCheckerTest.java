@@ -39,8 +39,8 @@ class PathCheckerTest {
         assertTrue(PathChecker.isSensitivePath("/etc/passwd.bak"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void loadsConfiguredSensitivePaths() throws IOException {
         Path sensitiveDir = Path.of("target", "path-checker-sensitive").toAbsolutePath().normalize();
         Path configFile = createWorkspaceConfig("""

@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  */
 class CaseLoaderTest {
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void constructorAssignsCaseIdsAndKeepsSourceList() {
         List<Case> cases = makeCases(3);
 

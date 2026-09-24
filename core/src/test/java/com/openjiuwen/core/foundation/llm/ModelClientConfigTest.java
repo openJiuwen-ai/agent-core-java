@@ -40,9 +40,9 @@ class ModelClientConfigTest {
             assertEquals(ProviderType.SILICON_FLOW.getValue(), ProviderType.fromLowercaseValue("siliconflow").getValue());
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("ProviderType.fromValue throws for invalid provider")
+        @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
         void testFromValueInvalidProvider() {
             assertThrows(IllegalArgumentException.class,
                     () -> ModelClientConfig.normalizeClientProvider("mock-LLM"));

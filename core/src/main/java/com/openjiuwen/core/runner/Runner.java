@@ -809,7 +809,7 @@ public final class Runner {
         }
 
         private static Iterator<Object> postRunAfterIterator(Iterator<Object> delegate, AgentSession session) {
-            return new Iterator<>() {
+            class PostRunIterator implements Iterator<Object>, AutoCloseable {
                 private boolean closed;
 
                 @Override
@@ -818,11 +818,11 @@ public final class Runner {
                     try {
                         hasNext = delegate != null && delegate.hasNext();
                     } catch (RuntimeException error) {
-                        close();
+                        closeQuietly();
                         throw error;
                     }
                     if (!hasNext) {
-                        close();
+                        closeQuietly();
                     }
                     return hasNext;
                 }
@@ -835,13 +835,45 @@ public final class Runner {
                     return delegate.next();
                 }
 
-                private void close() {
-                    if (!closed) {
+                @Override
+                public void close() throws Exception {
+                    if (closed) {
+                        return;
+                    }
+                    closed = true;
+                    try {
+                        if (delegate instanceof AutoCloseable closeable) {
+                            closeable.close();
+                        }
+                    } finally {
                         session.postRun();
-                        closed = true;
                     }
                 }
-            };
+
+                private void closeQuietly() {
+                    if (closed) {
+                        return;
+                    }
+                    closed = true;
+                    closeDelegateBestEffort();
+                    session.postRun();
+                }
+
+                private void closeDelegateBestEffort() {
+                    if (delegate instanceof com.openjiuwen.core.operator.OperatorStream<?> stream) {
+                        stream.close();
+                        return;
+                    }
+                    if (delegate instanceof java.io.Closeable closeable) {
+                        try {
+                            closeable.close();
+                        } catch (java.io.IOException ignored) {
+                            // Exhaust/error path must not mask the original signal with close failures.
+                        }
+                    }
+                }
+            }
+            return new PostRunIterator();
         }
 
         /**

@@ -35,8 +35,8 @@ class HierarchicalTeamsCompatibilityTest {
         assertThat(result).isEqualTo("root-ok");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Still failing after re-enable; kept disabled pending targeted fix")
     void hierarchicalMsgBusTeamShouldDispatchToSupervisor() {
         TeamCard card = teamCard("hier-msgbus");
         AgentCard supervisor = agentCard("supervisor");

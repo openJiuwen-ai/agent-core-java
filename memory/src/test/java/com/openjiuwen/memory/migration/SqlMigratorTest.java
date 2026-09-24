@@ -96,8 +96,8 @@ class SqlMigratorTest {
         assertEquals("3", readSchemaVersion(dbStore.getAsyncEngine(), DbModel.USER_MESSAGE_TABLE));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void tryMigrateRejectsUnsupportedTable() {
         BaseDbStore<DataSource> dbStore = createDbStore(createDataSource());
         DbModelSupport.createTables(dbStore).join();

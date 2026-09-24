@@ -16,7 +16,6 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 import java.lang.reflect.Field;
 import java.util.ArrayDeque;
@@ -162,7 +161,6 @@ class AgenticRetrieverTest {
         assertThat(graphRetriever.chunkRetriever.queries).containsExactly("original query", "rewritten query 1");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void graphExpansionFlagIsNotForwardedDownstream() {
         RecordingGraphRetriever graphRetriever = new RecordingGraphRetriever("hybrid");

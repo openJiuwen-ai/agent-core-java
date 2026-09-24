@@ -34,8 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class WorkflowAgentTest {
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void constructorRequiresWorkflowControllerType() {
         WorkflowAgentConfig config = new WorkflowAgentConfig();
         config.setControllerType(ControllerType.REACT_CONTROLLER);

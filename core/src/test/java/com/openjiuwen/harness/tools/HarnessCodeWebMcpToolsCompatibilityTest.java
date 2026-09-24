@@ -75,8 +75,8 @@ class HarnessCodeWebMcpToolsCompatibilityTest {
         assertThat(created.get(2)).isInstanceOf(WebFetchWebpageTool.class);
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void mcpToolsShouldMapDescriptorsAndContent() {
         ListMcpResourcesTool.McpResourceLister lister = serverId ->
                 List.of(new ResourcePojo("res://a", "Alpha", "text/plain", "first"));

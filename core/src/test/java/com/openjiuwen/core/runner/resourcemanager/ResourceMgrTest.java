@@ -24,7 +24,6 @@ import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -380,7 +379,6 @@ class ResourceMgrTest {
         assertSame(fresh, manager.getTool("list-fresh"));
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void getSingleSysOperationToolCard() {
         ResourceMgr manager = resourceMgrWithSysOperation();
@@ -391,17 +389,18 @@ class ResourceMgrTest {
         assertEquals("read_file", ((ToolCard) card).getName());
     }
 
-    @Disabled("remote env do not support node")
     @Test
-    void getSingleSysOperationToolCardAcceptsScalarAndCamelCaseNames() {
+    void getSingleSysOperationToolCardAcceptsSnakeCaseToolName() {
         ResourceMgr manager = resourceMgrWithSysOperation();
 
-        Object byScalar = manager.getSysOpToolCards("test-sys-op", java.util.List.of("fs"), java.util.List.of("readFile"));
-        Object bySnake = manager.getSysOpToolCards("test-sys-op", java.util.List.of("fs"), java.util.List.of("read_file"));
+        Object byCamel = manager.getSysOpToolCards(
+                "test-sys-op", java.util.List.of("fs"), java.util.List.of("readFile"));
+        Object bySnake = manager.getSysOpToolCards(
+                "test-sys-op", java.util.List.of("fs"), java.util.List.of("read_file"));
 
-        assertTrue(byScalar instanceof ToolCard);
+        // Tool ids are registered with snake_case method names; camelCase is not aliased.
+        assertNull(byCamel);
         assertTrue(bySnake instanceof ToolCard);
-        assertEquals("read_file", ((ToolCard) byScalar).getName());
         assertEquals("read_file", ((ToolCard) bySnake).getName());
     }
 
@@ -414,7 +413,6 @@ class ResourceMgrTest {
         assertNull(card);
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void getMultipleSysOperationToolCardsFromSameOperation() {
         ResourceMgr manager = resourceMgrWithSysOperation();
@@ -428,7 +426,6 @@ class ResourceMgrTest {
         assertTrue(values.stream().map(ToolCard.class::cast).map(ToolCard::getName).toList().contains("write_file"));
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void getAllSysOperationToolCardsFromSingleOperation() {
         ResourceMgr manager = resourceMgrWithSysOperation();
@@ -439,7 +436,6 @@ class ResourceMgrTest {
         assertFalse(((List<?>) cards).isEmpty());
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void getAllSysOperationToolCardsFromMultipleOperations() {
         ResourceMgr manager = resourceMgrWithSysOperation();
@@ -450,7 +446,6 @@ class ResourceMgrTest {
         assertFalse(((List<?>) cards).isEmpty());
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void getAllSysOperationToolCardsFromAllOperations() {
         ResourceMgr manager = resourceMgrWithSysOperation();

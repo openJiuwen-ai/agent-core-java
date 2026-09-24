@@ -8,7 +8,6 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.dev_tools.skill_evaluator.SkillEvaluator;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -42,11 +41,6 @@ class SkillEvaluatorSystemPythonParityTest {
                 .contains("# Skill Evaluation Report")
                 .contains("## Summary")
                 .contains("## Score");
-    }
-
-    @Disabled("Skipped in Python source: Real LLM test skipped. Set RUN_REAL_LLM_TESTS=1 to enable.")
-    @Test
-    void evaluateRealLlm() {
     }
 
     /**

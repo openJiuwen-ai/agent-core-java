@@ -127,8 +127,8 @@ class ModelReactiveTest {
     }
 
     /** invokeAsync 抛出的异常对象身份不变，不被 Reactor 包装。 */
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Still failing after re-enable; kept disabled pending targeted fix")
     void invokeMonoPropagatesExceptionUnwrapped() {
         registerTestProvider(null);
         FakeModelClient client = new FakeModelClient();

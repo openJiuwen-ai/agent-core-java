@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 /**
  * Mirrors Python's URI/path conversion behavior in
@@ -23,10 +22,16 @@ class FileUriUtilsTest {
         assertTrue(normalized.startsWith("file:///"));
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void testFileUriToPathWindowsDriveNormalization() {
-        assertEquals("D:\\work\\repo.py", FileUriUtils.fileUriToPath("file:///d%3A/work/repo.py"));
+        String actual = FileUriUtils.fileUriToPath("file:///d%3A/work/repo.py");
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        if (windows) {
+            assertEquals("D:\\work\\repo.py", actual);
+        } else {
+            // Non-Windows keeps the decoded URI path without drive-letter rewriting.
+            assertEquals("/d:/work/repo.py", actual);
+        }
     }
 
     @Test

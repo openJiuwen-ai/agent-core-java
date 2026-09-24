@@ -27,8 +27,8 @@ class GraphExtractionTest {
         assertThat(searchConfig.getLanguage()).isEqualTo("en");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void parseJsonShouldHandleCodeBlocksAndEnsureList() {
         String response = """
                 ```json
@@ -42,7 +42,6 @@ class GraphExtractionTest {
         assertThat(ParseResponse.tryGetKey("extracted_entities", Map.of("extractedEntities", 1))).isEqualTo(1);
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void multilingualSchemaShouldExposeDescriptions() {
         Map<String, Object> schema = new EntitySummary().multilingualModelJsonSchema("cn", true);

@@ -3,8 +3,8 @@ package com.openjiuwen.core.common.clients;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class ConnectorPoolManagerTest {
@@ -35,8 +35,8 @@ class ConnectorPoolManagerTest {
         assertThat(manager.isClosed()).isFalse();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void shouldReusePoolForSameConfig() throws Exception {
         ConnectorPoolManager manager = ConnectorPoolManager.getInstance();
         ConnectorPoolConfig config = new ConnectorPoolConfig();
@@ -54,8 +54,8 @@ class ConnectorPoolManagerTest {
         assertThat(first.isClosed()).isTrue();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void shouldUseHttpxPoolForProxyConfig() throws Exception {
         java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
         values.put("limit", 100);

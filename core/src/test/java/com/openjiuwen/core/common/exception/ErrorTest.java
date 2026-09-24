@@ -182,9 +182,9 @@ class ErrorTest {
             assertFalse(err.isRecoverable());
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("ToolError merges card into details")
+        @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
         void testToolErrorWithCard() {
             com.openjiuwen.core.common.schema.BaseCard card =
                     new com.openjiuwen.core.common.schema.BaseCard(
