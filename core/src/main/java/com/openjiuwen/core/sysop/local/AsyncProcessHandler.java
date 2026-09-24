@@ -326,7 +326,7 @@ public final class AsyncProcessHandler {
         } catch (IOException exception) {
             LOGGER.warning("Failed to taskkill process tree: {}", exception.getMessage());
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+            // Best-effort kill; do not call Thread.interrupt() (G.CON.10).
             LOGGER.warning("Failed to taskkill process tree: {}", interrupted.getMessage());
         }
     }
@@ -341,7 +341,7 @@ public final class AsyncProcessHandler {
         } catch (IOException exception) {
             LOGGER.warning("Failed to pkill child processes for {}: {}", pid, exception.getMessage());
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+            // Best-effort kill; do not call Thread.interrupt() (G.CON.10).
             LOGGER.warning("Failed to pkill child processes for {}: {}", pid, interrupted.getMessage());
         }
     }
@@ -362,7 +362,8 @@ public final class AsyncProcessHandler {
         try {
             queue.put(event);
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+            // Drop the event on interrupt; do not call Thread.interrupt() (G.CON.10).
+            LOGGER.warning("Failed to enqueue stream event: {}", interrupted.getMessage());
         }
     }
 

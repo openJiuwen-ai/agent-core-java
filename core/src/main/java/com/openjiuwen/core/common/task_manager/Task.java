@@ -125,18 +125,18 @@ public class Task {
 
     public CompletableFuture<Object> execute(Callable<?> callable,
                                              BiConsumer<Task, String> callbackTrigger,
-                                             boolean catchExceptions) {
-        return execute(callable, callbackTrigger, catchExceptions, ForkJoinPool.commonPool());
+                                             boolean shouldCatchExceptions) {
+        return execute(callable, callbackTrigger, shouldCatchExceptions, ForkJoinPool.commonPool());
     }
 
     public CompletableFuture<Object> execute(Callable<?> callable,
                                              BiConsumer<Task, String> callbackTrigger,
-                                             boolean catchExceptions,
+                                             boolean shouldCatchExceptions,
                                              Executor executor) {
         Objects.requireNonNull(callable, "callable");
         Executor actualExecutor = executor == null ? ForkJoinPool.commonPool() : executor;
         CompletableFuture<Object> future = CompletableFuture.supplyAsync(
-                () -> executeCore(callable, callbackTrigger, catchExceptions), actualExecutor);
+                () -> executeCore(callable, callbackTrigger, shouldCatchExceptions), actualExecutor);
         setExecutionFuture(future);
         return future;
     }
@@ -218,13 +218,14 @@ public class Task {
         return throwable;
     }
 
-    private Object executeCore(Callable<?> callable, BiConsumer<Task, String> callbackTrigger, boolean catchExceptions) {
+    private Object executeCore(Callable<?> callable, BiConsumer<Task, String> callbackTrigger,
+                               boolean shouldCatchExceptions) {
         TaskContext.ContextToken<String> token = TaskContext.setCurrentTaskId(taskId);
         start();
         try {
             if (isTerminal()) {
                 // Cancel/timeout won the race before RUNNING was published; do not run work.
-                return finishIfAlreadyTerminal(catchExceptions);
+                return finishIfAlreadyTerminal(shouldCatchExceptions);
             }
             trigger(callbackTrigger, "running");
             Object value = callable.call();
@@ -232,27 +233,27 @@ public class Task {
             return value;
         } catch (CancellationException cancellation) {
             cancelFromExecute(callbackTrigger);
-            if (catchExceptions) {
-                return null;
+            if (shouldCatchExceptions) {
+                return result;
             }
             throw cancellation;
         } catch (TimeoutException timeoutException) {
             timeoutFromExecute(callbackTrigger);
-            if (catchExceptions) {
-                return null;
+            if (shouldCatchExceptions) {
+                return result;
             }
             throw new CompletionException(timeoutException);
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+            // Cooperative cancel: convert interrupt into task cancellation without Thread.interrupt().
             cancelFromExecute(callbackTrigger);
-            if (catchExceptions) {
-                return null;
+            if (shouldCatchExceptions) {
+                return result;
             }
             throw new CancellationException(cancelReason == null ? "manual_cancel" : cancelReason);
         } catch (Exception exception) {
             failFromExecute(exception, callbackTrigger);
-            if (catchExceptions) {
-                return null;
+            if (shouldCatchExceptions) {
+                return result;
             }
             throw new CompletionException(exception);
         } finally {
@@ -260,9 +261,9 @@ public class Task {
         }
     }
 
-    private Object finishIfAlreadyTerminal(boolean catchExceptions) {
-        if (catchExceptions) {
-            return null;
+    private Object finishIfAlreadyTerminal(boolean shouldCatchExceptions) {
+        if (shouldCatchExceptions) {
+            return result;
         }
         if (status == TaskStatus.CANCELLED) {
             throw new CancellationException(cancelReason == null ? "manual_cancel" : cancelReason);
