@@ -35,7 +35,7 @@ public class Task {
     private String name;
     private String group;
     private String parentTaskId;
-    private TaskStatus status = TaskStatus.PENDING;
+    private volatile TaskStatus status = TaskStatus.PENDING;
     private Double timeout;
     private Instant createdAt = Instant.now();
     private Instant startedAt;
@@ -142,38 +142,49 @@ public class Task {
     }
 
     void start() {
-        status = TaskStatus.RUNNING;
-        startedAt = Instant.now();
+        synchronized (this) {
+            if (isTerminal()) {
+                return;
+            }
+            status = TaskStatus.RUNNING;
+            startedAt = Instant.now();
+        }
     }
 
     void complete(Object value) {
-        if (isTerminal()) {
-            return;
+        synchronized (this) {
+            if (isTerminal()) {
+                return;
+            }
+            result = value;
+            status = TaskStatus.COMPLETED;
+            finishedAt = Instant.now();
         }
-        result = value;
-        status = TaskStatus.COMPLETED;
-        finishedAt = Instant.now();
         doneFuture.complete(value);
     }
 
     void fail(Throwable throwable) {
-        if (isTerminal()) {
-            return;
+        synchronized (this) {
+            if (isTerminal()) {
+                return;
+            }
+            exception = throwable;
+            status = TaskStatus.FAILED;
+            finishedAt = Instant.now();
         }
-        exception = throwable;
-        status = TaskStatus.FAILED;
-        finishedAt = Instant.now();
         doneFuture.completeExceptionally(throwable);
     }
 
     boolean markCancelled(String reason, String byTaskId) {
-        if (isTerminal()) {
-            return false;
+        synchronized (this) {
+            if (isTerminal()) {
+                return false;
+            }
+            status = TaskStatus.CANCELLED;
+            cancelReason = reason == null ? "manual_cancel" : reason;
+            cancelledBy = byTaskId;
+            finishedAt = Instant.now();
         }
-        status = TaskStatus.CANCELLED;
-        cancelReason = reason == null ? "manual_cancel" : reason;
-        cancelledBy = byTaskId;
-        finishedAt = Instant.now();
         if (!doneFuture.isDone()) {
             doneFuture.completeExceptionally(new CancellationException(cancelReason));
         }
@@ -181,12 +192,14 @@ public class Task {
     }
 
     void markTimeout() {
-        if (isTerminal()) {
-            return;
+        synchronized (this) {
+            if (isTerminal()) {
+                return;
+            }
+            status = TaskStatus.TIMEOUT;
+            exception = new java.util.concurrent.TimeoutException("Task timeout");
+            finishedAt = Instant.now();
         }
-        status = TaskStatus.TIMEOUT;
-        exception = new java.util.concurrent.TimeoutException("Task timeout");
-        finishedAt = Instant.now();
         doneFuture.completeExceptionally(exception);
     }
 
@@ -208,8 +221,12 @@ public class Task {
     private Object executeCore(Callable<?> callable, BiConsumer<Task, String> callbackTrigger, boolean catchExceptions) {
         TaskContext.ContextToken<String> token = TaskContext.setCurrentTaskId(taskId);
         start();
-        trigger(callbackTrigger, "running");
         try {
+            if (isTerminal()) {
+                // Cancel/timeout won the race before RUNNING was published; do not run work.
+                return finishIfAlreadyTerminal(catchExceptions);
+            }
+            trigger(callbackTrigger, "running");
             Object value = callable.call();
             completeFromExecute(value, callbackTrigger);
             return value;
@@ -225,6 +242,13 @@ public class Task {
                 return null;
             }
             throw new CompletionException(timeoutException);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            cancelFromExecute(callbackTrigger);
+            if (catchExceptions) {
+                return null;
+            }
+            throw new CancellationException(cancelReason == null ? "manual_cancel" : cancelReason);
         } catch (Exception exception) {
             failFromExecute(exception, callbackTrigger);
             if (catchExceptions) {
@@ -236,46 +260,67 @@ public class Task {
         }
     }
 
-    private void completeFromExecute(Object value, BiConsumer<Task, String> callbackTrigger) {
-        if (isTerminal()) {
-            return;
+    private Object finishIfAlreadyTerminal(boolean catchExceptions) {
+        if (catchExceptions) {
+            return null;
         }
-        result = value;
-        status = TaskStatus.COMPLETED;
-        finishedAt = Instant.now();
+        if (status == TaskStatus.CANCELLED) {
+            throw new CancellationException(cancelReason == null ? "manual_cancel" : cancelReason);
+        }
+        if (exception != null) {
+            throw new CompletionException(exception);
+        }
+        return result;
+    }
+
+    private void completeFromExecute(Object value, BiConsumer<Task, String> callbackTrigger) {
+        synchronized (this) {
+            if (isTerminal()) {
+                return;
+            }
+            result = value;
+            status = TaskStatus.COMPLETED;
+            finishedAt = Instant.now();
+        }
         trigger(callbackTrigger, "completed");
         doneFuture.complete(value);
     }
 
     private void failFromExecute(Throwable throwable, BiConsumer<Task, String> callbackTrigger) {
-        if (isTerminal()) {
-            return;
+        synchronized (this) {
+            if (isTerminal()) {
+                return;
+            }
+            exception = throwable;
+            status = TaskStatus.FAILED;
+            finishedAt = Instant.now();
         }
-        exception = throwable;
-        status = TaskStatus.FAILED;
-        finishedAt = Instant.now();
         trigger(callbackTrigger, "failed");
         doneFuture.completeExceptionally(throwable);
     }
 
     private void cancelFromExecute(BiConsumer<Task, String> callbackTrigger) {
-        if (isTerminal()) {
-            return;
+        synchronized (this) {
+            if (isTerminal()) {
+                return;
+            }
+            status = TaskStatus.CANCELLED;
+            cancelReason = cancelReason == null ? "manual_cancel" : cancelReason;
+            finishedAt = Instant.now();
         }
-        status = TaskStatus.CANCELLED;
-        cancelReason = cancelReason == null ? "manual_cancel" : cancelReason;
-        finishedAt = Instant.now();
         trigger(callbackTrigger, "cancelled");
         doneFuture.completeExceptionally(new CancellationException(cancelReason));
     }
 
     private void timeoutFromExecute(BiConsumer<Task, String> callbackTrigger) {
-        if (isTerminal()) {
-            return;
+        synchronized (this) {
+            if (isTerminal()) {
+                return;
+            }
+            status = TaskStatus.TIMEOUT;
+            exception = new TimeoutException("Task timeout");
+            finishedAt = Instant.now();
         }
-        status = TaskStatus.TIMEOUT;
-        exception = new TimeoutException("Task timeout");
-        finishedAt = Instant.now();
         trigger(callbackTrigger, "timeout");
         doneFuture.completeExceptionally(exception);
     }
