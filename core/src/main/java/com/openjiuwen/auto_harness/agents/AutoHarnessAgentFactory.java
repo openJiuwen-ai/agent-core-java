@@ -45,6 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -607,9 +608,9 @@ public final class AutoHarnessAgentFactory {
     }
 
     private static Path resolvePackageDir() {
-        Path fromClasspath = resolvePackageDirFromClasspath();
-        if (fromClasspath != null) {
-            return fromClasspath;
+        Optional<Path> fromClasspath = resolvePackageDirFromClasspath();
+        if (fromClasspath.isPresent()) {
+            return fromClasspath.get();
         }
         List<Path> candidates = List.of(
                 Path.of("openjiuwen", "auto_harness"),
@@ -624,10 +625,10 @@ public final class AutoHarnessAgentFactory {
         return Path.of("openjiuwen", "auto_harness").toAbsolutePath().normalize();
     }
 
-    private static Path resolvePackageDirFromClasspath() {
+    private static Optional<Path> resolvePackageDirFromClasspath() {
         ClassLoader classLoader = AutoHarnessAgentFactory.class.getClassLoader();
         if (classLoader == null) {
-            return null;
+            return Optional.empty();
         }
         try {
             var resources = classLoader.getResources("openjiuwen/auto_harness");
@@ -651,9 +652,9 @@ public final class AutoHarnessAgentFactory {
                 preferred = normalized;
                 break;
             }
-            return preferred != null ? preferred : fallback;
+            return Optional.ofNullable(preferred != null ? preferred : fallback);
         } catch (IOException | URISyntaxException | IllegalArgumentException ignored) {
-            return null;
+            return Optional.empty();
         }
     }
 

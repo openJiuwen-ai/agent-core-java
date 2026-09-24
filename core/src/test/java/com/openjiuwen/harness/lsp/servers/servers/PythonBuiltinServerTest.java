@@ -39,12 +39,21 @@ class PythonBuiltinServerTest {
     @Test
     void buildInitializationOptionsPrefersProjectVenv() throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("project"));
-        Path venvPython = Files.createDirectories(project.resolve(".venv").resolve("Scripts")).resolve("python.exe");
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        Path venvPython = windows
+                ? Files.createDirectories(project.resolve(".venv").resolve("Scripts")).resolve("python.exe")
+                : Files.createDirectories(project.resolve(".venv").resolve("bin")).resolve("python");
         Files.createFile(venvPython);
 
         Map<String, Object> options = PythonBuiltinServer.buildInitializationOptions(project.toString());
 
-        assertThat(options).containsEntry("pythonPath", project.resolve(".venv").resolve("Scripts").resolve("python").toString().replace('\\', '/'));
+        String expectedPythonPath = project.resolve(".venv")
+                .resolve(windows ? "Scripts" : "bin")
+                .resolve("python")
+                .toString()
+                .replace('\\', '/');
+        assertThat(options).isNotNull();
+        assertThat(options).containsEntry("pythonPath", expectedPythonPath);
     }
 
     @Test

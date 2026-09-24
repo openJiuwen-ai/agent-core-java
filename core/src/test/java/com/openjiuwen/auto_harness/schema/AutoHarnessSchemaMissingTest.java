@@ -185,9 +185,9 @@ class AutoHarnessSchemaMissingTest {
                             .resolveCiGatePythonExecutable()).isEqualTo("/tmp/python3.11");
             case "tests/unit_tests/auto_harness/test_schema.py::TestVenvPythonCandidates::test_windows_candidates" ->
                     assertThat(AutoHarnessSchema.venvPythonCandidates("/tmp/project"))
-                            .containsExactly(Path.of("/tmp/project").resolve(".venv").resolve("Scripts").resolve("python.exe"));
+                            .containsExactly(expectedVenvPython(Path.of("/tmp/project")));
             case "tests/unit_tests/auto_harness/test_schema.py::TestVenvPythonCandidates::test_resolve_ci_gate_venv_found" -> {
-                Path venvPython = windowsVenvPython(tempDir);
+                Path venvPython = expectedVenvPython(tempDir);
                 Files.createDirectories(venvPython.getParent());
                 Files.writeString(venvPython, "# mock python");
                 AutoHarnessConfig config = AutoHarnessConfig.builder().workspace(tempDir.toString()).build();
@@ -367,7 +367,11 @@ class AutoHarnessSchemaMissingTest {
         return System.getenv().keySet().stream().findFirst().orElse("PATH");
     }
 
-    private static Path windowsVenvPython(Path baseDir) {
-        return baseDir.resolve(".venv").resolve("Scripts").resolve("python.exe");
+    private static Path expectedVenvPython(Path baseDir) {
+        Path venv = baseDir.resolve(".venv");
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return venv.resolve("Scripts").resolve("python.exe");
+        }
+        return venv.resolve("bin").resolve("python");
     }
 }

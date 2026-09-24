@@ -841,25 +841,35 @@ public final class Runner {
                         return;
                     }
                     closed = true;
-                    Exception delegateError = null;
-                    if (delegate instanceof AutoCloseable closeable) {
-                        try {
+                    try {
+                        if (delegate instanceof AutoCloseable closeable) {
                             closeable.close();
-                        } catch (Exception error) {
-                            delegateError = error;
                         }
-                    }
-                    session.postRun();
-                    if (delegateError != null) {
-                        throw delegateError;
+                    } finally {
+                        session.postRun();
                     }
                 }
 
                 private void closeQuietly() {
-                    try {
-                        close();
-                    } catch (Exception ignored) {
-                        // Exhaust/error path must not mask the original signal with close failures.
+                    if (closed) {
+                        return;
+                    }
+                    closed = true;
+                    closeDelegateBestEffort();
+                    session.postRun();
+                }
+
+                private void closeDelegateBestEffort() {
+                    if (delegate instanceof com.openjiuwen.core.operator.OperatorStream<?> stream) {
+                        stream.close();
+                        return;
+                    }
+                    if (delegate instanceof java.io.Closeable closeable) {
+                        try {
+                            closeable.close();
+                        } catch (java.io.IOException ignored) {
+                            // Exhaust/error path must not mask the original signal with close failures.
+                        }
                     }
                 }
             }

@@ -210,10 +210,12 @@ class CallbackModelsTest {
     @DisplayName("ChainContext elapsed time increases")
     void testChainContextElapsedTime() throws InterruptedException {
         ChainContext context = new ChainContext("test", new Object[0], Map.of());
-
-        Thread.sleep(50L);
-
-        assertTrue(context.getElapsedTime() >= 0.05d);
+        double baseline = context.getElapsedTime();
+        long deadlineNanos = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(2L);
+        while (context.getElapsedTime() < baseline + 0.05d && System.nanoTime() < deadlineNanos) {
+            Thread.sleep(10L);
+        }
+        assertTrue(context.getElapsedTime() >= baseline + 0.05d);
     }
 
     @Test

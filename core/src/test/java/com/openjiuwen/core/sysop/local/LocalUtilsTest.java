@@ -56,8 +56,10 @@ class LocalUtilsTest {
 
     @Test
     void invokeTimeoutReturnsPartialBuffersAndTimeoutException() throws Exception {
-        Process process = startScript("Write-Output 'before'; Start-Sleep -Milliseconds 1500; Write-Output 'after'");
-        InvokeData result = OperationUtils.createHandler(process, "utf-8", 1).invoke().get(10, TimeUnit.SECONDS);
+        // Sleep far longer than the 1s invoke timeout so kill happens before "after" is printed,
+        // even when CI scheduling delays process.waitFor timeout handling.
+        Process process = startScript("Write-Output 'before'; Start-Sleep -Seconds 30; Write-Output 'after'");
+        InvokeData result = OperationUtils.createHandler(process, "utf-8", 1).invoke().get(15, TimeUnit.SECONDS);
 
         assertThat(result.getStdout()).contains("before");
         assertThat(result.getStdout()).doesNotContain("after");
@@ -100,7 +102,7 @@ class LocalUtilsTest {
 
     private static String toBashScript(String powerShellScript) {
         if (powerShellScript.contains("Start-Sleep")) {
-            return "printf 'before\\n'; sleep 1.5; printf 'after\\n'";
+            return "printf 'before\\n'; sleep 30; printf 'after\\n'";
         }
         if (powerShellScript.contains("warn")) {
             return "printf 'hello\\n'; printf 'warn\\n' 1>&2; exit "
