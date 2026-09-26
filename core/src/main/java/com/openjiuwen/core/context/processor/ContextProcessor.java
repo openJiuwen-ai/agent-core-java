@@ -83,6 +83,38 @@ public abstract class ContextProcessor implements SessionModelContext.ContextPro
         return getClass().getSimpleName();
     }
 
+    /**
+     * Build the stable compressor child-cache identity kwargs for this
+     * processor.
+     *
+     * <p>Mirrors Python's {@code stamp_context_compression_model_kwargs} plus
+     * {@code context_compressor_cache_identity}: each compressor type owns a
+     * stable child cache {@code "{sessionId}:compressor:{suffix}"} under the
+     * owning session, so compression inference is affinity-isolated from the
+     * main conversation cache. Returns an empty map when no session id is
+     * available or the compressor type has no registered suffix.</p>
+     *
+     * @param sessionId owner session cache id, may be {@code null}
+     * @return kwargs carrying {@code session_id}/{@code parent_session_id}
+     * @since 0.1.16
+     */
+    public Map<String, Object> compressionCacheKwargs(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return Map.of();
+        }
+        try {
+            com.openjiuwen.core.kvcache.KVCacheIdentity identity =
+                    com.openjiuwen.core.kvcache.KVCacheMetadata.contextCompressorCacheIdentity(
+                            sessionId, processorType());
+            Map<String, Object> kwargs = new LinkedHashMap<>();
+            kwargs.put("session_id", identity.cacheId());
+            kwargs.put("parent_session_id", identity.parentCacheId());
+            return kwargs;
+        } catch (IllegalArgumentException ignored) {
+            return Map.of();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public <T> T config() {
         return (T) config;

@@ -1136,6 +1136,7 @@ public class TeamAgent implements DispatcherHost {
                         .backend(resolveConfiguredBackend())
                         .isTaskLoopEnabled(true)
                         .enableSkillDiscovery(true)
+                        .isEnableKvCacheAffinity(resolveMemberAffinityEnabled(leader))
                         .skillDirectories(List.of(
                                 workspace.getNodePath("skills").toString(),
                                 System.getProperty("user.dir"),
@@ -1266,6 +1267,24 @@ public class TeamAgent implements DispatcherHost {
             return config.modelRequestConfig();
         }
         return memberModel;
+    }
+
+    /**
+     * Resolve whether this member enables Ascend KV cache affinity.
+     *
+     * <p>Member flag wins when set; otherwise the team-level flag applies.
+     * Mirrors Python's per-member {@code kv_cache_affinity_config} synthesis
+     * with the team default.</p>
+     *
+     * @param leader the leader/member spec carrying per-member overrides
+     * @return whether affinity is enabled for this member
+     * @since 0.1.16
+     */
+    private boolean resolveMemberAffinityEnabled(TeamMemberSpec leader) {
+        if (leader != null && leader.isEnableKvCacheAffinity()) {
+            return true;
+        }
+        return spec != null && spec.isEnableKvCacheAffinity();
     }
 
     private Object resolveConfiguredBackend() {
@@ -1555,7 +1574,31 @@ public class TeamAgent implements DispatcherHost {
         if (context != null) {
             context.setLifecycle(TeamLifecycle.COMPLETED);
         }
+        releaseSessionKvc();
         close();
+    }
+
+    /**
+     * Best-effort terminal KVC release for this member's session.
+     *
+     * <p>Mirrors Python's runtime manager cleanup
+     * ({@code agent_teams/runtime/manager.py: _release_member_kvc}): the
+     * member session's remote cache is evicted during terminal teardown and
+     * never blocks shutdown.</p>
+     *
+     * @since 0.1.16
+     */
+    private void releaseSessionKvc() {
+        com.openjiuwen.core.session.AgentSessionApi session = this.agentSession;
+        if (session == null) {
+            return;
+        }
+        try {
+            session.releaseKvc().join();
+        } catch (java.util.concurrent.CancellationException
+                | java.util.concurrent.CompletionException exception) {
+            Loggers.AGENT.debug("shutdownSelf: member KVC release failed: {}", exception.getMessage());
+        }
     }
 
     @Override

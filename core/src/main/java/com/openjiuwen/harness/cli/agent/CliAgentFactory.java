@@ -335,12 +335,12 @@ public final class CliAgentFactory {
 
     private static void loadBuiltInModelClients() {
         for (String className : List.of(
-                "com.openjiuwen.core.foundation.llm.model_clients.OpenAIModelClient",
-                "com.openjiuwen.core.foundation.llm.model_clients.DashScopeModelClient",
-                "com.openjiuwen.core.foundation.llm.model_clients.DeepSeekModelClient",
-                "com.openjiuwen.core.foundation.llm.model_clients.SiliconFlowModelClient",
-                "com.openjiuwen.core.foundation.llm.model_clients.IntelliRouterModelClient",
-                "com.openjiuwen.core.foundation.llm.model_clients.InferenceAffinityModelClient")) {
+                "com.openjiuwen.core.foundation.llm.modelclients.OpenAIModelClient",
+                "com.openjiuwen.core.foundation.llm.modelclients.DashScopeModelClient",
+                "com.openjiuwen.core.foundation.llm.modelclients.DeepSeekModelClient",
+                "com.openjiuwen.core.foundation.llm.modelclients.SiliconFlowModelClient",
+                "com.openjiuwen.core.foundation.llm.modelclients.IntelliRouterModelClient",
+                "com.openjiuwen.core.foundation.llm.modelclients.InferenceAffinityModelClient")) {
             try {
                 Class.forName(className);
             } catch (ClassNotFoundException ignored) {

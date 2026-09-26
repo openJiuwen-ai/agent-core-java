@@ -380,7 +380,7 @@ print("=" * 60)
 
 处理记忆操作的核心服务。使用 openjiuwen 核心库：
 
-- `com.openjiuwen.core.foundation.llm.model_clients.openai_model_client` 用于 LLM 调用
+- `com.openjiuwen.core.foundation.llm.modelclients.openai_model_client` 用于 LLM 调用
 - `com.openjiuwen.retrieval.embedding.api_embedding` 用于嵌入
 
 ```java

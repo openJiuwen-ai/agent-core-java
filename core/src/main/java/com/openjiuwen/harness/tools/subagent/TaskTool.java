@@ -8,6 +8,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.kvcache.KVCacheSubagentLifecycle;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -57,6 +58,27 @@ public class TaskTool extends AbstractHarnessTool {
         return parentSessionId + "_sub_" + normalizedType + "_" + suffix;
     }
 
+    /**
+     * Build the provider-facing sub-session id with a parent scope digest.
+     *
+     * <p>Mirrors Python's {@code scope_sub_session_id} in
+     * {@code kv_cache_subagent_lifecycle.py}: when the parent cache id differs
+     * from the runtime parent session id (Team branch), append a short digest
+     * so same-named children of different branches cannot collide on one
+     * cache key.</p>
+     *
+     * @param subSessionId runtime sub-session id
+     * @param runtimeParentSessionId runtime parent session id
+     * @param parentCacheId provider-facing parent cache id
+     * @return scoped sub-session id
+     * @since 0.1.16
+     */
+    public static String scopeSubSessionId(String subSessionId, String runtimeParentSessionId,
+            String parentCacheId) {
+        return KVCacheSubagentLifecycle.scopeSubSessionId(
+                subSessionId, runtimeParentSessionId, parentCacheId);
+    }
+
     public static List<Tool> createTaskTool(DeepAgent parentAgent, String availableAgents, String language) {
         return createTaskTool(parentAgent, availableAgents, language, null);
     }
@@ -79,24 +101,49 @@ public class TaskTool extends AbstractHarnessTool {
             throw new IllegalArgumentException("TaskTool requires a valid session in kwargs");
         }
         String subagentType = requiredString(inputs, "subagent_type");
-        String taskDescription = requiredString(inputs, "task_description");
+        boolean isAffinityEnabled = KVCacheSubagentLifecycle
+                .affinityEnabled(parentAgent);
         String subSessionId = buildSubSessionId(parentSession.getSessionId(), subagentType);
+        if (isAffinityEnabled) {
+            // Mirrors task_tool.py: scope the child id by the parent's cache
+            // identity so same-named children of different Team branches do
+            // not collide on one cache key.
+            subSessionId = KVCacheSubagentLifecycle.scopeSubSessionId(
+                    subSessionId,
+                    parentSession.getSessionId(),
+                    KVCacheSubagentLifecycle
+                            .resolveSubagentParentCacheId(parentSession));
+        }
+        String taskDescription = requiredString(inputs, "task_description");
+        return spawnSubagent(parentSession, subagentType, subSessionId, taskDescription);
+    }
 
+    private Object spawnSubagent(AgentSessionApi parentSession, String subagentType, String subSessionId,
+            String taskDescription) {
         DeepAgent subagent;
         try {
             subagent = parentAgent.createSubagent(subagentType, subSessionId);
-        } catch (Exception exception) {
+        } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new IllegalStateException(
                     "Subagent " + subagentType + " creation failed: " + exception.getMessage(),
                     exception
             );
         }
 
+        // KVC lineage inheritance (mirrors Python subagent_runtime/session_manager):
+        // the child shares the parent's runtime and points at the parent's
+        // provider-facing cache id; verification_agent is sticky (prepare on
+        // entry, suspend on success), every other type is evicted on finish.
+        AgentSessionApi subSession = buildSubSession(parentSession, subSessionId);
+        KVCacheSubagentLifecycle.prepareSubagent(
+                subSession, subagentType).join();
+        boolean isSucceeded = false;
         try {
             Map<String, Object> result = subagent.invoke(linkedMap(
                     "query", taskDescription,
                     "conversation_id", subSessionId
-            ));
+            ), subSession);
+            isSucceeded = true;
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("output", stringValue(result == null ? null : result.getOrDefault("output", "")));
             data.put("agent_id", subagent.getCard().getId());
@@ -107,12 +154,37 @@ public class TaskTool extends AbstractHarnessTool {
                     "Subagent " + subagentType + " execution failed: " + cause.getMessage(),
                     cause
             );
-        } catch (Exception exception) {
+        } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new IllegalStateException(
                     "Subagent " + subagentType + " execution failed: " + exception.getMessage(),
                     exception
             );
+        } finally {
+            KVCacheSubagentLifecycle.finishSubagent(
+                    subSession, subagentType, isSucceeded).join();
         }
+    }
+
+    /**
+     * Build the child session for one TaskTool call with KVC inheritance.
+     *
+     * @param parentSession parent product session
+     * @param subSessionId runtime sub-session id
+     * @return child session (never {@code null}); without affinity it is a
+     *         plain self-keyed session
+     */
+    private static AgentSessionApi buildSubSession(AgentSessionApi parentSession, String subSessionId) {
+        java.util.Optional<com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.ChildSessionKwargs> inheritance =
+                com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.buildChildSessionKwargs(parentSession);
+        if (inheritance.isEmpty()) {
+            return parentSession;
+        }
+        return KVCacheSubagentLifecycle.createSubagentSession(
+                parentSession,
+                subSessionId,
+                inheritance.get().parentSessionId(),
+                null
+        );
     }
 
     private Object invokeLegacyRunner(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
