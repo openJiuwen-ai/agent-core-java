@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.base.Tag;
@@ -1606,6 +1607,16 @@ public class DeepAgent implements AutoCloseable {
             return;
         }
         String sessionId = session.getSessionId();
+        // 会话终止前清扫其全部任务（防僵尸执行线程）：下方 removeTask 会清理任务行，但正在
+        // 执行的 WORKING 任务线程不会被中断——abort/完成超时/线程中断路径下它会在已退订的
+        // 事件流上继续空转（播报全丢、LLM/工具调用照烧）。先走 cancelSessionTasks（WORKING
+        // 经 cancelTask 中断执行线程，SUBMITTED/PAUSED 等直接落 CANCELED），再走下方清行。
+        // 必须在移除会话前调（cancelTask 需经 sessions 解析会话）；正常完成路径回合已同步
+        // 等完、无存活任务，清扫为空操作。
+        int cleaned = taskScheduler.cancelSessionTasks(sessionId);
+        if (cleaned > 0) {
+            Loggers.AGENT.warning("Session {} terminated, cleaned {} stale task(s)", sessionId, cleaned);
+        }
         activeTaskLoopSessions.remove(sessionId);
         eventQueue.unsubscribe(card.getId(), sessionId);
         taskScheduler.getSessions().remove(sessionId);

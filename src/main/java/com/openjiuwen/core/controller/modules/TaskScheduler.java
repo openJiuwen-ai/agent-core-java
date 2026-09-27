@@ -562,6 +562,69 @@ public class TaskScheduler {
         return true;
     }
 
+    /**
+     * 清扫指定会话的全部未终结任务（会话终止时调用，防僵尸任务）。
+     *
+     * <p>SUBMITTED/PAUSED/WAITING/INPUT_REQUIRED 直接落 CANCELED（不再进调度、不再产生
+     * "session not found" 周期告警）；WORKING 走 {@link #cancelTask}（executor 回调 +
+     * 执行线程中断），executor 拒绝或与调度循环竞态时兜底直接中断线程并落账。
+     * 终结态（COMPLETED/CANCELED/FAILED）跳过。
+     *
+     * <p>调用时机：{@code DeepAgent.stopTaskLoopRuntime} 移除会话前。正常完成路径下回合
+     * 已同步等完、无存活任务，本方法为空操作；abort/超时/中断路径下残留任务由这里收尾——
+     * 原先这些任务随会话移除而失联：残留 SUBMITTED 被调度循环每轮 skip 刷屏，残留
+     * WORKING 在已退订的事件流上继续空转（播报全丢、资源照烧）。
+     *
+     * @param sessionId 会话 id
+     * @return 清扫（落 CANCELED）的任务数
+     * @since 0.1.14
+     */
+    public int cancelSessionTasks(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return 0;
+        }
+        int cancelled = 0;
+        List<Task> tasks = taskManager.getTask(TaskFilter.bySessionId(sessionId));
+        for (Task task : tasks) {
+            String taskId = task.getTaskId();
+            TaskStatus status = task.getStatus();
+            if (status == TaskStatus.COMPLETED || status == TaskStatus.CANCELED || status == TaskStatus.FAILED) {
+                continue;
+            }
+            if (status == TaskStatus.SUBMITTED || status == TaskStatus.PAUSED
+                    || status == TaskStatus.WAITING || status == TaskStatus.INPUT_REQUIRED) {
+                taskManager.updateTaskStatus(taskId, TaskStatus.CANCELED);
+                Loggers.CONTROLLER.info("Task {} cancelled (session {} terminating, was {})",
+                        taskId, sessionId, status);
+                cancelled++;
+                continue;
+            }
+            if (cancelTask(taskId)) {
+                cancelled++;
+                continue;
+            }
+            // cancelTask 失败（executor 拒绝/会话已移除/条目已被移除）：兜底中断执行线程并落账——
+            // 会话已终止，不允许任务残留空转
+            lock.lock();
+            try {
+                RunningTaskEntry entry = runningTasks.get(taskId);
+                if (entry != null) {
+                    Thread taskThread = entry.getTaskThread();
+                    if (taskThread != null && taskThread.isAlive()) {
+                        taskThread.interrupt();
+                    }
+                    Loggers.CONTROLLER.warning("Task {} force-interrupted (session {} terminating)",
+                            taskId, sessionId);
+                }
+            } finally {
+                lock.unlock();
+            }
+            taskManager.updateTaskStatus(taskId, TaskStatus.CANCELED);
+            cancelled++;
+        }
+        return cancelled;
+    }
+
     // ==================== Schedule Loop ====================
 
     /**
@@ -580,8 +643,12 @@ public class TaskScheduler {
             for (Task task : submittedTasks) {
                 AgentSessionApi session = sessions.get(task.getSessionId());
                 if (session == null) {
-                    Loggers.CONTROLLER.warning("Task {} session {} not found, skipping", task.getTaskId(),
-                            task.getSessionId());
+                    // 会话已销毁的残留任务：原实现只 skip——任务永远留在 SUBMITTED，调度循环每轮
+                    // 重复告警刷屏（默认 100ms 一条）且无任何出口（僵尸任务）。落 CANCELED 移出
+                    // 调度视野，状态可在 TaskManager 查证，不再空转。
+                    Loggers.CONTROLLER.warning("Task {} session {} not found, marking CANCELED (stale task)",
+                            task.getTaskId(), task.getSessionId());
+                    taskManager.updateTaskStatus(task.getTaskId(), TaskStatus.CANCELED);
                     continue;
                 }
 
