@@ -4,11 +4,14 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.singleagent.BaseAgent;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -44,6 +47,49 @@ public abstract class AgentRail {
 
     /** Execution priority; a higher value runs before lower-priority callbacks. */
     private int priority = 50;
+
+    /** Tool cards carried by this rail (released with the rail). */
+    private final List<ToolCard> tools;
+
+    /**
+     * Rail without tool cards.
+     *
+     * @since 0.1.16
+     */
+    protected AgentRail() {
+        this(null, null);
+    }
+
+    /**
+     * Rail carrying tool cards.
+     *
+     * @param tools tool cards
+     * @since 0.1.16
+     */
+    protected AgentRail(List<ToolCard> tools) {
+        this(tools, null);
+    }
+
+    /**
+     * Rail carrying tool cards and skills.
+     *
+     * @param tools tool cards
+     * @param skills skills (reserved)
+     * @since 0.1.16
+     */
+    protected AgentRail(List<ToolCard> tools, List<Object> skills) {
+        this.tools = tools != null ? tools : new ArrayList<>();
+    }
+
+    /**
+     * Tool cards carried by this rail (released with the rail).
+     *
+     * @return the carried tool cards, never null
+     * @since 0.1.16
+     */
+    public List<ToolCard> getToolCards() {
+        return tools;
+    }
 
     /**
      * Lifecycle hook invoked when the rail is registered.

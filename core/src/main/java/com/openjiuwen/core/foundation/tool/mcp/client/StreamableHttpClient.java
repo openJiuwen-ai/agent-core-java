@@ -23,10 +23,12 @@ import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.net.http.HttpRequest;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -36,6 +38,15 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.StringJoiner;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Streamable HTTP transport based MCP client.
@@ -51,6 +62,25 @@ public class StreamableHttpClient implements McpClient {
     private static final float DEFAULT_TIMEOUT_SECONDS = 60.0F;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * Bounded executor for operations subject to a caller-supplied timeout.
+     * Uses a handoff queue so submitted operations start immediately instead
+     * of spending the caller's timeout budget while queued; submissions
+     * beyond the pool maximum surface as a timeout failure rather than
+     * blocking the caller unboundedly.
+     */
+    private static final ExecutorService TIMEOUT_EXECUTOR = new ThreadPoolExecutor(
+            8, 192, 60L, TimeUnit.SECONDS,
+            new SynchronousQueue<>(),
+            task -> {
+                Thread thread = Executors.defaultThreadFactory().newThread(task);
+                thread.setName("streamable-http-mcp-op");
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((worker, error) -> Loggers.TOOL.error(
+                        "[streamable-http-mcp-op] uncaught exception on worker {}", worker.getName(), error));
+                return thread;
+            });
+
     private final McpServerConfig config;
     private final String name;
     private final String serverId;
@@ -59,6 +89,7 @@ public class StreamableHttpClient implements McpClient {
     private final TransportFactory transportFactory;
 
     private TransportSession session;
+
     private AuthHeaderAndQueryProvider authProvider;
     private boolean disconnected;
     private final Object reconnectLock = new Object();
@@ -153,7 +184,7 @@ public class StreamableHttpClient implements McpClient {
 
     @Override
     public List<Object> listTools(float timeout) throws Exception {
-        return executeWithReconnect(timeout, () -> doListTools());
+        return runWithTimeout(retryAwareTimeout(timeout), () -> executeWithReconnect(timeout, () -> doListTools()));
     }
 
     private List<Object> doListTools() throws Exception {
@@ -168,7 +199,8 @@ public class StreamableHttpClient implements McpClient {
 
     @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
-        return executeWithReconnect(timeout, () -> doCallTool(toolName, arguments));
+        return runWithTimeout(retryAwareTimeout(timeout),
+                () -> executeWithReconnect(timeout, () -> doCallTool(toolName, arguments)));
     }
 
     private Object doCallTool(String toolName, Map<String, Object> arguments) throws Exception {
@@ -196,7 +228,7 @@ public class StreamableHttpClient implements McpClient {
 
     @Override
     public List<Object> listResources(float timeout) throws Exception {
-        return executeWithReconnect(timeout, this::doListResources);
+        return runWithTimeout(retryAwareTimeout(timeout), () -> executeWithReconnect(timeout, this::doListResources));
     }
 
     private List<Object> doListResources() throws Exception {
@@ -206,7 +238,8 @@ public class StreamableHttpClient implements McpClient {
 
     @Override
     public Object readResource(String uri, float timeout) throws Exception {
-        return executeWithReconnect(timeout, () -> doReadResource(uri));
+        return runWithTimeout(retryAwareTimeout(timeout),
+                () -> executeWithReconnect(timeout, () -> doReadResource(uri)));
     }
 
     private Object doReadResource(String uri) throws Exception {
@@ -225,6 +258,75 @@ public class StreamableHttpClient implements McpClient {
 
     boolean isDisconnected() {
         return disconnected;
+    }
+
+    /**
+     * Runs one MCP operation under a positive per-call timeout: the
+     * operation executes on a bounded executor and a timeout surfaces as
+     * {@link HttpTimeoutException} so callers can branch on
+     * the timeout type. Non-positive and sentinel timeouts execute inline.
+     *
+     * @param <T> the result type of the MCP operation
+     * @param timeout per-call timeout in seconds; non-positive or the
+     *                {@link McpServerConfig#NO_TIMEOUT} sentinel runs inline
+     * @param operation the MCP operation to execute
+     * @return the operation result when it completes within the timeout
+     * @throws HttpTimeoutException when the operation exceeds the timeout
+     *                              or the executor is saturated
+     * @throws Exception when the operation itself fails
+     */
+    private <T> T runWithTimeout(float timeout, McpOperation<T> operation) throws Exception {
+        if (timeout <= 0f) {
+            return operation.execute();
+        }
+        Future<T> pending;
+        try {
+            pending = TIMEOUT_EXECUTOR.submit(operation::execute);
+        } catch (RejectedExecutionException error) {
+            throw new HttpTimeoutException("streamable-http request could not start within "
+                    + timeout + "s: executor saturated");
+        }
+        try {
+            return pending.get(secondsToMillis(timeout), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException error) {
+            pending.cancel(true);
+            throw new HttpTimeoutException("streamable-http request timed out after " + timeout + "s");
+        } catch (ExecutionException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw new IllegalStateException(cause);
+        }
+    }
+
+    /**
+     * Converts a timeout in seconds to milliseconds with exact decimal
+     * arithmetic, so fractional second values do not lose precision.
+     *
+     * @param seconds timeout value in seconds
+     * @return the same timeout value in milliseconds
+     */
+    private static long secondsToMillis(float seconds) {
+        return BigDecimal.valueOf(seconds).multiply(BigDecimal.valueOf(1000L)).longValue();
+    }
+
+    /**
+     * Widens the hard outer budget for operations that may run twice:
+     * {@code executeWithReconnect} retries once after a transport
+     * reconnect, so a hard budget equal to the caller's timeout would be
+     * consumed by a slow first attempt and preempt the retry — the exact
+     * scenario the reconnect self-heal targets. The two-attempt budget
+     * keeps the hard bound while leaving room for one retry.
+     *
+     * @param timeout caller-supplied timeout in seconds
+     * @return the outer hard budget in seconds covering both attempts
+     */
+    private static float retryAwareTimeout(float timeout) {
+        if (timeout <= 0f) {
+            return timeout;
+        }
+        return BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(2L)).floatValue();
     }
 
     private <T> T executeWithReconnect(float timeout, McpOperation<T> operation) throws Exception {

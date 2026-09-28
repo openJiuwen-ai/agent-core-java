@@ -91,6 +91,24 @@ public final class OperationRegistry {
         testIsolationEnabled = true;
     }
 
+    /**
+     * Restores the registry after a test that enabled isolation.
+     *
+     * <p>Clears every registered operation and custom-operation name and
+     * disables test isolation, so later lookups lazily re-load the built-in
+     * operations instead of staying restricted to the last test's custom
+     * set. Classes that call {@link #clearForTest()} to isolate themselves
+     * must call this from their cleanup to avoid leaking the isolation
+     * flag into unrelated test classes.</p>
+     *
+     * @since 0.1.16
+     */
+    public static synchronized void restoreAfterTest() {
+        REPOSITORY.clear();
+        CUSTOM_OPERATION_NAMES.clear();
+        testIsolationEnabled = false;
+    }
+
     static synchronized List<String> getToolExtractionOperationNames(OperationMode mode) {
         if (testIsolationEnabled) {
             Set<String> customNames = CUSTOM_OPERATION_NAMES.get(mode);

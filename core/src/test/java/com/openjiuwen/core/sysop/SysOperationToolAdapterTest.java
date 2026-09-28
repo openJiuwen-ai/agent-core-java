@@ -9,6 +9,7 @@ import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23,9 +24,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SysOperationToolAdapterTest {
 
-    @AfterEach
-    void cleanRegistry() {
+    @BeforeEach
+    void isolateRegistry() {
         OperationRegistry.clearForTest();
+    }
+
+    @AfterEach
+    void restoreRegistry() {
+        OperationRegistry.restoreAfterTest();
     }
 
     @Test

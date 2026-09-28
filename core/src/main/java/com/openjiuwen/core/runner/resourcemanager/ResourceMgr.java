@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.schema.BaseCard;
+import com.openjiuwen.core.common.utils.IsolatedActions;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -32,13 +33,18 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 /**
@@ -61,6 +67,26 @@ public class ResourceMgr {
     private TagManager tagManager;
     private Map<String, BaseCard> idToCard;
 
+    /**
+     * ReentrantLock serializing the cross-structure write sequences
+     * (hasResource probe, registry write, idToCard put, tagResource) of
+     * innerAddResource and innerRemoveResources so registration and removal
+     * sequences never interleave in each other's intermediate states. Read
+     * paths stay lock-free (weakly consistent container reads).
+     *
+     * @since 0.1.16
+     */
+    private final ReentrantLock structureLock = new ReentrantLock();
+
+    /**
+     * Ownership table: resource id to the set of owner tokens that claimed
+     * it. Entries with equivalent ability declarations are shared, and a
+     * resource entry is removed only when its last owner releases it.
+     *
+     * @since 0.1.16
+     */
+    private final ConcurrentHashMap<String, Set<String>> idToOwners = new ConcurrentHashMap<>();
+
     public ResourceMgr() {
         resetManagers();
     }
@@ -76,7 +102,7 @@ public class ResourceMgr {
         validateProvider(agentTeam, "team");
         validateOptionalTags(tag);
         return CompletableFuture.completedFuture(innerAddResource(
-                card.getId(), ResourceKind.TEAM, agentTeam, card, tag, null));
+                new ResourceRegistration(card.getId(), ResourceKind.TEAM, agentTeam, card, tag, null)));
     }
 
     public Object addAgentGroup(TeamCard card, Supplier<?> agentTeam, Object tag) {
@@ -132,7 +158,8 @@ public class ResourceMgr {
         validateResourceId(card.getId(), "agent");
         validateProvider(agent, "agent");
         validateOptionalTags(tag);
-        return innerAddResource(card.getId(), ResourceKind.AGENT, agent, card, tag, interfaceUrl);
+        return innerAddResource(new ResourceRegistration(card.getId(), ResourceKind.AGENT, agent, card, tag,
+                interfaceUrl));
     }
 
     public Result<?, ?> addAgent(AgentCard card, RemoteAgent agent) {
@@ -147,7 +174,8 @@ public class ResourceMgr {
                     "reason", "provider cannot be None, must be a callable function");
         }
         validateOptionalTags(tag);
-        return innerAddResource(card.getId(), ResourceKind.AGENT, agent, card, tag, interfaceUrl);
+        return innerAddResource(new ResourceRegistration(card.getId(), ResourceKind.AGENT, agent, card, tag,
+                interfaceUrl));
     }
 
     public List<Result<?, ?>> addAgents(List<AgentEntry> agents, Collection<String> tag) {
@@ -155,8 +183,8 @@ public class ResourceMgr {
         validateOptionalTags(tag);
         List<Result<?, ?>> results = new ArrayList<>();
         for (AgentEntry entry : agents) {
-            results.add(innerAddResource(entry.card().getId(), ResourceKind.AGENT,
-                    entry.provider(), entry.card(), tag, null));
+            results.add(innerAddResource(new ResourceRegistration(entry.card().getId(), ResourceKind.AGENT,
+                    entry.provider(), entry.card(), tag, null)));
         }
         return results;
     }
@@ -227,7 +255,8 @@ public class ResourceMgr {
         validateResourceId(card.getId(), "workflow");
         validateProvider(workflow, "workflow");
         validateOptionalTags(tag);
-        return innerAddResource(card.getId(), ResourceKind.WORKFLOW, workflow, card, tag, null);
+        return innerAddResource(new ResourceRegistration(card.getId(), ResourceKind.WORKFLOW, workflow,
+                card, tag, null));
     }
 
     public List<com.openjiuwen.core.runner.base.Result<WorkflowCard>> addWorkflows(List<WorkflowEntry> workflows,
@@ -245,8 +274,8 @@ public class ResourceMgr {
         validateOptionalTags(tag);
         List<Result<?, ?>> results = new ArrayList<>();
         for (WorkflowEntry entry : workflows) {
-            results.add(innerAddResource(entry.card().getId(), ResourceKind.WORKFLOW,
-                    entry.provider(), entry.card(), tag, null));
+            results.add(innerAddResource(new ResourceRegistration(entry.card().getId(), ResourceKind.WORKFLOW,
+                    entry.provider(), entry.card(), tag, null)));
         }
         return results;
     }
@@ -297,27 +326,142 @@ public class ResourceMgr {
     }
 
     public com.openjiuwen.core.runner.base.Result<ToolCard> addTool(Tool tool, Object tag) {
-        return baseResult(addTool(tool, stringCollection(tag), false));
+        return baseResult(addTool(tool, stringCollection(tag), false, tag));
     }
 
-    public Result<?, ?> addTool(Tool tool, Collection<String> tag, boolean refresh) {
+    /**
+     * addTool with an explicit owner token (object-tag convenience).
+     *
+     * <p>Same ownership contract as
+     * {@link #addTool(Tool, Collection, boolean, Object)}.</p>
+     *
+     * @param tool tool
+     * @param tag tag
+     * @param owner owner token claiming the entry (null degrades to tag)
+     * @return the result
+     * @since 0.1.16
+     */
+    public com.openjiuwen.core.runner.base.Result<ToolCard> addTool(Tool tool, Object tag, Object owner) {
+        return baseResult(addTool(tool, stringCollection(tag), false, owner));
+    }
+
+    /**
+     * addTool refresh variant with an object tag; the owner defaults to the
+     * tag (930 registration surface).
+     *
+     * @param tool tool
+     * @param tag tag
+     * @param shouldRefresh whether an existing equivalent entry is refreshed
+     * @return the result
+     * @since 0.1.16
+     */
+    public com.openjiuwen.core.runner.base.Result<ToolCard> addTool(Tool tool, Object tag, boolean shouldRefresh) {
+        return baseResult(addTool(tool, stringCollection(tag), shouldRefresh, tag));
+    }
+
+    /**
+     * addTool with a collection tag and default owner token.
+     *
+     * @param tool tool to register
+     * @param tag tag collection identifying the entry
+     * @param shouldRefresh whether an existing equivalent entry is refreshed
+     * @return the result
+     * @since 0.1.16
+     */
+    public Result<?, ?> addTool(Tool tool, Collection<String> tag, boolean shouldRefresh) {
+        return addTool(tool, tag, shouldRefresh, null);
+    }
+
+    /**
+     * addTool with an explicit owner token.
+     *
+     * <p>Idempotent three-state contract: a new id is registered with the
+     * caller as its only owner; an existing id with an equivalent ability
+     * declaration is reused and the owner is added to the entry's owner set
+     * (same-owner re-registration is a no-op); an existing id with a
+     * different definition fails with RESOURCE_ADD_ERROR (definition
+     * conflict). A null owner degrades to the tag so legacy callers keep
+     * working; new callers should always pass a non-null owner token.</p>
+     *
+     * <p>Single agent instances are not thread-safe for concurrent
+     * execution; ownership claiming happens under the manager's structure
+     * lock and is safe across concurrently initializing instances.</p>
+     *
+     * @param tool tool
+     * @param tag tag
+     * @param shouldRefresh whether an existing equivalent entry is refreshed
+     * @param owner owner token claiming the entry (null degrades to tag)
+     * @return the result
+     * @since 0.1.16
+     */
+    public Result<?, ?> addTool(Tool tool, Collection<String> tag, boolean shouldRefresh, Object owner) {
         validateTool(tool);
         validateOptionalTags(tag);
-        refreshExistingToolIfNeeded(tool, refresh);
-        return innerAddResource(tool.getCard().getId(), ResourceKind.TOOL, tool, tool.getCard(), tag, null);
+        refreshExistingToolIfNeeded(tool, shouldRefresh, owner);
+        Object ownerKey = owner;
+        if (ownerKey == null) {
+            ownerKey = tag;
+        }
+        return innerAddResource(new ResourceRegistration(tool.getCard().getId(), ResourceKind.TOOL,
+                tool, tool.getCard(), tag, null, ownerKey));
     }
 
     public List<com.openjiuwen.core.runner.base.Result<ToolCard>> addTools(List<? extends Tool> tools, Object tag) {
-        return baseResultList(addTools(tools, stringCollection(tag), false));
+        return baseResultList(addTools(tools, stringCollection(tag), false, tag));
     }
 
-    public List<Result<?, ?>> addTools(List<? extends Tool> tools, Collection<String> tag, boolean refresh) {
+    /**
+     * addTools with a collection tag and default owner token.
+     *
+     * @param tools tools to register
+     * @param tag tag collection identifying the entries
+     * @param shouldRefresh whether existing equivalent entries are refreshed
+     * @return the results in tool order
+     * @since 0.1.16
+     */
+    public List<Result<?, ?>> addTools(List<? extends Tool> tools, Collection<String> tag, boolean shouldRefresh) {
+        return addTools(tools, tag, shouldRefresh, null);
+    }
+
+    /**
+     * addTools with an object tag and explicit owner token (930 registration
+     * surface convenience).
+     *
+     * @param tools tools
+     * @param tag tag
+     * @param owner owner token claiming each entry (null degrades to tag)
+     * @return the result
+     * @since 0.1.16
+     */
+    public List<Result<?, ?>> addTools(List<? extends Tool> tools, Object tag, Object owner) {
+        return addTools(tools, stringCollection(tag), false, owner);
+    }
+
+    /**
+     * addTools with explicit owner tokens (see
+     * {@link #addTool(Tool, Collection, boolean, Object)} for the ownership
+     * contract).
+     *
+     * @param tools tools
+     * @param tag tag
+     * @param shouldRefresh whether an existing equivalent entry is refreshed
+     * @param owner owner token claiming each entry (null degrades to tag)
+     * @return the result
+     * @since 0.1.16
+     */
+    public List<Result<?, ?>> addTools(List<? extends Tool> tools, Collection<String> tag, boolean shouldRefresh,
+            Object owner) {
         validateToolList(tools);
         validateOptionalTags(tag);
+        Object ownerKey = owner;
+        if (ownerKey == null) {
+            ownerKey = tag;
+        }
         List<Result<?, ?>> results = new ArrayList<>();
         for (Tool tool : tools) {
-            refreshExistingToolIfNeeded(tool, refresh);
-            results.add(innerAddResource(tool.getCard().getId(), ResourceKind.TOOL, tool, tool.getCard(), tag, null));
+            refreshExistingToolIfNeeded(tool, shouldRefresh, owner);
+            results.add(innerAddResource(new ResourceRegistration(tool.getCard().getId(), ResourceKind.TOOL,
+                    tool, tool.getCard(), tag, null, ownerKey)));
         }
         return results;
     }
@@ -376,7 +520,7 @@ public class ResourceMgr {
         validateResourceId(modelId, "model");
         validateProvider(model, "model");
         validateOptionalTags(tag);
-        return innerAddResource(modelId, ResourceKind.MODEL, model, null, tag, null);
+        return innerAddResource(new ResourceRegistration(modelId, ResourceKind.MODEL, model, null, tag, null));
     }
 
     public List<Result<?, ?>> addModels(List<ModelEntry> models, Collection<String> tag) {
@@ -384,7 +528,8 @@ public class ResourceMgr {
         validateOptionalTags(tag);
         List<Result<?, ?>> results = new ArrayList<>();
         for (ModelEntry entry : models) {
-            results.add(innerAddResource(entry.modelId(), ResourceKind.MODEL, entry.provider(), null, tag, null));
+            results.add(innerAddResource(new ResourceRegistration(entry.modelId(), ResourceKind.MODEL,
+                    entry.provider(), null, tag, null)));
         }
         return results;
     }
@@ -513,7 +658,7 @@ public class ResourceMgr {
         validateResourceId(promptId, "prompt");
         validateResource(template, "prompt", PromptTemplate.class);
         validateOptionalTags(tag);
-        return innerAddResource(promptId, ResourceKind.PROMPT, template, null, tag, null);
+        return innerAddResource(new ResourceRegistration(promptId, ResourceKind.PROMPT, template, null, tag, null));
     }
 
     public List<Result<?, ?>> addPrompts(List<PromptEntry> prompts, Collection<String> tag) {
@@ -526,7 +671,8 @@ public class ResourceMgr {
         for (PromptEntry entry : prompts) {
             validateResourceId(entry.promptId(), "prompt");
             validateResource(entry.template(), "prompt", PromptTemplate.class);
-            results.add(innerAddResource(entry.promptId(), ResourceKind.PROMPT, entry.template(), null, tag, null));
+            results.add(innerAddResource(new ResourceRegistration(entry.promptId(), ResourceKind.PROMPT,
+                    entry.template(), null, tag, null)));
         }
         return results;
     }
@@ -546,14 +692,84 @@ public class ResourceMgr {
     }
 
     public Result<?, ?> addSysOperation(SysOperationCard card, Collection<String> tag) {
+        return addSysOperation(card, tag, null);
+    }
+
+    /**
+     * addSysOperation with an object tag claiming the entry (owner defaults
+     * to the tag, mirroring the 930 registration surface).
+     *
+     * @param card card
+     * @param tag tag
+     * @return the result
+     * @since 0.1.16
+     */
+    public Result<?, ?> addSysOperation(SysOperationCard card, Object tag) {
+        return addSysOperation(card, stringCollection(tag), tag);
+    }
+
+    /**
+     * addSysOperation with an explicit owner token (object-tag convenience).
+     *
+     * <p>Same ownership contract as
+     * {@link #addSysOperation(SysOperationCard, Collection, Object)}.</p>
+     *
+     * @param card card
+     * @param tag tag
+     * @param owner owner token claiming the entry (null degrades to tag)
+     * @return the result
+     * @since 0.1.16
+     */
+    public Result<?, ?> addSysOperation(SysOperationCard card, Object tag, Object owner) {
+        return addSysOperation(card, stringCollection(tag), owner);
+    }
+
+    /**
+     * addSysOperation with an explicit owner token.
+     *
+     * <p>Follows the same idempotent three-state contract as
+     * {@link #addTool(Tool, Collection, boolean, Object)}: equivalent
+     * declarations are reused with the owner added to the entry's owner set
+     * (resource-bound fields such as the work directory do not participate
+     * in the equivalence check), while conflicting definitions fail
+     * visibly. On reuse the existing instance stays registered and its
+     * bound tools are not re-registered, but the joining owner claims the
+     * existing bound tools so per-owner release stays residue-free.</p>
+     *
+     * @param card card
+     * @param tag tag
+     * @param owner owner token claiming the entry (null degrades to tag)
+     * @return the result
+     * @since 0.1.16
+     */
+    public Result<?, ?> addSysOperation(SysOperationCard card, Collection<String> tag, Object owner) {
         validateResourceCard(card, "sys_operation", SysOperationCard.class);
         validateOptionalTags(tag);
         SysOperation instance = new SysOperation(card);
-        Result<?, ?> result = innerAddResource(card.getId(), ResourceKind.SYS_OPERATION, instance, card, tag, null);
-        if (result.isOk()) {
-            registerSysOperationTools(card, instance, tag);
+        Object ownerKey = owner;
+        if (ownerKey == null) {
+            ownerKey = tag;
         }
-        return result;
+        // One structureLock domain covers the entry registration and the
+        // bound-tool registration/claim (reentrant nesting): a concurrent
+        // equivalent registration must never observe the entry with the
+        // tool association still empty, claim nothing, and later lose the
+        // bound tools when the first registrant releases.
+        structureLock.lock();
+        try {
+            Result<?, ?> res = innerAddResource(new ResourceRegistration(card.getId(), ResourceKind.SYS_OPERATION,
+                    instance, card, tag, null, ownerKey));
+            if (res.isOk()) {
+                if (res.getValue() == card) {
+                    registerSysOperationTools(card, instance, tag, ownerKey);
+                } else {
+                    claimSysOperationTools(card.getId(), ownerKey);
+                }
+            }
+            return res;
+        } finally {
+            structureLock.unlock();
+        }
     }
 
     public List<Result<?, ?>> addSysOperations(List<SysOperationCard> cards, Collection<String> tag) {
@@ -575,6 +791,30 @@ public class ResourceMgr {
         return singleResult(results);
     }
 
+    /**
+     * removeSysOperation with object id/tag arguments (930 removal surface
+     * convenience).
+     *
+     * @param sysOperationId sysOperationId
+     * @param tag tag
+     * @param tagMatchStrategy tagMatchStrategy
+     * @param shouldSkipWhenTagMissing whether removal is skipped instead of
+     *                                failing when the tag does not match
+     * @return the removal result, or empty when nothing matched
+     * @since 0.1.16
+     */
+    public Optional<Result<?, ?>> removeSysOperation(Object sysOperationId, Object tag,
+            com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy, boolean shouldSkipWhenTagMissing) {
+        List<String> ids = new ArrayList<>(stringCollection(sysOperationId));
+        List<Result<?, ?>> results = innerRemoveResources(ids, ResourceKind.SYS_OPERATION, stringCollection(tag),
+                strategy(tagMatchStrategy), shouldSkipWhenTagMissing);
+        removeSysOperationTools(ids, stringCollection(tag), shouldSkipWhenTagMissing);
+        if (results.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(results.get(0));
+    }
+
     public List<Result<?, ?>> removeSysOperationsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
                                                        boolean skipIfTagNotExists) {
         ServerIdLookup lookup = findResourceIds(null, tag, tagMatchStrategy, skipIfTagNotExists);
@@ -582,6 +822,98 @@ public class ResourceMgr {
                 tagMatchStrategy, skipIfTagNotExists);
         removeSysOperationTools(lookup.ids(), tag, skipIfTagNotExists);
         return results;
+    }
+
+    /**
+     * removeToolOwnedBy.
+     *
+     * <p>Releases the owner's claim on the tool entry. The entry stays
+     * registered while other owners still hold claims and is removed only
+     * when the last owner releases it, so a destroying instance cannot
+     * break another instance's tool resolution. The release runs inside
+     * {@link #structureLock} (mirroring the sys_operation release): the
+     * empty-set decision must not interleave with a concurrent equivalent
+     * registration merging a fresh claim, otherwise the stale decision
+     * wipes an entry another owner just claimed.</p>
+     *
+     * @param toolId toolId
+     * @param owner owner token recorded at registration
+     * @return whether the entry was actually removed
+     * @since 0.1.16
+     */
+    public boolean removeToolOwnedBy(String toolId, String owner) {
+        structureLock.lock();
+        try {
+            return removeOwnedResource(toolId, owner, ResourceKind.TOOL);
+        } finally {
+            structureLock.unlock();
+        }
+    }
+
+    /**
+     * removeSysOperationOwnedBy.
+     *
+     * <p>Releases the owner's claim on the system operation entry (see
+     * {@link #removeToolOwnedBy(String, String)}), plus this owner's
+     * claims on the bound tools the sys_operation registered (every
+     * joining owner claims them on add, so the first owner's release
+     * leaves no ghost ownership while survivors keep the tools). When the
+     * release removes the entry, the remaining bound tools are removed in
+     * the same locked sequence, mirroring
+     * {@link #removeSysOperationsByTag(Collection, TagMatchStrategy, boolean)}.</p>
+     *
+     * @param sysOperationId sysOperationId
+     * @param owner owner token recorded at registration
+     * @return whether the entry was actually removed
+     * @since 0.1.16
+     */
+    public boolean removeSysOperationOwnedBy(String sysOperationId, String owner) {
+        structureLock.lock();
+        try {
+            List<String> toolIds = toolManager.getSysOperationToolIds(sysOperationId);
+            for (String toolId : toolIds) {
+                removeOwnedResource(toolId, owner, ResourceKind.TOOL);
+            }
+            if (!removeOwnedResource(sysOperationId, owner, ResourceKind.SYS_OPERATION)) {
+                return false;
+            }
+            List<String> boundToolIds = toolManager.removeSysOperationTools(sysOperationId);
+            if (!boundToolIds.isEmpty()) {
+                innerRemoveResources(boundToolIds, ResourceKind.TOOL, null, TagMatchStrategy.ALL, true);
+            }
+            return true;
+        } finally {
+            structureLock.unlock();
+        }
+    }
+
+    /**
+     * removeOwnedResource.
+     *
+     * <p>Must be called while holding {@link #structureLock}: drops the
+     * owner from the entry's owner set and removes the entry (tag, registry,
+     * card, owner records in one sequence) when the set becomes empty.</p>
+     *
+     * @param resourceId resourceId
+     * @param owner owner
+     * @param resourceType resourceType
+     * @return whether the entry was removed
+     * @since 0.1.16
+     */
+    private boolean removeOwnedResource(String resourceId, String owner, ResourceKind resourceType) {
+        if (resourceId == null || owner == null) {
+            return false;
+        }
+        Set<String> owners = idToOwners.get(resourceId);
+        if (owners == null) {
+            return false;
+        }
+        owners.remove(owner);
+        if (!owners.isEmpty()) {
+            return false;
+        }
+        innerRemoveResources(List.of(resourceId), resourceType, null, TagMatchStrategy.ALL, true);
+        return true;
     }
 
     public SysOperation getSysOperation(String sysOperationId) {
@@ -1081,66 +1413,270 @@ public class ResourceMgr {
         }
     }
 
-    private Result<?, ?> innerAddResource(String resourceId, ResourceKind resourceType, Object resource,
-                                          BaseCard resourceCard, Collection<String> tag, String interfaceUrl) {
+    /**
+     * innerAddResource.
+     *
+     * <p>Runs the full registration sequence (duplicate probe, registry
+     * write, card index, tag index, owner claim) under
+     * {@link #structureLock} so registration and removal sequences never
+     * interleave. An owner-aware caller that hits an existing id with an
+     * equivalent ability declaration reuses the entry: the owner joins the
+     * entry's owner set and the existing card is returned. A conflicting
+     * definition fails with RESOURCE_ADD_ERROR. A null owner keeps the
+     * legacy duplicate failure.</p>
+     *
+     * @param registration the registration request (value object)
+     * @return the result
+     * @since 0.1.16
+     */
+    private Result<?, ?> innerAddResource(ResourceRegistration registration) {
+        String resourceId = registration.resourceId();
         try {
-            if (tagManager.hasResource(resourceId)) {
-                Object card = resourceCard != null ? resourceCard : resourceId;
-                throw buildError(StatusCode.RESOURCE_ADD_ERROR,
-                        "card", String.valueOf(card), "reason", "resource already exist");
+            structureLock.lock();
+            try {
+                if (tagManager.hasResource(resourceId)) {
+                    return resolveExistingResource(resourceId, registration.resourceCard(),
+                            registration.resourceType(), registration.owner());
+                }
+                dispatchAdd(registration.resourceType(), resourceId, registration.resource(),
+                        registration.resourceCard(), registration.interfaceUrl());
+                if (registration.resourceCard() != null) {
+                    idToCard.put(resourceId, registration.resourceCard());
+                }
+                tagManager.tagResource(resourceId, effectiveTags(registration.tag()));
+                if (registration.owner() != null) {
+                    claimOwnership(resourceId, registration.owner());
+                }
+                return new Ok<>(registration.resourceCard() != null ? registration.resourceCard() : resourceId);
+            } finally {
+                structureLock.unlock();
             }
-            dispatchAdd(resourceType, resourceId, resource, resourceCard, interfaceUrl);
-            if (resourceCard != null) {
-                idToCard.put(resourceId, resourceCard);
-            }
-            tagManager.tagResource(resourceId, effectiveTags(tag));
-            return new Ok<>(resourceCard != null ? resourceCard : resourceId);
         } catch (Exception exception) {
             return new ErrorResult<>(exception);
         }
     }
 
+    /**
+     * Registration request value object for innerAddResource, replacing
+     * the positional overloads that had grown past the five-parameter
+     * rule.
+     *
+     * @param resourceId resourceId
+     * @param resourceType resourceType
+     * @param resource resource
+     * @param resourceCard resourceCard
+     * @param tag tag
+     * @param interfaceUrl interfaceUrl
+     * @param owner owner token claiming the entry ({@code null} keeps legacy semantics)
+     * @since 0.1.16
+     */
+    private record ResourceRegistration(String resourceId, ResourceKind resourceType, Object resource,
+            BaseCard resourceCard, Collection<String> tag, String interfaceUrl, Object owner) {
+
+        ResourceRegistration(String resourceId, ResourceKind resourceType, Object resource, BaseCard resourceCard,
+                Collection<String> tag, String interfaceUrl) {
+            this(resourceId, resourceType, resource, resourceCard, tag, interfaceUrl, null);
+        }
+    }
+
+    /**
+     * resolveExistingResource.
+     *
+     * <p>Must be called while holding {@link #structureLock}: decides
+     * between equivalent reuse (owner joins the entry's owner set, the
+     * existing card is returned) and the duplicate failure.</p>
+     *
+     * @param resourceId resourceId
+     * @param resourceCard resourceCard
+     * @param resourceType resourceType
+     * @param owner owner
+     * @return the result
+     * @since 0.1.16
+     */
+    private Result<?, ?> resolveExistingResource(String resourceId, BaseCard resourceCard,
+            ResourceKind resourceType, Object owner) {
+        BaseCard existingCard = idToCard.get(resourceId);
+        if (owner != null && existingCard != null && resourceCard != null
+                && sameAbilityDeclaration(existingCard, resourceCard)) {
+            claimOwnership(resourceId, owner);
+            return new Ok<>(existingCard);
+        }
+        Object card = resourceCard;
+        if (card == null) {
+            card = resourceId;
+        }
+        String reason = owner != null
+                ? "definition conflict with existing resource"
+                : "resource already exist";
+        throw buildError(StatusCode.RESOURCE_ADD_ERROR, "card", String.valueOf(card), "reason", reason);
+    }
+
+    /**
+     * claimOwnership.
+     *
+     * <p>Must be called while holding {@link #structureLock}.</p>
+     *
+     * @param resourceId resourceId
+     * @param owner owner
+     * @since 0.1.16
+     */
+    private void claimOwnership(String resourceId, Object owner) {
+        Set<String> owners = idToOwners.computeIfAbsent(resourceId, key -> ConcurrentHashMap.newKeySet());
+        owners.add(String.valueOf(owner));
+    }
+
+    /**
+     * innerRemoveResources.
+     *
+     * <p>Runs the whole removal sequence (id or by-tag resolution, then the
+     * per-entry removals) under {@link #structureLock}: the by-tag reverse
+     * lookup takes a consistent snapshot, and removal sequences never
+     * interleave with registration sequences.</p>
+     *
+     * @param resourceIds resourceIds
+     * @param resourceType resourceType
+     * @param tag tag
+     * @param tagMatchStrategy tagMatchStrategy
+     * @param skipIfTagNotExists skipIfTagNotExists
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Result<?, ?>> innerRemoveResources(List<String> resourceIds, ResourceKind resourceType,
                                                     Collection<String> tag,
                                                     TagMatchStrategy tagMatchStrategy,
                                                     boolean skipIfTagNotExists) {
-        List<String> idsToRemove = new ArrayList<>();
-        if (resourceIds != null) {
-            validateResourceIds(resourceIds, resourceType.pythonName());
-            idsToRemove.addAll(resourceIds);
-        }
-
-        boolean removeByTag = false;
-        if (idsToRemove.isEmpty()) {
-            validateTags(tag);
-            idsToRemove.addAll(findResourcesByTags(tag, tagMatchStrategy, skipIfTagNotExists));
-            removeByTag = true;
-            if (idsToRemove.isEmpty()) {
-                return List.of();
+        structureLock.lock();
+        try {
+            List<String> idsToRemove = new ArrayList<>();
+            if (resourceIds != null) {
+                validateResourceIds(resourceIds, resourceType.pythonName());
+                idsToRemove.addAll(resourceIds);
             }
-        }
 
-        List<Result<?, ?>> results = new ArrayList<>();
-        for (String removeId : idsToRemove) {
-            Exception error = null;
-            try {
-                tagManager.removeResource(removeId);
-                dispatchRemove(resourceType, removeId);
-            } catch (Exception exception) {
-                if (!removeByTag) {
-                    error = exception;
+            boolean isRemovalByTag = false;
+            if (idsToRemove.isEmpty()) {
+                validateTags(tag);
+                idsToRemove.addAll(findResourcesByTags(tag, tagMatchStrategy, skipIfTagNotExists));
+                isRemovalByTag = true;
+                if (idsToRemove.isEmpty()) {
+                    return List.of();
                 }
             }
-            BaseCard removedCard = idToCard.remove(removeId);
-            if (error != null) {
-                results.add(new ErrorResult<>(error));
-            } else if (resourceType.returnsId()) {
-                results.add(new Ok<>(removeId));
-            } else if (removedCard != null || !removeByTag) {
-                results.add(new Ok<>(removedCard));
+
+            List<Result<?, ?>> results = new ArrayList<>();
+            for (String removeId : idsToRemove) {
+                removeSingleResource(removeId, resourceType, isRemovalByTag).ifPresent(results::add);
+            }
+            return results;
+        } finally {
+            structureLock.unlock();
+        }
+    }
+
+    /**
+     * Removes one resource id: the tag index, typed registry, card index
+     * and owner table are cleared regardless of dispatch failures (only
+     * the returned result differs). Must be called while holding
+     * {@link #structureLock}.
+     *
+     * @param removeId the resource id to remove
+     * @param resourceType resourceType
+     * @param isRemovalByTag whether this removal was resolved from a tag query
+     * @return the per-id removal result, or empty when neither the id nor
+     *         a card result applies
+     * @since 0.1.16
+     */
+    private Optional<Result<?, ?>> removeSingleResource(String removeId, ResourceKind resourceType,
+            boolean isRemovalByTag) {
+        Exception error = null;
+        IsolatedActions.IsolatedOutcome<Void> dispatch = IsolatedActions.callIsolated(() -> {
+            tagManager.removeResource(removeId);
+            dispatchRemove(resourceType, removeId);
+            return null;
+        });
+        if (dispatch.hasFailure()) {
+            Throwable failure = dispatch.failure();
+            if (failure instanceof Error rawError) {
+                throw rawError;
+            }
+            if (failure instanceof Exception captured && !isRemovalByTag) {
+                error = captured;
             }
         }
-        return results;
+        BaseCard removedCard = idToCard.remove(removeId);
+        idToOwners.remove(removeId);
+        if (error != null) {
+            return Optional.of(new ErrorResult<>(error));
+        }
+        if (resourceType.returnsId()) {
+            return Optional.of(new Ok<>(removeId));
+        }
+        if (removedCard != null || !isRemovalByTag) {
+            return Optional.of(new Ok<>(removedCard));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * sameAbilityDeclaration.
+     *
+     * <p>Equivalence check for the reuse decision. {@link ToolCard}
+     * delegates to the card's value equality (id, name, description,
+     * inputParams, properties). {@link SysOperationCard} compares the
+     * declaration fields (name, description, mode, gatewayConfig) and
+     * deliberately excludes {@code workConfig}: the work directory is a
+     * resource-bound field that legitimately differs per instance while the
+     * registered ability stays the same (the first registrant's binding is
+     * reused). Other card types fall back to {@link Object#equals}; cards
+     * of different types never compare equal.</p>
+     *
+     * @param existing existing
+     * @param incoming incoming
+     * @return the result
+     * @since 0.1.16
+     */
+    private boolean sameAbilityDeclaration(BaseCard existing, BaseCard incoming) {
+        if (existing instanceof ToolCard && incoming instanceof ToolCard) {
+            // Declaration identity: id, name, description, plus the
+            // explicitly declared parameter surface. Tool cards are mutated
+            // after registration (schema inference fills inputParams and
+            // properties), so an empty incoming surface means "not yet
+            // declared / left to inference" and never conflicts; a non-empty
+            // incoming surface must match the stored card exactly.
+            if (!Objects.equals(existing.getId(), incoming.getId())
+                    || !Objects.equals(existing.getName(), incoming.getName())
+                    || !Objects.equals(existing.getDescription(), incoming.getDescription())) {
+                return false;
+            }
+            return declaredSurfaceMatches(((ToolCard) existing).getInputParams(),
+                            ((ToolCard) incoming).getInputParams())
+                    && declaredSurfaceMatches(((ToolCard) existing).getProperties(),
+                            ((ToolCard) incoming).getProperties());
+        }
+        if (existing instanceof SysOperationCard existingOp && incoming instanceof SysOperationCard incomingOp) {
+            return Objects.equals(existingOp.getName(), incomingOp.getName())
+                    && Objects.equals(existingOp.getDescription(), incomingOp.getDescription())
+                    && Objects.equals(existingOp.getMode(), incomingOp.getMode())
+                    && Objects.equals(existingOp.getGatewayConfig(), incomingOp.getGatewayConfig());
+        }
+        return existing.equals(incoming);
+    }
+
+    /**
+     * declaredSurfaceMatches.
+     *
+     * <p>A declared surface (inputParams / properties) only conflicts when
+     * the incoming card explicitly declares one that differs from the
+     * stored card; an empty incoming surface is left to schema inference
+     * and is therefore declaration-equivalent.</p>
+     *
+     * @param existing existing surface on the stored card
+     * @param incoming incoming surface on the registering card
+     * @return whether the surfaces are declaration-equivalent
+     * @since 0.1.16
+     */
+    private static boolean declaredSurfaceMatches(Map<String, ?> existing, Map<String, ?> incoming) {
+        return incoming == null || incoming.isEmpty() || Objects.equals(existing, incoming);
     }
 
     private Object innerGetResources(List<String> resourceIds, ResourceKind resourceType, Collection<String> tag,
@@ -1293,25 +1829,79 @@ public class ResourceMgr {
         };
     }
 
-    private void refreshExistingToolIfNeeded(Tool tool, boolean refresh) {
-        if (!refresh || tool == null || tool.getCard() == null) {
+    private void refreshExistingToolIfNeeded(Tool tool, boolean shouldRefresh, Object owner) {
+        if (!shouldRefresh || tool == null || tool.getCard() == null) {
             return;
         }
         String toolId = tool.getCard().getId();
         if (!tagManager.hasResource(toolId)) {
             return;
         }
-        innerRemoveResources(List.of(toolId), ResourceKind.TOOL, null, TagMatchStrategy.ALL, false);
+        structureLock.lock();
+        try {
+            Set<String> previousOwners = new HashSet<>(idToOwners.getOrDefault(toolId, Set.of()));
+            innerRemoveResources(List.of(toolId), ResourceKind.TOOL, null, TagMatchStrategy.ALL, false);
+            // Re-seed every other owner's claim so a shared entry never
+            // loses a live owner to a foreign refresh; the refreshing owner
+            // is re-claimed by the subsequent registration itself.
+            String refreshOwner = String.valueOf(owner);
+            for (String previousOwner : previousOwners) {
+                if (!previousOwner.equals(refreshOwner)) {
+                    claimOwnership(toolId, previousOwner);
+                }
+            }
+        } finally {
+            structureLock.unlock();
+        }
     }
 
-    private void registerSysOperationTools(SysOperationCard card, SysOperation instance, Collection<String> tag) {
+    /**
+     * registerSysOperationTools.
+     *
+     * @param card card
+     * @param instance instance
+     * @param tag tag
+     * @param owner owner token claiming the bound tools
+     * @since 0.1.7
+     */
+    private void registerSysOperationTools(SysOperationCard card, SysOperation instance, Collection<String> tag,
+            Object owner) {
         List<String> toolIds = new ArrayList<>();
         for (SysOperationToolAdapter.ToolBinding binding : SysOperationToolAdapter.extractTools(card, instance)) {
-            innerAddResource(binding.toolId(), ResourceKind.TOOL, binding.localFunction(),
-                    binding.localFunction().getCard(), tag, null);
+            innerAddResource(new ResourceRegistration(binding.toolId(), ResourceKind.TOOL,
+                    binding.localFunction(), binding.localFunction().getCard(), tag, null, owner));
             toolIds.add(binding.toolId());
         }
         toolManager.addSysOperationTools(card.getId(), toolIds);
+    }
+
+    /**
+     * claimSysOperationTools.
+     *
+     * <p>Claims the existing bound tools of a reused sys_operation entry
+     * for the joining owner, so the release of any single owner (first
+     * registrant included) never leaves ghost ownership behind while
+     * other owners still resolve the tools. Runs inside the caller's
+     * {@link #structureLock} domain (reentrant), which keeps the claim
+     * atomic against both the release path and the first registrant's
+     * deferred tool registration.</p>
+     *
+     * @param sysOpId sysOpId whose bound tools are claimed
+     * @param owner owner token claiming the bound tools
+     * @since 0.1.16
+     */
+    private void claimSysOperationTools(String sysOpId, Object owner) {
+        if (owner == null) {
+            return;
+        }
+        structureLock.lock();
+        try {
+            for (String toolId : toolManager.getSysOperationToolIds(sysOpId)) {
+                claimOwnership(toolId, owner);
+            }
+        } finally {
+            structureLock.unlock();
+        }
     }
 
     private void removeSysOperationTools(Collection<String> sysOperationIds, Collection<String> tag,
