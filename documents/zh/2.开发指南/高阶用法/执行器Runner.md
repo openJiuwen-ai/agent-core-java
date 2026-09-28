@@ -68,15 +68,13 @@ Runner.start();
 
 OpenJiuwen 通过统一入口创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用共享线程池；模块已有的实例专用线程池也由统一入口创建，但保留原有的队列、拒绝策略和生命周期。
 
-同一份 JDK 17 编译产物可同时运行在 JDK 17 与 JDK 21：
-
-- JDK 17：`OpenJiuwenExecutors` 的普通业务执行器继续使用平台线程池，保留原线程数、队列和拒绝策略。
-- JDK 21 及以上：`newBoundedModulePool` / `newFixedThreadPool` / `newThreadPool` / 共享 tool-call 与 background 执行器切换为每任务虚拟线程，不再受平台线程数限制。
-- `newSingleThreadExecutor` 与 `newScheduledThreadPool` 始终使用平台线程，以保留串行状态机和定时调度语义。
+> **平台/虚拟双形态线程模型**：`OpenJiuwenExecutors` 在启动期探测运行环境 JDK 版本（`VirtualThreadSupport`），自动选型线程模型——**JDK 17 及更早**按下文配置运行平台线程池（共享池 `core=0 + max + SynchronousQueue + CallerRunsPolicy`，模块池 `core=max + ArrayBlockingQueue + AbortPolicy`）；**JDK 21 及以上**自动切换为 per-task 虚拟线程，下文所有线程数 / 队列容量 / 拒绝策略配置**不再生效**（并发能力不再受池上限约束，由上层准入控制统一管控）。业务代码无需任何改造，同一制品随 JDK 运行环境自动升级并发能力。可用 `OpenJiuwenExecutors.isVirtualThreadSupported()` 探测当前运行时的线程模型。
 
 AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。
 
 线程池配置支持 JVM 系统属性或环境变量。两种方式都是进程启动参数，在线程池初始化时读取，不支持运行期热更新。
+
+> **仅 JDK 17 平台线程路径生效**：JDK 21+ 虚拟线程路径下，下文所有 max-size / queue-size / keep-alive / 拒绝策略配置整体忽略，并发由上层准入控制统一管控。
 
 | 配置含义 | JVM 系统属性 | 环境变量 | 默认值 |
 | --- | --- | --- | --- |
@@ -93,6 +91,8 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 - 单次工具调用超时默认 `0`，表示不启用统一超时，以保持历史兼容性。超时后当前轮不再等待结果并记录失败，但不会中断底层已开始执行的工具；工具自身仍需负责超时或取消。
 
 每类最大线程数是当前 JVM 进程内对应共享线程池的上限，多个会话或请求会共同竞争该池；模块专用线程池沿用其原有参数。高并发场景建议结合业务压测结果调大。
+
+> **JDK 21+ 调优口径变化**：虚拟线程路径下 max-size / queue-size 配置不再约束并发，实际并发由**上层准入控制**统一管控（core `TaskScheduler.maxConcurrentTasks` 在 JDK 21+ 自动放开、`deep-agent-stream` 池对 stream 会话的并发控制同样让位于准入闸），LLM 侧 HTTP 并发与厂商配额成为主要限流点。
 
 JVM 系统属性适合本地测试或启动脚本中直接传参：
 
