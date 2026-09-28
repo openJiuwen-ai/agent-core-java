@@ -2022,6 +2022,20 @@ public class DeepAgent implements AutoCloseable {
             metadata.put("collect_inner_stream", true);
         }
         copyModelSelectionKeys(outerInputs, metadata);
+        // Forward top-level invoke extras (e.g. model_id, llm_id) to ReActAgent's ctx.getExtra()
+        Map<String, Object> invokeExtras = new LinkedHashMap<>();
+        if (outerInputs != null) {
+            for (Map.Entry<String, Object> entry : outerInputs.entrySet()) {
+                String key = entry.getKey();
+                if (!"query".equals(key) && !"conversation_id".equals(key)
+                        && !"_collect_inner_stream".equals(key) && entry.getValue() != null) {
+                    invokeExtras.put(key, entry.getValue());
+                }
+            }
+        }
+        if (!invokeExtras.isEmpty()) {
+            metadata.put("_invoke_extras", invokeExtras);
+        }
         event.setMetadata(metadata);
         eventQueue.publishEvent(card.getId(), session, event);
         return awaitRoundCompletion("round_" + handlerRound, session);
