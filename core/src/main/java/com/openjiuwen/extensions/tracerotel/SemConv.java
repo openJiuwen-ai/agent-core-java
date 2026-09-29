@@ -149,6 +149,9 @@ public final class SemConv {
     /** openjiuwen.session_id. */
     public static final String OJ_SESSION_ID = "openjiuwen.session_id";
 
+    /** Cross-framework session identity consumed by the observability platform. */
+    public static final String SESSION_ID = "session.id";
+
     // ===== openjiuwen.* — Base Span attributes (shared by both handlers) =====
 
     /** openjiuwen.invoke_id. */
