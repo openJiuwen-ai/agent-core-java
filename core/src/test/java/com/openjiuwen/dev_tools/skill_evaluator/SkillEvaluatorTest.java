@@ -5,10 +5,12 @@
 package com.openjiuwen.dev_tools.skill_evaluator;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -26,8 +28,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code openjiuwen/dev_tools/skill_evaluator/skill_evaluator.py}.
  */
 class SkillEvaluatorTest {
+    /**
+     * Resets the {@code testIsolationEnabled} flag in {@code OperationRegistry} that may
+     * have been left {@code true} by prior test classes (e.g. {@code SysOperationToolAdapterTest},
+     * {@code SysOperationCoreTest}) via {@code clearForTest()}.
+     *
+     * <p>When this flag remains {@code true}, {@code getToolExtractionOperationNames} returns
+     * only custom operations (which are empty after clear), causing built-in fs/shell/code
+     * tools to be skipped during {@code SkillEvaluator.createAgent()} — resulting in an
+     * empty tools list.</p>
+     */
+    private static void resetTestIsolationFlag() {
+        try {
+            Class<?> registryClass = Class.forName("com.openjiuwen.core.sysop.OperationRegistry");
+            Field field = registryClass.getDeclaredField("testIsolationEnabled");
+            field.setAccessible(true);
+            field.setBoolean(null, false);
+        } catch (ReflectiveOperationException ignored) {
+            // If the field doesn't exist or is inaccessible, the test will fail naturally.
+        }
+    }
+
+    @AfterAll
+    static void restoreRegistryState() {
+        resetTestIsolationFlag();
+    }
+
     @Test
     void createAgentRegistersSystemToolsSubagentAndPrompt(@TempDir Path tempDir) throws IOException {
+        // Ensure OperationRegistry.testIsolationEnabled is false before creating the agent,
+        // otherwise getToolExtractionOperationNames may skip built-in operations.
+        resetTestIsolationFlag();
+
         Path skillsRoot = tempDir.resolve("skills");
         Path skillDir = skillsRoot.resolve("sample_skill");
         Files.createDirectories(skillDir);

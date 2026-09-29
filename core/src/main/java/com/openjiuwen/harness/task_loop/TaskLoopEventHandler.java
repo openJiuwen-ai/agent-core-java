@@ -181,6 +181,9 @@ public class TaskLoopEventHandler extends EventHandler {
         if (metadata.containsKey("loop_queues")) {
             taskMetadata.put("loop_queues", metadata.get("loop_queues"));
         }
+        if (metadata.containsKey("_invoke_extras")) {
+            taskMetadata.put("_invoke_extras", metadata.get("_invoke_extras"));
+        }
         copyModelSelectionKeys(metadata, taskMetadata);
 
         try {

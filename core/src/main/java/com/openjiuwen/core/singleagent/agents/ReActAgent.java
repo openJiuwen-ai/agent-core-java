@@ -1415,13 +1415,7 @@ public class ReActAgent extends BaseAgent {
             Queue<String> steeringQueue = null;
             if (inputs instanceof Map<?, ?> map) {
                 putExtra(ctx, "user_id", map.get("user_id"));
-                copyInvokeExtra(map, ctx, "run_kind");
-                copyInvokeExtra(map, ctx, "run_context");
-                copyInvokeExtra(map, ctx, "is_follow_up");
-                copyInvokeExtra(map, ctx, "loop_queues");
-                copyInvokeExtra(map, ctx, "model_id");
-                copyInvokeExtra(map, ctx, "target_model_id");
-                copyInvokeExtra(map, ctx, "dynamic_model_id");
+                copyRemainingExtras(map, ctx);
                 bindDynamicModelIdFromInputs(map, ctx);
                 Object rawSteeringQueue = map.get("_steering_queue");
                 if (rawSteeringQueue instanceof Queue<?> queue) {
@@ -2580,9 +2574,31 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
-    private static void copyInvokeExtra(Map<?, ?> inputs, AgentCallbackContext ctx, String key) {
-        if (inputs.containsKey(key)) {
-            ctx.getExtra().put(key, inputs.get(key));
+    /**
+     * Copy all String-keyed entries from {@code inputs} into {@code ctx}'s extra map, skipping
+     * reserved keys ({@code "query"}, {@code "conversation_id"}, {@code "user_id"},
+     * {@code "_streaming"}, {@code "_steering_queue"}) which are handled separately. This
+     * allows any custom parameter name (e.g. {@code model_id}, {@code llm_id},
+     * {@code target_model_id}, or any user-defined key) to be transparently forwarded to
+     * {@code ctx.getExtra()}.
+     *
+     * @param inputs the invoke inputs map
+     * @param ctx the callback context whose extra map to populate
+     * @since 0.1.16
+     */
+    private static void copyRemainingExtras(Map<?, ?> inputs, AgentCallbackContext ctx) {
+        Map<String, Object> extra = ctx.getExtra();
+        for (Map.Entry<?, ?> entry : inputs.entrySet()) {
+            Object keyObj = entry.getKey();
+            if (!(keyObj instanceof String)) {
+                continue;
+            }
+            String key = (String) keyObj;
+            if (!"query".equals(key) && !"conversation_id".equals(key)
+                    && !"user_id".equals(key) && !"_streaming".equals(key)
+                    && !"_steering_queue".equals(key) && entry.getValue() != null) {
+                extra.put(key, entry.getValue());
+            }
         }
     }
 
