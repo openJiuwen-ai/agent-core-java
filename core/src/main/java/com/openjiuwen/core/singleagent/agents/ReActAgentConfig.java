@@ -71,7 +71,7 @@ public class ReActAgentConfig {
      * continuing the ReAct loop toward a misleading COMPLETED state (issue #51).
      */
     @JsonProperty("fail_task_on_tool_error")
-    private boolean shouldFailTaskOnToolError;
+    private boolean shouldFailTaskOnToolError = true;
 
     @JsonProperty("llm_return_token_ids")
     private boolean llmReturnTokenIds;
@@ -554,6 +554,18 @@ public class ReActAgentConfig {
          */
         public Builder maxParallelToolCalls(int maxParallelToolCalls) {
             config.setMaxParallelToolCalls(maxParallelToolCalls);
+            return this;
+        }
+
+        /**
+         * Configure whether tool execution errors should force-finish the task.
+         *
+         * @param shouldFailTaskOnToolError true to fail the task on tool error
+         * @return this builder
+         * @since 0.1.16
+         */
+        public Builder shouldFailTaskOnToolError(boolean shouldFailTaskOnToolError) {
+            config.setShouldFailTaskOnToolError(shouldFailTaskOnToolError);
             return this;
         }
 

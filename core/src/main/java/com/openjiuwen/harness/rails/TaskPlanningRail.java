@@ -27,6 +27,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Synchronizes todo planning prompts and task progress reminders.
@@ -39,8 +41,9 @@ public class TaskPlanningRail extends DeepAgentRail {
     private final boolean enableProgressRepeat;
     private final int listToolCallInterval;
     private final Map<String, Object> modelSelection = new LinkedHashMap<>();
-    private final Map<String, Integer> toolCallCounts = new LinkedHashMap<>();
-    private final Map<String, List<TodoItem>> todosCache = new LinkedHashMap<>();
+    // Thread-safe maps for parallel tool execution
+    private final ConcurrentMap<String, Integer> toolCallCounts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, List<TodoItem>> todosCache = new ConcurrentHashMap<>();
     private final Map<String, ModelUsageRecord> usageRecords = new LinkedHashMap<>();
     private final List<Tool> tools = new ArrayList<>();
     private TodoTools.TodoStore todoStore = new InMemoryTodoStore();
@@ -158,42 +161,50 @@ public class TaskPlanningRail extends DeepAgentRail {
     @Override
     public void afterToolCall(CallbackContext ctx) {
         String sessionId = sessionId(ctx);
-        Object toolName = ctx.getValues().get("tool_name");
-        if (sessionId != null && toolName instanceof String name && name.startsWith("todo_")) {
-            List<TodoItem> todos = todosFromContext(ctx);
-            if (!todos.isEmpty()) {
-                todosCache.put(sessionId, new ArrayList<>(todos));
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        // Synchronize on the session id to ensure cache refresh and
+        // progress-reminder reads are atomic within a session, even when
+        // multiple tools execute in parallel.
+        synchronized (sessionId.intern()) {
+            Object toolName = ctx.getValues().get("tool_name");
+            if (toolName instanceof String name && name.startsWith("todo_")) {
+                List<TodoItem> todos = todosFromContext(ctx);
+                if (!todos.isEmpty()) {
+                    todosCache.put(sessionId, new ArrayList<>(todos));
+                }
             }
-        }
-        if (!enableProgressRepeat || sessionId == null || !ctx.getValues().containsKey("messages")) {
-            return;
-        }
+            if (!enableProgressRepeat || !ctx.getValues().containsKey("messages")) {
+                return;
+            }
 
-        int count = toolCallCounts.getOrDefault(sessionId, 0) + 1;
-        toolCallCounts.put(sessionId, count);
-        if (count % listToolCallInterval != 0) {
-            return;
-        }
+            int count = toolCallCounts.getOrDefault(sessionId, 0) + 1;
+            toolCallCounts.put(sessionId, count);
+            if (count % listToolCallInterval != 0) {
+                return;
+            }
 
-        List<TodoItem> todos = todosFromContext(ctx);
-        if (todos.isEmpty()) {
-            todos = todosCache.getOrDefault(sessionId, List.of());
-        }
-        if (todos.isEmpty()) {
-            return;
-        }
+            List<TodoItem> todos = todosFromContext(ctx);
+            if (todos.isEmpty()) {
+                todos = todosCache.getOrDefault(sessionId, List.of());
+            }
+            if (todos.isEmpty()) {
+                return;
+            }
 
-        FormattedTaskContent formatted = formatTaskContent(todos);
-        String language = stringValue(ctx.getValues().getOrDefault("language", "cn"));
-        String prompt = TodoSection.buildProgressReminderUserPrompt(
-                language,
-                formatted.tasks(),
-                formatted.inProgressTask()
-        );
-        List<Object> messages = mutableMessages(ctx.getValues().get("messages"));
-        messages.add(prompt);
-        ctx.put("messages", messages);
-        ctx.put("should_repeat_progress", true);
+            FormattedTaskContent formatted = formatTaskContent(todos);
+            String language = stringValue(ctx.getValues().getOrDefault("language", "cn"));
+            String prompt = TodoSection.buildProgressReminderUserPrompt(
+                    language,
+                    formatted.tasks(),
+                    formatted.inProgressTask()
+            );
+            List<Object> messages = mutableMessages(ctx.getValues().get("messages"));
+            messages.add(prompt);
+            ctx.put("messages", messages);
+            ctx.put("should_repeat_progress", true);
+        }
     }
 
     @Override

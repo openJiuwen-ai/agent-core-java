@@ -5,6 +5,8 @@ import com.openjiuwen.memory.config.graph.EpisodeType;
 import com.openjiuwen.memory.config.graph.GraphDefaults;
 import com.openjiuwen.memory.config.graph.SearchConfig;
 import com.openjiuwen.memory.graph.extraction.prompts.TemplateManager;
+import com.openjiuwen.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageCn;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 
@@ -14,6 +16,25 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class GraphExtractionTest {
+
+    /**
+     * Explicitly register multilingual descriptions before any test relies on them.
+     * <p>
+     * The "cn" language descriptions are registered in static initializer blocks of
+     * {@code ExtractionPromptLanguageBase} / {@code EntityExtractionPromptChinese}.
+     * However, {@code EntitySummary} and {@code MultilingualBaseModel} do not reference
+     * those classes, so the JVM may not have loaded them when tests execute.
+     * Additionally, {@code MultilingualBaseModelTest} clears and restores
+     * {@code MULTILINGUAL_DESCRIPTION} in its {@code @AfterEach}, which can leave the
+     * map empty if the static blocks were never triggered. This ensures registration
+     * regardless of class loading order or prior test pollution.
+     * </p>
+     */
+    @BeforeAll
+    static void ensureLanguageDescriptionsRegistered() {
+        ExtractionPromptLanguageCn.registerLanguage();
+    }
+
 
     @Test
     void graphConfigDefaultsShouldMatchPythonModule() {
