@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.IsolatedActions;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.resourcemanager.ResourceManagerBase;
@@ -90,6 +91,7 @@ import com.openjiuwen.harness.tools.CheckpointerRedisTodoStorageProvider;
 import com.openjiuwen.harness.tools.SessionToolkit;
 import com.openjiuwen.harness.workspace.DirectoryBuilder;
 import com.openjiuwen.harness.workspace.Workspace;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -111,6 +113,7 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -118,7 +121,8 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -148,11 +152,74 @@ public class DeepAgent implements AutoCloseable {
     private volatile boolean invokeActive;
     private volatile boolean autoInvokeScheduled;
     private AgentMode currentMode;
+
+    /**
+     * Instance-unique owner token for global resource registration. It is
+     * the ownership key this instance uses when claiming shared registry
+     * entries (tools, system operations): equivalent registrations from
+     * different instances are shared, and a destroying instance only
+     * releases its own claims.
+     *
+     * @since 0.1.16
+     */
+    private final String ownerToken;
+
+    /**
+     * CopyOnWriteArrayList<>.
+     *
+     * @since 0.1.7
+     */
     private final List<Object> registeredRails = new CopyOnWriteArrayList<>();
     private final Set<DeepAgentRail> railsBoundToAgent = ConcurrentHashMap.newKeySet();
     private final List<Object> registeredTools = new CopyOnWriteArrayList<>();
     private final List<McpServerConfig> registeredMcps = new CopyOnWriteArrayList<>();
-    private final AtomicBoolean destroyed = new AtomicBoolean(false);
+
+    /**
+     * Destroy steps that failed: written only by the single
+     * thread that owns the destroy sequence, read by
+     * {@code reportDestroyResidue} to keep the residue visible.
+     *
+     * @since 0.1.16
+     */
+    private final List<String> destroyStepFailures = new ArrayList<>();
+
+    /**
+     * Lifecycle state: volatile so getters and entry-point
+     * guards read it lock-free; every transition is serialized by
+     * {@code lifecycleLock}.
+     *
+     * @since 0.1.15
+     */
+    @Getter(AccessLevel.NONE)
+    private volatile LifecycleState lifecycleState = LifecycleState.NEW;
+
+    /**
+     * In-flight initialization marker, guarded by {@code lifecycleLock}:
+     * concurrent first callers wait until the winner commits or rolls
+     * back instead of racing the registration sequence.
+     *
+     * @since 0.1.16
+     */
+    @Getter(AccessLevel.NONE)
+    private boolean isInitInFlight;
+
+    /**
+     * Serializes lifecycle state transitions (init claim, commit,
+     * rollback, destroy entry). Never held while registration code runs.
+     *
+     * @since 0.1.16
+     */
+    @Getter(AccessLevel.NONE)
+    private final ReentrantLock lifecycleLock = new ReentrantLock();
+
+    /**
+     * Signalled when an in-flight initialization commits or rolls back,
+     * so waiting initialization callers and a waiting destroy proceed.
+     *
+     * @since 0.1.16
+     */
+    @Getter(AccessLevel.NONE)
+    private final Condition initDone = lifecycleLock.newCondition();
     private SessionToolkit sessionToolkit;
     private TenantWorkspaceResolver workspaceResolver;
     private TieredWorkspaceManager tieredWorkspaceManager;
@@ -166,7 +233,6 @@ public class DeepAgent implements AutoCloseable {
     private TaskLoopEventHandler eventHandler;
     private final Set<String> activeTaskLoopSessions = ConcurrentHashMap.newKeySet();
     private Path planFilePath;
-    private boolean isInitialized;
     private TaskCompletionRail taskCompletionRail;
     @Setter
     private BaseKVStore kvStore;
@@ -182,9 +248,37 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DeepAgent.
+     *
+     * <p>Delegates to
+     * {@link #DeepAgent(AgentCard, DeepAgentConfig, Workspace, String)}
+     * with a self-generated owner token.</p>
+     *
+     * @param card card
+     * @param config config
+     * @param workspace workspace
+     * @since 0.1.7
      */
     public DeepAgent(AgentCard card, DeepAgentConfig config, Workspace workspace) {
+        this(card, config, workspace, null);
+    }
+
+    /**
+     * DeepAgent with an explicit owner token.
+     *
+     * <p>The owner token is the ownership key this instance uses when
+     * claiming shared global registry entries: equivalent registrations
+     * from different instances are shared, and a destroying instance only
+     * releases its own claims. A null token is replaced by a generated
+     * one, so every instance ends up with a unique token.</p>
+     *
+     * @param card card
+     * @param config config
+     * @param workspace workspace
+     * @param ownerToken owner token for global resource registration
+     * @since 0.1.16
+     */
+    public DeepAgent(AgentCard card, DeepAgentConfig config, Workspace workspace, String ownerToken) {
         this.card = card != null ? card : AgentCard.builder().name("deep_agent").description("DeepAgent").build();
         this.config = config != null ? config : DeepAgentConfig.builder().build();
         if (workspace != null) {
@@ -196,7 +290,9 @@ public class DeepAgent implements AutoCloseable {
         } else {
             this.workspace = null;
         }
+        this.ownerToken = ownerToken != null ? ownerToken : newOwnerToken(this.card);
         this.agent = new ReActAgent(this.card);
+        this.agent.setOwnerToken(this.ownerToken);
         this.currentMode = this.config.getDefaultMode();
         reconcileModelConfigs();
         this.agent.configure(buildReActAgentConfig());
@@ -630,12 +726,147 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Ensures the registration sequence ran exactly once.
+     * Concurrent first callers wait for the in-flight initialization
+     * instead of racing it; a failed attempt rolls the state back to NEW
+     * and propagates the original failure, so a retry re-runs the
+     * idempotent sequence; after destroy the call is rejected.
+     *
+     * @since 0.1.7
      */
     public void ensureInitialized() {
-        if (isInitialized) {
+        if (!awaitOrClaimInitialization()) {
             return;
         }
+        Set<Object> railsBefore = Set.copyOf(registeredRails);
+        IsolatedActions.IsolatedOutcome<Void> outcome = IsolatedActions.callIsolated(() -> {
+            runInitializationSequence();
+            completeInitialization(true);
+            return null;
+        });
+        if (outcome.hasFailure()) {
+            Throwable failure = outcome.failure();
+            // Required rollback channel: any failure in the registration
+            // sequence — including Errors — must restore NEW so callers can
+            // retry. The rollback runs BEFORE completeInitialization
+            // releases the waiting threads: a waiter that claims
+            // INITIALIZING immediately would otherwise re-run the sequence
+            // against half-rolled-back state.
+            rollbackRailsRegisteredByFailedSequence(railsBefore);
+            completeInitialization(false);
+            if (failure instanceof Error error) {
+                throw error;
+            }
+            if (failure instanceof RuntimeException runtimeFailure) {
+                throw runtimeFailure;
+            }
+            throw new IllegalStateException("unexpected checked failure in the registration sequence", failure);
+        }
+    }
+
+    /**
+     * Rolls back rail registrations a failed registration sequence left
+     * behind: newly registered rails are unbound from the inner agent
+     * (removing their global callback entries) and leave the tracking
+     * lists, so a retry re-runs the full sequence instead of being
+     * short-circuited by the residue. Rails registered before the failed
+     * attempt are kept registered.
+     *
+     * @param railsBefore rails registered before the failed attempt
+     * @since 0.1.16
+     */
+    private void rollbackRailsRegisteredByFailedSequence(Set<Object> railsBefore) {
+        for (Object rail : List.copyOf(registeredRails)) {
+            if (railsBefore.contains(rail)) {
+                continue;
+            }
+            rollbackSingleRail(rail);
+            registeredRails.remove(rail);
+        }
+    }
+
+    /**
+     * Releases one rail a failed registration sequence left behind: deep
+     * rails are unbound from the inner agent, business rails are
+     * unregistered; rails registered before the failed attempt stay.
+     *
+     * @param rail the rail to roll back
+     * @since 0.1.16
+     */
+    private void rollbackSingleRail(Object rail) {
+        if (!(rail instanceof AgentRail agentRail)) {
+            return;
+        }
+        if (rail instanceof DeepAgentRail deepAgentRail) {
+            unbindDeepAgentRailFromAgent(deepAgentRail);
+            return;
+        }
+        if (agent != null) {
+            agent.unregisterRail(agentRail).toCompletableFuture().join();
+        }
+    }
+
+    /**
+     * Returns whether the registration sequence committed.
+     *
+     * @return true only while the lifecycle state is INITIALIZED
+     * @since 0.1.16
+     */
+    public boolean isInitialized() {
+        return lifecycleState == LifecycleState.INITIALIZED;
+    }
+
+    /**
+     * Returns whether destroy was entered. DESTROYED is terminal.
+     *
+     * @return true only after destroy was entered
+     * @since 0.1.16
+     */
+    public boolean isDestroyed() {
+        return lifecycleState == LifecycleState.DESTROYED;
+    }
+
+    /**
+     * Rejects initialization after destroy, returns early once
+     * initialized, claims INITIALIZING for the first caller, and makes
+     * concurrent callers wait; after a rollback to NEW a waiting caller
+     * claims the retry itself.
+     *
+     * @return true when the caller must run the registration sequence
+     */
+    private boolean awaitOrClaimInitialization() {
+        lifecycleLock.lock();
+        try {
+            while (true) {
+                if (lifecycleState == LifecycleState.DESTROYED) {
+                    throw new IllegalStateException("agent already destroyed, initialization rejected");
+                }
+                if (lifecycleState == LifecycleState.INITIALIZED) {
+                    return false;
+                }
+                if (!isInitInFlight) {
+                    lifecycleState = LifecycleState.INITIALIZING;
+                    isInitInFlight = true;
+                    return true;
+                }
+                try {
+                    initDone.await();
+                } catch (InterruptedException e) {
+                    // G.CON.10: no interrupt restore; abort this wait with
+                    // an IllegalStateException carrying the cause.
+                    throw new IllegalStateException("interrupted while awaiting initialization", e);
+                }
+            }
+        } finally {
+            lifecycleLock.unlock();
+        }
+    }
+
+    /**
+     * The registration sequence: config tools, pending MCP servers,
+     * rails, external MCP sync, permission rail, task-loop runtime.
+     */
+    private void runInitializationSequence() {
         if (config.getTools() != null) {
             for (Object tool : config.getTools()) {
                 registerConfiguredTool(tool);
@@ -646,29 +877,7 @@ public class DeepAgent implements AutoCloseable {
         initWorkspace();
         if (config.getRails() != null) {
             for (Object rail : config.getRails()) {
-                if (rail instanceof DeepAgentRail deepAgentRail) {
-                    deepAgentRail.setWorkspace(this.workspace);
-                    deepAgentRail.setSysOperation(this.config.getSysOperation());
-                } else if (rail instanceof AgentRail agentRail) {
-                    agent.registerRail(agentRail);
-                }
-                if (rail instanceof SkillUseRail skillUseRail) {
-                    skillUseRail.init(this);
-                } else {
-                    try {
-                        Method init = rail.getClass().getMethod("init", DeepAgent.class);
-                        init.invoke(rail, this);
-                    } catch (ReflectiveOperationException ignored) {
-                        // rail has no deep_agent-specific init
-                    }
-                }
-                if (rail instanceof TaskCompletionRail completionRail) {
-                    taskCompletionRail = completionRail;
-                }
-                registerDeepRail(rail);
-                if (rail instanceof DeepAgentRail deepAgentRail) {
-                    bindDeepAgentRailToAgent(deepAgentRail);
-                }
+                setupSingleRail(rail);
             }
         }
         // Sync MCP servers already registered externally (e.g. ResourceMgr.addMcpServer).
@@ -688,7 +897,64 @@ public class DeepAgent implements AutoCloseable {
         if (config.isEnableTaskLoop()) {
             ensureTaskLoopRuntime();
         }
-        isInitialized = true;
+    }
+
+    /**
+     * Runs the per-rail setup for one configured rail: binds deep rails to
+     * the workspace and sys-operation, registers business rails on the
+     * inner agent, invokes rail init hooks, records the completion rail,
+     * and binds deep rails to the inner agent.
+     *
+     * @param rail the configured rail to set up
+     * @since 0.1.16
+     */
+    private void setupSingleRail(Object rail) {
+        if (rail instanceof AgentRail agentRail) {
+            if (rail instanceof DeepAgentRail deepAgentRail) {
+                deepAgentRail.setWorkspace(this.workspace);
+                deepAgentRail.setSysOperation(this.config.getSysOperation());
+            } else {
+                agent.registerRail(agentRail);
+            }
+        }
+        if (rail instanceof SkillUseRail skillUseRail) {
+            skillUseRail.init(this);
+        } else {
+            try {
+                Method init = rail.getClass().getMethod("init", DeepAgent.class);
+                init.invoke(rail, this);
+            } catch (ReflectiveOperationException ignored) {
+                // rail has no deep_agent-specific init
+            }
+        }
+        if (rail instanceof TaskCompletionRail completionRail) {
+            taskCompletionRail = completionRail;
+        }
+        registerDeepRail(rail);
+        if (rail instanceof DeepAgentRail deepAgentRail) {
+            bindDeepAgentRailToAgent(deepAgentRail);
+        }
+    }
+
+    /**
+     * Commits to INITIALIZED on success or rolls back to NEW on failure.
+     * When destroy already occupied DESTROYED the terminal state wins:
+     * the commit does not override it and the rollback keeps it, the
+     * destroy sequence owns the cleanup of whatever was registered.
+     *
+     * @param isSuccess whether the registration sequence completed
+     */
+    private void completeInitialization(boolean isSuccess) {
+        lifecycleLock.lock();
+        try {
+            if (lifecycleState == LifecycleState.INITIALIZING) {
+                lifecycleState = isSuccess ? LifecycleState.INITIALIZED : LifecycleState.NEW;
+            }
+            isInitInFlight = false;
+            initDone.signalAll();
+        } finally {
+            lifecycleLock.unlock();
+        }
     }
 
     /**
@@ -745,6 +1011,14 @@ public class DeepAgent implements AutoCloseable {
         }
     }
 
+    /**
+     * Registers a single config-declared MCP server, or re-tags an identical
+     * existing one. Concurrent registrations of the same server id are
+     * serialized and made idempotent by the tool manager's per-server lock.
+     *
+     * @param mcpConfig MCP server config from DeepAgent configuration
+     * @since 0.1.14
+     */
     private void registerOnePendingMcp(McpServerConfig mcpConfig) {
         mcpConfig.normalizeServerId();
         McpServerConfig existing = Runner.resourceMgr().getMcpServerConfig(mcpConfig.getServerId());
@@ -759,6 +1033,12 @@ public class DeepAgent implements AutoCloseable {
         }
     }
 
+    /**
+     * Adds a new MCP server via ResourceMgr and fails fast on any error result.
+     *
+     * @param mcpConfig MCP server config to add
+     * @since 0.1.14
+     */
     private void addNewPendingMcp(McpServerConfig mcpConfig) {
         List<Result<String>> results = Runner.resourceMgr().addMcpServer(mcpConfig, card.getId(), null);
         throwIfAddMcpFailed(results, mcpConfig);
@@ -779,6 +1059,51 @@ public class DeepAgent implements AutoCloseable {
         }
     }
 
+    /**
+     * Throws when a ResourceMgr add result is an error.
+     *
+     * @param result add result returned by ResourceMgr
+     * @param resourceId resource id used for error context
+     * @since 0.1.16
+     */
+    private static void throwIfAddResourceFailed(Result<?> result, String resourceId) {
+        if (!result.isError()) {
+            return;
+        }
+        Object error = result.getError();
+        if (error instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (error instanceof Exception exception) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR, null, null, exception,
+                    Map.of("card", resourceId, "reason", String.valueOf(exception.getMessage())));
+        }
+        throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR, "card", resourceId, "reason",
+                error != null ? String.valueOf(error) : "add resource failed");
+    }
+
+    /**
+     * newOwnerToken.
+     *
+     * <p>Generates the instance-unique owner token used as the ownership
+     * key for global resource registration.</p>
+     *
+     * @param card card used for the token prefix
+     * @return the result
+     * @since 0.1.16
+     */
+    private static String newOwnerToken(AgentCard card) {
+        String agentId = card != null ? card.getId() : "deep_agent";
+        return agentId + "#" + UUID.randomUUID();
+    }
+
+    /**
+     * Re-tags an already-registered MCP server when configs match; otherwise fails fast.
+     *
+     * @param existing already-registered config
+     * @param mcpConfig candidate config from DeepAgent config
+     * @since 0.1.14
+     */
     private void retagExistingPendingMcp(McpServerConfig existing, McpServerConfig mcpConfig) {
         if (!sameMcpServerConfig(existing, mcpConfig)) {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
@@ -842,19 +1167,7 @@ public class DeepAgent implements AutoCloseable {
         if (left == null || right == null) {
             return false;
         }
-        return Objects.equals(left.getServerId(), right.getServerId())
-                && Objects.equals(left.getServerName(), right.getServerName())
-                && Objects.equals(left.getServerPath(), right.getServerPath())
-                && Objects.equals(normalizeClientType(left.getClientType()),
-                normalizeClientType(right.getClientType()));
-    }
-
-    private static String normalizeClientType(String clientType) {
-        if (clientType == null) {
-            return null;
-        }
-        String normalized = clientType.trim().toLowerCase(Locale.ROOT).replace('-', '_');
-        return normalized.isEmpty() ? clientType : normalized;
+        return left.sameConnectionAs(right);
     }
 
     private void registerDeepRail(Object rail) {
@@ -862,15 +1175,22 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerHarnessTool.
+     *
+     * <p>Registers the tool globally with this instance's owner token
+     * (idempotent: an equivalent existing entry is reused and claimed, a
+     * conflicting definition fails fast) and adds the card to the agent's
+     * ability manager.</p>
+     *
+     * @param tool tool
+     * @since 0.1.7
      */
     public void registerHarnessTool(Tool tool) {
         if (tool == null) {
             return;
         }
-        if (Runner.resourceMgr().getTool(tool.getCard().getId()) == null) {
-            Runner.resourceMgr().addTool(tool, card.getId());
-        }
+        Result<ToolCard> result = Runner.resourceMgr().addTool(tool, card.getId(), ownerToken);
+        throwIfAddResourceFailed(result, tool.getCard().getId());
         agent.getAbilityManager().add(tool.getCard());
         if (!registeredTools.contains(tool)) {
             registeredTools.add(tool);
@@ -878,14 +1198,22 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unregisterHarnessTool.
+     *
+     * <p>Releases this instance's claim on the globally registered tool
+     * entry; the entry is removed only when no other owner remains, so a
+     * destroying instance cannot break another instance's tool
+     * resolution.</p>
+     *
+     * @param tool tool
+     * @since 0.1.7
      */
     public void unregisterHarnessTool(Tool tool) {
         if (tool == null) {
             return;
         }
         agent.getAbilityManager().remove(tool.getCard().getName());
-        Runner.resourceMgr().removeTool(tool.getCard().getId(), null, TagMatchStrategy.ALL, true);
+        Runner.resourceMgr().removeToolOwnedBy(tool.getCard().getId(), ownerToken);
         registeredTools.remove(tool);
     }
 
@@ -921,7 +1249,7 @@ public class DeepAgent implements AutoCloseable {
      * @since 0.1.7
      */
     public Map<String, Object> invoke(Map<String, Object> inputs) {
-        return invokeAsync(inputs).join();
+        return joinSync(invokeAsync(inputs));
     }
 
     /**
@@ -933,7 +1261,7 @@ public class DeepAgent implements AutoCloseable {
      * @since 0.1.7
      */
     public Map<String, Object> invoke(Map<String, Object> inputs, TenantContext tenantCtx) {
-        return invokeAsync(inputs, tenantCtx).join();
+        return joinSync(invokeAsync(inputs, tenantCtx));
     }
 
     /**
@@ -945,14 +1273,35 @@ public class DeepAgent implements AutoCloseable {
      * @since 0.1.13
      */
     public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
-        return invokeAsync(inputs, session).join();
+        return joinSync(invokeAsync(inputs, session));
+    }
+
+    /**
+     * Joins an invoke future on the synchronous surface, unwrapping
+     * {@link CompletionException} so lifecycle rejections (destroyed
+     * agent) surface as their original runtime exception.
+     *
+     * @param future future produced by the async invoke pipeline
+     * @return the joined result
+     * @since 0.1.16
+     */
+    private static <T> T joinSync(CompletableFuture<T> future) {
+        try {
+            return future.join();
+        } catch (CompletionException error) {
+            if (error.getCause() instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw error;
+        }
     }
 
     /**
      * Non-blocking invoke (develop / Python async semantics).
      *
-     * <p>Task-loop work runs on {@code INVOKE_EXECUTOR}; callers may {@link #steer} /
-     * {@link #followUp} on the same session before the future completes.</p>
+     * <p>Task-loop work runs on {@code INVOKE_EXECUTOR}; callers may
+     * {@link #steer} / {@link #followUp} on the same session before the
+     * future completes.</p>
      *
      * @param inputs inputs
      * @return future of the invoke result
@@ -1340,9 +1689,23 @@ public class DeepAgent implements AutoCloseable {
     ) {
         try {
             STREAM_EXECUTOR.execute(() -> runStreamTaskLoop(normalized, effectiveSession, session));
-        } catch (RejectedExecutionException rejected) {
-            writeStreamError(effectiveSession, 0, rejected);
-            finishStreamSession(effectiveSession, session);
+        } catch (RejectedExecutionException ex) {
+            // 池满（线程 + 队列全占用）：写入流错误事件而不是挂死客户端，
+            // 与 AbortPolicy 语义一致——单请求失败，池子保持健康。
+            writeStreamError(effectiveSession, 0, ex);
+            // 拒绝路径同样要终结流：镜像上方 finally 的关流序列（状态传播 +
+            // postRun 关 emitter 发 END_FRAME + 拷回 runState），否则客户端
+            // 迭代器要等帧间隔超时（默认 60s）才以超时错误收尾。
+            try {
+                if (session != null) {
+                    replaceSessionState(effectiveSession, session);
+                }
+            } finally {
+                effectiveSession.postRun();
+                if (session != null) {
+                    session.copyRunState(effectiveSession);
+                }
+            }
         }
         return effectiveSession.streamIterator();
     }
@@ -2521,23 +2884,74 @@ public class DeepAgent implements AutoCloseable {
      * callback, one task-scheduler thread plus its managed executor entry.</p>
      *
      * <p>Terminal one-shot: safe to call from any thread and idempotent,
-     * but the agent MUST NOT be used afterwards.</p>
+     * but the agent MUST NOT be used afterwards. Destroy must only run
+     * after all in-flight invocations completed — it stops the task loop
+     * runtime, which would interrupt a concurrently running task. As a
+     * defensive measure against contract violations, destroy
+     * enters DESTROYED first and then waits for an in-flight
+     * initialization to commit or roll back before running the destroy
+     * sequence, so no registration lands after destroy. The wait is
+     * deliberately unbounded: a bound with forced continuation would let
+     * a stuck initialization register after destroy; a stuck
+     * initialization therefore blocks destroy until it completes — the
+     * init code is caller-supplied and bounded by the caller's own
+     * timeouts.</p>
      *
      * @since 0.1.7
      */
     public void destroy() {
-        if (!destroyed.compareAndSet(false, true)) {
+        if (!enterDestroyedAwaitingInFlightInit()) {
             return;
         }
+        runDestructiveStep("tmpFileCleaner", this::stopTmpFileCleanerSafely);
+        runDestructiveStep("rails", this::destroyRails);
+        runDestructiveStep("tools", this::destroyTools);
+        runDestructiveStep("taskLoopRuntime", this::destroyTaskLoopRuntime);
+        runDestructiveStep("sessionState", this::clearInstanceSessionState);
+        reportDestroyResidue();
+    }
+
+    /**
+     * Runs one destroy step with per-step isolation: the
+     * one-shot guard is already consumed, so every step must execute even
+     * when an earlier one fails; the failure is captured via
+     * {@link IsolatedActions} (rail/tool cleanup runs user code outside
+     * core control), recorded, and reported at the end.
+     *
+     * @param step step name for logging and the residue report
+     * @param action the destructive action to run
+     * @since 0.1.16
+     */
+    private void runDestructiveStep(String step, Runnable action) {
+        IsolatedActions.runIsolated(action).ifPresent(error -> {
+            Loggers.AGENT.error("[destroy] step '{}' failed; continue", step, error);
+            destroyStepFailures.add(step);
+        });
+    }
+
+    private void stopTmpFileCleanerSafely() {
         if (tmpFileCleaner != null) {
             tmpFileCleaner.stop();
             tmpFileCleaner = null;
         }
-        destroyRails();
-        destroyTools();
+    }
+
+    private void clearInstanceSessionState() {
+        // Release all per-session state eagerly to prevent retention in long-running scenarios.
+        sessionLoopCoordinators.clear();
         if (agent != null) {
             agent.getAbilityManager().clearAllSessionTools();
         }
+    }
+
+    /**
+     * Stop the per-agent task loop runtime: scheduler thread pool, event
+     * queue, per-session loop states, and the loop controller session
+     * registry.
+     *
+     * @since 0.1.15
+     */
+    private void destroyTaskLoopRuntime() {
         shutdown();
         if (loopController != null) {
             loopController.clearAllSessions();
@@ -2545,16 +2959,77 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
+     * Aggregated residue report: after a destroy with failed steps the
+     * global registries may keep entries this instance registered, so the
+     * failure surface stays visible and diagnosable instead of silent.
+     *
+     * @since 0.1.16
+     */
+    private void reportDestroyResidue() {
+        if (!destroyStepFailures.isEmpty()) {
+            Loggers.AGENT.error("[destroy] {} destroy step(s) failed; global residue may remain: {}",
+                    destroyStepFailures.size(), String.join(", ", destroyStepFailures));
+        }
+    }
+
+    /**
+     * Enters the terminal DESTROYED state and waits for an in-flight
+     * initialization to commit or roll back before the destroy sequence
+     * runs (occupy-then-wait): no registration can land
+     * after destroy, and the commit/rollback never overrides the
+     * terminal state. An interrupt while waiting rolls the occupation
+     * back to the pre-destroy state so a later destroy() can still run
+     * the cleanup sequence instead of being locked out forever.
+     *
+     * @return true when this call owns the destroy sequence, false when
+     *         destroy was already entered
+     */
+    private boolean enterDestroyedAwaitingInFlightInit() {
+        lifecycleLock.lock();
+        try {
+            if (lifecycleState == LifecycleState.DESTROYED) {
+                return false;
+            }
+            LifecycleState previousState = lifecycleState;
+            lifecycleState = LifecycleState.DESTROYED;
+            while (isInitInFlight) {
+                try {
+                    initDone.await();
+                } catch (InterruptedException e) {
+                    // G.CON.10: no interrupt restore; abort this wait with
+                    // an IllegalStateException carrying the cause. The
+                    // occupation is rolled back first: leaving DESTROYED
+                    // set would make every later destroy() return early
+                    // and permanently skip the cleanup sequence.
+                    lifecycleState = previousState;
+                    throw new IllegalStateException("interrupted while awaiting in-flight initialization", e);
+                }
+            }
+            return true;
+        } finally {
+            lifecycleLock.unlock();
+        }
+    }
+
+    /**
      * Unregister every rail so the global callback framework stops retaining
      * this agent's callbacks. Covers both rails registered through
      * DeepAgent.ensureInitialized and business rails registered directly on
-     * the inner BaseAgent.
+     * the inner BaseAgent. A failing rail uninit is logged and the loop
+     * continues (per-rail isolation).
+     *
+     * @since 0.1.15
      */
     private void destroyRails() {
         for (Object rail : List.copyOf(registeredRails)) {
             if (rail instanceof DeepAgentRail deepAgentRail) {
-                unbindDeepAgentRailFromAgent(deepAgentRail);
-                deepAgentRail.uninit(this);
+                // Per-rail isolation: user rail code must not abort the
+                // destroy sequence.
+                IsolatedActions.runIsolated(() -> deepAgentRail.uninit((Object) this)).ifPresent(error -> {
+                    Loggers.AGENT.error("[destroy-rails] deep rail '{}' uninit failed; continue",
+                            rail.getClass().getName(), error);
+                    destroyStepFailures.add("rails:" + rail.getClass().getSimpleName());
+                });
             }
         }
         registeredRails.clear();
@@ -2565,17 +3040,38 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Unregister harness tools from the global ResourceMgr so repeated
-     * create/destroy cycles do not accumulate card entries.
+     * Unregister harness tools and release this instance's sys-operation
+     * ownership from the global ResourceMgr so repeated create/destroy
+     * cycles do not accumulate card entries.
+     *
+     * @since 0.1.15
      */
     private void destroyTools() {
         for (Object tool : List.copyOf(registeredTools)) {
             if (tool instanceof Tool toolInstance) {
-                unregisterHarnessTool(toolInstance);
+                // Per-tool isolation: one failing release must not abort the
+                // remaining tools.
+                IsolatedActions.runIsolated(() -> unregisterHarnessTool(toolInstance)).ifPresent(error -> {
+                    Loggers.AGENT.error("[destroy-tools] tool '{}' release failed; continue",
+                            tool.getClass().getName(), error);
+                    destroyStepFailures.add("tools:" + tool.getClass().getSimpleName());
+                });
             }
         }
         registeredTools.clear();
         registeredMcps.clear();
+        releaseSysOperationOwnership();
+    }
+
+    /**
+     * Releases the ownership this instance claimed on the default
+     * sys-operation at creation (card, bound tools, and tags are removed
+     * only when no other owner remains, so shared instances survive).
+     *
+     * @since 0.1.16
+     */
+    private void releaseSysOperationOwnership() {
+        Runner.resourceMgr().removeSysOperationOwnedBy(HarnessFactory.sysOperationId(card), ownerToken);
     }
 
     @Override
@@ -2606,7 +3102,7 @@ public class DeepAgent implements AutoCloseable {
         if (reactAgent instanceof ReActAgent ra) {
             this.agent = ra;
         }
-        this.isInitialized = initialized;
+        this.lifecycleState = initialized ? LifecycleState.INITIALIZED : this.lifecycleState;
     }
 
     public AbilityManager getAbilityManager() {
@@ -2696,7 +3192,7 @@ public class DeepAgent implements AutoCloseable {
         if (config.isEnableTaskLoop()) {
             ensureTaskLoopRuntime();
         }
-        isInitialized = true;
+        lifecycleState = LifecycleState.INITIALIZED;
     }
 
     private void syncWorkspaceFromLegacy(com.openjiuwen.harness.schema.DeepAgentConfig legacy) {
@@ -2850,7 +3346,7 @@ public class DeepAgent implements AutoCloseable {
         List<DeepAgentRail> removed = findRailsByType(railType);
         for (DeepAgentRail rail : removed) {
             unbindDeepAgentRailFromAgent(rail);
-            rail.uninit(this);
+            rail.uninit((Object) this);
             registeredRails.remove(rail);
         }
         return removed.size();
@@ -2864,7 +3360,7 @@ public class DeepAgent implements AutoCloseable {
     public CompletableFuture<Void> unregisterRail(DeepAgentRail rail) {
         if (registeredRails.remove(rail) && rail != null) {
             unbindDeepAgentRailFromAgent(rail);
-            rail.uninit(this);
+            rail.uninit((Object) this);
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -3491,7 +3987,7 @@ public class DeepAgent implements AutoCloseable {
         if (config.isEnableTaskLoop()) {
             ensureTaskLoopRuntime();
         }
-        isInitialized = true;
+        lifecycleState = LifecycleState.INITIALIZED;
     }
 
 
@@ -3510,4 +4006,35 @@ public class DeepAgent implements AutoCloseable {
         this.tieredWorkspaceManager = new TieredWorkspaceManager(primaryStore, secondaryStores);
     }
 
+    /**
+     * Lifecycle states of a DeepAgent.
+     * DESTROYED is terminal: initialization attempts are rejected with
+     * IllegalStateException and repeated destroy calls return silently.
+     *
+     * @since 0.1.16
+     */
+    public enum LifecycleState {
+        /**
+         * Constructed and not yet initialized; also restored by a failed
+         * initialization so the attempt is retryable.
+         */
+        NEW,
+
+        /**
+         * A caller is running the registration sequence; concurrent
+         * first callers wait for its commit or rollback.
+         */
+        INITIALIZING,
+
+        /**
+         * The registration sequence committed exactly once.
+         */
+        INITIALIZED,
+
+        /**
+         * Destroy entered (after waiting for any in-flight
+         * initialization); every registration has been released.
+         */
+        DESTROYED
+    }
 }

@@ -4,10 +4,13 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -57,6 +60,17 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private final Object skillUtilLock = new Object();
     private Object config;
 
+    /**
+     * Owner token for global resource registration. Generated per instance
+     * at creation time and propagated from the harness layer, it is the
+     * ownership key the agent uses when claiming shared registry entries,
+     * so same-card instances stay distinguishable and one instance's
+     * destroy only releases its own claims.
+     *
+     * @since 0.1.16
+     */
+    private volatile String ownerToken;
+
     protected BaseAgent(AgentCard card) {
         this.card = Objects.requireNonNull(card, "card");
         this.abilityManager = new AbilityManager(card.getId());
@@ -65,6 +79,38 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         lazyInitSkill();
     }
 
+    /**
+     * throwIfAddResourceFailed.
+     *
+     * <p>Fails fast when a ResourceMgr add result is an error: rethrows the
+     * original runtime error, or wraps a checked exception with the
+     * resource id for context.</p>
+     *
+     * @param result add result returned by ResourceMgr
+     * @param resourceId resource id used for error context
+     * @since 0.1.16
+     */
+    protected static void throwIfAddResourceFailed(Result<?> result, String resourceId) {
+        if (!result.isError()) {
+            return;
+        }
+        Object error = result.getError();
+        if (error instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (error instanceof Exception exception) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR, null, null, exception,
+                    Map.of("card", resourceId, "reason", String.valueOf(exception.getMessage())));
+        }
+        throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR, "card", resourceId, "reason",
+                error != null ? String.valueOf(error) : "add resource failed");
+    }
+
+    /**
+     * Lazy init SkillUtil.
+     *
+     * @since 0.1.7
+     */
     public void lazyInitSkill() {
         String sysOperationId = readStringProperty(getConfig(), "getSysOperationId", "get_sys_operation_id");
         if (sysOperationId == null || sysOperationId.isBlank()) {
@@ -101,6 +147,36 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     public CompletionStage<Boolean> registerSkill(List<String> skillPaths) {
         return registerSkill(skillPaths, false);
+    }
+
+    /**
+     * getOwnerToken.
+     *
+     * @return the owner token used for global resource registration, or
+     *         null when none was propagated (legacy single-agent mode)
+     * @since 0.1.16
+     */
+    public String getOwnerToken() {
+        return ownerToken;
+    }
+
+    /**
+     * setOwnerToken.
+     *
+     * <p>Must be set before the first resource registration or invoke:
+     * claims made on the global ResourceMgr under this token are released
+     * by the instance teardown (per-owner release). The harness
+     * construction path assigns the token automatically; direct
+     * constructions that register global resources must set it first.
+     * The token string must be unique per agent instance (the harness
+     * derives it from the agent identity), because teardown releases
+     * every claim registered under the same token.</p>
+     *
+     * @param ownerToken owner token used for global resource registration
+     * @since 0.1.16
+     */
+    public void setOwnerToken(String ownerToken) {
+        this.ownerToken = ownerToken;
     }
 
     public CompletionStage<Boolean> registerSkill(List<String> skillPaths, boolean useMetadataName) {

@@ -107,7 +107,7 @@ class TaskToolPythonParityTest {
 
     @Test
     void generalPurposeSubagentInheritsParentMcps() {
-        Tool parentTool = new DummyTool("read_file");
+        Tool parentTool = new DummyTool("parent_reader");
         // Skip live MCP URLs: createSubagent → HarnessFactory.ensureInitialized connects MCP.
         // Inheritance of empty-child tools/skills/mcps is covered; mcps list stays empty here.
         DeepAgentConfig config = new DeepAgentConfig();
@@ -127,7 +127,7 @@ class TaskToolPythonParityTest {
 
     @Test
     void explicitGeneralPurposeSubagentOverridesDefault() {
-        Tool parentTool = new DummyTool("read_file");
+        Tool parentTool = new DummyTool("parent_reader");
         Tool customTool = new DummyTool("custom_tool");
         DeepAgentConfig.SubAgentConfig explicit = new DeepAgentConfig.SubAgentConfig(
                 "general-purpose",
