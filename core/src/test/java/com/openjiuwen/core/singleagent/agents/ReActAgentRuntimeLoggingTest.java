@@ -207,7 +207,9 @@ class ReActAgentRuntimeLoggingTest {
     }
 
     private static ReActAgentConfig defaultConfig() {
-        ReActAgentConfig config = new ReActAgentConfig().configureMaxIterations(3);
+        ReActAgentConfig config = new ReActAgentConfig()
+                .configureMaxIterations(3)
+                .configureFailTaskOnToolError(false);
         config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
         config.setModelName("runtime-log-model");
         return config;

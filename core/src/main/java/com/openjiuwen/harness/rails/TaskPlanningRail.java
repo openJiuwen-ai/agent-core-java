@@ -41,7 +41,7 @@ public class TaskPlanningRail extends DeepAgentRail {
     private final boolean enableProgressRepeat;
     private final int listToolCallInterval;
     private final Map<String, Object> modelSelection = new LinkedHashMap<>();
-    // Thread-safe maps for parallel tool execution
+
     private final ConcurrentMap<String, Integer> toolCallCounts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, List<TodoItem>> todosCache = new ConcurrentHashMap<>();
     private final Map<String, ModelUsageRecord> usageRecords = new LinkedHashMap<>();

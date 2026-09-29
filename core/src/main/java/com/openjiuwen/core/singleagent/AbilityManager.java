@@ -1690,7 +1690,7 @@ public class AbilityManager {
         }
         // When shouldFailTaskOnToolError is enabled, force-finish the task
         // so the agent loop does not continue after a tool execution failure.
-        if (isFailTaskOnToolError(toolCtx) && toolCall != null) {
+        if (toolCtx != null && isFailTaskOnToolError(toolCtx) && toolCall != null) {
             String errorMsg = error.getMessage();
             Map<String, Object> outcome = new LinkedHashMap<>();
             outcome.put("tool_name", toolCall.getName());

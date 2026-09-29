@@ -133,7 +133,7 @@ class ReActAgentLifecycleStateTest {
 
     @Test
     void maxIterationAndModelFailureExposeDistinctReasons() {
-        agent.configure(ReActAgentConfig.builder().maxIterations(1).build());
+        agent.configure(ReActAgentConfig.builder().maxIterations(1).shouldFailTaskOnToolError(false).build());
         agent.setLlm(new Model((messages, options) -> CompletableFuture.completedFuture(
                 AssistantMessage.builder().toolCalls(List.of(ToolCall.builder()
                         .id("call-limit").name("missing-tool").arguments("{}").build())).build())));
