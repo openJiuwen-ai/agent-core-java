@@ -28,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code openjiuwen/dev_tools/skill_evaluator/skill_evaluator.py}.
  */
 class SkillEvaluatorTest {
-
     /**
      * Resets the {@code testIsolationEnabled} flag in {@code OperationRegistry} that may
      * have been left {@code true} by prior test classes (e.g. {@code SysOperationToolAdapterTest},
