@@ -1,0 +1,46 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.core.foundation.llm.modelclients;
+
+import com.openjiuwen.core.foundation.llm.Model;
+
+/**
+ * Registers the built-in OpenAI-compatible model client factories.
+ * 
+ * @since 0.1.7
+ */
+public final class DefaultModelClientFactories {
+    private static volatile boolean registered;
+
+    /**
+     * DefaultModelClientFactories.
+     * 
+     * @since 0.1.7
+     */
+    private DefaultModelClientFactories() {
+    }
+
+    /**
+     * ensureRegistered.
+     * 
+     * @since 0.1.7
+     */
+    public static synchronized void ensureRegistered() {
+        if (registered) {
+            return;
+        }
+        Model.registerFactory(new OpenAiModelClientFactory());
+        Model.registerFactory(new OpenRouterModelClientFactory());
+        Model.registerFactory(new SiliconFlowModelClientFactory());
+        Model.registerFactory(new DashScopeModelClientFactory());
+        Model.registerFactory(new InferenceAffinityModelClientFactory("InferenceAffinity"));
+        Model.registerFactory(new InferenceAffinityModelClientFactory("inference_affinity"));
+        // AscendAffinity rides the OpenAI-compatible transport; the client
+        // reads extensions.kv_cache.mode=affinity for capability declaration.
+        Model.registerFactory(new AscendAffinityModelClientFactory("AscendAffinity"));
+        Model.registerFactory(new AscendAffinityModelClientFactory("ascend_affinity"));
+        registered = true;
+    }
+}

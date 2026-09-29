@@ -4,8 +4,11 @@
 
 package com.openjiuwen.retrieval.indexing.processor.parser;
 
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,8 +17,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Mirrors Python's {@code TestImageParser} in

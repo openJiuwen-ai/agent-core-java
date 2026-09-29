@@ -5,6 +5,7 @@ import com.openjiuwen.memory.config.graph.EpisodeType;
 import com.openjiuwen.memory.config.graph.GraphDefaults;
 import com.openjiuwen.memory.config.graph.SearchConfig;
 import com.openjiuwen.memory.graph.extraction.prompts.TemplateManager;
+import com.openjiuwen.memory.graph.extraction.prompts.entity_extraction.EntityExtractionPromptChinese;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 
@@ -44,6 +45,11 @@ class GraphExtractionTest {
 
     @Test
     void multilingualSchemaShouldExposeDescriptions() {
+        // Multilingual descriptions are normally registered by the prompt
+        // language class initializer; register explicitly so the schema build
+        // below sees them regardless of class-loading order in this test.
+        EntityExtractionPromptChinese.registerLanguage();
+
         Map<String, Object> schema = new EntitySummary().multilingualModelJsonSchema("cn", true);
         Map<?, ?> properties = (Map<?, ?>) schema.get("properties");
         Map<?, ?> summary = (Map<?, ?>) properties.get("summary");

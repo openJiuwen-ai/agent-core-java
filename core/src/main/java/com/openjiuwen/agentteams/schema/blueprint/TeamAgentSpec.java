@@ -68,6 +68,15 @@ public class TeamAgentSpec {
     private boolean isHittEnabled = false;
     @Builder.Default
     private boolean isExposeHumanAgentsToTeammates = false;
+
+    /**
+     * Whether this team enables the Ascend KV cache affinity protocol for its
+     * members. Mirrors the Python team-level {@code kv_cache_affinity_config}.
+     *
+     * @since 0.1.16
+     */
+    @Builder.Default
+    private boolean isEnableKvCacheAffinity = false;
     private String language;
 
     /**

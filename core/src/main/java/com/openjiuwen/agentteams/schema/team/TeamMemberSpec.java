@@ -30,4 +30,13 @@ public class TeamMemberSpec {
     private String modelId = "";
     @Builder.Default
     private String modelName = "";
+
+    /**
+     * Whether this member enables the Ascend KV cache affinity protocol.
+     * Mirrors the Python member {@code kv_cache_affinity_config} synthesis.
+     *
+     * @since 0.1.16
+     */
+    @Builder.Default
+    private boolean isEnableKvCacheAffinity = false;
 }

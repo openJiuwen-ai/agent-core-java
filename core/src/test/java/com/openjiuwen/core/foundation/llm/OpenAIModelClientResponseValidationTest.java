@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.exception.ValidationError;
-import com.openjiuwen.core.foundation.llm.model_clients.OpenAIModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.OpenAIModelClient;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
