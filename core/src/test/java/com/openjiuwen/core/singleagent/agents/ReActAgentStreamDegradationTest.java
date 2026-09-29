@@ -151,8 +151,8 @@ class ReActAgentStreamDegradationTest {
         when(model.supportsKvCacheRelease()).thenReturn(false);
         when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
-                .thenReturn(Collections.emptyIterator())
-                .thenReturn(List.of(
+                .thenReturn(Collections.<AssistantMessageChunk>emptyIterator())
+                .thenReturn(List.<AssistantMessageChunk>of(
                         AssistantMessageChunk.builder().content("recovered content").build()
                 ).iterator());
         agent.setLlm(model);
@@ -218,7 +218,7 @@ class ReActAgentStreamDegradationTest {
         when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(failingStreamBeforeFirstChunk())
-                .thenReturn(List.of(AssistantMessageChunk.builder()
+                .thenReturn(List.<AssistantMessageChunk>of(AssistantMessageChunk.builder()
                         .content("recovered after io")
                         .build()).iterator());
         agent.setLlm(model);
@@ -276,7 +276,7 @@ class ReActAgentStreamDegradationTest {
         when(model.supportsKvCacheRelease()).thenReturn(false);
         when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
-                .thenReturn(List.of(AssistantMessageChunk.builder()
+                .thenReturn(List.<AssistantMessageChunk>of(AssistantMessageChunk.builder()
                         .content("")
                         .reasoningContent("thinking")
                         .finishReason("stop")
@@ -334,7 +334,11 @@ class ReActAgentStreamDegradationTest {
                 .name(id)
                 .description(id)
                 .build());
-        agent.configure(ReActAgentConfig.builder().maxIterations(2).streamRetryDelayMs(0).build());
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(2)
+                .shouldFailTaskOnToolError(false)
+                .streamRetryDelayMs(0)
+                .build());
         return agent;
     }
 

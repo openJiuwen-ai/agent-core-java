@@ -297,7 +297,9 @@ class ReActAgentIterationLoggingTest {
 
     private static ScriptedAgent scriptedAgent(int maxIterations, Object... responses) {
         ScriptedAgent agent = new ScriptedAgent(List.of(responses));
-        ReActAgentConfig config = new ReActAgentConfig().configureMaxIterations(maxIterations);
+        ReActAgentConfig config = new ReActAgentConfig()
+                .configureMaxIterations(maxIterations)
+                .configureFailTaskOnToolError(false);
         config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
         agent.configure(config);
         return agent;

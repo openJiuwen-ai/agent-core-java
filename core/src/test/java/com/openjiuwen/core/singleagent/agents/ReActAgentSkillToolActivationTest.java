@@ -114,6 +114,7 @@ class ReActAgentSkillToolActivationTest {
             ReActAgentConfig config = new ReActAgentConfig();
             config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
             config.setMaxIterations(2);
+            config.setShouldFailTaskOnToolError(false);
             config.setSysOperationId(sysOperationId);
             agent.configure(config);
             agent.registerSkill(skillDir.toString(), true).toCompletableFuture().join();
