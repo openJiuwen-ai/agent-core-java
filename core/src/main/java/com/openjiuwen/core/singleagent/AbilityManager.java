@@ -640,6 +640,38 @@ public class AbilityManager {
 
     private ExecutionResult safeRailedExecuteOne(AgentCallbackContext toolCtx, ToolCall toolCall,
                                                  ToolResolver resolver, Object session, Object tag) {
+        long timeoutMillis = OpenJiuwenExecutors.toolCallTimeoutMillis();
+        if (timeoutMillis > 0) {
+            // Wrap the tool execution with a configurable timeout so that
+            // a slow tool does not block the agent thread pool indefinitely.
+            CompletableFuture<ExecutionResult> execution = OpenJiuwenExecutors.supplyToolCallAsync(
+                    () -> doSafeRailedExecuteOne(toolCtx, toolCall, resolver, session, tag));
+            CompletableFuture<ExecutionResult> timed = OpenJiuwenExecutors.withToolCallTimeout(execution);
+            try {
+                return timed.join();
+            } catch (CancellationException e) {
+                return cancelledResult(toolCall);
+            } catch (CompletionException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                if (cause instanceof java.util.concurrent.TimeoutException) {
+                    String timeoutMsg = "Tool execution timed out after " + timeoutMillis + "ms for tool: "
+                            + toolCall.getName();
+                    Loggers.AGENT.warning(timeoutMsg);
+                    execution.cancel(true);
+                    ToolMessage toolMsg = new ToolMessage(timeoutMsg, toolCall.getId(), toolCall.getName());
+                    return new ExecutionResult(null, toolMsg);
+                }
+                if (cause instanceof RuntimeException re) {
+                    throw re;
+                }
+                throw new CompletionException(cause);
+            }
+        }
+        return doSafeRailedExecuteOne(toolCtx, toolCall, resolver, session, tag);
+    }
+
+    private ExecutionResult doSafeRailedExecuteOne(AgentCallbackContext toolCtx, ToolCall toolCall,
+                                                    ToolResolver resolver, Object session, Object tag) {
         try {
             Object railed = Rails.run(
                     toolCtx,
@@ -1656,7 +1688,49 @@ public class AbilityManager {
         if (toolMessage == null && toolCall != null) {
             toolMessage = new ToolMessage(error.getMessage(), toolCall.getId(), toolCall.getName());
         }
+        // When shouldFailTaskOnToolError is enabled, force-finish the task
+        // so the agent loop does not continue after a tool execution failure.
+        if (isFailTaskOnToolError(toolCtx) && toolCall != null) {
+            String errorMsg = error.getMessage();
+            Map<String, Object> outcome = new LinkedHashMap<>();
+            outcome.put("tool_name", toolCall.getName());
+            outcome.put("tool_call_id", toolCall.getId());
+            outcome.put("status", "failed");
+            outcome.put("error", errorMsg);
+
+            Map<String, Object> finishResult = new LinkedHashMap<>();
+            finishResult.put("output", errorMsg);
+            finishResult.put("result_type", "error");
+            finishResult.put("tool_outcomes", List.of(outcome));
+            toolCtx.requestForceFinish(finishResult);
+        }
         return new ExecutionResult(null, toolMessage);
+    }
+
+    /**
+     * Reads {@link ReActAgentConfig#isShouldFailTaskOnToolError()} from the tool callback
+     * context or its agent. Default is {@code true}.
+     *
+     * @param toolCtx tool execution callback context; may be null
+     * @return {@code true} when tool errors should force-finish the task
+     * @since 0.1.16
+     */
+    private static boolean isFailTaskOnToolError(AgentCallbackContext toolCtx) {
+        if (toolCtx == null) {
+            return true;
+        }
+        Object config = toolCtx.getConfig();
+        if (config instanceof ReActAgentConfig reactConfig) {
+            return reactConfig.isShouldFailTaskOnToolError();
+        }
+        Object agent = toolCtx.getAgent();
+        if (agent instanceof BaseAgent baseAgent) {
+            Object agentConfig = baseAgent.getConfig();
+            if (agentConfig instanceof ReActAgentConfig reactConfig) {
+                return reactConfig.isShouldFailTaskOnToolError();
+            }
+        }
+        return true;
     }
 
     private static ExecutionResult executionErrorResult(ToolCall toolCall, Throwable exception) {
