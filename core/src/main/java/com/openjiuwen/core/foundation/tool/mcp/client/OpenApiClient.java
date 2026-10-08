@@ -16,6 +16,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -106,11 +107,15 @@ public class OpenApiClient implements McpClient {
     }
 
     @Override
-    public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+    public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
         try {
-            ToolResult result = toolManager.callTool(toolName, arguments);
+            ToolResult result = toolManager.callTool(toolName, arguments, timeout);
             return result.toMcpResult();
         } catch (BaseError e) {
+            throw e;
+        } catch (java.net.http.HttpTimeoutException e) {
+            // Surface the timeout type unchanged: callers (and the tool
+            // manager's bounded invoke) branch on it.
             throw e;
         } catch (Exception e) {
             throw openApiError(e, String.valueOf(e));
@@ -458,6 +463,17 @@ public class OpenApiClient implements McpClient {
         return dot >= 0 ? fileName.substring(dot).toLowerCase() : "";
     }
 
+    /**
+     * Converts a timeout in seconds to milliseconds with exact decimal
+     * arithmetic, so fractional second values do not lose precision.
+     *
+     * @param seconds timeout value in seconds
+     * @return the same timeout value in milliseconds
+     */
+    private static long secondsToMillis(float seconds) {
+        return BigDecimal.valueOf(seconds).multiply(BigDecimal.valueOf(1000L)).longValue();
+    }
+
     private static Map<String, Object> valueAsMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             return castMap(map);
@@ -504,12 +520,19 @@ public class OpenApiClient implements McpClient {
         }
 
         ToolResult callTool(String key, Map<String, Object> arguments) throws Exception {
+            return callTool(key, arguments, McpServerConfig.NO_TIMEOUT);
+        }
+
+        ToolResult callTool(String key, Map<String, Object> arguments, float perCallTimeout) throws Exception {
             OpenApiTool tool = getTool(key);
             if (tool == null) {
                 return new ToolResult(null, null);
             }
             try {
-                return tool.run(arguments);
+                return tool.run(arguments, perCallTimeout);
+            } catch (java.net.http.HttpTimeoutException e) {
+                // Surface the timeout type unchanged for bounded callers.
+                throw e;
             } catch (Exception e) {
                 throw openApiError(e, "call tool " + key + " failed: " + e);
             }
@@ -552,6 +575,10 @@ public class OpenApiClient implements McpClient {
         }
 
         ToolResult run(Map<String, Object> arguments) throws Exception {
+            return run(arguments, McpServerConfig.NO_TIMEOUT);
+        }
+
+        ToolResult run(Map<String, Object> arguments, float perCallTimeout) throws Exception {
             String url = resolveUrl(this, arguments);
             Map<String, Object> bodyArgs = arguments == null ? new LinkedHashMap<>() : new LinkedHashMap<>(arguments);
             for (String pathParam : pathParams) {
@@ -561,9 +588,11 @@ public class OpenApiClient implements McpClient {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .header("Content-Type", "application/json");
-            float effectiveTimeout = timeout != McpServerConfig.NO_TIMEOUT ? timeout : McpServerConfig.NO_TIMEOUT;
-            if (effectiveTimeout != McpServerConfig.NO_TIMEOUT && effectiveTimeout > 0) {
-                builder.timeout(Duration.ofMillis((long) (effectiveTimeout * 1000)));
+            // A positive per-call timeout overrides the tool-level value
+            // (the negative NO_TIMEOUT sentinel already fails the > 0 test).
+            float effectiveTimeout = perCallTimeout > 0f ? perCallTimeout : timeout;
+            if (effectiveTimeout > 0f) {
+                builder.timeout(Duration.ofMillis(secondsToMillis(effectiveTimeout)));
             }
 
             if ("GET".equals(method)) {

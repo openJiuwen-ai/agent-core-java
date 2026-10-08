@@ -470,6 +470,9 @@ public class ToolManager {
 
     private static Object invokeMethod(Object target, Method method, Object... args) throws Exception {
         try {
+            // Cross-package test doubles may be package-private classes with
+            // public methods; reflective invocation must open them up.
+            method.setAccessible(true);
             return method.invoke(target, args);
         } catch (InvocationTargetException error) {
             Throwable cause = error.getCause();

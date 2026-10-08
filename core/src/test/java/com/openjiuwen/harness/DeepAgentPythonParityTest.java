@@ -332,9 +332,11 @@ class DeepAgentPythonParityTest {
         DummyTool first = new DummyTool("tool_a", "shared_tool_id");
         DummyTool second = new DummyTool("tool_b", "shared_tool_id");
 
-        DeepAgent agent = DeepAgentsFactory.createDeepAgent("model", List.of(first, second), Map.of());
-
-        assertThat(agent.getTools()).containsKeys("tool_a", "tool_b");
+        // Ported ownership semantics: one id carries one definition; a
+        // same-id instance under a different name fails visibly instead of
+        // silently shadowing the first entry.
+        assertThatThrownBy(() -> DeepAgentsFactory.createDeepAgent("model", List.of(first, second), Map.of()))
+                .hasMessageContaining("definition conflict");
     }
 
     @Test

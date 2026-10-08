@@ -1,5 +1,6 @@
 package com.openjiuwen.core.common.schema;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -65,5 +66,36 @@ public class BaseCard {
 
     public String toStr() {
         return "id=" + id + ",name=" + name;
+    }
+
+    /**
+     * equals.
+     *
+     * @param other other
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (other == null || getClass() != other.getClass()) {
+            return false;
+        }
+        BaseCard baseCard = (BaseCard) other;
+        return Objects.equals(id, baseCard.id) && Objects.equals(name, baseCard.name)
+                && Objects.equals(description, baseCard.description);
+    }
+
+    /**
+     * hashCode.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, name, description);
     }
 }
