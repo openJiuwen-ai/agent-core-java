@@ -430,14 +430,34 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
     private boolean enqueuePipelineOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation) {
         return switch (operation.kind()) {
             case "set" -> enqueueSetOperation(pipeline, operation);
-            case "get" -> tryInvoke(pipeline, new String[]{"get"}, operation.key()).handled();
+            case "get" -> enqueueGetOperation(pipeline, operation);
             case "exists" -> tryInvoke(pipeline, new String[]{"exists"}, operation.key()).handled();
             default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
         };
     }
 
+    private boolean enqueueGetOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation) {
+        InvocationOutcome binaryGet = tryInvoke(pipeline, new String[]{"get"}, byte[].class,
+            operation.key().getBytes(StandardCharsets.UTF_8));
+        if (binaryGet.handled()) {
+            return true;
+        }
+        return tryInvoke(pipeline, new String[]{"get"}, operation.key()).handled();
+    }
+
     private boolean enqueueSetOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation) {
         Integer ttl = operation.ttl();
+        if (operation.value() instanceof byte[] valueBytes) {
+            byte[] keyBytes = operation.key().getBytes(StandardCharsets.UTF_8);
+            if (ttl != null && ttl > 0) {
+                InvocationOutcome setex = tryInvoke(pipeline, new String[]{"setex", "setEx"},
+                        byte[].class, keyBytes, ttl, valueBytes);
+                if (setex.handled()) {
+                    return true;
+                }
+            }
+            return tryInvoke(pipeline, new String[]{"set"}, byte[].class, keyBytes, valueBytes).handled();
+        }
         if (ttl != null && ttl > 0) {
             InvocationOutcome setex = tryInvoke(pipeline, new String[]{"setex", "setEx"},
                     operation.key(), ttl, operation.value());
@@ -589,6 +609,9 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
     /**
      * Prefer binary GET when String GET mis-decodes binary payloads (Jedis {@code get(String)} vs
      * {@code get(byte[])}). For plain text values both APIs agree and String is returned.
+     *
+     * @param key the key to read
+     * @return the stored value, preferring binary bytes for non-text payloads
      */
     private Object getValuePreferringBinaryKey(String key) {
         Object stringValue = null;

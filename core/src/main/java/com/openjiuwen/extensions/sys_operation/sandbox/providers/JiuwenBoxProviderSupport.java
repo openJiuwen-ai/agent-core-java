@@ -507,9 +507,27 @@ final class JiuwenBoxProviderSupport {
                 if (baseUrl == null || baseUrl.isBlank()) {
                     throw new IllegalArgumentException("jiuwenbox provider requires endpoint.base_url");
                 }
-                client = new JiuwenBoxClient(baseUrl, timeoutSeconds);
+                client = new JiuwenBoxClient(baseUrl, timeoutSeconds, resolveInjectedHttpClient(),
+                    resolveAuthHeaders());
             }
             return client;
+        }
+
+        private java.net.http.HttpClient resolveInjectedHttpClient() {
+            if (config == null || config.getParams() == null) {
+                return null;
+            }
+            Object injected = config.getParams().get("_ojw_http_client");
+            return injected instanceof java.net.http.HttpClient httpClient ? httpClient : null;
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, String> resolveAuthHeaders() {
+            if (config == null || config.getParams() == null) {
+                return Map.of();
+            }
+            Object headers = config.getParams().get("_ojw_auth_headers");
+            return headers instanceof Map<?, ?> map ? (Map<String, String>) map : Map.of();
         }
 
         Map<String, Object> launcherExtraParams(boolean create) {
@@ -699,21 +717,35 @@ final class JiuwenBoxProviderSupport {
         private final String baseUrl;
         private final double timeoutSeconds;
         private final HttpClient httpClient;
+        private final Map<String, String> authHeaders;
 
         JiuwenBoxClient(String baseUrl, double timeoutSeconds) {
+            this(baseUrl, timeoutSeconds, null, Map.of());
+        }
+
+        JiuwenBoxClient(String baseUrl, double timeoutSeconds, HttpClient injectedClient,
+            Map<String, String> authHeaders) {
             this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
             this.timeoutSeconds = timeoutSeconds <= 0 ? 30.0d : timeoutSeconds;
-            this.httpClient = HttpClient.newBuilder()
+            this.httpClient = injectedClient != null ? injectedClient : HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(30))
                     .build();
+            this.authHeaders = authHeaders != null ? Map.copyOf(authHeaders) : Map.of();
+        }
+
+        private HttpRequest.Builder applyAuth(HttpRequest.Builder builder) {
+            for (Map.Entry<String, String> entry : authHeaders.entrySet()) {
+                builder.header(entry.getKey(), entry.getValue());
+            }
+            return builder;
         }
 
         String createSandbox(Map<String, Object> createOptions) throws IOException, InterruptedException {
             Map<String, Object> body = createOptions == null ? Map.of() : createOptions;
-            HttpRequest request = HttpRequest.newBuilder(resolveUri("/api/v1/sandboxes", Map.of()))
+            HttpRequest request = applyAuth(HttpRequest.newBuilder(resolveUri("/api/v1/sandboxes", Map.of()))
                     .timeout(Duration.ofSeconds((long) Math.max(timeoutSeconds, 30.0d)))
                     .header("content-type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(AioProviderSupport.JSON.writeValueAsString(body), StandardCharsets.UTF_8))
+                    .POST(HttpRequest.BodyPublishers.ofString(AioProviderSupport.JSON.writeValueAsString(body), StandardCharsets.UTF_8)))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             ensureSuccess(response.statusCode(), response.body(), "POST", request.uri());
@@ -732,10 +764,10 @@ final class JiuwenBoxProviderSupport {
             if (body.isEmpty()) {
                 return;
             }
-            HttpRequest request = HttpRequest.newBuilder(resolveUri("/api/v1/timeout", Map.of()))
+            HttpRequest request = applyAuth(HttpRequest.newBuilder(resolveUri("/api/v1/timeout", Map.of()))
                     .timeout(Duration.ofSeconds((long) Math.max(timeoutSeconds, 30.0d)))
                     .header("content-type", "application/json")
-                    .PUT(HttpRequest.BodyPublishers.ofString(AioProviderSupport.JSON.writeValueAsString(body), StandardCharsets.UTF_8))
+                    .PUT(HttpRequest.BodyPublishers.ofString(AioProviderSupport.JSON.writeValueAsString(body), StandardCharsets.UTF_8)))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             ensureSuccess(response.statusCode(), response.body(), "PUT", request.uri());
@@ -745,9 +777,10 @@ final class JiuwenBoxProviderSupport {
             if (sandboxId == null || sandboxId.isBlank()) {
                 return;
             }
-            HttpRequest request = HttpRequest.newBuilder(resolveUri("/api/v1/sandboxes/" + urlPath(sandboxId), Map.of()))
+            HttpRequest request = applyAuth(HttpRequest.newBuilder(
+                            resolveUri("/api/v1/sandboxes/" + urlPath(sandboxId), Map.of()))
                     .timeout(Duration.ofSeconds((long) Math.max(timeoutSeconds, 30.0d)))
-                    .DELETE()
+                    .DELETE())
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() == 404) {
@@ -778,11 +811,11 @@ final class JiuwenBoxProviderSupport {
                 body.put("timeout_seconds", timeoutSeconds);
             }
             int requestTimeout = Math.max(timeoutSeconds == null ? 30 : timeoutSeconds, 30);
-            HttpRequest request = HttpRequest.newBuilder(
+            HttpRequest request = applyAuth(HttpRequest.newBuilder(
                             resolveUri("/api/v1/sandboxes/" + urlPath(sandboxId) + "/exec", Map.of()))
                     .timeout(Duration.ofSeconds(requestTimeout))
                     .header("content-type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(AioProviderSupport.JSON.writeValueAsString(body), StandardCharsets.UTF_8))
+                    .POST(HttpRequest.BodyPublishers.ofString(AioProviderSupport.JSON.writeValueAsString(body), StandardCharsets.UTF_8)))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             ensureSuccess(response.statusCode(), response.body(), "POST", request.uri());
@@ -800,12 +833,12 @@ final class JiuwenBoxProviderSupport {
                     + "Content-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
             parts.add(content == null ? new byte[0] : content);
             parts.add(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-            HttpRequest request = HttpRequest.newBuilder(resolveUri(
+            HttpRequest request = applyAuth(HttpRequest.newBuilder(resolveUri(
                             "/api/v1/sandboxes/" + urlPath(sandboxId) + "/upload",
                             Map.of("sandbox_path", sandboxPath)))
                     .timeout(Duration.ofSeconds((long) Math.max(timeoutSeconds, 30.0d)))
                     .header("content-type", "multipart/form-data; boundary=" + boundary)
-                    .POST(HttpRequest.BodyPublishers.ofByteArrays(parts))
+                    .POST(HttpRequest.BodyPublishers.ofByteArrays(parts)))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             ensureSuccess(response.statusCode(), response.body(), "POST", request.uri());
@@ -832,11 +865,11 @@ final class JiuwenBoxProviderSupport {
         }
 
         byte[] downloadBytes(String sandboxId, String sandboxPath) throws IOException, InterruptedException {
-            HttpRequest request = HttpRequest.newBuilder(resolveUri(
+            HttpRequest request = applyAuth(HttpRequest.newBuilder(resolveUri(
                             "/api/v1/sandboxes/" + urlPath(sandboxId) + "/download",
                             Map.of("sandbox_path", sandboxPath)))
                     .timeout(Duration.ofSeconds((long) Math.max(timeoutSeconds, 30.0d)))
-                    .GET()
+                    .GET())
                     .build();
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             ensureSuccess(response.statusCode(), new String(response.body(), StandardCharsets.UTF_8), "GET", request.uri());
@@ -858,11 +891,11 @@ final class JiuwenBoxProviderSupport {
             if (maxDepth != null) {
                 queryParams.put("max_depth", Integer.toString(maxDepth));
             }
-            HttpRequest request = HttpRequest.newBuilder(resolveUri(
+            HttpRequest request = applyAuth(HttpRequest.newBuilder(resolveUri(
                             "/api/v1/sandboxes/" + urlPath(sandboxId) + "/files",
                             queryParams))
                     .timeout(Duration.ofSeconds((long) Math.max(timeoutSeconds, 30.0d)))
-                    .GET()
+                    .GET())
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             ensureSuccess(response.statusCode(), response.body(), "GET", request.uri());
@@ -880,11 +913,11 @@ final class JiuwenBoxProviderSupport {
             if (excludePatterns != null && !excludePatterns.isEmpty()) {
                 queryParams.put("exclude_patterns", String.join("\u0000", excludePatterns));
             }
-            HttpRequest request = HttpRequest.newBuilder(resolveUri(
+            HttpRequest request = applyAuth(HttpRequest.newBuilder(resolveUri(
                             "/api/v1/sandboxes/" + urlPath(sandboxId) + "/search",
                             queryParams))
                     .timeout(Duration.ofSeconds((long) Math.max(timeoutSeconds, 30.0d)))
-                    .GET()
+                    .GET())
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             ensureSuccess(response.statusCode(), response.body(), "GET", request.uri());
