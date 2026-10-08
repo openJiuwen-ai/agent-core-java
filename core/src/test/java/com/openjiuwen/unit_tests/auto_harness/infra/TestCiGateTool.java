@@ -87,6 +87,7 @@ class TestCiGateTool {
     void normalizeMakeTestUsesConfiguredPython(@TempDir Path tempDir) throws Exception {
         Path python = fakePython(tempDir);
         CIGateRunner tool = new CIGateRunner(tempDir.toString(), "", python.toString(), "", new FakeExecutor());
+        setMakeAvailable(tool, false);
 
         String normalized = tool.normalizeCommand("make test");
 
@@ -106,6 +107,7 @@ class TestCiGateTool {
     void normalizeMakeTestPreservesFlags(@TempDir Path tempDir) throws Exception {
         Path python = fakePython(tempDir);
         CIGateRunner tool = new CIGateRunner(tempDir.toString(), "", python.toString(), "", new FakeExecutor());
+        setMakeAvailable(tool, false);
 
         String normalized = tool.normalizeCommand("make test TESTFLAGS=tests/unit_tests/harness/");
 
@@ -116,6 +118,7 @@ class TestCiGateTool {
     void normalizeShellPrefixedMakeTestUsesConfiguredPython(@TempDir Path tempDir) throws Exception {
         Path python = fakePython(tempDir);
         CIGateRunner tool = new CIGateRunner(tempDir.toString(), "", python.toString(), "", new FakeExecutor());
+        setMakeAvailable(tool, false);
 
         String normalized = tool.normalizeCommand("PATH=\"/tmp/bin:$PATH\" make test");
 
@@ -224,6 +227,7 @@ class TestCiGateTool {
         FakeExecutor executor = new FakeExecutor();
         executor.enqueue(0, "ok");
         CIGateRunner tool = new CIGateRunner(tempDir.toString(), "", python.toString(), "", executor);
+        setMakeAvailable(tool, false);
 
         Map<String, Object> result = tool.runGate(Map.of("name", "test", "command", "make test"));
 
@@ -237,6 +241,7 @@ class TestCiGateTool {
         FakeExecutor executor = new FakeExecutor();
         executor.enqueue(0, "ok");
         CIGateRunner tool = new CIGateRunner(tempDir.toString(), "", python.toString(), "", executor);
+        setMakeAvailable(tool, false);
 
         Map<String, Object> result = tool.runGate(
                 Map.of("name", "test", "command", "PATH=\"/tmp/bin:$PATH\" make test"));

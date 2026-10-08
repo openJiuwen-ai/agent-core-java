@@ -57,13 +57,13 @@ class WebToolsPythonParityTest {
     Collection<DynamicTest> pythonWebToolsCases() {
         return pythonTestNodes()
                 .map(nodeId -> dynamicTest(nodeId, () -> {
-                    clearProperties();
+                    Map<String, String> originalProperties = isolateProperties();
                     WebTools.resetHttpTransport();
                     try {
                         runPythonCase(nodeId);
                     } finally {
                         WebTools.resetHttpTransport();
-                        clearProperties();
+                        restoreProperties(originalProperties);
                     }
                 }))
                 .toList();
@@ -276,8 +276,6 @@ class WebToolsPythonParityTest {
     @SuppressWarnings("unchecked")
     private static void testHttpRequestAppliesConfiguredSearchProxy() throws Exception {
         set("FREE_SEARCH_PROXY_URL", "http://username:password@proxyhk.huawei.com:8080");
-        clear("NO_PROXY");
-        clear("no_proxy");
         RecordingTransport transport = new RecordingTransport(spec -> WebTools.HttpResult.of(200, spec.url(), ""));
         WebTools.setHttpTransport(transport);
 
@@ -292,8 +290,6 @@ class WebToolsPythonParityTest {
 
     private static void testHttpRequestBypassesConfiguredSearchProxyForNoProxyHosts() throws Exception {
         set("FREE_SEARCH_PROXY_URL", "http://username:password@proxyhk.huawei.com:8080");
-        clear("NO_PROXY");
-        clear("no_proxy");
         RecordingTransport transport = new RecordingTransport(spec -> WebTools.HttpResult.of(200, spec.url(), ""));
         WebTools.setHttpTransport(transport);
 
@@ -507,12 +503,24 @@ class WebToolsPythonParityTest {
         System.setProperty(key, value);
     }
 
-    private static void clear(String key) {
-        System.clearProperty(key);
+    private static Map<String, String> isolateProperties() {
+        Map<String, String> originalProperties = new LinkedHashMap<>();
+        for (String key : SEARCH_ENV_KEYS) {
+            originalProperties.put(key, System.getProperty(key));
+            // WebTools prefers JVM properties; empty values mask the host environment and use defaults.
+            System.setProperty(key, "");
+        }
+        return originalProperties;
     }
 
-    private static void clearProperties() {
-        SEARCH_ENV_KEYS.forEach(System::clearProperty);
+    private static void restoreProperties(Map<String, String> originalProperties) {
+        originalProperties.forEach((key, value) -> {
+            if (value == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, value);
+            }
+        });
     }
 
     /**
