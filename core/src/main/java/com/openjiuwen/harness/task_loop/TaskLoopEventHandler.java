@@ -28,9 +28,12 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Event handler used by the DeepAgent task-loop controller.
@@ -42,10 +45,27 @@ public class TaskLoopEventHandler extends EventHandler {
 
     private final Object deepAgent;
     private LoopQueues interactionQueues = new LoopQueues();
+    /**
+     * Round state must be isolated per session: a single shared future/round pair let
+     * concurrent sessions cancel each other's in-flight rounds and drop resolved results
+     * (round id mismatch), surfacing as wrong round results and "Task not found in
+     * TaskManager" under concurrent load.
+     */
+    private final ConcurrentMap<Integer, RoundState> roundStates = new ConcurrentHashMap<>();
+    /** Monotonic round id generator shared by every session (ids stay globally unique). */
+    private final AtomicInteger roundCounter = new AtomicInteger();
     private Map<String, Object> lastResult;
-    private CompletableFuture<Map<String, Object>> currentFuture;
-    private int roundId;
     private Object sessionToolkit;
+
+    /** Per-session (per-round) round state replacing the former shared fields. */
+    private static final class RoundState {
+        final String sessionId;
+        volatile CompletableFuture<Map<String, Object>> future;
+
+        RoundState(String sessionId) {
+            this.sessionId = sessionId == null || sessionId.isBlank() ? "default" : sessionId;
+        }
+    }
 
     /**
      * Create an event handler with a deep agent reference.
@@ -90,33 +110,71 @@ public class TaskLoopEventHandler extends EventHandler {
 
     @Override
     public synchronized int prepareRound() {
-        if (currentFuture != null && !currentFuture.isDone()) {
-            currentFuture.cancel(false);
-        }
-        roundId += 1;
-        currentFuture = new CompletableFuture<>();
-        lastResult = null;
-        return roundId;
+        return prepareRound(null, false);
     }
 
     /**
-     * Prepare a new round with session context.
+     * Prepare a new round bound to the given session.
      *
-     * @param sessionId  the session id (ignored in this implementation)
+     * <p>Round ids are globally unique and each round keeps its own future, so
+     * concurrent sessions never observe each other's futures.</p>
+     *
+     * @param sessionId  the session id (null keeps legacy default-session behavior)
      * @param isFollowUp whether this is a follow-up round
      * @return the new round id
      */
     public synchronized int prepareRound(String sessionId, boolean isFollowUp) {
-        return prepareRound();
+        String normalized = sessionId == null || sessionId.isBlank() ? "default" : sessionId;
+        // Port of the former shared-field cancel: only stale in-flight rounds of the
+        // calling session are cancelled — never another session's round.
+        roundStates.forEach((id, existing) -> {
+            if (normalized.equals(existing.sessionId) && existing.future != null && !existing.future.isDone()) {
+                existing.future.cancel(false);
+            }
+        });
+        roundStates.values().removeIf(existing -> normalized.equals(existing.sessionId));
+        RoundState state = new RoundState(normalized);
+        state.future = new CompletableFuture<>();
+        int newRoundId = roundCounter.incrementAndGet();
+        roundStates.put(newRoundId, state);
+        // The prepare→wait pair happens on one session thread; binding the thread to
+        // the new round keeps waitCompletion/resolveFuture correlated for this session.
+        currentThreadRoundId.set(newRoundId);
+        return newRoundId;
     }
+
+    private final ThreadLocal<Integer> currentThreadRoundId = new ThreadLocal<>();
 
     @Override
     public Map<String, Object> waitCompletion(Double timeout) {
-        CompletableFuture<Map<String, Object>> future = currentFuture;
-        if (future == null) {
+        return waitCompletion(timeout, null);
+    }
+
+    /**
+     * Wait for completion of the round owned by the given session.
+     *
+     * <p>Round correlation precedence:
+     * <ol>
+     *   <li>thread round id — a session thread that called {@link #prepareRound}
+     *       on this handler (task-loop path);</li>
+     *   <li>session round binding — the latest round registered for the session
+     *       (inner executor waiting on behalf of the session thread);</li>
+     *   <li>legacy fallback — the most recent round regardless of session, only
+     *       when no session id is given.</li>
+     * </ol></p>
+     *
+     * @param timeout   max seconds to wait, or null
+     * @param sessionId the session id, or null for the legacy fallback
+     * @return the round result map
+     */
+    public Map<String, Object> waitCompletion(Double timeout, String sessionId) {
+        CompletableFuture<Map<String, Object>> future;
+        RoundState state = stateForWait(sessionId);
+        if (state == null) {
             lastResult = resultMap("error", "no active round");
             return getLastResult();
         }
+        future = state.future;
 
         Map<String, Object> result;
         try {
@@ -127,8 +185,11 @@ public class TaskLoopEventHandler extends EventHandler {
                 result = future.get(millis, TimeUnit.MILLISECONDS);
             }
         } catch (TimeoutException exception) {
-            future.cancel(false);
-            result = resultMap("error", "completion_timeout");
+            // Leave the round registered and its future uncancelled so the caller's
+            // retry loop keeps waiting on the same round; a late completion still
+            // lands on this future instead of being dropped.
+            lastResult = resultMap("error", "completion_timeout");
+            return getLastResult();
         } catch (CancellationException exception) {
             result = resultMap("error", "cancelled");
         } catch (InterruptedException exception) {
@@ -140,14 +201,45 @@ public class TaskLoopEventHandler extends EventHandler {
         }
 
         lastResult = normalizeCompletionResult(result);
+        cleanupRound(state);
         return getLastResult();
+    }
+
+    /**
+     * Resolve the round to wait for, following the correlation precedence of
+     * {@link #waitCompletion(Double, String)}.
+     */
+    private RoundState stateForWait(String sessionId) {
+        Integer threadRound = currentThreadRoundId.get();
+        if (threadRound != null) {
+            RoundState state = roundStates.get(threadRound);
+            if (state != null) {
+                return state;
+            }
+        }
+        if (sessionId != null) {
+            RoundState state = roundStates.values().stream()
+                    .filter(candidate -> sessionId.equals(candidate.sessionId))
+                    .reduce((first, second) -> second)
+                    .orElse(null);
+            if (state != null) {
+                return state;
+            }
+        }
+        return roundStates.values().stream()
+                .reduce((first, second) -> second)
+                .orElse(null);
     }
 
     @Override
     public Map<String, Object> handleInput(EventHandlerInput inputs) {
         Event event = inputs == null ? null : inputs.getEvent();
         Map<String, Object> metadata = metadataOf(event);
-        int currentRound = intValue(metadata.get("_handler_round_id"), roundId);
+        String inputSessionId = inputs == null || inputs.getSession() == null
+                ? "default"
+                : stringOrDefault(inputs.getSession().getSessionId(), "default");
+        int currentRound = intValue(metadata.get("_handler_round_id"),
+                fallbackRoundId(inputSessionId));
 
         if (deepAgent == null || getLoopCoordinatorFromAgent() == null) {
             resolveFuture(resultMap("error", "no LoopCoordinator"), currentRound);
@@ -167,9 +259,7 @@ public class TaskLoopEventHandler extends EventHandler {
             taskId = UUID.randomUUID().toString().replace("-", "");
         }
 
-        String sessionId = inputs == null || inputs.getSession() == null
-                ? "default"
-                : stringOrDefault(inputs.getSession().getSessionId(), "default");
+        String sessionId = inputSessionId;
         Map<String, Object> taskMetadata = new LinkedHashMap<>();
         taskMetadata.put("_handler_round_id", currentRound);
         taskMetadata.put("run_kind", metadata.get("run_kind"));
@@ -236,7 +326,7 @@ public class TaskLoopEventHandler extends EventHandler {
         Event event = inputs == null ? null : inputs.getEvent();
         Map<String, Object> metadata = metadataOf(event);
         String taskId = stringValue(metadata.get("task_id"));
-        int currentRound = intValue(metadata.get("_handler_round_id"), roundId);
+        int currentRound = intValue(metadata.get("_handler_round_id"), fallbackRoundId("default"));
         Map<String, Object> payload = new LinkedHashMap<>();
         if (event instanceof TaskCompletionEvent completionEvent) {
             payload = extractCompletionResult(completionEvent.getTaskResult());
@@ -253,7 +343,7 @@ public class TaskLoopEventHandler extends EventHandler {
         Event event = inputs == null ? null : inputs.getEvent();
         Map<String, Object> metadata = metadataOf(event);
         String taskId = stringValue(metadata.get("task_id"));
-        int currentRound = intValue(metadata.get("_handler_round_id"), roundId);
+        int currentRound = intValue(metadata.get("_handler_round_id"), fallbackRoundId("default"));
         String errorMessage = "unknown";
         if (event instanceof TaskFailedEvent failedEvent && failedEvent.getErrorMessage() != null) {
             errorMessage = failedEvent.getErrorMessage();
@@ -303,19 +393,94 @@ public class TaskLoopEventHandler extends EventHandler {
 
     @Override
     public void onAbort() {
-        resolveFuture(resultMap("error", "aborted"), roundId);
+        Integer threadRound = currentThreadRoundId.get();
+        if (threadRound != null) {
+            resolveFuture(resultMap("error", "aborted"), threadRound);
+            return;
+        }
+        roundStates.values().forEach(state ->
+                resolveFuture(resultMap("error", "aborted"), state.future));
     }
 
     void resolveFuture(Map<String, Object> result, int targetRoundId) {
-        CompletableFuture<Map<String, Object>> future = currentFuture;
-        if (targetRoundId != roundId || future == null || future.isDone()) {
+        RoundState state = roundStates.get(targetRoundId);
+        if (state == null) {
+            return;
+        }
+        resolveFuture(result, state.future);
+    }
+
+    private void resolveFuture(Map<String, Object> result, CompletableFuture<Map<String, Object>> future) {
+        if (future == null || future.isDone()) {
             return;
         }
         future.complete(result == null ? new LinkedHashMap<>() : new LinkedHashMap<>(result));
     }
 
+    /**
+     * Drop a finished round's state so concurrent rounds are never matched to a
+     * stale future, and stale entries cannot accumulate across sessions.
+     */
+    private void cleanupRound(RoundState state) {
+        if (state == null) {
+            return;
+        }
+        roundStates.values().removeIf(candidate -> candidate == state);
+        Integer threadRound = currentThreadRoundId.get();
+        if (threadRound != null && roundStates.get(threadRound) == null) {
+            currentThreadRoundId.remove();
+        }
+    }
+
+    /**
+     * Drop every round registered for the given session (used when a session's
+     * task-loop runtime is stopped).
+     *
+     * @param sessionId the session id
+     */
+    public void clearSessionRounds(String sessionId) {
+        if (sessionId == null) {
+            return;
+        }
+        String normalized = sessionId.isBlank() ? "default" : sessionId;
+        roundStates.values().removeIf(state -> normalized.equals(state.sessionId));
+    }
+
+    /**
+     * Drop every round state (used when the owning agent is destroyed).
+     */
+    public void clearAllRounds() {
+        roundStates.clear();
+    }
+
     private static Map<String, Object> metadataOf(Event event) {
         return event == null || event.getMetadata() == null ? Map.of() : event.getMetadata();
+    }
+
+    /**
+     * Fallback round id when an event carries no explicit {@code _handler_round_id}.
+     *
+     * <p>Precedence: the calling thread's round (task-loop path), then the latest
+     * round registered for the session, then the globally latest round.</p>
+     */
+    private int fallbackRoundId(String sessionId) {
+        Integer threadRound = currentThreadRoundId.get();
+        if (threadRound != null && roundStates.containsKey(threadRound)) {
+            return threadRound;
+        }
+        if (sessionId != null) {
+            Integer sessionRound = roundStates.entrySet().stream()
+                    .filter(entry -> sessionId.equals(entry.getValue().sessionId))
+                    .map(Map.Entry::getKey)
+                    .reduce((first, second) -> second)
+                    .orElse(null);
+            if (sessionRound != null) {
+                return sessionRound;
+            }
+        }
+        return roundStates.keySet().stream()
+                .reduce(Math::max)
+                .orElse(0);
     }
 
     private static void copyModelSelectionKeys(Map<String, Object> source, Map<String, Object> target) {

@@ -877,13 +877,18 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
     }
 
     private int asDeleteCount(Object value, int fallbackCount) {
+        int deleted;
         if (value instanceof Number number) {
-            return number.intValue();
+            deleted = number.intValue();
+        } else if (value instanceof Boolean bool) {
+            deleted = bool ? fallbackCount : 0;
+        } else {
+            deleted = asBoolean(value) ? fallbackCount : 0;
         }
-        if (value instanceof Boolean bool) {
-            return bool ? fallbackCount : 0;
+        if (deleted == 0 && fallbackCount > 0) {
+            logger.warn("Redis delete returned 0 for {} requested key(s); keys may have already been absent", fallbackCount);
         }
-        return asBoolean(value) ? fallbackCount : 0;
+        return deleted;
     }
 
     private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args) {
@@ -978,7 +983,8 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
                 if (existingArray.getClass().getComponentType() != null
                         && isAssignable(varArgType, existingArray.getClass().getComponentType())) {
                     varArgValue = existingArray;
-                    score += 4;
+                    // Direct array pass-through must always outrank lossy single-argument conversions.
+                    score += 12;
                 } else {
                     return Optional.empty();
                 }
@@ -1025,6 +1031,11 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
             return Optional.of(new ArgumentMatch(argument, 1));
         }
         if (boxedTargetType == String.class) {
+            if (argument.getClass().isArray()) {
+                // An array rendered through String.valueOf becomes "[Ljava.lang.String;@..." garbage.
+                // Never treat a whole array as a single string argument (e.g. del(String) vs del(String...)).
+                return Optional.empty();
+            }
             return Optional.of(new ArgumentMatch(String.valueOf(argument), 6));
         }
         if (boxedTargetType == Integer.class && argument instanceof Number number) {
