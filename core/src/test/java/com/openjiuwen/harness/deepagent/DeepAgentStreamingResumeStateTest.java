@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.harness.deep_agent;
+package com.openjiuwen.harness.deepagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -13,6 +13,8 @@ import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgentSession;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 
 import org.junit.jupiter.api.AfterEach;
@@ -44,7 +46,7 @@ class DeepAgentStreamingResumeStateTest {
     }
 
     @Test
-    void successiveResumesPreserveUpdatesAndDeletionsInCallerAndCheckpoint() {
+    void successiveResumesPreserveCallerAndCheckpointState() {
         String sessionId = UUID.randomUUID().toString();
         AgentSession caller = new AgentSession(sessionId, null, CARD);
         caller.preRun(Map.of("inputs", Map.of()));
@@ -120,10 +122,12 @@ class DeepAgentStreamingResumeStateTest {
          */
         public CompletionStage<Map<String, Object>> invoke(Map<String, Object> inputs, AgentSessionApi session) {
             assertThat(session).isNotNull();
-            assertThat(inputs.get("query")).isInstanceOf(InteractiveInput.class);
-            InteractiveInput query = (InteractiveInput) inputs.get("query");
-            assertThat(query.getUserInputs().get("decision")).isInstanceOf(Map.class);
-            Map<?, ?> decision = (Map<?, ?>) query.getUserInputs().get("decision");
+            if (!(inputs.get("query") instanceof InteractiveInput query)) {
+                throw new AssertionError("Resume query must be an InteractiveInput");
+            }
+            if (!(query.getUserInputs().get("decision") instanceof Map<?, ?> decision)) {
+                throw new AssertionError("Resume decision must be a map");
+            }
             assertThat(session.getState("pending")).isEqualTo(decision.get("expected"));
             State state = sessionState(session);
             Map<String, Object> updated = new LinkedHashMap<>();
