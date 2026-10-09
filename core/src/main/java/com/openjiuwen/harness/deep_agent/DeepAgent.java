@@ -120,6 +120,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -2318,6 +2320,12 @@ public class DeepAgent implements AutoCloseable {
             if (loopController != null) {
                 loopController.clearSession(sessionId);
             }
+            if (eventHandler != null) {
+                // Drop the session's round state so a later round of the same session
+                // cannot be matched to a stale future, and state cannot leak across
+                // sessions reusing the same handler.
+                eventHandler.clearSessionRounds(sessionId);
+            }
         }
     }
 
@@ -2437,7 +2445,13 @@ public class DeepAgent implements AutoCloseable {
         LoopCoordinator coordinator = coordinatorForSession(session);
         while (System.nanoTime() < deadline) {
             long remainingMillis = TimeUnit.NANOSECONDS.toMillis(Math.max(1L, deadline - System.nanoTime()));
-            Map<String, Object> result = eventHandler.waitCompletion(remainingMillis / 1000.0d);
+            // Session-scoped wait: a session's retry loop must never observe another
+            // session's round result (round state is isolated per session).
+            double remainingSeconds = BigDecimal.valueOf(remainingMillis)
+                    .divide(BigDecimal.valueOf(1000), 3, RoundingMode.HALF_UP)
+                    .doubleValue();
+            Map<String, Object> result = eventHandler.waitCompletion(remainingSeconds,
+                    session.getSessionId());
             if (!"completion_timeout".equals(result.get("error"))) {
                 return result;
             }
@@ -3383,6 +3397,34 @@ public class DeepAgent implements AutoCloseable {
             }
         }
         return tools;
+    }
+
+    /**
+     * Returns the raw list of registered tool instances (harness tools, MCP
+     * adapters and configured tools), in registration order.
+     *
+     * @since 0.1.15
+     */
+    public List<Object> getRegisteredTools() {
+        return List.copyOf(registeredTools);
+    }
+
+    /**
+     * Returns the list of MCP server configs registered on this instance.
+     *
+     * @since 0.1.15
+     */
+    public List<McpServerConfig> getRegisteredMcps() {
+        return List.copyOf(registeredMcps);
+    }
+
+    /**
+     * Returns the failure labels recorded during the last destroy sequence.
+     *
+     * @since 0.1.15
+     */
+    public List<String> getDestroyStepFailures() {
+        return List.copyOf(destroyStepFailures);
     }
 
     public Map<String, Object> getSubagents() {

@@ -105,7 +105,9 @@ public final class TodoTools {
      */
     public static class TodoCreateTool extends TodoToolBase {
         public TodoCreateTool(TodoStore store) {
-            super("todo_create", "TodoCreateTool", "Create todo items for the current session.", store);
+            // toolCard(id, name): card.name carries the LLM-visible function
+            // name ("todo_create"), matching the fork/ToolMetadataRegistry key.
+            super("TodoCreateTool", "todo_create", "Create todo items for the current session.", store);
         }
 
         @Override
@@ -177,7 +179,7 @@ public final class TodoTools {
      */
     public static class TodoListTool extends TodoToolBase {
         public TodoListTool(TodoStore store) {
-            super("todo_list", "TodoListTool", "List active todo items.", store);
+            super("TodoListTool", "todo_list", "List active todo items.", store);
         }
 
         @Override
@@ -203,7 +205,7 @@ public final class TodoTools {
      */
     public static class TodoGetTool extends TodoToolBase {
         public TodoGetTool(TodoStore store) {
-            super("todo_get", "TodoGetTool", "Get one todo item.", store);
+            super("TodoGetTool", "todo_get", "Get one todo item.", store);
         }
 
         @Override
@@ -221,7 +223,7 @@ public final class TodoTools {
      */
     public static class TodoModifyTool extends TodoToolBase {
         public TodoModifyTool(TodoStore store) {
-            super("todo_modify", "TodoModifyTool", "Modify todo items for the current session.", store);
+            super("TodoModifyTool", "todo_modify", "Modify todo items for the current session.", store);
         }
 
         @Override
