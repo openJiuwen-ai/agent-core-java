@@ -40,10 +40,13 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
+import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
+import com.openjiuwen.core.singleagent.external.ExternalToolResult;
 import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.interrupt.ResumeContext;
-import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -55,11 +58,7 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.Rails;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
-import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
-import com.openjiuwen.core.singleagent.external.ExternalToolResult;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
-import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
@@ -356,8 +355,7 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Object callModel(AgentCallbackContext ctx, ModelContext context, List<ToolInfo> tools) {
-        ModelCallInputs inputs = new ModelCallInputs();
-        inputs.setMessages(new ArrayList<>(buildPreviewMessages(context)));
+        ModelCallInputs inputs = new PreviewModelCallInputs(buildPreviewMessages(context), promptBuilder.build());
         inputs.setTools(tools == null ? null : new ArrayList<>(tools));
         inputs.setModelContext(context);
         ctx.setInputs(inputs);
@@ -384,37 +382,93 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
-        ModelCallInputs modelInputs = (ModelCallInputs) ctx.getInputs();
+        ModelCallInputs modelInputs = ModelCallInputs.class.cast(ctx.getInputs());
         Map<String, String> requestHeaders = modelInputs.consumeRequestHeaders();
         Model model = getLlm(ctx);
-        List<ToolInfo> tools = toolInfoList(modelInputs.getTools());
-        boolean enableKvRelease = config.getContextEngineConfig().isEnableKvCacheRelease();
-        boolean supportsKvRelease = model.supportsKvCacheRelease();
+        ContextWindow contextWindow = prepareModelContextWindow(ctx, model, modelInputs);
+        List<BaseMessage> messages = contextWindow.getMessages();
+        List<ToolInfo> tools = contextWindow.getTools();
+        modelInputs.setMessages(new ArrayList<>(messages));
+        modelInputs.setTools(new ArrayList<>(tools));
+        logLlmRequest(null, messages, tools);
 
-        if (enableKvRelease && !supportsKvRelease && !kvReleaseWarningLogged) {
+        ModelCallRuntime runtime = prepareModelCallRuntime(ctx, model, contextWindow);
+        ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder =
+                modelInvokeOptions(ctx, model, tools, requestHeaders, runtime.extraFields());
+        com.openjiuwen.core.kvcache.KVCacheModelHook.RuntimeLease kvLease = kvCacheModelCallHook
+                .beginInferenceLease(runtime.capabilities(), ctx.getSession(), runtime.extraFields())
+                .join();
+        runtime.extraFields().remove("__openjiuwen_kvc_model");
+        ModelInvokeOptions options = optionsBuilder.build();
+        StreamModelCall modelCall = new StreamModelCall(ctx, model, messages, options, modelInputs);
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+            return invokeNonStreaming(modelCall, kvLease);
+        }
+        return streamModelResponseWithRetry(modelCall, kvLease);
+    }
+
+    private ContextWindow prepareModelContextWindow(AgentCallbackContext ctx, Model model, ModelCallInputs inputs) {
+        boolean isKvReleaseEnabled = config.getContextEngineConfig().isEnableKvCacheRelease();
+        boolean canReleaseKvCache = model.supportsKvCacheRelease();
+
+        if (isKvReleaseEnabled && !canReleaseKvCache && !kvReleaseWarningLogged) {
             LOGGER.warning("ContextEngineConfig.enable_kv_cache_release is True, "
                     + "but the current LLM does not support KV cache release; "
                     + "KV cache release will not take effect.");
             kvReleaseWarningLogged = true;
         }
         Map<String, Object> contextWindowKwargs = new LinkedHashMap<>();
-        if (enableKvRelease && supportsKvRelease) {
+        if (isKvReleaseEnabled && canReleaseKvCache) {
             contextWindowKwargs.put("model", model);
         }
 
-        ContextWindow contextWindow = ctx.getContext().getContextWindow(
-                List.of(new SystemMessage(promptBuilder.build())),
-                tools,
+        List<BaseMessage> contextMessages = modelContextMessages(inputs);
+        boolean hasChangedContextMessages = inputs instanceof PreviewModelCallInputs preview
+                && preview.hasChangedContextMessages(contextMessages);
+        ContextWindow window = ctx.getContext().getContextWindow(
+                modelSystemMessages(inputs),
+                toolInfoList(inputs.getTools()),
                 null,
                 null,
                 contextWindowKwargs
         ).toCompletableFuture().join();
-        List<BaseMessage> messages = contextWindow.getMessages();
-        tools = contextWindow.getTools();
-        modelInputs.setMessages(new ArrayList<>(messages));
-        modelInputs.setTools(new ArrayList<>(tools));
-        logLlmRequest(null, messages, tools);
+        if (hasChangedContextMessages) {
+            window.setContextMessages(contextMessages);
+        }
+        return window;
+    }
 
+    private static List<BaseMessage> modelContextMessages(ModelCallInputs inputs) {
+        List<BaseMessage> messages = new ArrayList<>();
+        for (Object value : inputs.getMessages()) {
+            if (value instanceof BaseMessage message && !"system".equals(message.getRole())) {
+                messages.add(message);
+            }
+        }
+        return messages;
+    }
+
+    private List<BaseMessage> modelSystemMessages(ModelCallInputs inputs) {
+        List<BaseMessage> messages = new ArrayList<>();
+        for (Object value : inputs.getMessages()) {
+            if (value instanceof BaseMessage message && "system".equals(message.getRole())) {
+                if (inputs instanceof PreviewModelCallInputs preview && message == preview.systemMessage
+                        && Objects.equals(message.getContent(), preview.systemContent)) {
+                    messages.add(new SystemMessage(promptBuilder.build()));
+                } else {
+                    messages.add(message);
+                }
+            }
+        }
+        if (messages.isEmpty() && (!(inputs instanceof PreviewModelCallInputs preview)
+                || preview.systemMessage == null)) {
+            messages.add(new SystemMessage(promptBuilder.build()));
+        }
+        return messages;
+    }
+
+    private ModelCallRuntime prepareModelCallRuntime(AgentCallbackContext ctx, Model model,
+            ContextWindow contextWindow) {
         com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook.KVCacheCallCapabilities kvCapabilities =
                 kvCacheModelCallHook.resolveRuntime(model, config.isEnableKvCacheAffinity());
         String affinitySessionId = ctx.getSession() != null
@@ -434,7 +488,7 @@ public class ReActAgent extends BaseAgent {
         Map<String, Object> extraFields = new LinkedHashMap<>();
         extraFields.putAll(model.buildKvCacheInvokeKwargs(
                 ctx.getSession(),
-                enableKvRelease
+                config.getContextEngineConfig().isEnableKvCacheRelease()
         ));
         extraFields.putAll(kvCacheModelCallHook.buildInvokeKwargs(kvCapabilities, model, ctx.getSession(),
                 kvLineage));
@@ -446,7 +500,12 @@ public class ReActAgent extends BaseAgent {
             extraFields.put("logprobs", true);
             extraFields.put("top_logprobs", config.getLlmTopLogprobs());
         }
+        return new ModelCallRuntime(kvCapabilities, extraFields);
+    }
 
+    private ModelInvokeOptions.ModelInvokeOptionsBuilder modelInvokeOptions(AgentCallbackContext ctx, Model model,
+            List<ToolInfo> tools,
+            Map<String, String> requestHeaders, Map<String, Object> extraFields) {
         // Use the resolved model's name (may differ from config when a dynamic
         // model was selected via ctx.dynamicModelId) so the provider receives
         // the correct model name.
@@ -464,20 +523,42 @@ public class ReActAgent extends BaseAgent {
             )));
         }
 
-        com.openjiuwen.core.kvcache.KVCacheModelHook.RuntimeLease kvLease = kvCacheModelCallHook
-                .beginInferenceLease(kvCapabilities, ctx.getSession(), extraFields)
-                .join();
-        // The live model is only needed for runtime accounting; never forward
-        // it to the provider client as a request kwarg.
-        extraFields.remove("__openjiuwen_kvc_model");
-        ModelInvokeOptions options = optionsBuilder.build();
+        return optionsBuilder;
+    }
 
-        boolean streaming = Boolean.TRUE.equals(ctx.getExtra().get("_streaming"));
-        StreamModelCall modelCall = new StreamModelCall(ctx, model, messages, options, modelInputs);
-        if (!streaming) {
-            return invokeNonStreaming(modelCall, kvLease);
+    private record ModelCallRuntime(
+            com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook.KVCacheCallCapabilities capabilities,
+            Map<String, Object> extraFields) {
+    }
+
+    private static final class PreviewModelCallInputs extends ModelCallInputs {
+        private final SystemMessage systemMessage;
+        private final Object systemContent;
+        private final List<BaseMessage> contextMessages;
+        private final List<String> contextContents;
+
+        private PreviewModelCallInputs(List<BaseMessage> messages, String systemPrompt) {
+            setMessages(new ArrayList<>(messages));
+            systemMessage = !systemPrompt.isBlank() && !messages.isEmpty()
+                    && messages.get(0) instanceof SystemMessage message ? message : null;
+            systemContent = systemMessage == null ? null : systemMessage.getContent();
+            contextMessages = modelContextMessages(this);
+            contextContents = contextMessages.stream().map(message -> message.modelDump().toString()).toList();
         }
-        return streamModelResponseWithRetry(modelCall, kvLease);
+
+        private boolean hasChangedContextMessages(List<BaseMessage> messages) {
+            if (contextMessages.size() != messages.size()) {
+                return true;
+            }
+            for (int index = 0; index < messages.size(); index++) {
+                BaseMessage message = messages.get(index);
+                if (contextMessages.get(index) != message
+                        || !contextContents.get(index).equals(message.modelDump().toString())) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     private AssistantMessage invokeNonStreaming(StreamModelCall call,

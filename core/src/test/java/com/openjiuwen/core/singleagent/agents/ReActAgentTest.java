@@ -4,6 +4,14 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextStats;
 import com.openjiuwen.core.context.ContextWindow;
@@ -14,6 +22,7 @@ import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.callback.AbortError;
@@ -23,6 +32,7 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -39,14 +49,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Focused parity tests for the Java ReAct agent translation.
  *
@@ -57,6 +59,287 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code tests/unit_tests/core/context_engine/test_react_agent_kv_cache_release.py}.</p>
  */
 class ReActAgentTest {
+
+    @Test
+    void beforeModelRailKeepsSystemDirectivesAndProcessedHistory() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        SystemMessage directive = new SystemMessage("request-local directive");
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                assertInstanceOf(ModelCallInputs.class, context.getInputs()).getMessages().add(0, directive);
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("rail-directive"),
+                    new MemorySession("rail-directive"));
+
+            assertSame(directive, client.lastMessages.get(0));
+            assertEquals(List.of("request-local directive", "System", "question"),
+                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailCanReplaceSystemPrompt() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                inputs.setMessages(List.of(new SystemMessage("replacement")));
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("rail-replacement"),
+                    new MemorySession("rail-replacement"));
+
+            assertEquals(List.of("replacement", "question"),
+                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailKeepsCustomSystemMessageTypes() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        BaseMessage directive = new BaseMessage("system", "typed directive");
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                assertInstanceOf(ModelCallInputs.class, context.getInputs()).getMessages().add(0, directive);
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("rail-custom"), new MemorySession("rail-custom"));
+
+            assertSame(directive, client.lastMessages.get(0));
+            assertEquals(List.of("typed directive", "System", "question"),
+                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailCanEditOriginalSystemMessage() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                assertInstanceOf(BaseMessage.class, inputs.getMessages().get(0)).setContent("edited prompt");
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("rail-edit"), new MemorySession("rail-edit"));
+
+            assertEquals(List.of("edited prompt", "question"),
+                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailCanRemoveOriginalSystemMessage() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                inputs.getMessages().remove(0);
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("rail-remove"), new MemorySession("rail-remove"));
+
+            assertEquals(List.of("question"),
+                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailPreservesSystemDirectiveWhileStreaming() {
+        StreamingRecordingModelClient client = new StreamingRecordingModelClient();
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                inputs.getMessages().add(0, new SystemMessage("stream directive"));
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        AgentCallbackContext context = modelCallContext(agent, "rail-stream");
+        context.getExtra().put("_streaming", true);
+        try {
+            agent.callModel(context, context.getContext(), null);
+
+            assertEquals(List.of("stream directive", "System", "question"),
+                    client.streamMessages.stream().map(BaseMessage::getContentAsString).toList());
+            assertEquals(0, client.invokeCount());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailKeepsPromptBuilderUpdatesAndExtraSystemMessages() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                agent.addPromptBuilderSection("compression", "offload instructions", 90);
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                inputs.getMessages().add(new SystemMessage("directive"));
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("rail-builder"), new MemorySession("rail-builder"));
+
+            assertEquals(List.of("System\n\noffload instructions", "directive", "question"),
+                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailCanRemoveRequestHistory() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        RecordingModelContext context = new RecordingModelContext("rail-empty-history");
+        context.setMessages(List.of(new UserMessage("original")));
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext callback) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, callback.getInputs());
+                inputs.setMessages(List.of(inputs.getMessages().get(0)));
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, context, new MemorySession("rail-empty-history"));
+            assertEquals(List.of("System"),
+                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
+            assertEquals("original", context.getMessages().get(0).getContentAsString());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailKeepsRequestUserMessageWhileStreaming() {
+        StreamingRecordingModelClient client = new StreamingRecordingModelClient();
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        UserMessage digest = new UserMessage("stream digest");
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                assertInstanceOf(ModelCallInputs.class, context.getInputs()).getMessages().add(digest);
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        AgentCallbackContext context = modelCallContext(agent, "rail-user-stream");
+        context.getExtra().put("_streaming", true);
+        try {
+            agent.callModel(context, context.getContext(), null);
+            assertSame(digest, client.streamMessages.get(1));
+            assertEquals(List.of("System", "stream digest"),
+                    client.streamMessages.stream().map(BaseMessage::getContentAsString).toList());
+            assertEquals(0, client.invokeCount());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailKeepsRequestLocalUserMessage() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        UserMessage directive = new UserMessage("request digest");
+        RecordingModelContext context = new RecordingModelContext("rail-user");
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext callback) {
+                assertInstanceOf(ModelCallInputs.class, callback.getInputs()).getMessages().add(directive);
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, context, new MemorySession("rail-user"));
+            assertSame(directive, client.lastMessages.get(1));
+            assertEquals(List.of("System", "request digest"),
+                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
+            assertTrue(context.getMessages().isEmpty());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailCanReplaceRequestHistory() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        RecordingModelContext context = new RecordingModelContext("rail-history");
+        context.setMessages(List.of(new UserMessage("original")));
+        UserMessage replacement = new UserMessage("replacement history");
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext callback) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, callback.getInputs());
+                inputs.setMessages(List.of(inputs.getMessages().get(0), replacement));
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, context, new MemorySession("rail-history"));
+            assertSame(replacement, client.lastMessages.get(1));
+            assertEquals("original", context.getMessages().get(0).getContentAsString());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelRailCanEditRequestHistoryInPlace() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        RecordingModelContext context = new RecordingModelContext("rail-history-edit");
+        context.setMessages(List.of(new UserMessage("original")));
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext callback) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, callback.getInputs());
+                assertInstanceOf(BaseMessage.class, inputs.getMessages().get(1)).setContent("edited history");
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            callModelForKvTest(agent, context, new MemorySession("rail-history-edit"));
+            assertEquals("edited history", client.lastMessages.get(1).getContentAsString());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
 
     @Test
     void configChainsMirrorPythonMutators() {
@@ -655,6 +938,7 @@ class ReActAgentTest {
         private final boolean supportsKvCacheRelease;
         private int invokeCount;
         private ModelInvokeOptions lastOptions;
+        private List<BaseMessage> lastMessages = List.of();
 
         private RecordingModelClient(boolean supportsKvCacheRelease) {
             this.supportsKvCacheRelease = supportsKvCacheRelease;
@@ -664,6 +948,7 @@ class ReActAgentTest {
         public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
             invokeCount++;
             lastOptions = options;
+            lastMessages = new ArrayList<>(messages);
             return CompletableFuture.completedFuture(new AssistantMessage("ok"));
         }
 
@@ -684,6 +969,7 @@ class ReActAgentTest {
     private static final class StreamingRecordingModelClient implements Model.ModelClient {
         private int invokeCount;
         private ModelInvokeOptions streamOptions;
+        private List<BaseMessage> streamMessages = List.of();
 
         @Override
         public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
@@ -694,6 +980,7 @@ class ReActAgentTest {
         @Override
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             streamOptions = options;
+            streamMessages = new ArrayList<>(messages);
             return List.of(AssistantMessageChunk.builder().content("streamed").build()).iterator();
         }
 
