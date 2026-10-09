@@ -120,6 +120,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -2445,7 +2447,10 @@ public class DeepAgent implements AutoCloseable {
             long remainingMillis = TimeUnit.NANOSECONDS.toMillis(Math.max(1L, deadline - System.nanoTime()));
             // Session-scoped wait: a session's retry loop must never observe another
             // session's round result (round state is isolated per session).
-            Map<String, Object> result = eventHandler.waitCompletion(remainingMillis / 1000.0d,
+            double remainingSeconds = BigDecimal.valueOf(remainingMillis)
+                    .divide(BigDecimal.valueOf(1000), 3, RoundingMode.HALF_UP)
+                    .doubleValue();
+            Map<String, Object> result = eventHandler.waitCompletion(remainingSeconds,
                     session.getSessionId());
             if (!"completion_timeout".equals(result.get("error"))) {
                 return result;

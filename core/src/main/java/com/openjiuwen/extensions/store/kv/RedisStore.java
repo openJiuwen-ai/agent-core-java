@@ -880,13 +880,14 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
         int deleted;
         if (value instanceof Number number) {
             deleted = number.intValue();
-        } else if (value instanceof Boolean bool) {
-            deleted = bool ? fallbackCount : 0;
+        } else if (value instanceof Boolean isPresent) {
+            deleted = isPresent ? fallbackCount : 0;
         } else {
             deleted = asBoolean(value) ? fallbackCount : 0;
         }
         if (deleted == 0 && fallbackCount > 0) {
-            logger.warn("Redis delete returned 0 for {} requested key(s); keys may have already been absent", fallbackCount);
+            logger.warn("Redis delete returned 0 for {} requested key(s); keys may have already been absent",
+                    fallbackCount);
         }
         return deleted;
     }
