@@ -344,7 +344,7 @@ class DeepAgentSubagentMissingTest {
 
     private static List<String> toolIds(DeepAgent agent) {
         return agent.getTools().values().stream()
-                .map(tool -> tool.getCard().getId())
+                .map(tool -> tool.getCard().getName())
                 .toList();
     }
 
