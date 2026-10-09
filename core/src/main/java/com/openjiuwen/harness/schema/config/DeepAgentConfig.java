@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.schema.config;
 
 import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.harness.kvcache.KVCacheSubagentLifecycle;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
@@ -98,6 +99,25 @@ public class DeepAgentConfig {
     private ToolPermissionHost permissionHost;
     @Builder.Default
     private boolean isEnableTenantIsolation = false;
+    /**
+     * Whether the unified {@code agent_hint} KV-cache affinity protocol is
+     * enabled for this DeepAgent and its subagents. Mirrors Python's
+     * {@code DeepConfig.kv_cache_affinity_config.enable_kv_cache_affinity}.
+     *
+     * @since 0.1.16
+     */
+    @Builder.Default
+    private boolean isEnableKvCacheAffinity = false;
+    /**
+     * Subagent types that reuse a deterministic sub-session id across TaskTool
+     * calls; every other type gets a UUID suffix. Types listed here share one
+     * cache identity across invocations. Defaults to the browser and
+     * verification agents.
+     *
+     * @since 0.1.17
+     */
+    @Builder.Default
+    private List<String> stableSubSessionTypes = KVCacheSubagentLifecycle.DEFAULT_STABLE_SUB_SESSION_TYPES;
     private String tenantDataRoot;
     private List<String> workspaceSecondaryTiers;
     private Map<String, Map<String, Object>> workspaceTierConfigs;

@@ -41,10 +41,12 @@ class TaskToolPythonParityTest {
         FakeParentAgent parent = new FakeParentAgent(subagent);
         TaskTool tool = new TaskTool(taskCard(), parent);
 
-        ToolOutput output = (ToolOutput) tool.invoke(
+        Object result = tool.invoke(
                 Map.of("subagent_type", "code", "task_description", "run task"),
-                Map.of("session", new TestSession("parent_session"))
-        );
+                Map.of("session", new TestSession("parent_session")));
+        if (!(result instanceof ToolOutput output)) {
+            throw new AssertionError("TaskTool.invoke should return ToolOutput: " + result);
+        }
         Map<String, Object> data = (Map<String, Object>) output.getData();
 
         assertThat(output.isSuccess()).isTrue();
@@ -85,10 +87,12 @@ class TaskToolPythonParityTest {
         FakeSubagent subagent = new FakeSubagent("test_id", "browser_agent");
         TaskTool tool = new TaskTool(taskCard(), new FakeParentAgent(subagent));
 
-        ToolOutput output = (ToolOutput) tool.invoke(
+        Object result = tool.invoke(
                 Map.of("subagent_type", "browser_agent", "task_description", "continue browser task"),
-                Map.of("session", new TestSession("parent_session"))
-        );
+                Map.of("session", new TestSession("parent_session")));
+        if (!(result instanceof ToolOutput output)) {
+            throw new AssertionError("TaskTool.invoke should return ToolOutput: " + result);
+        }
         Map<String, Object> data = (Map<String, Object>) output.getData();
 
         assertThat(output.isSuccess()).isTrue();
@@ -152,6 +156,51 @@ class TaskToolPythonParityTest {
         assertThat(subagent.deepConfig().getSkills()).isEqualTo(List.of("skill_b"));
     }
 
+    @Test
+    void buildSubSessionIdHonorsConfiguredStableTypes() {
+        assertThat(TaskTool.buildSubSessionId("p", "verification_agent",
+                List.of("browser_agent", "verification_agent"))).isEqualTo("p_sub_verification_agent");
+        assertThat(TaskTool.buildSubSessionId("p", "custom_agent", List.of("custom_agent")))
+                .isEqualTo("p_sub_custom_agent");
+        assertThat(TaskTool.buildSubSessionId("p", "other", List.of("custom_agent")))
+                .matches("p_sub_other_[0-9a-f]{8}");
+    }
+
+    @Test
+    void taskToolUsesConfiguredStableSubSessionTypes() throws Exception {
+        FakeSubagent subagent = new FakeSubagent("test_id", "custom_agent");
+        TaskTool tool = new TaskTool(taskCard(), new FakeConfiguredParentAgent(subagent));
+
+        Object result = tool.invoke(
+                Map.of("subagent_type", "custom_agent", "task_description", "run task"),
+                Map.of("session", new TestSession("parent_session")));
+        if (!(result instanceof ToolOutput output)) {
+            throw new AssertionError("TaskTool.invoke should return ToolOutput: " + result);
+        }
+
+        assertThat(output.isSuccess()).isTrue();
+        assertThat(subagent.lastInputs()).containsEntry("conversation_id", "parent_session_sub_custom_agent");
+    }
+
+    @Test
+    void taskToolSuffixesTypesOutsideStableList() throws Exception {
+        FakeSubagent subagent = new FakeSubagent("test_id", "other_agent");
+        TaskTool tool = new TaskTool(taskCard(), new FakeConfiguredParentAgent(subagent));
+
+        tool.invoke(Map.of("subagent_type", "other_agent", "task_description", "run task"),
+                Map.of("session", new TestSession("parent_session")));
+
+        assertThat(String.valueOf(subagent.lastInputs().get("conversation_id")))
+                .matches("parent_session_sub_other_agent_[0-9a-f]{8}");
+    }
+
+    private static com.openjiuwen.harness.schema.config.DeepAgentConfig configuredParent() {
+        com.openjiuwen.harness.schema.config.DeepAgentConfig config =
+                new com.openjiuwen.harness.schema.config.DeepAgentConfig();
+        config.setStableSubSessionTypes(List.of("custom_agent"));
+        return config;
+    }
+
     private static ToolCard taskCard() {
         return new ToolCard("task_tool_test", "task_tool", "test");
     }
@@ -176,6 +225,21 @@ class TaskToolPythonParityTest {
         }
     }
 
+    /** Parent fake whose config lists {@code custom_agent} as a stable sub-session type. */
+    private static final class FakeConfiguredParentAgent extends DeepAgent {
+        private final DeepAgent subagent;
+
+        private FakeConfiguredParentAgent(DeepAgent subagent) {
+            super(new AgentCard("parent", "parent", "test"), configuredParent(), null);
+            this.subagent = subagent;
+        }
+
+        @Override
+        public DeepAgent createSubagent(String subagentType, String subsessionId) {
+            return subagent;
+        }
+    }
+
     private static final class FakeSubagent extends DeepAgent {
         private Map<String, Object> lastInputs = Map.of();
 
@@ -185,6 +249,12 @@ class TaskToolPythonParityTest {
 
         @Override
         public Map<String, Object> invoke(Map<String, Object> inputs) {
+            AgentSessionApi session = null;
+            return invoke(inputs, session);
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
             lastInputs = new LinkedHashMap<>(inputs);
             return Map.of("output", "done");
         }

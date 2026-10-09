@@ -22,6 +22,7 @@
 | [人机交互](人机交互.md) | 交互输入、打断、恢复与等待流程 | `session.interaction`、`examples/interact` | 以 Java 当前交互语义为准。 |
 | [Checkpointer 检查点机制](Checkpointer检查点机制.md) | 检查点生命周期、恢复、持久化与内存实现 | `session.checkpointer`、`graph` | 与交互恢复配套阅读。 |
 | [WorkflowAgent 支持多工作流跳转](WorkflowAgent支持多工作流跳转.md) | 多工作流路由与继续执行 | `examples/workflow_agent`、`application.workflow` | 以 Java 当前多 workflow 示例和入口能力为准。 |
+| [Ascend算力亲和](Ascend算力亲和.md) | KV cache 设备亲和、预取/卸载/驱逐调度、子代理缓存生命周期 | `com.openjiuwen.core.kvcache`、`examples/kv-cache-demo` | 以 Ascend-affinity 调度实现与调度 demo 为准。 |
 
 ### Session 子目录
 

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
@@ -34,11 +35,38 @@ public class AgentSession implements AgentSessionApi {
     private final boolean closeStreamOnPostRun;
     private final Map<String, Object> sourceMetadata;
     private TenantContext tenantContext;
+    private final com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol kvCacheRuntime;
+    private volatile boolean isKvcReleased;
+    private String parentSessionIdBound;
+    private String[] teamCacheScope;
 
     public AgentSession(String sessionId, Map<String, Object> envs, Object card,
                         StreamWriterManager streamWriterManager,
                         boolean closeStreamOnPostRun,
                         Map<String, Object> sourceMetadata) {
+        this(sessionId, envs, card, streamWriterManager, closeStreamOnPostRun, sourceMetadata, null);
+    }
+
+    /**
+     * Create a session with an optional shared KV cache runtime.
+     *
+     * <p>Mirrors Python's {@code Session(..., kv_cache_runtime=...)} and the
+     * {@code parent_session_id} lineage slot.</p>
+     *
+     * @param sessionId session id
+     * @param envs initial envs
+     * @param card agent card
+     * @param streamWriterManager stream writer manager
+     * @param closeStreamOnPostRun whether postRun closes the stream
+     * @param sourceMetadata owner metadata
+     * @param kvCacheRuntime shared application KVC runtime, may be {@code null}
+     * @since 0.1.16
+     */
+    public AgentSession(String sessionId, Map<String, Object> envs, Object card,
+                        StreamWriterManager streamWriterManager,
+                        boolean closeStreamOnPostRun,
+                        Map<String, Object> sourceMetadata,
+                        com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol kvCacheRuntime) {
         this.sessionId = sessionId == null ? UUID.randomUUID().toString() : sessionId;
         Config config = new Config();
         if (envs != null) {
@@ -49,6 +77,7 @@ public class AgentSession implements AgentSessionApi {
         this.card = card;
         this.closeStreamOnPostRun = closeStreamOnPostRun;
         this.sourceMetadata = sourceMetadata == null ? Map.of() : new LinkedHashMap<>(sourceMetadata);
+        this.kvCacheRuntime = kvCacheRuntime;
     }
 
     public AgentSession(String sessionId, Map<String, Object> envs, Object card) {
@@ -241,6 +270,136 @@ public class AgentSession implements AgentSessionApi {
 
     public com.openjiuwen.core.session.internal.AgentSession getInner() {
         return inner;
+    }
+
+    /**
+     * Bind the Team scope used to derive this member session's cache id.
+     *
+     * <p>Mirrors Python's {@code Session.set_team_cache_scope}.</p>
+     *
+     * @param teamId team id
+     * @param agentId member agent id
+     * @since 0.1.16
+     */
+    public void setTeamCacheScope(String teamId, String agentId) {
+        if (teamId == null || teamId.isBlank() || agentId == null || agentId.isBlank()) {
+            return;
+        }
+        this.teamCacheScope = new String[] {teamId, agentId};
+    }
+
+    /**
+     * Bind this child to one product session before it starts running.
+     *
+     * <p>Mirrors Python's {@code Session.bind_parent_session_id}: lineage is
+     * immutable once set; rebinding the same parent is idempotent, moving a
+     * live child to another parent is an ownership error.</p>
+     *
+     * @param parentSessionId product session id
+     * @since 0.1.16
+     */
+    public void bindParentSessionId(String parentSessionId) {
+        String normalized = parentSessionId == null ? "" : parentSessionId.strip();
+        if (normalized.isEmpty()) {
+            return;
+        }
+        if (parentSessionIdBound == null) {
+            parentSessionIdBound = normalized;
+            return;
+        }
+        if (!parentSessionIdBound.equals(normalized)) {
+            throw new IllegalStateException(
+                    "Session parent is already bound to " + parentSessionIdBound
+                            + "; cannot rebind to " + normalized);
+        }
+    }
+
+    @Override
+    public com.openjiuwen.core.kvcache.KVCacheIdentity getCacheIdentity() {
+        if (teamCacheScope != null) {
+            String cacheId = com.openjiuwen.core.kvcache.KVCacheMetadata.teamMemberCacheIdentity(
+                    sessionId, teamCacheScope[0], teamCacheScope[1]);
+            return new com.openjiuwen.core.kvcache.KVCacheIdentity(
+                    cacheId, parentSessionIdBound == null ? sessionId : parentSessionIdBound);
+        }
+        Object sourceAgentId = sourceMetadata.get("source_agent_id");
+        Object sourceTeamId = sourceMetadata.get("source_team_id");
+        if (sourceTeamId instanceof String teamId && !teamId.isBlank()
+                && sourceAgentId instanceof String agentId && !agentId.isBlank()) {
+            String cacheId = com.openjiuwen.core.kvcache.KVCacheMetadata.teamMemberCacheIdentity(
+                    sessionId, teamId, agentId);
+            return new com.openjiuwen.core.kvcache.KVCacheIdentity(cacheId, sessionId);
+        }
+        String cacheId = envValue(com.openjiuwen.core.kvcache.KVCacheMetadata.KV_CACHE_AFFINITY_SESSION_ID_ENV);
+        String parentCacheId =
+                envValue(com.openjiuwen.core.kvcache.KVCacheMetadata.KV_CACHE_AFFINITY_PARENT_SESSION_ID_ENV);
+        boolean hasCacheId = !cacheId.isBlank();
+        boolean hasParentCacheId = !parentCacheId.isBlank();
+        if (hasCacheId || hasParentCacheId || parentSessionIdBound != null) {
+            String resolvedCacheId = hasCacheId ? cacheId : sessionId;
+            String resolvedParent = hasParentCacheId
+                    ? parentCacheId
+                    : parentSessionIdBound == null ? resolvedCacheId : parentSessionIdBound;
+            return new com.openjiuwen.core.kvcache.KVCacheIdentity(resolvedCacheId, resolvedParent);
+        }
+        return new com.openjiuwen.core.kvcache.KVCacheIdentity(sessionId, sessionId);
+    }
+
+    private String envValue(String key) {
+        Object value = inner.config().getEnv(key);
+        return value == null ? "" : String.valueOf(value).strip();
+    }
+
+    @Override
+    public java.util.Optional<com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol> getKvCacheRuntime() {
+        return isKvcReleased
+                ? java.util.Optional.empty()
+                : java.util.Optional.ofNullable(kvCacheRuntime);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Boolean> prepareKvc() {
+        return invokeKvc("prepare");
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Boolean> suspendKvc() {
+        return invokeKvc("suspend");
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Boolean> releaseKvc() {
+        if (isKvcReleased) {
+            return java.util.concurrent.CompletableFuture.completedFuture(false);
+        }
+        isKvcReleased = true;
+        return invokeKvc("release");
+    }
+
+    private java.util.concurrent.CompletableFuture<Boolean> invokeKvc(String operation) {
+        com.openjiuwen.core.kvcache.KVCacheTypes.KVCacheRuntimeProtocol runtime;
+        if ("release".equals(operation)) {
+            runtime = kvCacheRuntime;
+        } else {
+            runtime = getKvCacheRuntime().orElse(null);
+        }
+        if (runtime == null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(false);
+        }
+        com.openjiuwen.core.kvcache.KVCacheIdentity identity = getCacheIdentity();
+        java.util.concurrent.CompletableFuture<Boolean> action = switch (operation) {
+            case "prepare" -> runtime.prepare(identity);
+            case "suspend" -> runtime.suspend(identity);
+            default -> runtime.release(identity);
+        };
+        return action.handle((result, throwable) -> {
+            if (throwable != null) {
+                Loggers.SESSION.warning("KVC {0} failed; continue normal flow: {1}",
+                        operation, throwable.toString());
+                return false;
+            }
+            return Boolean.TRUE.equals(result);
+        });
     }
 
     private Object tagStreamPayload(Object data) {
