@@ -6,6 +6,7 @@ package com.openjiuwen.harness.rails;
 
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.TodoSection;
@@ -79,6 +80,10 @@ public class TaskPlanningRail extends DeepAgentRail {
         if (todoStorageType != null && !todoStorageType.isBlank()) {
             TodoStorage storage = resolveTodoStorage(agent, todoStorageType);
             todoStore = new TodoStorageStoreAdapter(storage);
+        } else if (agent.getWorkspace() != null && agent.getWorkspace().root() != null) {
+            // Default to file-based storage when no type is configured
+            todoStore = new TodoStorageStoreAdapter(
+                    new FileTodoStorage(agent.getWorkspace().root().resolve(".todo")));
         }
         if (tools.isEmpty()) {
             tools.addAll(TodoTools.createTodosTool(todoStore));
@@ -147,7 +152,11 @@ public class TaskPlanningRail extends DeepAgentRail {
             return;
         }
         if (defaultModelId == null) {
+            // Try context first, then fall back to Runner.resourceMgr() (same as fork version)
             defaultModelId = stringValue(ctx.getValues().get("default_model_id"));
+            if (defaultModelId == null) {
+                defaultModelId = Runner.resourceMgr().getDefaultModelId();
+            }
         }
         String selectedModelId = getInProgressModelId(ctx);
         String targetModelId = selectedModelId != null && modelSelection.containsKey(selectedModelId)
@@ -296,6 +305,18 @@ public class TaskPlanningRail extends DeepAgentRail {
                 todosCache.put(sessionId, new ArrayList<>(todos));
             }
         }
+        // Fall back to loading from todo storage (same as fork version's loadTodos)
+        if ((todos == null || todos.isEmpty()) && sessionId != null && todoStore != null) {
+            try {
+                List<TodoItem> loaded = todoStore.load(Map.of("session_id", sessionId));
+                if (loaded != null && !loaded.isEmpty()) {
+                    todos = loaded;
+                    todosCache.put(sessionId, new ArrayList<>(loaded));
+                }
+            } catch (RuntimeException ignored) {
+                // best-effort: storage may not be initialized in test
+            }
+        }
         for (TodoItem todo : todos) {
             if (todo.getStatus() == TodoStatus.IN_PROGRESS) {
                 return todo.getSelectedModelId();
@@ -327,6 +348,10 @@ public class TaskPlanningRail extends DeepAgentRail {
             return fromHolder;
         }
         String sessionId = stringValue(ctx.getValues().get("session_id"));
+        if (sessionId == null || sessionId.isBlank()) {
+            // Fall back to conversation_id (used by DeepAgent invoke inputs)
+            sessionId = stringValue(ctx.getValues().get("conversation_id"));
+        }
         return sessionId == null || sessionId.isBlank() ? null : sessionId;
     }
 
@@ -423,6 +448,16 @@ public class TaskPlanningRail extends DeepAgentRail {
                         if (item.getStatus() != null) {
                             map.put("status", item.getStatus().name().toLowerCase());
                         }
+                        map.put("selected_model_id", item.getSelectedModelId());
+                        if (item.getDependsOn() != null) {
+                            map.put("depends_on", item.getDependsOn());
+                        }
+                        if (item.getResultSummary() != null) {
+                            map.put("result_summary", item.getResultSummary());
+                        }
+                        if (item.getMetaData() != null) {
+                            map.put("meta_data", item.getMetaData());
+                        }
                         result.add(TodoItem.fromMap(map));
                     }
                 }
@@ -440,11 +475,25 @@ public class TaskPlanningRail extends DeepAgentRail {
                 if (todos != null) {
                     for (TodoItem item : todos) {
                         if (item != null) {
+                            com.openjiuwen.harness.tools.TodoStatus toolStatus = null;
+                            if (item.getStatus() != null) {
+                                switch (item.getStatus()) {
+                                    case PENDING -> toolStatus = com.openjiuwen.harness.tools.TodoStatus.PENDING;
+                                    case IN_PROGRESS -> toolStatus = com.openjiuwen.harness.tools.TodoStatus.IN_PROGRESS;
+                                    case COMPLETED -> toolStatus = com.openjiuwen.harness.tools.TodoStatus.COMPLETED;
+                                    case CANCELLED -> toolStatus = com.openjiuwen.harness.tools.TodoStatus.CANCELLED;
+                                }
+                            }
                             mapped.add(com.openjiuwen.harness.tools.TodoItem.builder()
                                     .id(item.getId())
                                     .content(item.getContent())
                                     .activeForm(item.getActiveForm())
                                     .description(item.getDescription())
+                                    .status(toolStatus != null ? toolStatus : com.openjiuwen.harness.tools.TodoStatus.PENDING)
+                                    .selectedModelId(item.getSelectedModelId())
+                                    .dependsOn(item.getDependsOn())
+                                    .resultSummary(item.getResultSummary())
+                                    .metaData(item.getMetaData())
                                     .build());
                         }
                     }
