@@ -14,11 +14,11 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -86,7 +86,10 @@ public class AgentCallbackManager {
                     rail.getPriority()
             ));
         }
-        return chain.thenApply(ignored -> this);
+        return chain.thenApply(ignored -> {
+            registerRailTools(rail, agent);
+            return this;
+        });
     }
 
     public CompletionStage<AgentCallbackManager> register_rail(AgentRail rail, Object agent) {
@@ -118,7 +121,19 @@ public class AgentCallbackManager {
                     rail.getPriority()
             ));
         }
-        return chain.thenApply(ignored -> this);
+        return chain.thenApply(ignored -> {
+            registerRailTools(rail, agent);
+            return this;
+        });
+    }
+
+    private static void registerRailTools(AgentRail rail, Object agent) {
+        if (!(agent instanceof BaseAgent baseAgent) || rail.getToolCards() == null) {
+            return;
+        }
+        for (var toolCard : rail.getToolCards()) {
+            baseAgent.getAbilityManager().add(toolCard);
+        }
     }
 
     public CompletionStage<Void> unregisterRail(AgentRail rail, Object agent) {
@@ -240,7 +255,7 @@ public class AgentCallbackManager {
             chain = chain.thenCompose(ignored -> instanceCallbackFramework.unregister(getInstanceEvent(entry.getKey()),
                     entry.getValue()));
         }
-        return chain;
+        return chain.thenRun(() -> unregisterRailTools(rail, agent));
     }
 
     public CompletionStage<Void> unregister(AgentCallbackEvent event, AgentCallback callback) {
