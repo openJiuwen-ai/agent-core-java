@@ -28,6 +28,7 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
@@ -40,10 +41,13 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
+import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
+import com.openjiuwen.core.singleagent.external.ExternalToolResult;
 import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.interrupt.ResumeContext;
-import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -55,11 +59,7 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.Rails;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
-import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
-import com.openjiuwen.core.singleagent.external.ExternalToolResult;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
-import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
@@ -1079,6 +1079,7 @@ public class ReActAgent extends BaseAgent {
                 originalQuery
         );
         if (hitlInterrupt.getState() != null) {
+            hitlInterrupt.getState().copyRailStateFrom(ToolInterruptionState.railState(ctx));
             if (externalResume) {
                 contextEngine.saveContexts(session);
             }

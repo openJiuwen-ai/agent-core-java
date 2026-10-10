@@ -4,7 +4,9 @@
 
 package com.openjiuwen.harness.rails.interrupt;
 
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.rails.CallbackContext;
 
 import java.io.Serial;
@@ -42,6 +44,14 @@ public class ConfirmInterruptRail extends BaseInterruptRail {
 
     public ConfirmRequest getRequest() {
         return request;
+    }
+
+    @Override
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall, Object userInput) {
+        CallbackContext callback = toCallbackContext(context);
+        callback.put("interrupt_kind", "confirm");
+        return resolveInterrupt(callback, toolCall, userInput,
+                InterruptRailSupport.autoConfirmConfig(context));
     }
 
     public InterruptDecision resolveInterrupt(

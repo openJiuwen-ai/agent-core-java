@@ -4,10 +4,19 @@
 
 package com.openjiuwen.harness.rails.interrupt;
 
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
+import com.openjiuwen.core.singleagent.rail.AgentCallback;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -29,6 +38,137 @@ public class BaseInterruptRail extends DeepAgentRail {
 
     public BaseInterruptRail(Collection<String> toolNames) {
         addTools(toolNames);
+    }
+
+    @Override
+    public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {
+        Map<AgentCallbackEvent, AgentCallback> callbacks = new EnumMap<>(super.getCallbacks());
+        callbacks.put(AgentCallbackEvent.BEFORE_INVOKE, context -> {
+            ToolInterruptionState.railState(context);
+            beforeInvoke(context);
+            return completed();
+        });
+        return callbacks;
+    }
+
+    @Override
+    public void beforeToolCall(AgentCallbackContext context) {
+        if (!(context.getInputs() instanceof ToolCallInputs inputs)
+                || !(inputs.getToolCall() instanceof ToolCall toolCall)
+                || !toolNames.contains(toolCall.getName())) {
+            return;
+        }
+        evaluateWithSettledReplay(context, toolCall);
+    }
+
+    /**
+     * Evaluate this rail's native decision, preserving prior decisions during chained approvals.
+     *
+     * @param context current callback context
+     * @param toolCall call being evaluated
+     * @since 0.1.17
+     */
+    protected void evaluateWithSettledReplay(AgentCallbackContext context, ToolCall toolCall) {
+        InterruptRailSupport.evaluate(context, toolCall, getClass().getName(),
+                () -> resolveInterrupt(context, toolCall, getUserInput(context, toolCall)));
+    }
+
+    /**
+     * Resolve a native tool approval using the existing dynamic-context hook by default.
+     *
+     * @param context current callback context
+     * @param toolCall call being evaluated
+     * @param userInput resumed response, or null
+     * @return decision to approve, reject, or pause this call
+     * @since 0.1.17
+     */
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall, Object userInput) {
+        CallbackContext callback = toCallbackContext(context);
+        callback.put("user_input", userInput);
+        beforeToolCall(callback);
+        applyCallbackContext(context, callback);
+        if (callback.isRejected()) {
+            ToolMessage message = null;
+            if (callback.get("tool_msg") instanceof ToolMessage toolMessage) {
+                message = toolMessage;
+            }
+            return reject(callback.get("tool_result"), message);
+        }
+        if (Boolean.TRUE.equals(callback.get("interrupt_required"))) {
+            return interrupt(new InterruptRequest("Please approve or reject?", Map.of(), toolCall.getName()));
+        }
+        String args = null;
+        if (callback.get("tool_args") instanceof String replacement) {
+            args = replacement;
+        }
+        return approve(args);
+    }
+
+    /**
+     * Read the native resume response for a tool call.
+     *
+     * @param context current callback context
+     * @param toolCall call being evaluated
+     * @return response for this call, or null
+     * @since 0.1.17
+     */
+    protected Object getUserInput(AgentCallbackContext context, ToolCall toolCall) {
+        return InterruptRailSupport.userInput(context, toolCall, getClass().getName()).orElse(null);
+    }
+
+    /**
+     * Approve without replacing tool arguments.
+     *
+     * @return approval decision
+     * @since 0.1.17
+     */
+    public ApproveResult approve() {
+        return new ApproveResult();
+    }
+
+    /**
+     * Approve with replacement tool arguments.
+     *
+     * @param newArgs replacement arguments, or null to retain them
+     * @return approval decision
+     * @since 0.1.17
+     */
+    public ApproveResult approve(String newArgs) {
+        return new ApproveResult(newArgs);
+    }
+
+    /**
+     * Reject and surface a tool result.
+     *
+     * @param toolResult rejection result
+     * @return rejection decision
+     * @since 0.1.17
+     */
+    public RejectResult reject(Object toolResult) {
+        return new RejectResult(toolResult);
+    }
+
+    /**
+     * Reject and surface a tool result and message.
+     *
+     * @param toolResult rejection result
+     * @param toolMessage optional rejection message
+     * @return rejection decision
+     * @since 0.1.17
+     */
+    public RejectResult reject(Object toolResult, ToolMessage toolMessage) {
+        return new RejectResult(toolResult, toolMessage);
+    }
+
+    /**
+     * Pause this call until a user response is supplied.
+     *
+     * @param request confirmation request
+     * @return pending decision
+     * @since 0.1.17
+     */
+    public InterruptResult interrupt(InterruptRequest request) {
+        return new InterruptResult(request);
     }
 
     @Override
