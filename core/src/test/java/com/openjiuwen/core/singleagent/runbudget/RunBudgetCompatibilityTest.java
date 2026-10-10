@@ -4,7 +4,8 @@
 
 package com.openjiuwen.core.singleagent.runbudget;
 
-import com.openjiuwen.core.session.AgentSessionApi;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 
 import org.junit.jupiter.api.AfterEach;
@@ -14,8 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * UT-C01: with no budget config declared (rail not registered), the main loop behavior is

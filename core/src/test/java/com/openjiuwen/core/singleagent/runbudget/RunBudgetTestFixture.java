@@ -4,6 +4,14 @@
 
 package com.openjiuwen.core.singleagent.runbudget;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.openjiuwen.core.common.logging.LogManager;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -40,14 +48,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Shared fixtures for FEAT-057 run-budget tests: scripted model double, recording logger
@@ -242,13 +242,13 @@ final class RunBudgetTestFixture {
         }
 
         long steeringMessageCount(String fragment) {
-            long count = 0;
+            long count = 0L;
             for (List<BaseMessage> messages : messagesLog) {
-                boolean seenInCall = false;
+                boolean isSeenInCall = false;
                 for (BaseMessage message : messages) {
-                    if (!seenInCall && message instanceof UserMessage userMessage
+                    if (!isSeenInCall && message instanceof UserMessage userMessage
                             && String.valueOf(userMessage.getContent()).contains(fragment)) {
-                        seenInCall = true;
+                        isSeenInCall = true;
                         count++;
                     }
                 }
@@ -288,7 +288,8 @@ final class RunBudgetTestFixture {
                 map.forEach((key, value) -> copy.put(String.valueOf(key), value));
                 payloads.add(copy);
             }
-            return null;
+            // The target LoggerProtocol.info is void; Mockito ignores the answer's return value.
+            return Boolean.TRUE;
         }
 
         List<Map<String, Object>> payloadsOf(String eventTypeValue) {

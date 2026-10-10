@@ -27,7 +27,7 @@ public class RunBudgetConfig {
     private static final int MIN_FIRST_CHECKPOINT = 10;
     private static final int HARD_LIMIT_FLOOR = 200;
 
-    private final boolean turnEnabled;
+    private final boolean isTurnEnabled;
     private final Integer suggestedRounds;
     private final int defaultGuaranteedRounds;
     private final Integer hardLimit;
@@ -41,7 +41,7 @@ public class RunBudgetConfig {
     private final int nearDeadlineThresholdSeconds;
 
     private RunBudgetConfig(Builder builder) {
-        this.turnEnabled = builder.turnEnabled;
+        this.isTurnEnabled = builder.isTurnEnabled;
         this.suggestedRounds = builder.suggestedRounds;
         this.defaultGuaranteedRounds = builder.defaultGuaranteedRounds;
         this.hardLimit = builder.hardLimit;
@@ -70,7 +70,7 @@ public class RunBudgetConfig {
      * @return true when the turn dimension is active
      */
     public boolean isTurnEnabled() {
-        return turnEnabled;
+        return isTurnEnabled;
     }
 
     /**
@@ -187,7 +187,7 @@ public class RunBudgetConfig {
      * @since 2026-10-08
      */
     public static final class Builder {
-        private boolean turnEnabled;
+        private boolean isTurnEnabled;
         private Integer suggestedRounds;
         private int defaultGuaranteedRounds = DEFAULT_GUARANTEED_ROUNDS;
         private Integer hardLimit;
@@ -210,8 +210,8 @@ public class RunBudgetConfig {
          * @param enabled true to activate the turn dimension
          * @return this builder
          */
-        public Builder turnEnabled(boolean enabled) {
-            this.turnEnabled = enabled;
+        public Builder turnEnabled(boolean isTurnEnabled) {
+            this.isTurnEnabled = isTurnEnabled;
             return this;
         }
 
@@ -359,7 +359,10 @@ public class RunBudgetConfig {
             if (defaultGuaranteedRounds <= 0) {
                 throw new IllegalArgumentException("run-budget defaultGuaranteedRounds must be positive");
             }
-            return suggestedRounds != null ? suggestedRounds : defaultGuaranteedRounds;
+            if (suggestedRounds != null) {
+                return suggestedRounds;
+            }
+            return defaultGuaranteedRounds;
         }
 
         private int validateHardLimit(int effectiveGuarantee) {

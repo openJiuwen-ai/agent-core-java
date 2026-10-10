@@ -4,17 +4,16 @@
 
 package com.openjiuwen.core.singleagent.runbudget;
 
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
 
 /**
  * UT-C02~C05 core side: {@link RunBudgetConfig} builder defaults, normalization and
  * fail-fast validation (illegal values rejected at build time).
  */
 class RunBudgetConfigValidationTest {
-
     @Test
     void build_defaultConfig_succeedsWithDocumentedDefaults() {
         // Given a builder with only defaults

@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.runbudget;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -15,10 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * UT-B01~B09: turn-dimension guarantee semantics, checkpoint evaluation and extension,
@@ -377,7 +376,6 @@ class RunBudgetRailTurnBudgetTest {
          * Reports the host no-progress fact to the budget state.
          *
          * @param ctx callback context
-         * @return completed stage
          */
         @Override
         public void afterToolCall(AgentCallbackContext ctx) {
@@ -404,7 +402,6 @@ class RunBudgetRailTurnBudgetTest {
          * Pushes the steering note when the configured round answers.
          *
          * @param ctx callback context
-         * @return completed stage
          */
         @Override
         public void afterModelCall(AgentCallbackContext ctx) {

@@ -223,8 +223,8 @@ public class RunBudgetRail extends AgentRail {
 
     private void handleSafetyValveZone(AgentCallbackContext ctx, RunBudgetState state, int round, int hardLimit) {
         boolean hasToolCalls = responseHasToolCalls(ctx);
-        boolean loopWillContinue = hasToolCalls || ctx.hasPendingSteering();
-        if (round == hardLimit && !state.isSafetyValveTriggered() && loopWillContinue) {
+        boolean shouldLoopContinue = hasToolCalls || ctx.hasPendingSteering();
+        if (round == hardLimit && !state.isSafetyValveTriggered() && shouldLoopContinue) {
             state.markSafetyValveTriggered();
             ctx.pushSteering(SAFETY_VALVE_INSTRUCTION);
             RunBudgetEvent event = newEvent(state, LogEventType.TURN_BUDGET_SAFETY_VALVE_TRIGGERED);
@@ -252,17 +252,17 @@ public class RunBudgetRail extends AgentRail {
     }
 
     private void evaluateCheckpoint(AgentCallbackContext ctx, RunBudgetState state, int round) {
-        boolean hostStall = state.hasHostStallReport();
-        boolean progressed = !hostStall && hasLocalProgress(ctx, state);
-        Optional<RunBudgetState.HostStallReport> report = progressed
+        boolean hasHostStall = state.hasHostStallReport();
+        boolean hasProgressed = !hasHostStall && hasLocalProgress(ctx, state);
+        Optional<RunBudgetState.HostStallReport> report = hasProgressed
                 ? Optional.empty() : state.consumeHostStallReport();
-        if (progressed) {
+        if (hasProgressed) {
             state.recordProgress(config.getProgressIntervalStep(), config.getMaxCheckpointInterval(), round);
         } else {
             state.recordStall(config.getStagnationEscalationThreshold(), config.getProgressIntervalStep(), round);
         }
-        emitCheckpointEvent(state, round, progressed, hostStall);
-        if (progressed) {
+        emitCheckpointEvent(state, round, hasProgressed, hasHostStall);
+        if (hasProgressed) {
             RunBudgetEvent extended = newEvent(state, LogEventType.TURN_BUDGET_EXTENDED);
             extended.setRound(round);
             extended.setAllowedRounds(state.getNextCheckpoint());
@@ -275,15 +275,15 @@ public class RunBudgetRail extends AgentRail {
         state.startNewWindow(currentContent(ctx));
     }
 
-    private void emitCheckpointEvent(RunBudgetState state, int round, boolean progressed, boolean hostStall) {
+    private void emitCheckpointEvent(RunBudgetState state, int round, boolean hasProgressed, boolean hasHostStall) {
         RunBudgetEvent event = newEvent(state, LogEventType.TURN_BUDGET_CHECKPOINT);
         event.setRound(round);
         event.setCheckpoint(round);
-        event.setProgressed(progressed);
+        event.setProgressed(hasProgressed);
         event.setConsecutiveStalls(state.getConsecutiveStalls());
         event.setAllowedRounds(state.getNextCheckpoint());
         event.setNextInterval(state.getNextCheckpoint() - round);
-        event.setHostStallReported(hostStall);
+        event.setHostStallReported(hasHostStall);
         RunBudgetEvents.emit("run budget checkpoint evaluated", LogEventType.TURN_BUDGET_CHECKPOINT, event);
     }
 
