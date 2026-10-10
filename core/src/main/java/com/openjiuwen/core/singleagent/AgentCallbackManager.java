@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.utils.IsolatedActions;
 import com.openjiuwen.core.runner.callback.AbortError;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -14,11 +15,11 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -347,6 +348,8 @@ public class AgentCallbackManager {
                     if (context != null) {
                         try {
                             callback.handle(context).toCompletableFuture().join();
+                        } catch (ToolInterruptException interruption) {
+                            throw new AbortError(interruption.getMessage(), interruption);
                         } catch (CompletionException exception) {
                             throw normalizeCallbackFailure(exception);
                         }
@@ -449,6 +452,9 @@ public class AgentCallbackManager {
 
         private static RuntimeException normalizeCallbackFailure(Throwable error) {
             Throwable normalized = unwrapCallbackFailure(error);
+            if (normalized instanceof ToolInterruptException interruption) {
+                return new AbortError(interruption.getMessage(), interruption);
+            }
             if (normalized instanceof AbortError abortError) {
                 throw abortError;
             }

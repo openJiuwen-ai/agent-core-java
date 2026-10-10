@@ -189,7 +189,14 @@ public abstract class DeepAgentRail extends AgentRail {
         return completed();
     }
 
-    private CallbackContext toCallbackContext(AgentCallbackContext context) {
+    /**
+     * Adapt native event inputs while retaining this rail's DeepAgent owner.
+     *
+     * @param context native callback context
+     * @return dynamic callback context
+     * @since 0.1.17
+     */
+    protected CallbackContext toCallbackContext(AgentCallbackContext context) {
         Map<String, Object> values = new LinkedHashMap<>();
         if (context != null) {
             putInputs(values, context.getInputs());
@@ -237,7 +244,14 @@ public abstract class DeepAgentRail extends AgentRail {
         values.put("response", modelInputs.getResponse());
     }
 
-    private static void applyCallbackContext(AgentCallbackContext context, CallbackContext callback) {
+    /**
+     * Apply dynamic-context rewrites to native event inputs.
+     *
+     * @param context native callback context
+     * @param callback dynamic callback context
+     * @since 0.1.17
+     */
+    protected static void applyCallbackContext(AgentCallbackContext context, CallbackContext callback) {
         if (context == null || callback == null) {
             return;
         }
