@@ -164,6 +164,7 @@ public class ToolInterruptHandler {
         int resumeIteration = state.getIteration();
         saveAutoConfirmFromState(state, userInput, resumeContext.getSession());
         if (ctx != null) {
+            ToolInterruptionState.railState(ctx).copyRailStateFrom(state);
             ctx.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, userInput);
         }
 
@@ -188,6 +189,9 @@ public class ToolInterruptHandler {
         }
 
         CollectResult collectResult = collectInterrupts(results, toolsToExecute);
+        if (ctx != null) {
+            state.copyRailStateFrom(ToolInterruptionState.railState(ctx));
+        }
         state.setInterruptedTools(collectResult.getInterruptedTools());
         state.setAutoConfirmMapping(collectResult.getAutoConfirmMapping());
         if (!collectResult.getInterruptedTools().isEmpty()) {
