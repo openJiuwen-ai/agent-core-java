@@ -41,6 +41,12 @@
             <artifactId>agent-core-java</artifactId>
             <version>${agent-core-java.version}</version>
         </dependency>
+        <!-- demo 入口用 stdout 看进度；core 仅带 slf4j-api，日志实现需示例自带 -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.5.18</version>
+        </dependency>
     </dependencies>
 
     <build>
