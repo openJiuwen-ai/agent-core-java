@@ -6,14 +6,28 @@ package com.openjiuwen.harness.rails.security;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
+import com.openjiuwen.core.singleagent.rail.AgentCallback;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
+import com.openjiuwen.harness.rails.interrupt.ApproveResult;
+import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
+import com.openjiuwen.harness.rails.interrupt.InterruptRailSupport;
+import com.openjiuwen.harness.rails.interrupt.InterruptResult;
+import com.openjiuwen.harness.rails.interrupt.RejectResult;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -23,13 +37,15 @@ import java.util.Set;
  * {@code openjiuwen/harness/rails/security/base_security_rail.py}.</p>
  */
 public class BaseSecurityRail extends DeepAgentRail {
-
     public static final String BEFORE_INVOKE = "before_invoke";
     public static final String AFTER_INVOKE = "after_invoke";
     public static final String BEFORE_TOOL_CALL = "before_tool_call";
     public static final String AFTER_TOOL_CALL = "after_tool_call";
     public static final String BEFORE_MODEL_CALL = "before_model_call";
     public static final String AFTER_MODEL_CALL = "after_model_call";
+
+    private static final Set<String> REQUEST_FIELDS = Set.of(
+            "message", "payload_schema", "auto_confirm_key", "ui_options");
 
     private final Set<String> toolNames = new LinkedHashSet<>();
     private final Set<String> supportedEvents = new LinkedHashSet<>();
@@ -41,6 +57,114 @@ public class BaseSecurityRail extends DeepAgentRail {
     public BaseSecurityRail(Iterable<String> toolNames) {
         setPriority(90);
         addTools(toolNames);
+    }
+
+    @Override
+    public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {
+        Map<AgentCallbackEvent, AgentCallback> callbacks = new EnumMap<>(super.getCallbacks());
+        callbacks.put(AgentCallbackEvent.BEFORE_INVOKE, context -> {
+            ToolInterruptionState.railState(context);
+            beforeInvoke(context);
+            return completed();
+        });
+        return callbacks;
+    }
+
+    @Override
+    public void beforeToolCall(AgentCallbackContext context) {
+        if (!supportedEvents.contains(BEFORE_TOOL_CALL)
+                || !(context.getInputs() instanceof ToolCallInputs inputs)
+                || !(inputs.getToolCall() instanceof ToolCall call)) {
+            return;
+        }
+        String railId = InterruptRailSupport.railId(context, this);
+        InterruptRailSupport.evaluate(context, call, railId, () -> resolveInterrupt(context, call,
+                InterruptRailSupport.userInput(context, call, railId).orElse(null)));
+    }
+
+    /**
+     * Resolve a native tool security decision using the existing engine and host hooks.
+     *
+     * @param context current callback context
+     * @param toolCall tool call being checked
+     * @param userInput matched confirmation response, or null
+     * @return decision to approve, reject, or pause this call
+     * @since 0.1.17
+     */
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall, Object userInput) {
+        CallbackContext callback = toCallbackContext(context);
+        Map<String, Object> autoConfirm = InterruptRailSupport.autoConfirmConfig(context);
+        callback.put("auto_confirm_config", autoConfirm);
+        SecurityCheckContext security = new SecurityCheckContext(callback, BEFORE_TOOL_CALL,
+                userInput, autoConfirm, toolCall.getId());
+        SecurityDecision decision = runSecurityCheck(security);
+        if (decision instanceof SecurityInterrupt pending) {
+            return interrupt(toInterruptRequest(pending.request()));
+        }
+        applySecurityDecision(security, decision);
+        applyCallbackContext(context, callback);
+        saveAutoConfirm(context, callback, autoConfirm);
+        if (decision instanceof SecurityReject) {
+            ToolMessage message = null;
+            if (callback.get("tool_msg") instanceof ToolMessage toolMessage) {
+                message = toolMessage;
+            }
+            return new RejectResult(callback.get("tool_result"), message);
+        }
+        if (decision instanceof SecurityAllow allowed) {
+            return new ApproveResult(allowed.newArgs());
+        }
+        return new ApproveResult();
+    }
+
+    /**
+     * Pause a native tool call for security approval.
+     *
+     * @param request native approval request
+     * @return pending decision
+     * @since 0.1.17
+     */
+    public InterruptResult interrupt(InterruptRequest request) {
+        return new InterruptResult(request);
+    }
+
+    private static InterruptRequest toInterruptRequest(Map<String, Object> values) {
+        InterruptRequest request = new InterruptRequest();
+        request.setMessage(Objects.toString(values.get("message"), ""));
+        request.setAutoConfirmKey(Objects.toString(values.get("auto_confirm_key"), ""));
+        if (values.get("payload_schema") instanceof Map<?, ?> schema) {
+            Map<String, Object> copied = new LinkedHashMap<>();
+            schema.forEach((key, value) -> copied.put(String.valueOf(key), value));
+            request.setPayloadSchema(copied);
+        }
+        if (values.get("ui_options") instanceof List<?> options) {
+            List<Map<String, Object>> copied = new ArrayList<>();
+            for (Object option : options) {
+                if (option instanceof Map<?, ?> map) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    map.forEach((key, value) -> item.put(String.valueOf(key), value));
+                    copied.add(item);
+                }
+            }
+            request.setUiOptions(copied);
+        }
+        values.forEach((key, value) -> {
+            if (!REQUEST_FIELDS.contains(key)) {
+                request.putExtraField(key, value);
+            }
+        });
+        return request;
+    }
+
+    private static void saveAutoConfirm(AgentCallbackContext context, CallbackContext callback,
+                                        Map<String, Object> previous) {
+        Object current = callback.get("auto_confirm_config");
+        if (context.getSession() == null || !(current instanceof Map<?, ?> map) || previous.equals(map)) {
+            return;
+        }
+        Map<String, Object> config = new LinkedHashMap<>();
+        map.forEach((key, value) -> config.put(String.valueOf(key), value));
+        context.getSession().updateState(Map.of(InterruptConstants.INTERRUPT_AUTO_CONFIRM_KEY, config));
     }
 
     public SecurityAllow allow() {

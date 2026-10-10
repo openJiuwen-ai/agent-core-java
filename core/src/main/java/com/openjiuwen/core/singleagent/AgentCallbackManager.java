@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.utils.IsolatedActions;
 import com.openjiuwen.core.runner.callback.AbortError;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -14,11 +15,11 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -38,6 +39,7 @@ public class AgentCallbackManager {
     private final CallbackFramework instanceCallbackFramework;
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> railCallbacks = new IdentityHashMap<>();
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> instanceRailCallbacks = new IdentityHashMap<>();
+    private final Map<AgentRail, String> railIdentities = new IdentityHashMap<>();
 
     public AgentCallbackManager(String agentId) {
         this(agentId, new ReflectionRunnerCallbackFramework());
@@ -76,6 +78,7 @@ public class AgentCallbackManager {
         if (rail == null) {
             return CompletableFuture.completedFuture(this);
         }
+        registerRailIdentity(rail, "global");
         Map<AgentCallbackEvent, AgentCallback> callbacks = rail.getCallbacks();
         railCallbacks.put(rail, callbacks);
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
@@ -104,10 +107,44 @@ public class AgentCallbackManager {
         return rail != null && railCallbacks.containsKey(rail);
     }
 
+    /**
+     * Return a rail's registration identity, stable when the same rail configuration is reconstructed in order.
+     *
+     * @param rail rail to identify
+     * @return scoped registration identity, or its class name when unregistered
+     * @since 0.1.17
+     */
+    public String getRailIdentity(AgentRail rail) {
+        return railIdentities.getOrDefault(rail, rail.getClass().getName());
+    }
+
+    private void registerRailIdentity(AgentRail rail, String scope) {
+        if (railIdentities.containsKey(rail)) {
+            return;
+        }
+        String prefix = scope + ":" + rail.getClass().getName() + ":";
+        int ordinal = 0;
+        while (hasRailIdentity(prefix + ordinal)) {
+            ordinal++;
+        }
+        railIdentities.put(rail, prefix + ordinal);
+    }
+
+    private boolean hasRailIdentity(String identity) {
+        return railIdentities.values().stream().anyMatch(identity::equals);
+    }
+
+    private void releaseRailIdentity(AgentRail rail) {
+        if (!railCallbacks.containsKey(rail) && !instanceRailCallbacks.containsKey(rail)) {
+            railIdentities.remove(rail);
+        }
+    }
+
     public CompletionStage<AgentCallbackManager> registerInstanceRail(AgentRail rail, Object agent) {
         if (rail == null) {
             return CompletableFuture.completedFuture(this);
         }
+        registerRailIdentity(rail, "instance");
         Map<AgentCallbackEvent, AgentCallback> callbacks = rail.getCallbacks();
         instanceRailCallbacks.put(rail, callbacks);
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
@@ -126,6 +163,7 @@ public class AgentCallbackManager {
             return CompletableFuture.completedFuture(null);
         }
         Map<AgentCallbackEvent, AgentCallback> callbacks = railCallbacks.remove(rail);
+        releaseRailIdentity(rail);
         if (callbacks == null) {
             callbacks = rail.getCallbacks();
         }
@@ -232,6 +270,7 @@ public class AgentCallbackManager {
             return CompletableFuture.completedFuture(null);
         }
         Map<AgentCallbackEvent, AgentCallback> callbacks = instanceRailCallbacks.remove(rail);
+        releaseRailIdentity(rail);
         if (callbacks == null) {
             return CompletableFuture.completedFuture(null);
         }
@@ -347,6 +386,8 @@ public class AgentCallbackManager {
                     if (context != null) {
                         try {
                             callback.handle(context).toCompletableFuture().join();
+                        } catch (ToolInterruptException interruption) {
+                            throw new AbortError(interruption.getMessage(), interruption);
                         } catch (CompletionException exception) {
                             throw normalizeCallbackFailure(exception);
                         }
@@ -449,6 +490,9 @@ public class AgentCallbackManager {
 
         private static RuntimeException normalizeCallbackFailure(Throwable error) {
             Throwable normalized = unwrapCallbackFailure(error);
+            if (normalized instanceof ToolInterruptException interruption) {
+                return new AbortError(interruption.getMessage(), interruption);
+            }
             if (normalized instanceof AbortError abortError) {
                 throw abortError;
             }
