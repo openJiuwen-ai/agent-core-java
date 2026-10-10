@@ -143,9 +143,9 @@ public final class TodoTools {
                         activeForm,
                         description,
                         index == 0 ? TodoStatus.IN_PROGRESS : TodoStatus.PENDING,
-                        List.of(),
+                        optionalStringList(taskData.get("depends_on")),
                         null,
-                        null,
+                        mapValue(taskData.get("meta_data")),
                         stringOrNull(taskData.get("selected_model_id"))
                 ));
             }
@@ -501,6 +501,35 @@ public final class TodoTools {
             values.add(text);
         }
         return values;
+    }
+
+    private static List<String> optionalStringList(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        if (!(value instanceof List<?> rawList)) {
+            throw validationError("'depends_on' must be a list of task IDs");
+        }
+        List<String> values = new ArrayList<>();
+        for (Object item : rawList) {
+            if (!(item instanceof String text) || text.isEmpty()) {
+                throw validationError("'depends_on' must be a list of task IDs");
+            }
+            values.add(text);
+        }
+        return values;
+    }
+
+    private static Map<String, Object> mapValue(Object value) {
+        if (value == null) {
+            return new LinkedHashMap<>();
+        }
+        if (!(value instanceof Map<?, ?> rawMap)) {
+            throw validationError("'meta_data' must be an object");
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        rawMap.forEach((key, mapValue) -> result.put(String.valueOf(key), mapValue));
+        return result;
     }
 
     private static List<Map<String, Object>> mapList(Object value, String fieldName) {
