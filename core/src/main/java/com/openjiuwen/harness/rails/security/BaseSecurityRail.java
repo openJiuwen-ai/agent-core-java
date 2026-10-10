@@ -77,7 +77,7 @@ public class BaseSecurityRail extends DeepAgentRail {
                 || !(inputs.getToolCall() instanceof ToolCall call)) {
             return;
         }
-        String railId = getClass().getName();
+        String railId = InterruptRailSupport.railId(context, this);
         InterruptRailSupport.evaluate(context, call, railId, () -> resolveInterrupt(context, call,
                 InterruptRailSupport.userInput(context, call, railId).orElse(null)));
     }
