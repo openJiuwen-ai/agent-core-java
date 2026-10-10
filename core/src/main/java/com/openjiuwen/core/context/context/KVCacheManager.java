@@ -181,9 +181,9 @@ public class KVCacheManager implements SessionModelContext.KvCacheManagerPort {
         List<ToolInfo> oldTools = previousWindow.getTools();
         List<ToolInfo> newTools = nextWindow == null ? List.of() : nextWindow.getTools();
         java.util.OptionalInt msgStart = firstChangedIndex(oldMessages.size(), index ->
-                !oldMessages.get(index).equals(newMessages.get(index)));
+                index >= newMessages.size() || !oldMessages.get(index).equals(newMessages.get(index)));
         java.util.OptionalInt toolsStart = firstChangedIndex(oldTools.size(), index ->
-                !oldTools.get(index).equals(newTools.get(index)));
+                index >= newTools.size() || !oldTools.get(index).equals(newTools.get(index)));
 
         boolean isToolsAppended = newTools.size() > oldTools.size()
                 && newTools.subList(0, oldTools.size()).equals(oldTools);
