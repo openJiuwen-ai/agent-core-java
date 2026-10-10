@@ -32,6 +32,8 @@ import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.Rails;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.runbudget.RunBudgetContext;
+import com.openjiuwen.core.singleagent.runbudget.RunBudgetState;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
@@ -49,6 +51,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -710,6 +713,11 @@ public class AbilityManager {
         if (previousSession == null && effectiveSession != null) {
             SessionContextHolder.setCurrentSession(effectiveSession);
         }
+        // FEAT-057: expose the time budget to the per-tool timeout resolver on this lane thread.
+        Optional<RunBudgetState> budgetState = RunBudgetState.from(toolCtx.getExtra());
+        boolean budgetAttached = budgetState.isPresent() && budgetState.get().isTimeEnabled();
+        Optional<RunBudgetState> displacedBudget = budgetAttached
+                ? RunBudgetContext.attach(budgetState.get()) : Optional.empty();
         try {
             ExecutionResult result = executeOne(toolCall, resolver, effectiveSession, tag);
             if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
@@ -721,6 +729,9 @@ public class AbilityManager {
             }
             return result;
         } finally {
+            if (budgetAttached) {
+                RunBudgetContext.detach(displacedBudget);
+            }
             SessionContextHolder.restoreCurrentSession(previousSession);
         }
     }
@@ -1012,6 +1023,12 @@ public class AbilityManager {
         Double callTimeout = resolveCallTimeout(toolCard);
         if (callTimeout == null) {
             callTimeout = MAX_TOOL_CALL_TIMEOUT_HARD_LIMIT;
+        }
+        // FEAT-057: clamp the tool wait to the remaining time budget when a budget is attached.
+        OptionalDouble remainingBudget = RunBudgetContext.currentRemainingSeconds();
+        if (remainingBudget.isPresent() && remainingBudget.getAsDouble() > 0
+                && remainingBudget.getAsDouble() < callTimeout) {
+            callTimeout = remainingBudget.getAsDouble();
         }
         try {
             Object result = invokeWithTimeout(tool, inputs, session, callTimeout);
@@ -1727,7 +1744,11 @@ public class AbilityManager {
         }
         // When shouldFailTaskOnToolError is enabled, force-finish the task
         // so the agent loop does not continue after a tool execution failure.
-        if (toolCtx != null && isFailTaskOnToolError(toolCtx) && toolCall != null) {
+        // A pending rail-staged force-finish (e.g. a run-budget termination staged in
+        // before/after-tool hooks) wins, mirroring the agent-level guard that yields
+        // to any existing force-finish request.
+        if (toolCtx != null && !toolCtx.hasForceFinishRequest() && isFailTaskOnToolError(toolCtx)
+                && toolCall != null) {
             String errorMsg = error.getMessage();
             Map<String, Object> outcome = new LinkedHashMap<>();
             outcome.put("tool_name", toolCall.getName());

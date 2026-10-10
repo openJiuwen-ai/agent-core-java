@@ -152,6 +152,19 @@ public enum LogEventType {
     CORO_MANAGER_TASK_STATUS_CHANGED("coro_manager_task_status_changed"),
     CORO_MANAGER_TASK_CANCELLED("coro_manager_task_cancelled"),
     CORO_MANAGER_DEBUG_TASK_TREE("coro_manager_debug_task_tree"),
+
+    // Run budget events (FEAT-057)
+    TURN_BUDGET_GUARANTEE_EFFECTIVE("turn_budget_guarantee_effective"),
+    TURN_BUDGET_CHECKPOINT("turn_budget_checkpoint"),
+    TURN_BUDGET_EXTENDED("turn_budget_extended"),
+    TURN_BUDGET_STALL_PROMPTED("turn_budget_stall_prompted"),
+    TURN_BUDGET_GENTLE_REMINDER("turn_budget_gentle_reminder"),
+    TURN_BUDGET_SAFETY_VALVE_TRIGGERED("turn_budget_safety_valve_triggered"),
+    TURN_BUDGET_FINAL_ROUND_GRANTED("turn_budget_final_round_granted"),
+    TURN_BUDGET_TERMINATED("turn_budget_terminated"),
+    TIME_BUDGET_EFFECTIVE("time_budget_effective"),
+    TIME_BUDGET_NEAR_DEADLINE_PROMPTED("time_budget_near_deadline_prompted"),
+    TIME_BUDGET_TERMINATED("time_budget_terminated"),
     ;
 
     private final String value;
