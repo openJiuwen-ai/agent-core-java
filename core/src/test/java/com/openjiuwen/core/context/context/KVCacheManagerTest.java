@@ -4,17 +4,18 @@
 
 package com.openjiuwen.core.context.context;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Focused parity tests for KV cache release decisions.
@@ -23,6 +24,37 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code openjiuwen/core/context_engine/context/kv_cache_manager.py}.</p>
  */
 class KVCacheManagerTest {
+
+    @Test
+    void firstChangedDecisionReportsRemovedMessageSuffix() {
+        BaseMessage retained = new BaseMessage("user", "keep");
+        ContextWindow previous = window(List.of(retained, new BaseMessage("user", "remove")), List.of());
+        ContextWindow next = window(List.of(retained), List.of());
+
+        assertThat(KVCacheManager.firstChangedDecision(previous, next))
+                .contains(new KVCacheManager.ReleaseDecision(true, 1, null));
+    }
+
+    @Test
+    void firstChangedDecisionReportsRemovedToolSuffix() {
+        ToolInfo retained = ToolInfo.builder().name("search").build();
+        ContextWindow previous = window(List.of(), List.of(retained, ToolInfo.builder().name("lookup").build()));
+        ContextWindow next = window(List.of(), List.of(retained));
+
+        assertThat(KVCacheManager.firstChangedDecision(previous, next))
+                .contains(new KVCacheManager.ReleaseDecision(true, null, 1));
+    }
+
+    @Test
+    void firstChangedDecisionHandlesEmptyAndAbsentNextWindow() {
+        ContextWindow previous = window(List.of(new BaseMessage("user", "remove")),
+                List.of(ToolInfo.builder().name("search").build()));
+
+        assertThat(KVCacheManager.firstChangedDecision(previous, window(List.of(), List.of())))
+                .contains(new KVCacheManager.ReleaseDecision(true, 0, 0));
+        assertThat(KVCacheManager.firstChangedDecision(previous, null))
+                .contains(new KVCacheManager.ReleaseDecision(true, 0, 0));
+    }
 
     @Test
     void releaseWithoutModelReturnsWithoutRecordingWindow() {
