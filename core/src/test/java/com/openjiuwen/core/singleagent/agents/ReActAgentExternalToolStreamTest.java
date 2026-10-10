@@ -72,7 +72,7 @@ class ReActAgentExternalToolStreamTest {
 
         assertThat(outputs).extracting(OutputSchema::getType)
                 .contains("tool_call", "external_tool_call_required")
-                .doesNotContain("tool_result", "answer");
+                .doesNotContain("tool_output", "answer");
         assertThat(toolCallIds(outputsOfType(outputs, "tool_call")))
                 .containsExactly("call-external", "call-normal");
 
@@ -107,7 +107,7 @@ class ReActAgentExternalToolStreamTest {
         ), session, List.of()));
         List<OutputSchema> resumeOutputs = allOutputs.subList(firstStreamOutputCount, allOutputs.size());
 
-        assertThat(toolCallIds(outputsOfType(resumeOutputs, "tool_result")))
+        assertThat(toolCallIds(outputsOfType(resumeOutputs, "tool_output")))
                 .containsExactly("call-external", "call-normal");
         assertThat(payload(singleOutput(resumeOutputs, "answer")))
                 .containsEntry("result_type", "answer")
