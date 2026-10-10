@@ -37,15 +37,15 @@ import java.util.Set;
  * {@code openjiuwen/harness/rails/security/base_security_rail.py}.</p>
  */
 public class BaseSecurityRail extends DeepAgentRail {
-    private static final Set<String> REQUEST_FIELDS = Set.of(
-            "message", "payload_schema", "auto_confirm_key", "ui_options");
-
     public static final String BEFORE_INVOKE = "before_invoke";
     public static final String AFTER_INVOKE = "after_invoke";
     public static final String BEFORE_TOOL_CALL = "before_tool_call";
     public static final String AFTER_TOOL_CALL = "after_tool_call";
     public static final String BEFORE_MODEL_CALL = "before_model_call";
     public static final String AFTER_MODEL_CALL = "after_model_call";
+
+    private static final Set<String> REQUEST_FIELDS = Set.of(
+            "message", "payload_schema", "auto_confirm_key", "ui_options");
 
     private final Set<String> toolNames = new LinkedHashSet<>();
     private final Set<String> supportedEvents = new LinkedHashSet<>();
