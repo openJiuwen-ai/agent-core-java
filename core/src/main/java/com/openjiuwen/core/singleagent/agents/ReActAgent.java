@@ -2236,6 +2236,14 @@ public class ReActAgent extends BaseAgent {
         }
         logModelResponse(ctx, aiMessage);
         logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
+        // Emit tool_calls as a separate llm_output chunk after streaming completes.
+        // During streaming, individual chunks may only carry content/reasoning deltas;
+        // tool_calls are accumulated and become available only after the full response is assembled.
+        if (ctx.getSession() != null && aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
+            Map<String, Object> toolPayload = new LinkedHashMap<>();
+            toolPayload.put("tool_calls", aiMessage.getToolCalls());
+            ctx.getSession().writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx), toolPayload));
+        }
         if (ctx.getSession() != null && aiMessage.getUsageMetadata() != null) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
