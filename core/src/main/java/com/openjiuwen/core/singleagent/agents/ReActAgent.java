@@ -54,6 +54,7 @@ import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.Rails;
+import com.openjiuwen.core.singleagent.runbudget.RunBudgetState;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
 import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
@@ -105,6 +106,9 @@ public class ReActAgent extends BaseAgent {
 
     /** Chunk size (characters) when wrapping non-stream responses as stream chunks. */
     private static final int STREAM_CHUNK_SIZE = 200;
+
+    // FEAT-057 clamp baseline: mirrors the ModelClientConfig default timeout; keep in sync.
+    private static final double DEFAULT_MODEL_CALL_TIMEOUT_SECONDS = 60.0D;
 
     /** JDK 17: bounded platform pool; JDK 21+: virtual thread per task. */
     private static final ExecutorService STREAM_EXECUTOR =
@@ -455,6 +459,7 @@ public class ReActAgent extends BaseAgent {
                 .tools(tools)
                 .requestHeaders(requestHeaders)
                 .extraFields(extraFields);
+        clampModelCallTimeoutToRemainingBudget(ctx, optionsBuilder);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
             optionsBuilder.retryListener(event -> session.writeStream(new OutputSchema(
@@ -503,6 +508,33 @@ public class ReActAgent extends BaseAgent {
         logModelResponse(call.ctx(), aiMessage);
         logModelCallCompleted(call.ctx(), false, modelStartNanos, aiMessage, null);
         return aiMessage;
+    }
+
+    /**
+     * FEAT-057 time dimension: clamp the per-call model timeout to the remaining budget.
+     *
+     * <p>No-op when no time-budgeted run-budget state is present, keeping the legacy path
+     * byte-identical. The clamped value travels through {@code ModelInvokeOptions.timeout},
+     * the single-call timeout channel defined by FEAT-058.</p>
+     *
+     * @param ctx callback context carrying the run-budget state
+     * @param builder options builder under construction
+     */
+    private void clampModelCallTimeoutToRemainingBudget(AgentCallbackContext ctx,
+                                                        ModelInvokeOptions.ModelInvokeOptionsBuilder builder) {
+        Optional<RunBudgetState> budgetState = RunBudgetState.from(ctx.getExtra());
+        if (budgetState.isEmpty() || !budgetState.get().isTimeEnabled()) {
+            return;
+        }
+        double remaining = budgetState.get().remainingSeconds();
+        if (remaining <= 0) {
+            return;
+        }
+        double configuredTimeout = config.getModelClientConfig() != null
+                ? config.getModelClientConfig().getTimeout() : DEFAULT_MODEL_CALL_TIMEOUT_SECONDS;
+        if (remaining < configuredTimeout) {
+            builder.timeout((float) remaining);
+        }
     }
 
     public static void renderSystemMessages(List<SystemMessage> systemMessages, Object inputs,
@@ -2198,7 +2230,7 @@ public class ReActAgent extends BaseAgent {
                     Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
                             + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
                             + exception.getMessage());
-                    if (delayStreamRetry(retryDelayMs)) {
+                    if (delayStreamRetry(clampStreamRetryDelayMs(call.ctx(), retryDelayMs))) {
                         continue;
                     }
                 }
@@ -2208,7 +2240,7 @@ public class ReActAgent extends BaseAgent {
                 throw exception;
             }
 
-            if (attempt < maxRetries && !delayStreamRetry(retryDelayMs)) {
+            if (attempt < maxRetries && !delayStreamRetry(clampStreamRetryDelayMs(call.ctx(), retryDelayMs))) {
                 break;
             }
         }
@@ -2345,6 +2377,25 @@ public class ReActAgent extends BaseAgent {
         }
         LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(retryDelayMs));
         return !Thread.currentThread().isInterrupted();
+    }
+
+    /**
+     * FEAT-057 time dimension: clamp the stream-retry wait to the remaining budget.
+     *
+     * <p>Returns the original delay unchanged when no time-budgeted run-budget state is
+     * present; an exhausted budget yields zero so the retry no longer sleeps and the next
+     * checkpoint terminates the run.</p>
+     *
+     * @param ctx callback context carrying the run-budget state
+     * @param retryDelayMs configured retry delay in milliseconds
+     * @return the clamped delay in milliseconds
+     */
+    private static long clampStreamRetryDelayMs(AgentCallbackContext ctx, long retryDelayMs) {
+        Optional<RunBudgetState> budgetState = RunBudgetState.from(ctx.getExtra());
+        if (budgetState.isEmpty() || !budgetState.get().isTimeEnabled()) {
+            return retryDelayMs;
+        }
+        return Math.min(retryDelayMs, Math.max(0L, budgetState.get().remainingMillis()));
     }
 
     /**
