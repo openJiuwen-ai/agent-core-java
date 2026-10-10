@@ -12,6 +12,7 @@ import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState.SettledDecision;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 
 import java.util.LinkedHashMap;
@@ -26,6 +27,19 @@ import java.util.function.Supplier;
  */
 public final class InterruptRailSupport {
     private InterruptRailSupport() {
+    }
+
+    /**
+     * Identify a registered rail independently of other instances of its class.
+     *
+     * @param context current callback context
+     * @param rail evaluating rail
+     * @return stable registration identity, or class name for a direct hook invocation
+     * @since 0.1.17
+     */
+    public static String railId(AgentCallbackContext context, AgentRail rail) {
+        return context.getAgent() == null ? rail.getClass().getName()
+                : context.getAgent().getAgentCallbackManager().getRailIdentity(rail);
     }
 
     /**

@@ -69,7 +69,7 @@ public class BaseInterruptRail extends DeepAgentRail {
      * @since 0.1.17
      */
     protected void evaluateWithSettledReplay(AgentCallbackContext context, ToolCall toolCall) {
-        InterruptRailSupport.evaluate(context, toolCall, getClass().getName(),
+        InterruptRailSupport.evaluate(context, toolCall, InterruptRailSupport.railId(context, this),
                 () -> resolveInterrupt(context, toolCall, getUserInput(context, toolCall)));
     }
 
@@ -113,7 +113,8 @@ public class BaseInterruptRail extends DeepAgentRail {
      * @since 0.1.17
      */
     protected Object getUserInput(AgentCallbackContext context, ToolCall toolCall) {
-        return InterruptRailSupport.userInput(context, toolCall, getClass().getName()).orElse(null);
+        return InterruptRailSupport.userInput(context, toolCall, InterruptRailSupport.railId(context, this))
+                .orElse(null);
     }
 
     /**

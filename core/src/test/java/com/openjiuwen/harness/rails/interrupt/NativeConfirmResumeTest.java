@@ -158,6 +158,40 @@ class NativeConfirmResumeTest {
         assertEquals("{\"approved_by\":\"first\"}", checkpoint.getAiMessage().getToolCalls().get(0).getArguments());
     }
 
+    @Test
+    void identicalRailClassesKeepIndependentApprovalsAcrossReconstruction() throws IOException, ClassNotFoundException {
+        AgentCallbackContext context = prepare();
+        registerSecondConfirmation();
+        assertInstanceOf(ToolInterruptException.class, execute(context).result());
+        context.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, response(true));
+
+        ToolInterruptException second = assertInstanceOf(ToolInterruptException.class, execute(context).result());
+        assertEquals(0, executions.get());
+        ToolInterruptionState checkpoint = checkpoint(context, second);
+        agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
+        agent.registerRail(new ConfirmInterruptRail(List.of("confirmed_tool"))).toCompletableFuture().join();
+        registerSecondConfirmation();
+        AgentCallbackContext fresh = new AgentCallbackContext(agent);
+        fresh.setSession(context.getSession());
+        fresh.setContext(context.getContext());
+
+        assertNull(new ToolInterruptHandler(null).handleResume(resumeContext(fresh, checkpoint, response(false))));
+        assertEquals(0, executions.get());
+        assertEquals(Map.of(), checkpoint.getInterruptedTools());
+    }
+
+    private void registerSecondConfirmation() {
+        ConfirmInterruptRail rail = new ConfirmInterruptRail(List.of("confirmed_tool"));
+        rail.setPriority(99);
+        agent.registerRail(rail).toCompletableFuture().join();
+    }
+
+    private static InteractiveInput response(boolean isApproved) {
+        InteractiveInput response = new InteractiveInput();
+        response.update("call-1", Map.of("approved", isApproved, "feedback", "rejected"));
+        return response;
+    }
+
     private ToolInterruptionState checkpoint(AgentCallbackContext context, ToolInterruptException interruption)
             throws IOException, ClassNotFoundException {
         ToolCall call = interruption.getToolCall().orElseThrow();
