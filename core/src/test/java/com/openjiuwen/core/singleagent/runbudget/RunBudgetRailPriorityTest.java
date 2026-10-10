@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.runbudget;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -16,11 +18,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * UT-R01~R03 plus the steering-binding supplement: overlay rail termination wins over the
@@ -199,7 +198,6 @@ class RunBudgetRailPriorityTest {
          * Writes the force-finish request when round 2 completes.
          *
          * @param ctx callback context
-         * @return completed stage
          */
         @Override
         public void afterModelCall(AgentCallbackContext ctx) {
@@ -226,7 +224,6 @@ class RunBudgetRailPriorityTest {
          * Cancels the run when the configured model call is about to dispatch.
          *
          * @param ctx callback context
-         * @return completed stage
          */
         @Override
         public void beforeModelCall(AgentCallbackContext ctx) {
@@ -252,7 +249,6 @@ class RunBudgetRailPriorityTest {
          * Reports the host no-progress fact to the budget state.
          *
          * @param ctx callback context
-         * @return completed stage
          */
         @Override
         public void afterToolCall(AgentCallbackContext ctx) {
@@ -279,7 +275,6 @@ class RunBudgetRailPriorityTest {
          * Pushes the note when the configured round completes.
          *
          * @param ctx callback context
-         * @return completed stage
          */
         @Override
         public void afterModelCall(AgentCallbackContext ctx) {

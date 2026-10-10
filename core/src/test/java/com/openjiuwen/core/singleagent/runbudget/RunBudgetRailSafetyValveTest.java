@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.runbudget;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -14,10 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * UT-S01~S05: safety-valve sequence (instruction at H, final round at H+1, termination after),
@@ -131,7 +130,14 @@ class RunBudgetRailSafetyValveTest {
             Map<String, Object> turnBudget = (Map<String, Object>) result.get("turn_budget");
             assertThat(turnBudget).containsEntry("round", 21).containsEntry("hard_limit", 20);
             assertThat(events.payloadsOf("turn_budget_extended"))
-                    .allSatisfy(p -> assertThat((Integer) p.get("allowed_rounds")).isLessThanOrEqualTo(21));
+                    .allSatisfy(p -> {
+                        Object allowedRounds = p.get("allowed_rounds");
+                        if (allowedRounds instanceof Integer rounds) {
+                            assertThat(rounds).isLessThanOrEqualTo(21);
+                        } else {
+                            assertThat(allowedRounds).isInstanceOf(Integer.class);
+                        }
+                    });
         }
     }
 
@@ -214,7 +220,6 @@ class RunBudgetRailSafetyValveTest {
          * Pushes steering when the configured round completes.
          *
          * @param ctx callback context
-         * @return completed stage
          */
         @Override
         public void afterModelCall(AgentCallbackContext ctx) {
@@ -237,7 +242,6 @@ class RunBudgetRailSafetyValveTest {
          * Suppresses all post-model-call budget actions.
          *
          * @param ctx callback context
-         * @return completed stage
          */
         @Override
         public void afterModelCall(AgentCallbackContext ctx) {

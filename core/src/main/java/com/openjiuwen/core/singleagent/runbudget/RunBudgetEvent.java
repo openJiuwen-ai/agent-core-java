@@ -24,15 +24,15 @@ public class RunBudgetEvent extends BaseLogEvent {
     private Integer hardLimit;
     private Integer round;
     private Integer checkpoint;
-    private Boolean progressed;
+    private Boolean isProgressed;
     private Integer consecutiveStalls;
     private Integer allowedRounds;
     private Integer nextInterval;
-    private Boolean hostStallReported;
-    private Boolean escalated;
+    private Boolean isHostStallReported;
+    private Boolean isEscalated;
     private Integer reminderInterval;
     private Integer finalRound;
-    private Boolean instructionInjected;
+    private Boolean isInstructionInjected;
     private String reason;
     private Double totalBudgetSeconds;
     private Double elapsedSeconds;
@@ -102,10 +102,10 @@ public class RunBudgetEvent extends BaseLogEvent {
     /**
      * Returns whether the checkpoint evaluation judged progress.
      *
-     * @return progressed flag
+     * @return isProgressed flag
      */
     public Boolean getProgressed() {
-        return progressed;
+        return isProgressed;
     }
 
     /**
@@ -141,16 +141,16 @@ public class RunBudgetEvent extends BaseLogEvent {
      * @return host-stall-reported flag
      */
     public Boolean getHostStallReported() {
-        return hostStallReported;
+        return isHostStallReported;
     }
 
     /**
-     * Returns whether prompt strength was escalated.
+     * Returns whether prompt strength was isEscalated.
      *
-     * @return escalated flag
+     * @return isEscalated flag
      */
     public Boolean getEscalated() {
-        return escalated;
+        return isEscalated;
     }
 
     /**
@@ -177,7 +177,7 @@ public class RunBudgetEvent extends BaseLogEvent {
      * @return instruction-injected flag
      */
     public Boolean getInstructionInjected() {
-        return instructionInjected;
+        return isInstructionInjected;
     }
 
     /**
@@ -281,8 +281,8 @@ public class RunBudgetEvent extends BaseLogEvent {
         this.checkpoint = value;
     }
 
-    void setProgressed(Boolean value) {
-        this.progressed = value;
+    void setProgressed(Boolean isProgressed) {
+        this.isProgressed = isProgressed;
     }
 
     void setConsecutiveStalls(Integer value) {
@@ -297,12 +297,12 @@ public class RunBudgetEvent extends BaseLogEvent {
         this.nextInterval = value;
     }
 
-    void setHostStallReported(Boolean value) {
-        this.hostStallReported = value;
+    void setHostStallReported(Boolean isHostStallReported) {
+        this.isHostStallReported = isHostStallReported;
     }
 
-    void setEscalated(Boolean value) {
-        this.escalated = value;
+    void setEscalated(Boolean isEscalated) {
+        this.isEscalated = isEscalated;
     }
 
     void setReminderInterval(Integer value) {
@@ -313,8 +313,8 @@ public class RunBudgetEvent extends BaseLogEvent {
         this.finalRound = value;
     }
 
-    void setInstructionInjected(Boolean value) {
-        this.instructionInjected = value;
+    void setInstructionInjected(Boolean isInstructionInjected) {
+        this.isInstructionInjected = isInstructionInjected;
     }
 
     void setReason(String value) {
@@ -360,15 +360,15 @@ public class RunBudgetEvent extends BaseLogEvent {
         putIfNotNull(map, "hard_limit", hardLimit);
         putIfNotNull(map, "round", round);
         putIfNotNull(map, "checkpoint", checkpoint);
-        putIfNotNull(map, "progressed", progressed);
+        putIfNotNull(map, "progressed", isProgressed);
         putIfNotNull(map, "consecutive_stalls", consecutiveStalls);
         putIfNotNull(map, "allowed_rounds", allowedRounds);
         putIfNotNull(map, "next_interval", nextInterval);
-        putIfNotNull(map, "host_stall_reported", hostStallReported);
-        putIfNotNull(map, "escalated", escalated);
+        putIfNotNull(map, "host_stall_reported", isHostStallReported);
+        putIfNotNull(map, "escalated", isEscalated);
         putIfNotNull(map, "reminder_interval", reminderInterval);
         putIfNotNull(map, "final_round", finalRound);
-        putIfNotNull(map, "instruction_injected", instructionInjected);
+        putIfNotNull(map, "instruction_injected", isInstructionInjected);
         putIfNotNull(map, "reason", reason);
         putIfNotNull(map, "total_budget_seconds", totalBudgetSeconds);
         putIfNotNull(map, "elapsed_seconds", elapsedSeconds);

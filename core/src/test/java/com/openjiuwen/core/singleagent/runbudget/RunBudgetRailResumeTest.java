@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.runbudget;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 
@@ -14,8 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * L2 supplement: interrupt/resume opens a new budget cycle; two sequential invocations of the

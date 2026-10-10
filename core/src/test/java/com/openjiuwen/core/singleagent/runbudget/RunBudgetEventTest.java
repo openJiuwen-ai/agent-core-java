@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.runbudget;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.common.logging.LogManager;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
@@ -19,8 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Event-surface tests for FEAT-057: all eleven LogEventType values are registered, the

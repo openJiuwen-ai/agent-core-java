@@ -715,8 +715,8 @@ public class AbilityManager {
         }
         // FEAT-057: expose the time budget to the per-tool timeout resolver on this lane thread.
         Optional<RunBudgetState> budgetState = RunBudgetState.from(toolCtx.getExtra());
-        boolean budgetAttached = budgetState.isPresent() && budgetState.get().isTimeEnabled();
-        Optional<RunBudgetState> displacedBudget = budgetAttached
+        boolean isBudgetAttached = budgetState.isPresent() && budgetState.get().isTimeEnabled();
+        Optional<RunBudgetState> displacedBudget = isBudgetAttached
                 ? RunBudgetContext.attach(budgetState.get()) : Optional.empty();
         try {
             ExecutionResult result = executeOne(toolCall, resolver, effectiveSession, tag);
@@ -729,7 +729,7 @@ public class AbilityManager {
             }
             return result;
         } finally {
-            if (budgetAttached) {
+            if (isBudgetAttached) {
                 RunBudgetContext.detach(displacedBudget);
             }
             SessionContextHolder.restoreCurrentSession(previousSession);

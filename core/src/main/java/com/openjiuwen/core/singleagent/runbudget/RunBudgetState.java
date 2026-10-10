@@ -26,29 +26,29 @@ public class RunBudgetState {
     /** Key under which the state is stored in {@link AgentCallbackContext#getExtra()}. */
     public static final String STATE_KEY = "run_budget_state";
 
-    private static final double NANOS_PER_SECOND = 1_000_000_000.0D;
+    private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
-    private boolean turnEnabled;
+    private boolean isTurnEnabled;
     private GuaranteeDecision guarantee;
     private int firstCheckpoint;
     private int roundCount;
     private int nextCheckpoint;
     private int currentInterval;
     private int consecutiveStalls;
-    private boolean escalated;
+    private boolean isEscalated;
     private int lastGentleReminderRound;
-    private boolean safetyValveTriggered;
-    private boolean finalRoundEmitted;
+    private boolean isSafetyValveTriggered;
+    private boolean isFinalRoundEmitted;
     private final AtomicBoolean terminated = new AtomicBoolean();
     private String lastModelContent = "";
     private final AtomicBoolean newToolResultSinceCheckpoint = new AtomicBoolean();
     private final AtomicReference<HostStallReport> hostStallReport = new AtomicReference<>();
-    private boolean timeEnabled;
+    private boolean isTimeEnabled;
     private long startNanos;
     private long deadlineNanos;
     private double totalBudgetSeconds;
     private double nearDeadlineThresholdSeconds;
-    private boolean nearDeadlinePromptSent;
+    private boolean isNearDeadlinePromptSent;
     private String conversationId = "";
     private String sessionId = "";
     private String agentName = "";
@@ -81,12 +81,12 @@ public class RunBudgetState {
     public static RunBudgetState initialize(RunBudgetConfig config, AgentCallbackContext ctx) {
         RunBudgetState state = new RunBudgetState();
         state.captureContextIdentity(ctx);
-        state.turnEnabled = config.isTurnEnabled();
-        if (state.turnEnabled) {
+        state.isTurnEnabled = config.isTurnEnabled();
+        if (state.isTurnEnabled) {
             state.initializeTurnDimension(config);
         }
-        state.timeEnabled = config.isTimeEnabled();
-        if (state.timeEnabled) {
+        state.isTimeEnabled = config.isTimeEnabled();
+        if (state.isTimeEnabled) {
             state.initializeTimeDimension(config);
         }
         return state;
@@ -106,9 +106,9 @@ public class RunBudgetState {
     }
 
     private void initializeTurnDimension(RunBudgetConfig config) {
-        boolean configured = config.getSuggestedRounds() != null;
-        int guaranteedRounds = configured ? config.getSuggestedRounds() : config.getDefaultGuaranteedRounds();
-        String source = configured ? GuaranteeDecision.SOURCE_CONFIGURED : GuaranteeDecision.SOURCE_DEFAULT;
+        boolean isConfigured = config.getSuggestedRounds() != null;
+        int guaranteedRounds = isConfigured ? config.getSuggestedRounds() : config.getDefaultGuaranteedRounds();
+        String source = isConfigured ? GuaranteeDecision.SOURCE_CONFIGURED : GuaranteeDecision.SOURCE_DEFAULT;
         int limit = config.getHardLimit() != null
                 ? config.getHardLimit() : Math.max(guaranteedRounds * 2, 200);
         this.guarantee = new GuaranteeDecision(guaranteedRounds, source, limit);
@@ -121,7 +121,7 @@ public class RunBudgetState {
         this.totalBudgetSeconds = config.getTotalBudgetSeconds();
         this.nearDeadlineThresholdSeconds = config.getNearDeadlineThresholdSeconds();
         this.startNanos = System.nanoTime();
-        this.deadlineNanos = this.startNanos + (long) (this.totalBudgetSeconds * NANOS_PER_SECOND);
+        this.deadlineNanos = this.startNanos + Math.multiplyExact((long) this.totalBudgetSeconds, NANOS_PER_SECOND);
     }
 
     /**
@@ -130,7 +130,7 @@ public class RunBudgetState {
      * @return true when the turn dimension is active
      */
     public boolean isTurnEnabled() {
-        return turnEnabled;
+        return isTurnEnabled;
     }
 
     /**
@@ -139,7 +139,7 @@ public class RunBudgetState {
      * @return true when the time dimension is active
      */
     public boolean isTimeEnabled() {
-        return timeEnabled;
+        return isTimeEnabled;
     }
 
     /**
@@ -148,7 +148,7 @@ public class RunBudgetState {
      * @return remaining seconds
      */
     public double remainingSeconds() {
-        return (deadlineNanos - System.nanoTime()) / NANOS_PER_SECOND;
+        return (deadlineNanos - System.nanoTime()) / (double) NANOS_PER_SECOND;
     }
 
     /**
@@ -222,12 +222,12 @@ public class RunBudgetState {
     }
 
     /**
-     * Returns whether prompt strength has been escalated.
+     * Returns whether prompt strength has been isEscalated.
      *
-     * @return true when escalated
+     * @return true when isEscalated
      */
     public boolean isEscalated() {
-        return escalated;
+        return isEscalated;
     }
 
     /**
@@ -254,14 +254,14 @@ public class RunBudgetState {
      * @return true when triggered
      */
     public boolean isSafetyValveTriggered() {
-        return safetyValveTriggered;
+        return isSafetyValveTriggered;
     }
 
     /**
      * Marks the safety valve as triggered.
      */
     public void markSafetyValveTriggered() {
-        this.safetyValveTriggered = true;
+        this.isSafetyValveTriggered = true;
     }
 
     /**
@@ -270,14 +270,14 @@ public class RunBudgetState {
      * @return true when already emitted
      */
     public boolean isFinalRoundEmitted() {
-        return finalRoundEmitted;
+        return isFinalRoundEmitted;
     }
 
     /**
      * Marks the final-round-granted event as emitted (idempotent against rail retries).
      */
     public void markFinalRoundEmitted() {
-        this.finalRoundEmitted = true;
+        this.isFinalRoundEmitted = true;
     }
 
     /**
@@ -332,7 +332,7 @@ public class RunBudgetState {
      */
     public void recordProgress(int intervalStep, int maxInterval, int currentRound) {
         this.consecutiveStalls = 0;
-        this.escalated = false;
+        this.isEscalated = false;
         this.currentInterval = Math.min(this.currentInterval + intervalStep, maxInterval);
         int hardLimitCeiling = this.guarantee.hardLimit() + 1;
         this.nextCheckpoint = Math.min(currentRound + this.currentInterval, hardLimitCeiling);
@@ -352,7 +352,7 @@ public class RunBudgetState {
     public void recordStall(int escalationThreshold, int intervalStep, int currentRound) {
         this.consecutiveStalls++;
         if (this.consecutiveStalls >= escalationThreshold) {
-            this.escalated = true;
+            this.isEscalated = true;
         }
         int advance = Math.max(this.currentInterval, intervalStep);
         int hardLimitCeiling = this.guarantee.hardLimit() + 1;
@@ -421,14 +421,14 @@ public class RunBudgetState {
      * @return true when already sent
      */
     public boolean isNearDeadlinePromptSent() {
-        return nearDeadlinePromptSent;
+        return isNearDeadlinePromptSent;
     }
 
     /**
      * Marks the near-deadline prompt as sent (exactly once per invocation).
      */
     public void markNearDeadlinePromptSent() {
-        this.nearDeadlinePromptSent = true;
+        this.isNearDeadlinePromptSent = true;
     }
 
     /**
