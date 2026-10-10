@@ -4,31 +4,73 @@
 
 package com.openjiuwen.harness.rails.context_engineer;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.processor.compressor.DialogueCompressorConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Mirrors Python's {@code ContextProcessorRail} in
  * {@code openjiuwen/harness/rails/context_engineer/context_processor_rail.py}.
  */
 class ContextProcessorRailTest {
+
+    @Test
+    void directReActAgentInstallsAndRemovesPresetProcessors() {
+        ReActAgent agent = new ReActAgent(new AgentCard("direct-react", "direct-react", "Agent"));
+        ReActAgentConfig config = new ReActAgentConfig();
+        agent.configure(config);
+        ContextProcessorRail rail = new ContextProcessorRail();
+
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            assertThat(config.getContextProcessors())
+                    .extracting(ContextEngine.ProcessorSpec::processorType)
+                    .containsExactly("MessageSummaryOffloader", "DialogueCompressor",
+                            "CurrentRoundCompressor", "RoundLevelCompressor");
+            assertThat(rail.getAllProcessors()).hasSize(4);
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+
+        assertThat(config.getContextProcessors()).isEmpty();
+        assertThat(rail.getAllProcessors()).isEmpty();
+    }
+
+    @Test
+    void directReActAgentAppliesUserProcessorsWithoutPresets() {
+        ReActAgent agent = new ReActAgent(new AgentCard("custom-react", "custom-react", "Agent"));
+        ReActAgentConfig reactConfig = new ReActAgentConfig();
+        agent.configure(reactConfig);
+        DialogueCompressorConfig config = new DialogueCompressorConfig();
+        ContextProcessorRail rail = new ContextProcessorRail(List.of(
+                new ContextEngine.ProcessorSpec("DialogueCompressor", config)), false, null);
+
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            assertThat(reactConfig.getContextProcessors())
+                    .extracting(ContextEngine.ProcessorSpec::processorType)
+                    .containsExactly("DialogueCompressor");
+            assertThat(rail.getAllProcessors()).hasSize(1);
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
 
     @Test
     void initBuildsPresetProcessors() {
