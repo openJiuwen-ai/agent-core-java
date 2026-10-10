@@ -171,7 +171,7 @@ class NativeConfirmResumeTest {
             output.writeObject(state);
         }
         try (ObjectInputStream input = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
-            return (ToolInterruptionState) input.readObject();
+            return assertInstanceOf(ToolInterruptionState.class, input.readObject());
         }
     }
 

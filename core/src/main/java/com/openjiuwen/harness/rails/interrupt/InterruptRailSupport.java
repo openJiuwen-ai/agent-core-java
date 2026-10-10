@@ -19,7 +19,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-/** Shared native tool interruption and terminal-decision replay for interrupt and security rails. */
+/**
+ * Shared native tool interruption and terminal-decision replay for interrupt and security rails.
+ *
+ * @since 2026-10-10
+ */
 public final class InterruptRailSupport {
     private InterruptRailSupport() {
     }
