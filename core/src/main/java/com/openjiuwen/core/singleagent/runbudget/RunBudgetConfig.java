@@ -207,7 +207,7 @@ public class RunBudgetConfig {
          * Sets whether the turn dimension is active (decided by host wiring gating,
          * defaults to off).
          *
-         * @param enabled true to activate the turn dimension
+         * @param isTurnEnabled true to activate the turn dimension
          * @return this builder
          */
         public Builder turnEnabled(boolean isTurnEnabled) {
