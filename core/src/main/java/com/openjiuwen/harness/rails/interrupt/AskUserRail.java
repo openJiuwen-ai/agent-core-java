@@ -69,8 +69,8 @@ public class AskUserRail extends BaseInterruptRail {
     }
 
     @Override
-    protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall toolCall,
-                                                        Object userInput) {
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall,
+                                                  Object userInput) {
         return resolveInterrupt(toCallbackContext(context), toolCall, userInput);
     }
 

@@ -9,8 +9,8 @@ import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
-import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
@@ -21,7 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.UUID;
 
 /**
  * Base interrupt rail for tool-call confirmation flows.
@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
  */
 public class BaseInterruptRail extends DeepAgentRail {
 
+    private final String instanceId = UUID.randomUUID().toString();
     private final Map<String, Object> pendingInterrupts = new LinkedHashMap<>();
     private final Set<String> toolNames = new LinkedHashSet<>();
 
@@ -41,13 +42,12 @@ public class BaseInterruptRail extends DeepAgentRail {
         addTools(toolNames);
     }
 
-    @Override
-    public String getCheckpointVersion() {
+    private String nativeRailId(AgentCallbackContext context) {
+        String registration = InterruptRailSupport.railId(context, this);
         if (getClass() == ConfirmInterruptRail.class || getClass() == AskUserRail.class) {
-            return "builtin-v1:" + toolNames.stream().sorted()
-                    .map(name -> name.length() + ":" + name).collect(Collectors.joining());
+            return registration;
         }
-        return super.getCheckpointVersion();
+        return registration + ":" + instanceId;
     }
 
     @Override
@@ -68,23 +68,12 @@ public class BaseInterruptRail extends DeepAgentRail {
                 || !toolNames.contains(toolCall.getName())) {
             return;
         }
-        evaluateWithSettledReplay(context, toolCall);
+        InterruptRailSupport.evaluate(context, toolCall, nativeRailId(context),
+                () -> resolveInterrupt(context, toolCall, getUserInput(context, toolCall)), true);
     }
 
     /**
-     * Evaluate this rail's native decision, preserving prior decisions during chained approvals.
-     *
-     * @param context current callback context
-     * @param toolCall call being evaluated
-     * @since 0.1.17
-     */
-    protected void evaluateWithSettledReplay(AgentCallbackContext context, ToolCall toolCall) {
-        InterruptRailSupport.evaluate(context, toolCall, InterruptRailSupport.railId(context, this),
-                () -> resolveNativeInterrupt(context, toolCall, getUserInput(context, toolCall)));
-    }
-
-    /**
-     * Resolve a native tool approval using the existing dynamic-context hook by default.
+     * Resolve a native tool interruption for existing rail subclasses.
      *
      * @param context current callback context
      * @param toolCall call being evaluated
@@ -92,8 +81,7 @@ public class BaseInterruptRail extends DeepAgentRail {
      * @return decision to approve, reject, or pause this call
      * @since 0.1.17
      */
-    protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall toolCall,
-                                                        Object userInput) {
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall, Object userInput) {
         CallbackContext callback = toCallbackContext(context);
         callback.put("user_input", userInput);
         beforeToolCall(callback);
@@ -124,7 +112,7 @@ public class BaseInterruptRail extends DeepAgentRail {
      * @since 0.1.17
      */
     protected Object getUserInput(AgentCallbackContext context, ToolCall toolCall) {
-        return InterruptRailSupport.userInput(context, toolCall, InterruptRailSupport.railId(context, this))
+        return InterruptRailSupport.userInput(context, toolCall, nativeRailId(context))
                 .orElse(null);
     }
 

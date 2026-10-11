@@ -48,8 +48,8 @@ public class ConfirmInterruptRail extends BaseInterruptRail {
     }
 
     @Override
-    protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall toolCall,
-                                                        Object userInput) {
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall,
+                                                  Object userInput) {
         CallbackContext callback = toCallbackContext(context);
         callback.put("interrupt_kind", "confirm");
         return resolveInterrupt(callback, toolCall, userInput,

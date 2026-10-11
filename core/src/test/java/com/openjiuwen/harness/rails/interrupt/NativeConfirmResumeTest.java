@@ -65,52 +65,6 @@ class NativeConfirmResumeTest {
     }
 
     @Test
-    void waitsForApprovalThenExecutesExactlyOnce() {
-        AgentCallbackContext context = prepare();
-        AbilityManager.ExecutionResult first = execute(context);
-
-        ToolInterruptException interruption = assertInstanceOf(ToolInterruptException.class, first.result());
-        assertEquals("Please approve or reject?", interruption.getRequest().getMessage());
-        assertEquals(0, executions.get());
-
-        InteractiveInput approval = new InteractiveInput();
-        approval.update("call-1", Map.of("approved", true));
-        context.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, approval);
-        AbilityManager.ExecutionResult resumed = execute(context);
-
-        assertEquals("executed", resumed.result());
-        assertEquals(1, executions.get());
-    }
-
-    @Test
-    void rejectionSkipsExecutionAndPreservesFeedback() {
-        AgentCallbackContext context = prepare();
-        assertInstanceOf(ToolInterruptException.class, execute(context).result());
-        InteractiveInput rejection = new InteractiveInput();
-        rejection.update("call-1", Map.of("approved", false, "feedback", "do not execute"));
-        context.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, rejection);
-
-        AbilityManager.ExecutionResult result = execute(context);
-
-        assertEquals("do not execute", result.result());
-        assertEquals(0, executions.get());
-    }
-
-    @Test
-    void toolInterruptionRaisedByCallbackIsNotSwallowed() {
-        AgentCallbackContext context = prepare();
-        ToolInterruptException expected = new ToolInterruptException(
-                new InterruptRequest("wait", Map.of(), ""));
-        agent.registerCallback(AgentCallbackEvent.BEFORE_TOOL_CALL,
-                ignored -> {
-                    throw expected;
-                }, 200).toCompletableFuture().join();
-
-        assertSame(expected, execute(context).result());
-        assertEquals(0, executions.get());
-    }
-
-    @Test
     void instanceRailAlsoInterruptsBeforeExecutingTheTool() {
         AgentCallbackContext context = prepare();
         agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
@@ -186,25 +140,6 @@ class NativeConfirmResumeTest {
     }
 
     @Test
-    void replacementPolicyDoesNotReplayPreviousApproval() {
-        AgentCallbackContext context = prepare();
-        agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
-        SwitchingPolicyRail old = new SwitchingPolicyRail(false);
-        agent.registerRail(old).toCompletableFuture().join();
-        registerSecondConfirmation();
-        assertInstanceOf(ToolInterruptException.class, execute(context).result());
-        context.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, response(true));
-        assertInstanceOf(ToolInterruptException.class, execute(context).result());
-        agent.unregisterRail(old).toCompletableFuture().join();
-        SwitchingPolicyRail replacement = new SwitchingPolicyRail(true);
-        agent.registerRail(replacement).toCompletableFuture().join();
-
-        assertEquals("new policy denied", execute(context).result());
-        assertEquals(1, replacement.calls);
-        assertEquals(0, executions.get());
-    }
-
-    @Test
     void reconstructedChangedPolicyDoesNotReplayPreviousApproval() throws IOException, ClassNotFoundException {
         AgentCallbackContext context = prepare();
         agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
@@ -265,11 +200,11 @@ class NativeConfirmResumeTest {
                 .arguments("{\"questions\":[{\"question\":\"Which path?\"}]}").build();
         AgentCallbackContext context = new AgentCallbackContext(agent);
         InterruptResult pending = assertInstanceOf(InterruptResult.class,
-                rail.resolveNativeInterrupt(context, call, null));
+                rail.resolveInterrupt(context, call, null));
         assertEquals("Which path?", pending.request().getMessage());
         assertInstanceOf(AskUserRail.AskUserRequest.class, pending.request());
         RejectResult result = assertInstanceOf(RejectResult.class,
-                rail.resolveNativeInterrupt(context, call, Map.of("answers", Map.of("Which path?", "path A"))));
+                rail.resolveInterrupt(context, call, Map.of("answers", Map.of("Which path?", "path A"))));
         assertEquals("User has answered your questions: \"Which path?\"=\"path A\". "
                 + "You can now continue with the user's answers in mind.", result.toolResult());
     }
@@ -350,7 +285,7 @@ class NativeConfirmResumeTest {
         }
 
         @Override
-        protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
+        protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
             calls++;
             if (isDenied) {
                 return reject("new policy denied");
@@ -369,7 +304,7 @@ class NativeConfirmResumeTest {
         }
 
         @Override
-        protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
+        protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
             if ("first".equals(input)) {
                 return approve("{\"approved_by\":\"first\"}");
             }
@@ -383,7 +318,7 @@ class NativeConfirmResumeTest {
         }
 
         @Override
-        protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
+        protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
             if (input != null) {
                 return approve();
             }

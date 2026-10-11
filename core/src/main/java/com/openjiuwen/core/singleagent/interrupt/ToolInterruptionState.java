@@ -139,12 +139,14 @@ public class ToolInterruptionState extends BaseInterruptionState {
      * A terminal approval or rejection to replay after another rail interrupts the same call.
      *
      * @param isApproved whether this rail approved the call
+     * @param isConfirmed whether a matched user response approved this call
      * @param newArgs replacement arguments, if present
      * @param toolResult rejection result, if present
      * @param toolMessage rejection message, if present
      * @since 0.1.17
      */
-    public record SettledDecision(boolean isApproved, String newArgs, Object toolResult, ToolMessage toolMessage)
+    public record SettledDecision(boolean isApproved, boolean isConfirmed, String newArgs,
+                                  Object toolResult, ToolMessage toolMessage)
             implements Serializable {
         @Serial
         private static final long serialVersionUID = 1L;

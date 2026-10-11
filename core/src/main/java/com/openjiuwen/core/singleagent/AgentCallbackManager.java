@@ -110,10 +110,10 @@ public class AgentCallbackManager {
     }
 
     /**
-     * Return a rail's registration slot, retaining generations after removal.
+     * Return a rail's registration slot without reusing removed registration numbers.
      *
      * @param rail rail to identify
-     * @return scoped registration slot, or its class name when unregistered; policy versions are separate
+     * @return scoped registration slot, or its class name when unregistered
      * @since 0.1.17
      */
     public String getRailIdentity(AgentRail rail) {

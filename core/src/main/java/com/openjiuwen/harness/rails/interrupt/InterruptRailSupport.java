@@ -9,15 +9,14 @@ import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
-import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState.SettledDecision;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState.SettledDecision;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -35,7 +34,7 @@ public final class InterruptRailSupport {
      *
      * @param context current callback context
      * @param rail evaluating rail
-     * @return registration identity combined with the current checkpoint policy version
+     * @return registration identity
      * @since 0.1.17
      */
     public static String railId(AgentCallbackContext context, AgentRail rail) {
@@ -43,8 +42,7 @@ public final class InterruptRailSupport {
         if (context.getAgent() != null) {
             registration = context.getAgent().getAgentCallbackManager().getRailIdentity(rail);
         }
-        String version = Objects.requireNonNull(rail.getCheckpointVersion(), "checkpoint policy version");
-        return registration + ":" + version.length() + ":" + version;
+        return registration;
     }
 
     /**
@@ -54,33 +52,45 @@ public final class InterruptRailSupport {
      * @param toolCall current tool call
      * @param railId stable identity of the evaluating rail
      * @param resolver evaluates a decision when none has been settled
+     * @param shouldReplay whether prior terminal decisions can be reused
      * @since 0.1.17
      */
     public static void evaluate(AgentCallbackContext context, ToolCall toolCall, String railId,
-                                Supplier<InterruptDecision> resolver) {
+                                Supplier<InterruptDecision> resolver, boolean shouldReplay) {
         if (Boolean.TRUE.equals(context.getExtra().get("_skip_tool"))) {
             return;
         }
         Map<String, SettledDecision> settled = ToolInterruptionState.railState(context).getRailSettledDecisions();
         String key = toolCall.getId() + "\u0000" + railId;
-        SettledDecision decision = settled.get(key);
+        SettledDecision previous = settled.get(key);
+        SettledDecision decision = null;
+        if (shouldReplay) {
+            decision = previous;
+        }
         if (decision != null) {
             applySettled(context, toolCall, decision);
             return;
         }
         InterruptDecision resolved = resolver.get();
         if (resolved instanceof InterruptResult pending) {
+            if (!shouldReplay && previous != null && previous.isApproved() && previous.isConfirmed()) {
+                applySettled(context, toolCall, previous);
+                return;
+            }
             ToolInterruptionState.railState(context).getPendingRailIds().put(toolCall.getId(), railId);
             throw new ToolInterruptException(pending.request(), toolCall);
         }
         if (resolved instanceof RejectResult rejected) {
-            decision = new SettledDecision(false, null, rejected.toolResult(), rejected.toolMessage());
+            decision = new SettledDecision(false, false, null, rejected.toolResult(), rejected.toolMessage());
         } else {
             String args = null;
             if (resolved instanceof ApproveResult approved) {
                 args = approved.newArgs();
             }
-            decision = new SettledDecision(true, args, null, null);
+            boolean isConfirmed = previous != null && previous.isConfirmed();
+            String pendingRail = ToolInterruptionState.railState(context).getPendingRailIds().get(toolCall.getId());
+            isConfirmed |= railId.equals(pendingRail) && userInput(context, toolCall, railId).isPresent();
+            decision = new SettledDecision(true, isConfirmed, args, null, null);
         }
         settled.put(key, decision);
         applySettled(context, toolCall, decision);

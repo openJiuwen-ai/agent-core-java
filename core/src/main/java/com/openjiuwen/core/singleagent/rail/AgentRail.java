@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -51,8 +50,6 @@ public abstract class AgentRail {
 
     /** Tool cards carried by this rail (released with the rail). */
     private final List<ToolCard> tools;
-
-    private final String checkpointVersion = UUID.randomUUID().toString();
 
     /**
      * Rail without tool cards.
@@ -92,20 +89,6 @@ public abstract class AgentRail {
      */
     public List<ToolCard> getToolCards() {
         return tools;
-    }
-
-    /**
-     * Identify the policy whose terminal decisions may be replayed from a checkpoint.
-     *
-     * <p>The default is restricted to this instance. A policy supporting reconstruction must override
-     * this method with a stable, non-secret version covering every decision-affecting configuration.
-     * The version must change when that configuration changes.</p>
-     *
-     * @return non-null policy version
-     * @since 0.1.17
-     */
-    public String getCheckpointVersion() {
-        return checkpointVersion;
     }
 
     /**

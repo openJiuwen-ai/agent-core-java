@@ -6,6 +6,7 @@ package com.openjiuwen.harness.rails.interrupt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.harness.rails.CallbackContext;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,7 @@ class DeepAgentAskUserRailMissingTest {
         ToolCall toolCall = askUserToolCall();
 
         InterruptResult firstResult = assertInstanceOf(InterruptResult.class,
-                rail.resolveInterrupt(null, toolCall, null));
+                rail.resolveInterrupt((CallbackContext) null, toolCall, null));
         AskUserRail.AskUserRequest request = assertInstanceOf(
                 AskUserRail.AskUserRequest.class,
                 firstResult.request());
@@ -41,7 +42,7 @@ class DeepAgentAskUserRailMissingTest {
 
         RejectResult resumed = assertInstanceOf(RejectResult.class,
                 rail.resolveInterrupt(
-                        null,
+                        (CallbackContext) null,
                         toolCall,
                         Map.of("answers", Map.of("What is the filename?", "user_answer.txt"))));
 
