@@ -8,9 +8,6 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
-import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
-import com.openjiuwen.core.singleagent.rail.AgentCallback;
-import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.rails.CallbackContext;
@@ -22,7 +19,6 @@ import com.openjiuwen.harness.rails.interrupt.InterruptResult;
 import com.openjiuwen.harness.rails.interrupt.RejectResult;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -57,17 +53,6 @@ public class BaseSecurityRail extends DeepAgentRail {
     public BaseSecurityRail(Iterable<String> toolNames) {
         setPriority(90);
         addTools(toolNames);
-    }
-
-    @Override
-    public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {
-        Map<AgentCallbackEvent, AgentCallback> callbacks = new EnumMap<>(super.getCallbacks());
-        callbacks.put(AgentCallbackEvent.BEFORE_INVOKE, context -> {
-            ToolInterruptionState.railState(context);
-            beforeInvoke(context);
-            return completed();
-        });
-        return callbacks;
     }
 
     @Override

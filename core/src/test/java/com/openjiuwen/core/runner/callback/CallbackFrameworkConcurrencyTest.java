@@ -7,7 +7,6 @@ package com.openjiuwen.core.runner.callback;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.runner.callback.CallbackInfo;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -304,17 +303,22 @@ class CallbackFrameworkConcurrencyTest {
 
     private int runTriggerImmunityStorm(String event) throws Exception {
         ExecutorService pool = newPool(THREADS + 1, "cb-immunity");
-        AtomicBoolean stop = new AtomicBoolean();
         try {
             CountDownLatch start = new CountDownLatch(1);
+            CountDownLatch firstTrigger = new CountDownLatch(1);
             List<Future<?>> futures = new ArrayList<>();
             for (int t = 0; t < THREADS; t++) {
                 final int threadId = t;
-                futures.add(pool.submit(() -> stormRounds(start, event, threadId)));
+                futures.add(pool.submit(() -> {
+                    firstTrigger.await();
+                    return stormRounds(start, event, threadId);
+                }));
             }
-            Future<Integer> triggerer = pool.submit(() -> triggerLoop(start, event, stop));
-            start.countDown();
+            AtomicBoolean stop = new AtomicBoolean();
+            Future<Integer> triggerer = pool.submit(() ->
+                    triggerAfterFirstRound(start, event, stop, firstTrigger));
             try {
+                start.countDown();
                 for (Future<?> future : futures) {
                     future.get(60L, TimeUnit.SECONDS);
                 }
@@ -323,9 +327,16 @@ class CallbackFrameworkConcurrencyTest {
             }
             return triggerer.get(60L, TimeUnit.SECONDS);
         } finally {
-            stop.set(true);
             pool.shutdownNow();
         }
+    }
+
+    private int triggerAfterFirstRound(CountDownLatch start, String event, AtomicBoolean stop,
+                                      CountDownLatch firstTrigger) throws Exception {
+        start.await();
+        framework.trigger(event, Map.of("round", 0));
+        firstTrigger.countDown();
+        return triggerLoop(start, event, stop) + 1;
     }
 
     private int stormRounds(CountDownLatch start, String event, int threadId) throws Exception {

@@ -124,16 +124,17 @@ class NativeConfirmResumeTest {
         ToolInterruptException second = assertInstanceOf(ToolInterruptException.class, execute(context).result());
         assertEquals(0, executions.get());
         agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
-        ToolCard card = (ToolCard) agent.getAbilityManager().get("confirmed_tool").orElseThrow();
+        ToolCard card = assertInstanceOf(ToolCard.class,
+                agent.getAbilityManager().get("confirmed_tool").orElseThrow());
         agent = new ReActAgent(new AgentCard(AGENT_ID, AGENT_ID, "rebuilt"));
         agent.getAbilityManager().add(card);
         agent.registerRail(new ConfirmInterruptRail(List.of("confirmed_tool"))).toCompletableFuture().join();
         registerSecondConfirmation();
+        ToolInterruptionState checkpoint = checkpoint(context, second);
         AgentCallbackContext fresh = new AgentCallbackContext(agent);
         fresh.setSession(context.getSession());
         fresh.setContext(context.getContext());
 
-        ToolInterruptionState checkpoint = checkpoint(context, second);
         assertNull(new ToolInterruptHandler(null).handleResume(resumeContext(fresh, checkpoint, response(false))));
         assertEquals(0, executions.get());
         assertEquals(Map.of(), checkpoint.getInterruptedTools());
@@ -148,18 +149,19 @@ class NativeConfirmResumeTest {
         assertInstanceOf(ToolInterruptException.class, execute(context).result());
         context.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, response(true));
         ToolInterruptException second = assertInstanceOf(ToolInterruptException.class, execute(context).result());
-        ToolCard card = (ToolCard) agent.getAbilityManager().get("confirmed_tool").orElseThrow();
+        ToolCard card = assertInstanceOf(ToolCard.class,
+                agent.getAbilityManager().get("confirmed_tool").orElseThrow());
         agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
         agent = new ReActAgent(new AgentCard(AGENT_ID, AGENT_ID, "changed policy"));
         agent.getAbilityManager().add(card);
         SwitchingPolicyRail replacement = new SwitchingPolicyRail(true);
         agent.registerRail(replacement).toCompletableFuture().join();
         registerSecondConfirmation();
+        ToolInterruptionState checkpoint = checkpoint(context, second);
         AgentCallbackContext fresh = new AgentCallbackContext(agent);
         fresh.setSession(context.getSession());
         fresh.setContext(context.getContext());
 
-        ToolInterruptionState checkpoint = checkpoint(context, second);
         InteractiveInput approval = response(true);
         approval.update("call-1", Map.of("approved", true, "auto_confirm", true));
         assertNull(new ToolInterruptHandler(null).handleResume(resumeContext(fresh, checkpoint, approval)));
@@ -171,9 +173,6 @@ class NativeConfirmResumeTest {
     @ParameterizedTest
     @ValueSource(strings = {"snake", "camel", "typed", "rejected"})
     void autoConfirmationIsSavedOnlyAfterValidApproval(String format) throws IOException, ClassNotFoundException {
-        AgentCallbackContext context = prepare();
-        ToolInterruptException pending = assertInstanceOf(ToolInterruptException.class, execute(context).result());
-        ToolInterruptionState state = checkpoint(context, pending);
         Object payload = Map.of("approved", true, "auto_confirm", true);
         if ("camel".equals(format)) {
             payload = Map.of("approved", true, "autoConfirm", true);
@@ -186,6 +185,9 @@ class NativeConfirmResumeTest {
         }
         InteractiveInput response = new InteractiveInput();
         response.update("call-1", payload);
+        AgentCallbackContext context = prepare();
+        ToolInterruptException pending = assertInstanceOf(ToolInterruptException.class, execute(context).result());
+        ToolInterruptionState state = checkpoint(context, pending);
         assertNull(new ToolInterruptHandler(null).handleResume(resumeContext(context, state, response)));
 
         Object saved = context.getSession().getState(InterruptConstants.INTERRUPT_AUTO_CONFIRM_KEY);
