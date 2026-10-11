@@ -171,6 +171,8 @@ class PermissionInterruptRailArgsTest {
 
             ToolInterruptException pending = assertInstanceOf(ToolInterruptException.class, first.result());
             assertThat(pending.getRequest().getExtraFields()).containsEntry("tool_name", "bash");
+            assertThat(pending.getRequest().getPayloadSchema()).containsKey("properties");
+            assertThat(pending.getRequest().getAutoConfirmKey()).isEqualTo("bash:echo test");
             assertThat(executions).hasValue(0);
 
             InteractiveInput response = new InteractiveInput();

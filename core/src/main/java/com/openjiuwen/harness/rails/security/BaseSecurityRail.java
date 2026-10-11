@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.rails.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
@@ -23,7 +24,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -40,8 +40,7 @@ public class BaseSecurityRail extends DeepAgentRail {
     public static final String BEFORE_MODEL_CALL = "before_model_call";
     public static final String AFTER_MODEL_CALL = "after_model_call";
 
-    private static final Set<String> REQUEST_FIELDS = Set.of(
-            "message", "payload_schema", "auto_confirm_key", "ui_options");
+    private static final ObjectMapper REQUEST_MAPPER = new ObjectMapper();
 
     private final Set<String> toolNames = new LinkedHashSet<>();
     private final Set<String> supportedEvents = new LinkedHashSet<>();
@@ -62,9 +61,20 @@ public class BaseSecurityRail extends DeepAgentRail {
                 || !(inputs.getToolCall() instanceof ToolCall call)) {
             return;
         }
-        String railId = InterruptRailSupport.railId(context, this);
+        String railId = railId();
         InterruptRailSupport.evaluate(context, call, railId, () -> resolveInterrupt(context, call,
                 InterruptRailSupport.userInput(context, call, railId).orElse(null)), false);
+    }
+
+    /**
+     * Return a stable identity for matching this rail's pending approval across resumes.
+     * Override it when registering multiple instances of the same rail class on one agent.
+     *
+     * @return stable rail identity
+     * @since 0.1.17
+     */
+    protected String railId() {
+        return getClass().getName();
     }
 
     /**
@@ -84,7 +94,7 @@ public class BaseSecurityRail extends DeepAgentRail {
                 userInput, autoConfirm, toolCall.getId());
         SecurityDecision decision = runSecurityCheck(security);
         if (decision instanceof SecurityInterrupt pending) {
-            return interrupt(toInterruptRequest(pending.request()));
+            return interrupt(REQUEST_MAPPER.convertValue(pending.request(), InterruptRequest.class));
         }
         applySecurityDecision(security, decision);
         applyCallbackContext(context, callback);
@@ -111,34 +121,6 @@ public class BaseSecurityRail extends DeepAgentRail {
      */
     public InterruptResult interrupt(InterruptRequest request) {
         return new InterruptResult(request);
-    }
-
-    private static InterruptRequest toInterruptRequest(Map<String, Object> values) {
-        InterruptRequest request = new InterruptRequest();
-        request.setMessage(Objects.toString(values.get("message"), ""));
-        request.setAutoConfirmKey(Objects.toString(values.get("auto_confirm_key"), ""));
-        if (values.get("payload_schema") instanceof Map<?, ?> schema) {
-            Map<String, Object> copied = new LinkedHashMap<>();
-            schema.forEach((key, value) -> copied.put(String.valueOf(key), value));
-            request.setPayloadSchema(copied);
-        }
-        if (values.get("ui_options") instanceof List<?> options) {
-            List<Map<String, Object>> copied = new ArrayList<>();
-            for (Object option : options) {
-                if (option instanceof Map<?, ?> map) {
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    map.forEach((key, value) -> item.put(String.valueOf(key), value));
-                    copied.add(item);
-                }
-            }
-            request.setUiOptions(copied);
-        }
-        values.forEach((key, value) -> {
-            if (!REQUEST_FIELDS.contains(key)) {
-                request.putExtraField(key, value);
-            }
-        });
-        return request;
     }
 
     private static void saveAutoConfirm(AgentCallbackContext context, CallbackContext callback,
