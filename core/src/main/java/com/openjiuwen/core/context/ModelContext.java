@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.context;
 
-import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
@@ -81,30 +80,15 @@ public interface ModelContext {
                                                     Map<String, Object> kwargs);
 
     /**
-     * Prepare processed messages before BEFORE_MODEL_CALL edits the request.
-     * Contexts with KV caches must honor defer_finalization and release only in finalization.
-     * Configure processors in BEFORE_INVOKE or BEFORE_TASK_ITERATION.
-     *
-     * @param systemMessages system prompt messages
-     * @param tools request tools
-     * @return processed window awaiting request edits and finalization
-     * @since 0.1.16
-     */
-    default CompletionStage<ContextWindow> prepareContextWindow(List<BaseMessage> systemMessages,
-                                                                List<ToolInfo> tools) {
-        return getContextWindow(systemMessages, tools, null, null, Map.of("defer_finalization", true));
-    }
-
-    /**
-     * Recount an edited request without altering persistent history.
-     * Contexts with KV caches override this method to release against the resolved model.
+     * Finalize an edited request without rerunning context processors.
+     * Contexts with request statistics or KV caches override this hook.
+     * The default leaves the prepared window unchanged.
      *
      * @param window processed and edited request window
      * @param model resolved model for KV release, or null when release is unavailable
      * @since 0.1.16
      */
     default void finalizeContextWindow(ContextWindow window, Object model) {
-        window.setStatistic(ContextUtils.statContextWindow(window, tokenCounter()));
     }
 
     ContextStats statistic();

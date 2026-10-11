@@ -424,13 +424,13 @@ public class ReActAgent extends BaseAgent {
         if (!systemPrompt.isBlank()) {
             systemMessages.add(new SystemMessage(systemPrompt));
         }
-        ContextWindow window = context.prepareContextWindow(systemMessages, toolInfoList(previous.getTools()))
+        ContextWindow window = context.getContextWindow(systemMessages, toolInfoList(previous.getTools()),
+                null, null, Map.of("defer_finalization", true))
                 .toCompletableFuture().join();
         List<BaseMessage> messages = window.getMessages().stream().map(ReActAgent::copyRequestMessage).toList();
-        ModelCallInputs inputs = new PreparedModelCallInputs(messages, window);
-        inputs.setTools(new ArrayList<>(window.getTools()));
-        inputs.setModelContext(context);
-        ctx.setInputs(inputs);
+        previous.setMessages(new ArrayList<>(messages));
+        previous.setTools(new ArrayList<>(window.getTools()));
+        previous.setModelContext(context);
     }
 
     private static BaseMessage copyRequestMessage(BaseMessage message) {
@@ -462,12 +462,7 @@ public class ReActAgent extends BaseAgent {
             releaseModel = model;
         }
 
-        ContextWindow window;
-        if (inputs instanceof PreparedModelCallInputs prepared) {
-            window = prepared.window;
-        } else {
-            window = new ContextWindow();
-        }
+        ContextWindow window = new ContextWindow();
         applyModelRequestMessages(window, inputs);
         window.setTools(toolInfoList(inputs.getTools()));
         ModelContext context = inputs.getModelContext();
@@ -550,15 +545,6 @@ public class ReActAgent extends BaseAgent {
     private record ModelCallRuntime(
             com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook.KVCacheCallCapabilities capabilities,
             Map<String, Object> extraFields) {
-    }
-
-    private static final class PreparedModelCallInputs extends ModelCallInputs {
-        private final ContextWindow window;
-
-        private PreparedModelCallInputs(List<BaseMessage> messages, ContextWindow window) {
-            setMessages(new ArrayList<>(messages));
-            this.window = window;
-        }
     }
 
     private AssistantMessage invokeNonStreaming(StreamModelCall call,

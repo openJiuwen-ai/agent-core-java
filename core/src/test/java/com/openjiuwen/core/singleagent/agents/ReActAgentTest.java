@@ -171,53 +171,6 @@ class ReActAgentTest {
     }
 
     @Test
-    void beforeModelRailKeepsSystemDirectivesAndProcessedHistory() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
-        SystemMessage directive = new SystemMessage("request-local directive");
-        AgentRail rail = new AgentRail() {
-            @Override
-            public void beforeModelCall(AgentCallbackContext context) {
-                assertInstanceOf(ModelCallInputs.class, context.getInputs()).getMessages().add(0, directive);
-            }
-        };
-        agent.registerRail(rail).toCompletableFuture().join();
-        try {
-            callModelForKvTest(agent, new RecordingModelContext("rail-directive"),
-                    new MemorySession("rail-directive"));
-
-            assertSame(directive, client.lastMessages.get(0));
-            assertEquals(List.of("request-local directive", "System", "question"),
-                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
-        } finally {
-            agent.unregisterRail(rail).toCompletableFuture().join();
-        }
-    }
-
-    @Test
-    void beforeModelRailCanReplaceSystemPrompt() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
-        AgentRail rail = new AgentRail() {
-            @Override
-            public void beforeModelCall(AgentCallbackContext context) {
-                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
-                inputs.getMessages().set(0, new SystemMessage("replacement"));
-            }
-        };
-        agent.registerRail(rail).toCompletableFuture().join();
-        try {
-            callModelForKvTest(agent, new RecordingModelContext("rail-replacement"),
-                    new MemorySession("rail-replacement"));
-
-            assertEquals(List.of("replacement", "question"),
-                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
-        } finally {
-            agent.unregisterRail(rail).toCompletableFuture().join();
-        }
-    }
-
-    @Test
     void beforeModelRailKeepsCustomSystemMessageTypes() {
         RecordingModelClient client = new RecordingModelClient(false);
         ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
@@ -234,50 +187,6 @@ class ReActAgentTest {
 
             assertSame(directive, client.lastMessages.get(0));
             assertEquals(List.of("typed directive", "System", "question"),
-                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
-        } finally {
-            agent.unregisterRail(rail).toCompletableFuture().join();
-        }
-    }
-
-    @Test
-    void beforeModelRailCanEditOriginalSystemMessage() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
-        AgentRail rail = new AgentRail() {
-            @Override
-            public void beforeModelCall(AgentCallbackContext context) {
-                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
-                assertInstanceOf(BaseMessage.class, inputs.getMessages().get(0)).setContent("edited prompt");
-            }
-        };
-        agent.registerRail(rail).toCompletableFuture().join();
-        try {
-            callModelForKvTest(agent, new RecordingModelContext("rail-edit"), new MemorySession("rail-edit"));
-
-            assertEquals(List.of("edited prompt", "question"),
-                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
-        } finally {
-            agent.unregisterRail(rail).toCompletableFuture().join();
-        }
-    }
-
-    @Test
-    void beforeModelRailCanRemoveOriginalSystemMessage() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
-        AgentRail rail = new AgentRail() {
-            @Override
-            public void beforeModelCall(AgentCallbackContext context) {
-                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
-                inputs.getMessages().remove(0);
-            }
-        };
-        agent.registerRail(rail).toCompletableFuture().join();
-        try {
-            callModelForKvTest(agent, new RecordingModelContext("rail-remove"), new MemorySession("rail-remove"));
-
-            assertEquals(List.of("question"),
                     client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
         } finally {
             agent.unregisterRail(rail).toCompletableFuture().join();
@@ -333,30 +242,6 @@ class ReActAgentTest {
     }
 
     @Test
-    void beforeModelRailCanRemoveRequestHistory() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
-        RecordingModelContext context = new RecordingModelContext("rail-empty-history");
-        context.setMessages(List.of(new UserMessage("original")));
-        AgentRail rail = new AgentRail() {
-            @Override
-            public void beforeModelCall(AgentCallbackContext callback) {
-                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, callback.getInputs());
-                inputs.setMessages(List.of(inputs.getMessages().get(0)));
-            }
-        };
-        agent.registerRail(rail).toCompletableFuture().join();
-        try {
-            callModelForKvTest(agent, context, new MemorySession("rail-empty-history"));
-            assertEquals(List.of("System"),
-                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
-            assertEquals("original", context.getMessages().get(0).getContentAsString());
-        } finally {
-            agent.unregisterRail(rail).toCompletableFuture().join();
-        }
-    }
-
-    @Test
     void beforeModelRailKeepsRequestUserMessageWhileStreaming() {
         StreamingRecordingModelClient client = new StreamingRecordingModelClient();
         ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
@@ -376,77 +261,6 @@ class ReActAgentTest {
             assertEquals(List.of("System", "question", "stream digest"),
                     client.streamMessages.stream().map(BaseMessage::getContentAsString).toList());
             assertEquals(0, client.invokeCount());
-        } finally {
-            agent.unregisterRail(rail).toCompletableFuture().join();
-        }
-    }
-
-    @Test
-    void beforeModelRailKeepsRequestLocalUserMessage() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
-        UserMessage directive = new UserMessage("request digest");
-        RecordingModelContext context = new RecordingModelContext("rail-user");
-        AgentRail rail = new AgentRail() {
-            @Override
-            public void beforeModelCall(AgentCallbackContext callback) {
-                assertInstanceOf(ModelCallInputs.class, callback.getInputs()).getMessages().add(directive);
-            }
-        };
-        agent.registerRail(rail).toCompletableFuture().join();
-        try {
-            callModelForKvTest(agent, context, new MemorySession("rail-user"));
-            assertSame(directive, client.lastMessages.get(2));
-            assertEquals(List.of("System", "question", "request digest"),
-                    client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
-            assertTrue(context.getMessages().isEmpty());
-        } finally {
-            agent.unregisterRail(rail).toCompletableFuture().join();
-        }
-    }
-
-    @Test
-    void beforeModelRailCanReplaceRequestHistory() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
-        RecordingModelContext context = new RecordingModelContext("rail-history");
-        context.setMessages(List.of(new UserMessage("original")));
-        UserMessage replacement = new UserMessage("replacement history");
-        AgentRail rail = new AgentRail() {
-            @Override
-            public void beforeModelCall(AgentCallbackContext callback) {
-                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, callback.getInputs());
-                inputs.setMessages(List.of(inputs.getMessages().get(0), replacement));
-            }
-        };
-        agent.registerRail(rail).toCompletableFuture().join();
-        try {
-            callModelForKvTest(agent, context, new MemorySession("rail-history"));
-            assertSame(replacement, client.lastMessages.get(1));
-            assertEquals("original", context.getMessages().get(0).getContentAsString());
-        } finally {
-            agent.unregisterRail(rail).toCompletableFuture().join();
-        }
-    }
-
-    @Test
-    void beforeModelRailCanEditRequestHistoryInPlace() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
-        RecordingModelContext context = new RecordingModelContext("rail-history-edit");
-        context.setMessages(List.of(new UserMessage("original")));
-        AgentRail rail = new AgentRail() {
-            @Override
-            public void beforeModelCall(AgentCallbackContext callback) {
-                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, callback.getInputs());
-                assertInstanceOf(BaseMessage.class, inputs.getMessages().get(1)).setContent("edited history");
-            }
-        };
-        agent.registerRail(rail).toCompletableFuture().join();
-        try {
-            callModelForKvTest(agent, context, new MemorySession("rail-history-edit"));
-            assertEquals("edited history", client.lastMessages.get(1).getContentAsString());
-            assertEquals("original", context.getMessages().get(0).getContentAsString());
         } finally {
             agent.unregisterRail(rail).toCompletableFuture().join();
         }

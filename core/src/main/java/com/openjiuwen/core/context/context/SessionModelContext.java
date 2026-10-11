@@ -393,23 +393,24 @@ public class SessionModelContext implements ModelContext {
             }
         }
 
-        ContextUtils.validateAndFixContextWindow(window);
-        if (!Boolean.TRUE.equals(effectiveKwargs.get("defer_finalization"))) {
-            finalizeContextWindow(window, effectiveKwargs.get("model"));
+        validateAndFixContextWindow(window);
+        if (kvCacheManager != null && !Boolean.TRUE.equals(effectiveKwargs.get("defer_finalization"))) {
+            kvCacheManager.release(window, effectiveKwargs.get("model"));
         }
+        window.setStatistic(statContextWindow(window));
         return CompletableFuture.completedFuture(window);
     }
 
     /**
-     * Finalize the edited request before model invocation without rerunning processors.
+     * Recount the edited request and release KV cache against the selected model.
      *
-     * @param window processed and edited request window
-     * @param model resolved model for KV release, or null when release is unavailable
+     * @param window processed request after model rails
+     * @param model selected release model, or null when release is disabled
      * @since 0.1.16
      */
     @Override
     public void finalizeContextWindow(ContextWindow window, Object model) {
-        ModelContext.super.finalizeContextWindow(window, model);
+        window.setStatistic(statContextWindow(window));
         if (kvCacheManager != null && model != null) {
             kvCacheManager.release(window, model);
         }
@@ -417,8 +418,9 @@ public class SessionModelContext implements ModelContext {
 
     @Override
     public ContextStats statistic() {
-        return ContextUtils.statContextWindow(
-                new ContextWindow(List.of(), getMessages(null, true), List.of(), new ContextStats()), tokenCounter);
+        ContextStats stat = new ContextStats();
+        statMessages(stat, getMessages(null, true));
+        return stat;
     }
 
     @Override
@@ -686,6 +688,109 @@ public class SessionModelContext implements ModelContext {
         return new WindowMessages(systemMessages, contextMessages);
     }
 
+    private ContextStats statContextWindow(ContextWindow contextWindow) {
+        List<BaseMessage> messages = contextWindow.getMessages();
+        List<ToolInfo> tools = contextWindow.getTools();
+        ContextStats stat = new ContextStats();
+        statMessages(stat, messages);
+        statTools(stat, tools);
+        stat.setTotalDialogues(findAllDialogueRound(messages).size());
+        return stat;
+    }
+
+    private void statTools(ContextStats stat, List<ToolInfo> tools) {
+        stat.setTools(tools.size());
+        int toolTokens = 0;
+        for (ToolInfo toolInfo : tools) {
+            toolTokens += countToolTokens(toolInfo);
+        }
+        stat.setToolTokens(toolTokens);
+        stat.setTotalTokens(stat.getTotalTokens() + toolTokens);
+    }
+
+    private int countToolTokens(ToolInfo toolInfo) {
+        if (tokenCounter instanceof ToolTokenCounterPort counter) {
+            return counter.countTools(List.of(toolInfo));
+        }
+        String textContent = stringValue(toolInfo.getName(), "") + " " + stringValue(toolInfo.getDescription(), "");
+        if (toolInfo.getParameters() != null && !toolInfo.getParameters().isEmpty()) {
+            textContent += writeJson(toolInfo.getParameters());
+        }
+        return textContent.length() / 4;
+    }
+
+    private int countSingleMessageTokens(BaseMessage message) {
+        if (tokenCounter != null) {
+            return tokenCounter.countTokens(List.of(message));
+        }
+        Object content = message.getContent();
+        if (content instanceof String text) {
+            return text.length() / 4;
+        }
+        if (content instanceof List<?> parts) {
+            int total = 0;
+            for (Object part : parts) {
+                if (part instanceof String text) {
+                    total += text.length() / 4;
+                } else if (part instanceof Map<?, ?> map && map.get("text") instanceof String text) {
+                    total += text.length() / 4;
+                }
+            }
+            return total;
+        }
+        return 0;
+    }
+
+    private Integer getLastAssistantUsageTokens(List<BaseMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            BaseMessage message = messages.get(i);
+            if (message instanceof AssistantMessage assistantMessage && assistantMessage.getUsageMetadata() != null
+                    && assistantMessage.getUsageMetadata().getTotalTokens() > 0) {
+                return assistantMessage.getUsageMetadata().getTotalTokens();
+            }
+        }
+        return null;
+    }
+
+    private void statMessages(ContextStats stat, List<BaseMessage> messages) {
+        stat.setTotalMessages(messages.size());
+        stat.setTotalDialogues(findAllDialogueRound(messages).size());
+        for (BaseMessage message : messages) {
+            switch (stringValue(message.getRole(), "")) {
+                case "assistant" -> stat.setAssistantMessages(stat.getAssistantMessages() + 1);
+                case "user" -> stat.setUserMessages(stat.getUserMessages() + 1);
+                case "system" -> stat.setSystemMessages(stat.getSystemMessages() + 1);
+                case "tool" -> stat.setToolMessages(stat.getToolMessages() + 1);
+                default -> {
+                }
+            }
+        }
+
+        Integer usageTokens = getLastAssistantUsageTokens(messages);
+        if (usageTokens != null) {
+            stat.setTotalTokens(usageTokens);
+            return;
+        }
+
+        for (BaseMessage message : messages) {
+            int messageTokens = countSingleMessageTokens(message);
+            switch (stringValue(message.getRole(), "")) {
+                case "assistant" -> stat.setAssistantMessageTokens(stat.getAssistantMessageTokens() + messageTokens);
+                case "user" -> stat.setUserMessageTokens(stat.getUserMessageTokens() + messageTokens);
+                case "system" -> stat.setSystemMessageTokens(stat.getSystemMessageTokens() + messageTokens);
+                case "tool" -> stat.setToolMessageTokens(stat.getToolMessageTokens() + messageTokens);
+                default -> {
+                }
+            }
+        }
+
+        stat.setTotalTokens(stat.getTotalTokens()
+                + stat.getAssistantMessageTokens()
+                + stat.getUserMessageTokens()
+                + stat.getSystemMessageTokens()
+                + stat.getToolMessageTokens());
+    }
+
     private static void validateMessages(List<BaseMessage> messages) {
         if (messages == null) {
             throw ErrorHelper.buildError(StatusCode.CONTEXT_MESSAGE_INVALID,
@@ -777,6 +882,24 @@ public class SessionModelContext implements ModelContext {
     private BaseMessage lastContextMessage() {
         List<BaseMessage> existing = messageBuffer.getBack(1, true);
         return existing.isEmpty() ? null : existing.get(existing.size() - 1);
+    }
+
+    private static void validateAndFixContextWindow(ContextWindow contextWindow) {
+        List<BaseMessage> messages = contextWindow.getContextMessages();
+        if (messages.isEmpty()) {
+            return;
+        }
+        int firstNonTool = 0;
+        while (firstNonTool < messages.size() && messages.get(firstNonTool) instanceof ToolMessage) {
+            firstNonTool++;
+        }
+        if (firstNonTool == messages.size()) {
+            contextWindow.setContextMessages(List.of());
+            return;
+        }
+        if (firstNonTool > 0) {
+            contextWindow.setContextMessages(messages.subList(firstNonTool, messages.size()));
+        }
     }
 
     private static int resolveContextMax(String modelName, Integer fallbackContextWindowTokens,
