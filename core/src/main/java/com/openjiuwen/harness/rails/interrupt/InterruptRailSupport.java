@@ -12,7 +12,6 @@ import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState.SettledDecision;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
-import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 
 import java.util.LinkedHashMap;
@@ -27,22 +26,6 @@ import java.util.function.Supplier;
  */
 public final class InterruptRailSupport {
     private InterruptRailSupport() {
-    }
-
-    /**
-     * Identify a registered rail independently of other instances of its class.
-     *
-     * @param context current callback context
-     * @param rail evaluating rail
-     * @return registration identity
-     * @since 0.1.17
-     */
-    public static String railId(AgentCallbackContext context, AgentRail rail) {
-        String registration = rail.getClass().getName();
-        if (context.getAgent() != null) {
-            registration = context.getAgent().getAgentCallbackManager().getRailIdentity(rail);
-        }
-        return registration;
     }
 
     /**
@@ -63,12 +46,8 @@ public final class InterruptRailSupport {
         Map<String, SettledDecision> settled = ToolInterruptionState.railState(context).getRailSettledDecisions();
         String key = toolCall.getId() + "\u0000" + railId;
         SettledDecision previous = settled.get(key);
-        SettledDecision decision = null;
-        if (shouldReplay) {
-            decision = previous;
-        }
-        if (decision != null) {
-            applySettled(context, toolCall, decision);
+        if (shouldReplay && previous != null) {
+            applySettled(context, toolCall, previous);
             return;
         }
         InterruptDecision resolved = resolver.get();
@@ -80,6 +59,7 @@ public final class InterruptRailSupport {
             ToolInterruptionState.railState(context).getPendingRailIds().put(toolCall.getId(), railId);
             throw new ToolInterruptException(pending.request(), toolCall);
         }
+        SettledDecision decision;
         if (resolved instanceof RejectResult rejected) {
             decision = new SettledDecision(false, false, null, rejected.toolResult(), rejected.toolMessage());
         } else {
@@ -112,7 +92,11 @@ public final class InterruptRailSupport {
         }
         Object input = context.getExtra().get(InterruptConstants.RESUME_USER_INPUT_KEY);
         if (input instanceof InteractiveInput interactive) {
-            return Optional.ofNullable(interactive.getUserInputs().get(toolCall.getId()));
+            Map<String, Object> userInputs = interactive.getUserInputs();
+            if (userInputs != null && userInputs.containsKey(toolCall.getId())) {
+                return Optional.ofNullable(userInputs.get(toolCall.getId()));
+            }
+            return Optional.ofNullable(interactive.getRawInputs());
         }
         if (input instanceof Map<?, ?> map && map.containsKey(toolCall.getId())) {
             return Optional.ofNullable(map.get(toolCall.getId()));

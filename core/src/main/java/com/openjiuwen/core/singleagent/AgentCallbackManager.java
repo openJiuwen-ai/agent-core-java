@@ -39,9 +39,6 @@ public class AgentCallbackManager {
     private final CallbackFramework instanceCallbackFramework;
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> railCallbacks = new IdentityHashMap<>();
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> instanceRailCallbacks = new IdentityHashMap<>();
-    private final Map<AgentRail, String> railIdentities = new IdentityHashMap<>();
-
-    private final Map<String, Integer> railIdentityOrdinals = new HashMap<>();
 
     public AgentCallbackManager(String agentId) {
         this(agentId, new ReflectionRunnerCallbackFramework());
@@ -80,7 +77,6 @@ public class AgentCallbackManager {
         if (rail == null) {
             return CompletableFuture.completedFuture(this);
         }
-        registerRailIdentity(rail, "global");
         Map<AgentCallbackEvent, AgentCallback> callbacks = rail.getCallbacks();
         railCallbacks.put(rail, callbacks);
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
@@ -109,38 +105,10 @@ public class AgentCallbackManager {
         return rail != null && railCallbacks.containsKey(rail);
     }
 
-    /**
-     * Return a rail's registration slot without reusing removed registration numbers.
-     *
-     * @param rail rail to identify
-     * @return scoped registration slot, or its class name when unregistered
-     * @since 0.1.17
-     */
-    public String getRailIdentity(AgentRail rail) {
-        return railIdentities.getOrDefault(rail, rail.getClass().getName());
-    }
-
-    private void registerRailIdentity(AgentRail rail, String scope) {
-        if (railIdentities.containsKey(rail)) {
-            return;
-        }
-        String prefix = scope + ":" + rail.getClass().getName() + ":";
-        int ordinal = railIdentityOrdinals.getOrDefault(prefix, 0);
-        railIdentityOrdinals.put(prefix, ordinal + 1);
-        railIdentities.put(rail, prefix + ordinal);
-    }
-
-    private void releaseRailIdentity(AgentRail rail) {
-        if (!railCallbacks.containsKey(rail) && !instanceRailCallbacks.containsKey(rail)) {
-            railIdentities.remove(rail);
-        }
-    }
-
     public CompletionStage<AgentCallbackManager> registerInstanceRail(AgentRail rail, Object agent) {
         if (rail == null) {
             return CompletableFuture.completedFuture(this);
         }
-        registerRailIdentity(rail, "instance");
         Map<AgentCallbackEvent, AgentCallback> callbacks = rail.getCallbacks();
         instanceRailCallbacks.put(rail, callbacks);
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
@@ -159,7 +127,6 @@ public class AgentCallbackManager {
             return CompletableFuture.completedFuture(null);
         }
         Map<AgentCallbackEvent, AgentCallback> callbacks = railCallbacks.remove(rail);
-        releaseRailIdentity(rail);
         if (callbacks == null) {
             callbacks = rail.getCallbacks();
         }
@@ -266,7 +233,6 @@ public class AgentCallbackManager {
             return CompletableFuture.completedFuture(null);
         }
         Map<AgentCallbackEvent, AgentCallback> callbacks = instanceRailCallbacks.remove(rail);
-        releaseRailIdentity(rail);
         if (callbacks == null) {
             return CompletableFuture.completedFuture(null);
         }
