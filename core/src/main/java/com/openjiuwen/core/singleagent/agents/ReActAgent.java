@@ -28,7 +28,6 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
@@ -533,6 +532,9 @@ public class ReActAgent extends BaseAgent {
 
     public List<AbilityManager.ExecutionResult> executeToolCall(AgentCallbackContext ctx, List<ToolCall> toolCalls,
                                                                 AgentSessionApi session, ModelContext context) {
+        if (ctx != null) {
+            ToolInterruptionState.railState(ctx);
+        }
         List<AbilityManager.ExecutionResult> results = executeToolCallsAndWriteToolMessages(ctx, toolCalls, session,
                 context);
         appendMultimodalToolResultsMessage(results, context);

@@ -161,7 +161,7 @@ public class ToolInterruptHandler {
         ToolInterruptionState state = resumeContext.getState();
         Object userInput = resumeContext.getUserInput();
         AgentCallbackContext ctx = resumeContext.getCtx();
-        int resumeIteration = state.getIteration();
+        saveAutoConfirmFromState(state, userInput, resumeContext.getSession());
         if (ctx != null) {
             ToolInterruptionState.railState(ctx).copyRailStateFrom(state);
             ctx.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, userInput);
@@ -201,7 +201,7 @@ public class ToolInterruptHandler {
                     collectResult.getPayloads());
         }
         if (ctx != null) {
-            ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, resumeIteration + 1);
+            ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, state.getIteration() + 1);
         }
         return null;
     }

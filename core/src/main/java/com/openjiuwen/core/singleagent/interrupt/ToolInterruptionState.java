@@ -146,7 +146,7 @@ public class ToolInterruptionState extends BaseInterruptionState {
      * @since 0.1.17
      */
     public record SettledDecision(boolean isApproved, boolean isConfirmed, String newArgs,
-                                  Object toolResult, ToolMessage toolMessage)
+            Object toolResult, ToolMessage toolMessage)
             implements Serializable {
         @Serial
         private static final long serialVersionUID = 1L;
