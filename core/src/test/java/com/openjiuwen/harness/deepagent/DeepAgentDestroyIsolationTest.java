@@ -6,6 +6,9 @@ package com.openjiuwen.harness.deepagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
 
 import com.openjiuwen.core.common.logging.LogCaptureFixture;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -16,7 +19,9 @@ import com.openjiuwen.core.multitenant.TmpFileCleaner;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.resourcemanager.GlobalRegistrySnapshot;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.AgentCallbackManager;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -37,14 +42,14 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -198,8 +203,8 @@ class DeepAgentDestroyIsolationTest {
     }
 
     /**
-     * ToolCard whose getName() throws once armed: rail-tool registration
-     * (AbilityManager.add) stays clean, the tool-card removal step fails.
+     * ToolCard whose getName() throws once armed: removal must use the
+     * registration snapshot instead of reading mutable card metadata.
      */
     static final class ArmedToolCard extends ToolCard {
         private volatile boolean isArmed;
@@ -224,8 +229,7 @@ class DeepAgentDestroyIsolationTest {
     }
 
     /**
-     * Rail carrying one armed tool card: the tool-card removal step of
-     * unregisterRail fails while its callbacks and uninit still run.
+     * Rail carrying one armed tool card, with observable callback cleanup and uninit.
      */
     static final class ArmedToolCardRail extends AgentRail {
         final ArmedToolCard card;
@@ -458,6 +462,10 @@ class DeepAgentDestroyIsolationTest {
         String agentId = agent.getCard().getId();
         try {
             agent.ensureInitialized();
+            AbilityManager abilities = spy(agent.getAbilityManager());
+            doThrow(new IllegalStateException("boom-tool-card-removal"))
+                    .when(abilities).remove("armed-tool-card");
+            assertInstanceOf(ReActAgent.class, agent.reactAgent()).setAbilityManager(abilities);
             armedRail.card.arm();
             try (LogCaptureFixture logs = LogCaptureFixture.attach("agent")) {
                 assertThatCode(agent::destroy)
