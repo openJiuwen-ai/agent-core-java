@@ -151,7 +151,7 @@ public class AgentCallbackManager {
                         card.getName());
                 continue;
             }
-            AddAbilityResult result = abilities.addRailTool(card);
+            AddAbilityResult result = abilities.add(card);
             if (result.isAdded() && "added_tool".equals(result.getReason())) {
                 owned.put(card.getName(), card);
             } else {
@@ -198,8 +198,10 @@ public class AgentCallbackManager {
         // Release the registration snapshot, never the rail's mutable declaration.
         IsolatedActions.runIsolated(() -> {
             for (Map.Entry<String, ToolCard> entry : owned.entrySet()) {
-                if (!isOwnedRailTool(entry.getKey(), entry.getValue())) {
-                    baseAgent.getAbilityManager().removeRailTool(entry.getKey(), entry.getValue());
+                AbilityManager abilities = baseAgent.getAbilityManager();
+                if (!isOwnedRailTool(entry.getKey(), entry.getValue())
+                        && abilities.get(entry.getKey()).orElse(null) == entry.getValue()) {
+                    abilities.remove(entry.getKey());
                 }
             }
             return null;
