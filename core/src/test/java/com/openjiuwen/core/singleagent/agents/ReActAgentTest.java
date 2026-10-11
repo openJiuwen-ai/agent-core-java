@@ -67,7 +67,6 @@ class ReActAgentTest {
     @ParameterizedTest
     @ValueSource(strings = {"append", "delete", "replace", "edit"})
     void processedWindowEditsAreFinalizedAgainstTheCurrentModel(String operation) {
-        RecordingModelClient oldClient = new RecordingModelClient(true);
         RecordingModelClient selectedClient = new RecordingModelClient(true);
         Model selectedModel = new Model(selectedClient);
         ReActAgent agent = new ReActAgent(new AgentCard("processed-rail", "test", "test")) {
@@ -79,6 +78,7 @@ class ReActAgentTest {
                 return super.getLlm(context);
             }
         };
+        RecordingModelClient oldClient = new RecordingModelClient(true);
         configureKvAgent(agent, "InferenceAffinity", true, new Model(oldClient));
         List<ContextWindow> releases = new ArrayList<>();
         List<Object> releaseModels = new ArrayList<>();
@@ -590,14 +590,7 @@ class ReActAgentTest {
 
     @Test
     void preparationFailureOccursBeforeModelRailLifecycle() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredAgent("headers-preparation-failure-agent", new Model(client));
-        AtomicInteger providerCalls = new AtomicInteger();
         AtomicInteger lifecycleCalls = new AtomicInteger();
-        ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(context -> {
-            providerCalls.incrementAndGet();
-            return CompletableFuture.completedFuture(Map.of("Authorization", "unused"));
-        });
         AgentRail observer = new AgentRail() {
             @Override
             public void onModelException(AgentCallbackContext context) {
@@ -610,6 +603,13 @@ class ReActAgentTest {
                 lifecycleCalls.incrementAndGet();
             }
         };
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredAgent("headers-preparation-failure-agent", new Model(client));
+        AtomicInteger providerCalls = new AtomicInteger();
+        ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(context -> {
+            providerCalls.incrementAndGet();
+            return CompletableFuture.completedFuture(Map.of("Authorization", "unused"));
+        });
         agent.registerRail(headersRail).toCompletableFuture().join();
         agent.registerRail(observer).toCompletableFuture().join();
         try {
