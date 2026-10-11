@@ -64,6 +64,11 @@ import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
 import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
 import java.nio.file.InvalidPathException;
@@ -355,7 +360,7 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Object callModel(AgentCallbackContext ctx, ModelContext context, List<ToolInfo> tools) {
-        ModelCallInputs inputs = new PreviewModelCallInputs(buildPreviewMessages(context), promptBuilder.build());
+        ModelCallInputs inputs = new ModelCallInputs();
         inputs.setTools(tools == null ? null : new ArrayList<>(tools));
         inputs.setModelContext(context);
         ctx.setInputs(inputs);
@@ -372,6 +377,7 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Object railedModelCall(AgentCallbackContext ctx) {
+        prepareModelRequest(ctx);
         return Rails.run(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
@@ -407,6 +413,40 @@ public class ReActAgent extends BaseAgent {
         return streamModelResponseWithRetry(modelCall, kvLease);
     }
 
+    private void prepareModelRequest(AgentCallbackContext ctx) {
+        ModelCallInputs previous = ModelCallInputs.class.cast(ctx.getInputs());
+        ModelContext context = previous.getModelContext();
+        if (context == null) {
+            context = ctx.getContext();
+        }
+        String systemPrompt = promptBuilder.build();
+        List<BaseMessage> systemMessages = new ArrayList<>();
+        if (!systemPrompt.isBlank()) {
+            systemMessages.add(new SystemMessage(systemPrompt));
+        }
+        ContextWindow window = context.prepareContextWindow(systemMessages, toolInfoList(previous.getTools()))
+                .toCompletableFuture().join();
+        List<BaseMessage> messages = window.getMessages().stream().map(ReActAgent::copyRequestMessage).toList();
+        ModelCallInputs inputs = new PreparedModelCallInputs(messages, window);
+        inputs.setTools(new ArrayList<>(window.getTools()));
+        inputs.setModelContext(context);
+        ctx.setInputs(inputs);
+    }
+
+    private static BaseMessage copyRequestMessage(BaseMessage message) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream output = new ObjectOutputStream(bytes)) {
+            output.writeObject(message);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot copy model request message", exception);
+        }
+        try (ObjectInputStream input = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
+            return BaseMessage.class.cast(input.readObject());
+        } catch (IOException | ClassNotFoundException exception) {
+            throw new IllegalStateException("Cannot restore model request message copy", exception);
+        }
+    }
+
     private ContextWindow prepareModelContextWindow(AgentCallbackContext ctx, Model model, ModelCallInputs inputs) {
         boolean isKvReleaseEnabled = config.getContextEngineConfig().isEnableKvCacheRelease();
         boolean canReleaseKvCache = model.supportsKvCacheRelease();
@@ -417,54 +457,35 @@ public class ReActAgent extends BaseAgent {
                     + "KV cache release will not take effect.");
             kvReleaseWarningLogged = true;
         }
-        Map<String, Object> contextWindowKwargs = new LinkedHashMap<>();
+        Object releaseModel = null;
         if (isKvReleaseEnabled && canReleaseKvCache) {
-            contextWindowKwargs.put("model", model);
+            releaseModel = model;
         }
 
-        List<BaseMessage> contextMessages = modelContextMessages(inputs);
-        boolean hasChangedContextMessages = inputs instanceof PreviewModelCallInputs preview
-                && preview.hasChangedContextMessages(contextMessages);
-        ContextWindow window = ctx.getContext().getContextWindow(
-                modelSystemMessages(inputs),
-                toolInfoList(inputs.getTools()),
-                null,
-                null,
-                contextWindowKwargs
-        ).toCompletableFuture().join();
-        if (hasChangedContextMessages) {
-            window.setContextMessages(contextMessages);
+        ContextWindow window;
+        if (inputs instanceof PreparedModelCallInputs prepared) {
+            window = prepared.window;
+        } else {
+            window = new ContextWindow();
         }
+        applyModelRequestMessages(window, inputs);
+        window.setTools(toolInfoList(inputs.getTools()));
+        ModelContext context = inputs.getModelContext();
+        if (context == null) {
+            context = ctx.getContext();
+        }
+        context.finalizeContextWindow(window, releaseModel);
         return window;
     }
 
-    private static List<BaseMessage> modelContextMessages(ModelCallInputs inputs) {
-        List<BaseMessage> messages = new ArrayList<>();
-        for (Object value : inputs.getMessages()) {
-            if (value instanceof BaseMessage message && !"system".equals(message.getRole())) {
-                messages.add(message);
-            }
+    private static void applyModelRequestMessages(ContextWindow window, ModelCallInputs inputs) {
+        List<BaseMessage> messages = inputs.getMessages().stream().map(BaseMessage.class::cast).toList();
+        int systemPrefixSize = 0;
+        while (systemPrefixSize < messages.size() && "system".equals(messages.get(systemPrefixSize).getRole())) {
+            systemPrefixSize++;
         }
-        return messages;
-    }
-
-    private List<BaseMessage> modelSystemMessages(ModelCallInputs inputs) {
-        List<BaseMessage> messages = new ArrayList<>();
-        for (Object value : inputs.getMessages()) {
-            if (value instanceof BaseMessage message && "system".equals(message.getRole())) {
-                if (inputs instanceof PreviewModelCallInputs preview && message == preview.systemMessage
-                        && Objects.equals(message.getContent(), preview.systemContent)) {
-                    messages.add(new SystemMessage(promptBuilder.build()));
-                } else {
-                    messages.add(message);
-                }
-            }
-        }
-        if (messages.isEmpty() && (!(inputs instanceof PreviewModelCallInputs preview)
-                || preview.systemMessage == null)) {
-            messages.add(new SystemMessage(promptBuilder.build()));
-        }
-        return messages;
+        window.setSystemMessages(messages.subList(0, systemPrefixSize));
+        window.setContextMessages(messages.subList(systemPrefixSize, messages.size()));
     }
 
     private ModelCallRuntime prepareModelCallRuntime(AgentCallbackContext ctx, Model model,
@@ -531,33 +552,12 @@ public class ReActAgent extends BaseAgent {
             Map<String, Object> extraFields) {
     }
 
-    private static final class PreviewModelCallInputs extends ModelCallInputs {
-        private final SystemMessage systemMessage;
-        private final Object systemContent;
-        private final List<BaseMessage> contextMessages;
-        private final List<String> contextContents;
+    private static final class PreparedModelCallInputs extends ModelCallInputs {
+        private final ContextWindow window;
 
-        private PreviewModelCallInputs(List<BaseMessage> messages, String systemPrompt) {
+        private PreparedModelCallInputs(List<BaseMessage> messages, ContextWindow window) {
             setMessages(new ArrayList<>(messages));
-            systemMessage = !systemPrompt.isBlank() && !messages.isEmpty()
-                    && messages.get(0) instanceof SystemMessage message ? message : null;
-            systemContent = systemMessage == null ? null : systemMessage.getContent();
-            contextMessages = modelContextMessages(this);
-            contextContents = contextMessages.stream().map(message -> message.modelDump().toString()).toList();
-        }
-
-        private boolean hasChangedContextMessages(List<BaseMessage> messages) {
-            if (contextMessages.size() != messages.size()) {
-                return true;
-            }
-            for (int index = 0; index < messages.size(); index++) {
-                BaseMessage message = messages.get(index);
-                if (contextMessages.get(index) != message
-                        || !contextContents.get(index).equals(message.modelDump().toString())) {
-                    return true;
-                }
-            }
-            return false;
+            this.window = window;
         }
     }
 

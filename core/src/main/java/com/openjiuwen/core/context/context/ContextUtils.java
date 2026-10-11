@@ -9,11 +9,14 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.context.ContextStats;
 import com.openjiuwen.core.context.ContextWindow;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -29,6 +32,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -194,6 +198,122 @@ public final class ContextUtils {
             }
         }
         return ensured;
+    }
+
+    /**
+     * Count a request window using the same message and tool accounting as session contexts.
+     *
+     * @param contextWindow request messages and tools
+     * @param tokenCounter token counter, or null to use the existing text estimate
+     * @return request statistics
+     * @since 0.1.16
+     */
+    public static ContextStats statContextWindow(ContextWindow contextWindow,
+                                                 ModelContext.TokenCounterPort tokenCounter) {
+        List<BaseMessage> messages = contextWindow.getMessages();
+        List<ToolInfo> tools = contextWindow.getTools();
+        ContextStats stat = new ContextStats();
+        statMessages(stat, messages, tokenCounter);
+        statTools(stat, tools, tokenCounter);
+        stat.setTotalDialogues(findAllDialogueRound(messages).size());
+        return stat;
+    }
+
+    private static void statTools(ContextStats stat, List<ToolInfo> tools, ModelContext.TokenCounterPort tokenCounter) {
+        stat.setTools(tools.size());
+        int toolTokens = 0;
+        for (ToolInfo toolInfo : tools) {
+            toolTokens += countToolTokens(toolInfo, tokenCounter);
+        }
+        stat.setToolTokens(toolTokens);
+        stat.setTotalTokens(stat.getTotalTokens() + toolTokens);
+    }
+
+    private static int countToolTokens(ToolInfo toolInfo, ModelContext.TokenCounterPort tokenCounter) {
+        if (tokenCounter instanceof SessionModelContext.ToolTokenCounterPort counter) {
+            return counter.countTools(List.of(toolInfo));
+        }
+        String textContent = Objects.toString(toolInfo.getName(), "") + " "
+                + Objects.toString(toolInfo.getDescription(), "");
+        if (toolInfo.getParameters() != null && !toolInfo.getParameters().isEmpty()) {
+            textContent += writeJson(toolInfo.getParameters());
+        }
+        return textContent.length() / 4;
+    }
+
+    private static int countSingleMessageTokens(BaseMessage message, ModelContext.TokenCounterPort tokenCounter) {
+        if (tokenCounter != null) {
+            return tokenCounter.countTokens(List.of(message));
+        }
+        Object content = message.getContent();
+        if (content instanceof String text) {
+            return text.length() / 4;
+        }
+        if (content instanceof List<?> parts) {
+            int total = 0;
+            for (Object part : parts) {
+                if (part instanceof String text) {
+                    total += text.length() / 4;
+                    continue;
+                }
+                if (part instanceof Map<?, ?> map && map.get("text") instanceof String text) {
+                    total += text.length() / 4;
+                }
+            }
+            return total;
+        }
+        return 0;
+    }
+
+    private static Optional<Integer> getLastAssistantUsageTokens(List<BaseMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            BaseMessage message = messages.get(i);
+            if (message instanceof AssistantMessage assistantMessage && assistantMessage.getUsageMetadata() != null
+                    && assistantMessage.getUsageMetadata().getTotalTokens() > 0) {
+                return Optional.of(assistantMessage.getUsageMetadata().getTotalTokens());
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static void statMessages(ContextStats stat, List<BaseMessage> messages,
+                                     ModelContext.TokenCounterPort tokenCounter) {
+        stat.setTotalMessages(messages.size());
+        stat.setTotalDialogues(findAllDialogueRound(messages).size());
+        for (BaseMessage message : messages) {
+            switch (Objects.toString(message.getRole(), "")) {
+                case "assistant" -> stat.setAssistantMessages(stat.getAssistantMessages() + 1);
+                case "user" -> stat.setUserMessages(stat.getUserMessages() + 1);
+                case "system" -> stat.setSystemMessages(stat.getSystemMessages() + 1);
+                case "tool" -> stat.setToolMessages(stat.getToolMessages() + 1);
+                default -> {
+                }
+            }
+        }
+
+        Optional<Integer> usageTokens = getLastAssistantUsageTokens(messages);
+        if (usageTokens.isPresent()) {
+            stat.setTotalTokens(usageTokens.get());
+            return;
+        }
+
+        for (BaseMessage message : messages) {
+            int messageTokens = countSingleMessageTokens(message, tokenCounter);
+            switch (Objects.toString(message.getRole(), "")) {
+                case "assistant" -> stat.setAssistantMessageTokens(stat.getAssistantMessageTokens() + messageTokens);
+                case "user" -> stat.setUserMessageTokens(stat.getUserMessageTokens() + messageTokens);
+                case "system" -> stat.setSystemMessageTokens(stat.getSystemMessageTokens() + messageTokens);
+                case "tool" -> stat.setToolMessageTokens(stat.getToolMessageTokens() + messageTokens);
+                default -> {
+                }
+            }
+        }
+
+        stat.setTotalTokens(stat.getTotalTokens()
+                + stat.getAssistantMessageTokens()
+                + stat.getUserMessageTokens()
+                + stat.getSystemMessageTokens()
+                + stat.getToolMessageTokens());
     }
 
     public static void validateAndFixContextWindow(ContextWindow contextWindow) {
