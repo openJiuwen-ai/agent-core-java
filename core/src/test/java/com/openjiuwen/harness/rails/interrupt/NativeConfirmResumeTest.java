@@ -36,6 +36,8 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -53,7 +55,7 @@ class NativeConfirmResumeTest {
     private static final String TOOL_ID = "native-confirm-tool";
 
     private final AtomicInteger executions = new AtomicInteger();
-    private final ReActAgent agent = new ReActAgent(new AgentCard(AGENT_ID, AGENT_ID, "test"));
+    private ReActAgent agent = new ReActAgent(new AgentCard(AGENT_ID, AGENT_ID, "test"));
 
     @AfterEach
     void cleanup() {
@@ -167,17 +169,109 @@ class NativeConfirmResumeTest {
 
         ToolInterruptException second = assertInstanceOf(ToolInterruptException.class, execute(context).result());
         assertEquals(0, executions.get());
-        ToolInterruptionState checkpoint = checkpoint(context, second);
         agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
+        ToolCard card = (ToolCard) agent.getAbilityManager().get("confirmed_tool").orElseThrow();
+        agent = new ReActAgent(new AgentCard(AGENT_ID, AGENT_ID, "rebuilt"));
+        agent.getAbilityManager().add(card);
         agent.registerRail(new ConfirmInterruptRail(List.of("confirmed_tool"))).toCompletableFuture().join();
         registerSecondConfirmation();
         AgentCallbackContext fresh = new AgentCallbackContext(agent);
         fresh.setSession(context.getSession());
         fresh.setContext(context.getContext());
 
+        ToolInterruptionState checkpoint = checkpoint(context, second);
         assertNull(new ToolInterruptHandler(null).handleResume(resumeContext(fresh, checkpoint, response(false))));
         assertEquals(0, executions.get());
         assertEquals(Map.of(), checkpoint.getInterruptedTools());
+    }
+
+    @Test
+    void replacementPolicyDoesNotReplayPreviousApproval() {
+        AgentCallbackContext context = prepare();
+        agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
+        SwitchingPolicyRail old = new SwitchingPolicyRail(false);
+        agent.registerRail(old).toCompletableFuture().join();
+        registerSecondConfirmation();
+        assertInstanceOf(ToolInterruptException.class, execute(context).result());
+        context.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, response(true));
+        assertInstanceOf(ToolInterruptException.class, execute(context).result());
+        agent.unregisterRail(old).toCompletableFuture().join();
+        SwitchingPolicyRail replacement = new SwitchingPolicyRail(true);
+        agent.registerRail(replacement).toCompletableFuture().join();
+
+        assertEquals("new policy denied", execute(context).result());
+        assertEquals(1, replacement.calls);
+        assertEquals(0, executions.get());
+    }
+
+    @Test
+    void reconstructedChangedPolicyDoesNotReplayPreviousApproval() throws IOException, ClassNotFoundException {
+        AgentCallbackContext context = prepare();
+        agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
+        agent.registerRail(new SwitchingPolicyRail(false)).toCompletableFuture().join();
+        registerSecondConfirmation();
+        assertInstanceOf(ToolInterruptException.class, execute(context).result());
+        context.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, response(true));
+        ToolInterruptException second = assertInstanceOf(ToolInterruptException.class, execute(context).result());
+        ToolCard card = (ToolCard) agent.getAbilityManager().get("confirmed_tool").orElseThrow();
+        agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
+        agent = new ReActAgent(new AgentCard(AGENT_ID, AGENT_ID, "changed policy"));
+        agent.getAbilityManager().add(card);
+        SwitchingPolicyRail replacement = new SwitchingPolicyRail(true);
+        agent.registerRail(replacement).toCompletableFuture().join();
+        registerSecondConfirmation();
+        AgentCallbackContext fresh = new AgentCallbackContext(agent);
+        fresh.setSession(context.getSession());
+        fresh.setContext(context.getContext());
+
+        ToolInterruptionState checkpoint = checkpoint(context, second);
+        InteractiveInput approval = response(true);
+        approval.update("call-1", Map.of("approved", true, "auto_confirm", true));
+        assertNull(new ToolInterruptHandler(null).handleResume(resumeContext(fresh, checkpoint, approval)));
+        assertEquals(1, replacement.calls);
+        assertEquals(0, executions.get());
+        assertEquals(Map.of(), context.getSession().getState(InterruptConstants.INTERRUPT_AUTO_CONFIRM_KEY));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"snake", "camel", "typed", "rejected"})
+    void autoConfirmationIsSavedOnlyAfterValidApproval(String format) throws IOException, ClassNotFoundException {
+        AgentCallbackContext context = prepare();
+        ToolInterruptException pending = assertInstanceOf(ToolInterruptException.class, execute(context).result());
+        ToolInterruptionState state = checkpoint(context, pending);
+        Object payload = Map.of("approved", true, "auto_confirm", true);
+        if ("camel".equals(format)) {
+            payload = Map.of("approved", true, "autoConfirm", true);
+        }
+        if ("typed".equals(format)) {
+            payload = new ConfirmInterruptRail.ConfirmPayload(true, "", true);
+        }
+        if ("rejected".equals(format)) {
+            payload = Map.of("approved", false, "auto_confirm", true);
+        }
+        InteractiveInput response = new InteractiveInput();
+        response.update("call-1", payload);
+        assertNull(new ToolInterruptHandler(null).handleResume(resumeContext(context, state, response)));
+
+        Object saved = context.getSession().getState(InterruptConstants.INTERRUPT_AUTO_CONFIRM_KEY);
+        assertEquals("rejected".equals(format) ? Map.of() : Map.of("confirmed_tool", true), saved);
+        assertEquals("rejected".equals(format) ? 0 : 1, executions.get());
+    }
+
+    @Test
+    void nativeAskUserRequestPreservesQuestionsAndAcceptsAnswers() {
+        AskUserRail rail = new AskUserRail();
+        ToolCall call = ToolCall.builder().id("ask-1").name("ask_user")
+                .arguments("{\"questions\":[{\"question\":\"Which path?\"}]}").build();
+        AgentCallbackContext context = new AgentCallbackContext(agent);
+        InterruptResult pending = assertInstanceOf(InterruptResult.class,
+                rail.resolveNativeInterrupt(context, call, null));
+        assertEquals("Which path?", pending.request().getMessage());
+        assertInstanceOf(AskUserRail.AskUserRequest.class, pending.request());
+        RejectResult result = assertInstanceOf(RejectResult.class,
+                rail.resolveNativeInterrupt(context, call, Map.of("answers", Map.of("Which path?", "path A"))));
+        assertEquals("User has answered your questions: \"Which path?\"=\"path A\". "
+                + "You can now continue with the user's answers in mind.", result.toolResult());
     }
 
     private void registerSecondConfirmation() {
@@ -245,6 +339,29 @@ class NativeConfirmResumeTest {
         return agent.executeToolCall(context, List.of(call), context.getSession(), context.getContext()).get(0);
     }
 
+    private static final class SwitchingPolicyRail extends BaseInterruptRail {
+        private final boolean isDenied;
+        private int calls;
+
+        private SwitchingPolicyRail(boolean isDenied) {
+            super(List.of("confirmed_tool"));
+            this.isDenied = isDenied;
+            setPriority(110);
+        }
+
+        @Override
+        protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
+            calls++;
+            if (isDenied) {
+                return reject("new policy denied");
+            }
+            if (input == null) {
+                return interrupt(new InterruptRequest("old approval", Map.of(), ""));
+            }
+            return approve();
+        }
+    }
+
     private static final class FirstApprovalRail extends BaseInterruptRail {
         private FirstApprovalRail() {
             super(List.of("confirmed_tool"));
@@ -252,7 +369,7 @@ class NativeConfirmResumeTest {
         }
 
         @Override
-        protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
+        protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
             if ("first".equals(input)) {
                 return approve("{\"approved_by\":\"first\"}");
             }
@@ -266,7 +383,7 @@ class NativeConfirmResumeTest {
         }
 
         @Override
-        protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
+        protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall call, Object input) {
             if (input != null) {
                 return approve();
             }

@@ -17,6 +17,7 @@ import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -34,12 +35,16 @@ public final class InterruptRailSupport {
      *
      * @param context current callback context
      * @param rail evaluating rail
-     * @return stable registration identity, or class name for a direct hook invocation
+     * @return registration identity combined with the current checkpoint policy version
      * @since 0.1.17
      */
     public static String railId(AgentCallbackContext context, AgentRail rail) {
-        return context.getAgent() == null ? rail.getClass().getName()
-                : context.getAgent().getAgentCallbackManager().getRailIdentity(rail);
+        String registration = rail.getClass().getName();
+        if (context.getAgent() != null) {
+            registration = context.getAgent().getAgentCallbackManager().getRailIdentity(rail);
+        }
+        String version = Objects.requireNonNull(rail.getCheckpointVersion(), "checkpoint policy version");
+        return registration + ":" + version.length() + ":" + version;
     }
 
     /**
@@ -53,6 +58,9 @@ public final class InterruptRailSupport {
      */
     public static void evaluate(AgentCallbackContext context, ToolCall toolCall, String railId,
                                 Supplier<InterruptDecision> resolver) {
+        if (Boolean.TRUE.equals(context.getExtra().get("_skip_tool"))) {
+            return;
+        }
         Map<String, SettledDecision> settled = ToolInterruptionState.railState(context).getRailSettledDecisions();
         String key = toolCall.getId() + "\u0000" + railId;
         SettledDecision decision = settled.get(key);

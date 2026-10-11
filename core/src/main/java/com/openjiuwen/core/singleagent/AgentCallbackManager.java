@@ -41,6 +41,8 @@ public class AgentCallbackManager {
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> instanceRailCallbacks = new IdentityHashMap<>();
     private final Map<AgentRail, String> railIdentities = new IdentityHashMap<>();
 
+    private final Map<String, Integer> railIdentityOrdinals = new HashMap<>();
+
     public AgentCallbackManager(String agentId) {
         this(agentId, new ReflectionRunnerCallbackFramework());
     }
@@ -108,10 +110,10 @@ public class AgentCallbackManager {
     }
 
     /**
-     * Return a rail's registration identity, stable when the same rail configuration is reconstructed in order.
+     * Return a rail's registration slot, retaining generations after removal.
      *
      * @param rail rail to identify
-     * @return scoped registration identity, or its class name when unregistered
+     * @return scoped registration slot, or its class name when unregistered; policy versions are separate
      * @since 0.1.17
      */
     public String getRailIdentity(AgentRail rail) {
@@ -123,15 +125,9 @@ public class AgentCallbackManager {
             return;
         }
         String prefix = scope + ":" + rail.getClass().getName() + ":";
-        int ordinal = 0;
-        while (hasRailIdentity(prefix + ordinal)) {
-            ordinal++;
-        }
+        int ordinal = railIdentityOrdinals.getOrDefault(prefix, 0);
+        railIdentityOrdinals.put(prefix, ordinal + 1);
         railIdentities.put(rail, prefix + ordinal);
-    }
-
-    private boolean hasRailIdentity(String identity) {
-        return railIdentities.values().stream().anyMatch(identity::equals);
     }
 
     private void releaseRailIdentity(AgentRail rail) {

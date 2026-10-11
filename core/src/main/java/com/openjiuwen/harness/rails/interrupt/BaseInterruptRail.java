@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Base interrupt rail for tool-call confirmation flows.
@@ -38,6 +39,15 @@ public class BaseInterruptRail extends DeepAgentRail {
 
     public BaseInterruptRail(Collection<String> toolNames) {
         addTools(toolNames);
+    }
+
+    @Override
+    public String getCheckpointVersion() {
+        if (getClass() == ConfirmInterruptRail.class || getClass() == AskUserRail.class) {
+            return "builtin-v1:" + toolNames.stream().sorted()
+                    .map(name -> name.length() + ":" + name).collect(Collectors.joining());
+        }
+        return super.getCheckpointVersion();
     }
 
     @Override
@@ -70,7 +80,7 @@ public class BaseInterruptRail extends DeepAgentRail {
      */
     protected void evaluateWithSettledReplay(AgentCallbackContext context, ToolCall toolCall) {
         InterruptRailSupport.evaluate(context, toolCall, InterruptRailSupport.railId(context, this),
-                () -> resolveInterrupt(context, toolCall, getUserInput(context, toolCall)));
+                () -> resolveNativeInterrupt(context, toolCall, getUserInput(context, toolCall)));
     }
 
     /**
@@ -82,7 +92,8 @@ public class BaseInterruptRail extends DeepAgentRail {
      * @return decision to approve, reject, or pause this call
      * @since 0.1.17
      */
-    protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall, Object userInput) {
+    protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall toolCall,
+                                                        Object userInput) {
         CallbackContext callback = toCallbackContext(context);
         callback.put("user_input", userInput);
         beforeToolCall(callback);

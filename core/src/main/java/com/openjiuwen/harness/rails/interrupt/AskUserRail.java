@@ -8,8 +8,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
-import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.tools.AskUserTool;
 
@@ -65,6 +66,12 @@ public class AskUserRail extends BaseInterruptRail {
             ctx.put("interrupt_kind", "ask_user");
         }
         super.beforeToolCall(ctx);
+    }
+
+    @Override
+    protected InterruptDecision resolveNativeInterrupt(AgentCallbackContext context, ToolCall toolCall,
+                                                        Object userInput) {
+        return resolveInterrupt(toCallbackContext(context), toolCall, userInput);
     }
 
     public InterruptDecision resolveInterrupt(CallbackContext ctx, ToolCall toolCall, Object userInput) {
