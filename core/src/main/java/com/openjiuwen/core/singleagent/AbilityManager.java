@@ -284,6 +284,24 @@ public class AbilityManager {
         return new AddAbilityResult(abilityName(ability), false, "unknown_ability_type");
     }
 
+    AddAbilityResult addRailTool(ToolCard card) {
+        String name = Objects.toString(card.getName(), "");
+        String reason = duplicateReason(name);
+        if (reason != null) {
+            return new AddAbilityResult(name, false, reason);
+        }
+        boolean isAdded = tools.putIfAbsent(name, card) == null;
+        return new AddAbilityResult(name, isAdded, isAdded ? "added_tool" : "duplicate_tool_name");
+    }
+
+    void removeRailTool(String name, ToolCard expected) {
+        synchronized (tools) {
+            if (tools.get(name) == expected) {
+                tools.remove(name);
+            }
+        }
+    }
+
     public Object remove(String name) {
         Object removed = null;
         if (tools.containsKey(name)) {
