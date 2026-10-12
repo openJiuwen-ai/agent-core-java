@@ -204,4 +204,9 @@ public class FutureList<T> extends CompletableFuture<List<T>> implements List<T>
     public void forEach(Consumer<? super T> action) {
         value().forEach(action);
     }
+
+    @Override
+    public String toString() {
+        return value().toString();
+    }
 }
