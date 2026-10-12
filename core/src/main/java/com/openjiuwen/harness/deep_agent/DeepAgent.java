@@ -1521,7 +1521,7 @@ public class DeepAgent implements AutoCloseable {
         effective.putIfAbsent("conversation_id", session != null && session.getSessionId() != null
                 ? session.getSessionId()
                 : card.getName() + "_session");
-        Map<String, Object> raw = unwrapInvokeResult(invokeReactAgent(effective, session));
+        Map<String, Object> raw = unwrapInvokeResult(invokeResumeRound(effective, session));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("type", "deep_agent_result");
         result.put("agent_name", card.getName());
@@ -1532,6 +1532,24 @@ public class DeepAgent implements AutoCloseable {
         result.put("input", normalized);
         if (raw != null) {
             result.putAll(raw);
+        }
+        return result;
+    }
+
+    private Object invokeResumeRound(Map<String, Object> inputs, AgentSessionApi session) {
+        if (session != null && session.isPreRunDone() && !session.isPostRunDone()) {
+            return invokeReactAgent(inputs, session);
+        }
+        DeepAgentSession effectiveSession = newEffectiveSession(inputs, session, null);
+        applyEffectiveTenant(effectiveSession, session);
+        effectiveSession.copyPreRunState(session);
+        effectiveSession.preRun(inputs);
+        mergeSessionState(session, effectiveSession);
+        Object result = invokeReactAgent(inputs, effectiveSession);
+        effectiveSession.postRun();
+        if (session != null) {
+            replaceSessionState(effectiveSession, session);
+            session.copyRunState(effectiveSession);
         }
         return result;
     }
