@@ -305,7 +305,8 @@ public class TaskPlanningRail extends DeepAgentRail {
                 todosCache.put(sessionId, new ArrayList<>(todos));
             }
         }
-        // Fall back to loading from todo storage (same as fork version's loadTodos)
+        // Fall back to loading from todo storage (same as fork version's loadTodos).
+        // Model selection is advisory — never fail the model call because todo state is unavailable.
         if ((todos == null || todos.isEmpty()) && sessionId != null && todoStore != null) {
             try {
                 List<TodoItem> loaded = todoStore.load(Map.of("session_id", sessionId));
@@ -313,8 +314,8 @@ public class TaskPlanningRail extends DeepAgentRail {
                     todos = loaded;
                     todosCache.put(sessionId, new ArrayList<>(loaded));
                 }
-            } catch (RuntimeException ignored) {
-                // best-effort: storage may not be initialized in test
+            } catch (RuntimeException e) {
+                Loggers.TOOL.debug("Failed to load todos from storage for session {}: {}", sessionId, e.getMessage());
             }
         }
         for (TodoItem todo : todos) {
