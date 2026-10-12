@@ -4,10 +4,20 @@
 
 package com.openjiuwen.harness.rails.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
+import com.openjiuwen.harness.rails.interrupt.ApproveResult;
+import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
+import com.openjiuwen.harness.rails.interrupt.InterruptRailSupport;
+import com.openjiuwen.harness.rails.interrupt.InterruptResult;
+import com.openjiuwen.harness.rails.interrupt.RejectResult;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,13 +33,14 @@ import java.util.Set;
  * {@code openjiuwen/harness/rails/security/base_security_rail.py}.</p>
  */
 public class BaseSecurityRail extends DeepAgentRail {
-
     public static final String BEFORE_INVOKE = "before_invoke";
     public static final String AFTER_INVOKE = "after_invoke";
     public static final String BEFORE_TOOL_CALL = "before_tool_call";
     public static final String AFTER_TOOL_CALL = "after_tool_call";
     public static final String BEFORE_MODEL_CALL = "before_model_call";
     public static final String AFTER_MODEL_CALL = "after_model_call";
+
+    private static final ObjectMapper REQUEST_MAPPER = new ObjectMapper();
 
     private final Set<String> toolNames = new LinkedHashSet<>();
     private final Set<String> supportedEvents = new LinkedHashSet<>();
@@ -41,6 +52,86 @@ public class BaseSecurityRail extends DeepAgentRail {
     public BaseSecurityRail(Iterable<String> toolNames) {
         setPriority(90);
         addTools(toolNames);
+    }
+
+    @Override
+    public void beforeToolCall(AgentCallbackContext context) {
+        if (!supportedEvents.contains(BEFORE_TOOL_CALL)
+                || !(context.getInputs() instanceof ToolCallInputs inputs)
+                || !(inputs.getToolCall() instanceof ToolCall call)) {
+            return;
+        }
+        String railId = railId();
+        InterruptRailSupport.evaluate(context, call, railId, () -> resolveInterrupt(context, call,
+                InterruptRailSupport.userInput(context, call, railId).orElse(null)), false);
+    }
+
+    /**
+     * Return a stable identity for matching this rail's pending approval across resumes.
+     * Override it when registering multiple instances of the same rail class on one agent.
+     *
+     * @return stable rail identity
+     * @since 0.1.17
+     */
+    protected String railId() {
+        return getClass().getName();
+    }
+
+    /**
+     * Resolve a native tool security decision using the existing engine and host hooks.
+     *
+     * @param context current callback context
+     * @param toolCall tool call being checked
+     * @param userInput matched confirmation response, or null
+     * @return decision to approve, reject, or pause this call
+     * @since 0.1.17
+     */
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall, Object userInput) {
+        CallbackContext callback = toCallbackContext(context);
+        Map<String, Object> autoConfirm = InterruptRailSupport.autoConfirmConfig(context);
+        callback.put("auto_confirm_config", autoConfirm);
+        SecurityCheckContext security = new SecurityCheckContext(callback, BEFORE_TOOL_CALL,
+                userInput, autoConfirm, toolCall.getId());
+        SecurityDecision decision = runSecurityCheck(security);
+        if (decision instanceof SecurityInterrupt pending) {
+            return interrupt(REQUEST_MAPPER.convertValue(pending.request(), InterruptRequest.class));
+        }
+        applySecurityDecision(security, decision);
+        applyCallbackContext(context, callback);
+        saveAutoConfirm(context, callback, autoConfirm);
+        if (decision instanceof SecurityReject) {
+            ToolMessage message = null;
+            if (callback.get("tool_msg") instanceof ToolMessage toolMessage) {
+                message = toolMessage;
+            }
+            return new RejectResult(callback.get("tool_result"), message);
+        }
+        if (decision instanceof SecurityAllow allowed) {
+            return new ApproveResult(allowed.newArgs());
+        }
+        return new ApproveResult();
+    }
+
+    /**
+     * Pause a native tool call for security approval.
+     *
+     * @param request native approval request
+     * @return pending decision
+     * @since 0.1.17
+     */
+    public InterruptResult interrupt(InterruptRequest request) {
+        return new InterruptResult(request);
+    }
+
+    private static void saveAutoConfirm(AgentCallbackContext context, CallbackContext callback,
+                                        Map<String, Object> previous) {
+        Object current = callback.get("auto_confirm_config");
+        if (context.getSession() == null || !(current instanceof Map<?, ?> map) || previous.equals(map)) {
+            return;
+        }
+        Map<String, Object> config = new LinkedHashMap<>();
+        map.forEach((key, value) -> config.put(String.valueOf(key), value));
+        context.getSession().updateState(Map.of(InterruptConstants.INTERRUPT_AUTO_CONFIRM_KEY, config));
     }
 
     public SecurityAllow allow() {

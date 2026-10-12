@@ -4,12 +4,23 @@
 
 package com.openjiuwen.core.common.logging;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * JUnit 5 tests for LogManager and LoggingUtils.
@@ -93,16 +104,20 @@ class LogManagerTest {
     }
 
     private void initializeWithTestFactory() {
-        LogManager.setDefaultLoggerFactory(TestLogger::new);
-        LogManager.LogConfigProvider.setProvider(() -> {
-            Map<String, Map<String, Object>> configs = new HashMap<>();
-            configs.put("common", Map.of("level", "INFO", "output", "console"));
-            configs.put("interface", Map.of("level", "INFO", "output", "console"));
-            configs.put("performance", Map.of("level", "INFO", "output", "console"));
-            configs.put("prompt_builder", Map.of("level", "INFO", "output", "console"));
-            return configs;
-        });
-        LogManager.initialize();
+        // Use the same monitor as reset/initialize so background logging cannot initialize between them.
+        synchronized (LogManager.class) {
+            LogManager.reset();
+            LogManager.setDefaultLoggerFactory(TestLogger::new);
+            LogManager.LogConfigProvider.setProvider(() -> {
+                Map<String, Map<String, Object>> configs = new HashMap<>();
+                configs.put("common", Map.of("level", "INFO", "output", "console"));
+                configs.put("interface", Map.of("level", "INFO", "output", "console"));
+                configs.put("performance", Map.of("level", "INFO", "output", "console"));
+                configs.put("prompt_builder", Map.of("level", "INFO", "output", "console"));
+                return configs;
+            });
+            LogManager.initialize();
+        }
     }
 
     // ==========================================================================
@@ -253,14 +268,12 @@ class LogManagerTest {
     @Test
     @DisplayName("Exception logging records exception message")
     void testExceptionLogging() {
+        // Simulate logging before the test factory is installed.
+        LogManager.getLogger("common");
         initializeWithTestFactory();
 
         TestLogger logger = (TestLogger) LogManager.getLogger("common");
-        try {
-            throw new IllegalArgumentException("Test exception");
-        } catch (Exception e) {
-            logger.exception("Exception occurred", e);
-        }
+        logger.exception("Exception occurred", new IllegalArgumentException("Test exception"));
 
         assertTrue(
                 logger.messages.stream()
