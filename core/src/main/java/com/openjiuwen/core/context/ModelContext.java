@@ -79,6 +79,18 @@ public interface ModelContext {
                                                     Integer dialogueRound,
                                                     Map<String, Object> kwargs);
 
+    /**
+     * Finalize an edited request without rerunning context processors.
+     * Contexts with request statistics or KV caches override this hook.
+     * The default leaves the prepared window unchanged.
+     *
+     * @param window processed and edited request window
+     * @param model resolved model for KV release, or null when release is unavailable
+     * @since 0.1.16
+     */
+    default void finalizeContextWindow(ContextWindow window, Object model) {
+    }
+
     ContextStats statistic();
 
     String sessionId();
