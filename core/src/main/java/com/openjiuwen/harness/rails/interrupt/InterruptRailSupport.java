@@ -56,6 +56,7 @@ public final class InterruptRailSupport {
                 applySettled(context, toolCall, previous);
                 return;
             }
+            settled.remove(key);
             ToolInterruptionState.railState(context).getPendingRailIds().put(toolCall.getId(), railId);
             throw new ToolInterruptException(pending.request(), toolCall);
         }

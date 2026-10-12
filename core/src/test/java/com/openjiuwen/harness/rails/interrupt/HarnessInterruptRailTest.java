@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -103,6 +104,29 @@ class HarnessInterruptRailTest {
         context.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, input);
         ToolCall call = ToolCall.builder().id("call-1").name("ask_user").build();
         assertThat(InterruptRailSupport.userInput(context, call, "test")).contains("Alice");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void freshAskClearsOnlyUnconfirmedDecisions(boolean isConfirmed) {
+        AgentCallbackContext context = new AgentCallbackContext(null);
+        ToolInterruptionState state = ToolInterruptionState.railState(context);
+        ToolCall call = ToolCall.builder().id("call-1").name("confirmed_tool").build();
+        String key = "call-1\u0000permission";
+        ToolInterruptionState.SettledDecision previous =
+                new ToolInterruptionState.SettledDecision(true, isConfirmed, null, null, null);
+        state.getRailSettledDecisions().put(key, previous);
+        InterruptResult pending = new InterruptResult(new InterruptRequest("new approval", Map.of(), ""));
+        if (isConfirmed) {
+            InterruptRailSupport.evaluate(context, call, "permission", () -> pending, false);
+            assertThat(state.getRailSettledDecisions()).containsEntry(key, previous);
+            assertThat(state.getPendingRailIds()).isEmpty();
+        } else {
+            assertThrows(ToolInterruptException.class,
+                    () -> InterruptRailSupport.evaluate(context, call, "permission", () -> pending, false));
+            assertThat(state.getRailSettledDecisions()).doesNotContainKey(key);
+            assertThat(state.getPendingRailIds()).containsEntry("call-1", "permission");
+        }
     }
 
     private static final class TestRail extends BaseInterruptRail {
