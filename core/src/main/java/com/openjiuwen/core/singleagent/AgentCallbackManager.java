@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.utils.IsolatedActions;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.callback.AbortError;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
@@ -39,6 +40,7 @@ public class AgentCallbackManager {
     private final CallbackFramework instanceCallbackFramework;
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> railCallbacks = new IdentityHashMap<>();
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> instanceRailCallbacks = new IdentityHashMap<>();
+    private final Map<AgentRail, Map<String, ToolCard>> railTools = new IdentityHashMap<>();
 
     public AgentCallbackManager(String agentId) {
         this(agentId, new ReflectionRunnerCallbackFramework());
@@ -87,7 +89,10 @@ public class AgentCallbackManager {
                     rail.getPriority()
             ));
         }
-        return chain.thenApply(ignored -> this);
+        return chain.thenApply(ignored -> {
+            registerRailTools(rail, agent);
+            return this;
+        });
     }
 
     public CompletionStage<AgentCallbackManager> register_rail(AgentRail rail, Object agent) {
@@ -119,7 +124,38 @@ public class AgentCallbackManager {
                     rail.getPriority()
             ));
         }
-        return chain.thenApply(ignored -> this);
+        return chain.thenApply(ignored -> {
+            registerRailTools(rail, agent);
+            return this;
+        });
+    }
+
+    private void registerRailTools(AgentRail rail, Object agent) {
+        if (!(agent instanceof BaseAgent baseAgent) || railTools.containsKey(rail)) {
+            return;
+        }
+        Map<String, ToolCard> owned = new LinkedHashMap<>();
+        railTools.put(rail, owned);
+        List<ToolCard> cards = rail.getToolCards();
+        if (cards == null) {
+            return;
+        }
+        AbilityManager abilities = baseAgent.getAbilityManager();
+        for (ToolCard card : cards) {
+            Object existing = abilities.get(card.getName()).orElse(null);
+            if (existing != null) {
+                Loggers.AGENT.warning("[registerRail] tool '{}' already exists; keep its current owner",
+                        card.getName());
+                continue;
+            }
+            AddAbilityResult result = abilities.add(card);
+            if (result.isAdded() && "added_tool".equals(result.getReason())) {
+                owned.put(card.getName(), card);
+            } else {
+                Loggers.AGENT.warning("[registerRail] tool '{}' was not acquired: {}",
+                        card.getName(), result.getReason());
+            }
+        }
     }
 
     public CompletionStage<Void> unregisterRail(AgentRail rail, Object agent) {
@@ -145,18 +181,19 @@ public class AgentCallbackManager {
     }
 
     private void unregisterRailTools(AgentRail rail, Object agent) {
-        // Isolation semantic: rail tool metadata runs user code and must
-        // not abort the rail cleanup.
+        if (railCallbacks.containsKey(rail) || instanceRailCallbacks.containsKey(rail)) {
+            return;
+        }
+        Map<String, ToolCard> owned = railTools.remove(rail);
+        if (owned == null || !(agent instanceof BaseAgent baseAgent)) {
+            return;
+        }
+        // Release the registration snapshot, never the rail's mutable declaration.
         IsolatedActions.runIsolated(() -> {
-            if (rail.getToolCards() == null || rail.getToolCards().isEmpty()) {
-                return null;
-            }
-            if (!(agent instanceof BaseAgent baseAgent)) {
-                return null;
-            }
-            for (var toolCard : rail.getToolCards()) {
-                if (toolCard.getName() != null) {
-                    baseAgent.getAbilityManager().remove(toolCard.getName());
+            for (Map.Entry<String, ToolCard> entry : owned.entrySet()) {
+                AbilityManager abilities = baseAgent.getAbilityManager();
+                if (abilities.get(entry.getKey()).orElse(null) == entry.getValue()) {
+                    abilities.remove(entry.getKey());
                 }
             }
             return null;
@@ -241,7 +278,7 @@ public class AgentCallbackManager {
             chain = chain.thenCompose(ignored -> instanceCallbackFramework.unregister(getInstanceEvent(entry.getKey()),
                     entry.getValue()));
         }
-        return chain;
+        return chain.thenRun(() -> unregisterRailTools(rail, agent));
     }
 
     public CompletionStage<Void> unregister(AgentCallbackEvent event, AgentCallback callback) {
