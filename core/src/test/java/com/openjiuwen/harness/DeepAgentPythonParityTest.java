@@ -401,10 +401,14 @@ class DeepAgentPythonParityTest {
         config.setSubagents(Map.of("code_agent", subagent));
         DeepAgent agent = configuredAgent(config);
 
-        agent.configure(config);
+        try {
+            agent.configure(config);
 
-        assertThat(agent.getTools()).containsKey("task_tool");
-        assertThat(agent.getSubagents()).containsKey("code_agent");
+            assertThat(agent.getTools()).containsKey("task_tool");
+            assertThat(agent.getSubagents()).containsKey("code_agent");
+        } finally {
+            agent.unregisterTool("task_tool");
+        }
     }
 
     @Test
