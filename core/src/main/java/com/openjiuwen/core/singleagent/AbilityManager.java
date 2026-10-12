@@ -1092,11 +1092,11 @@ public class AbilityManager {
         TenantContext sessionTenant = session instanceof AgentSessionApi agentSession
                 ? agentSession.getTenantContext()
                 : null;
-        boolean tenantRebound = false;
+        boolean isTenantRebound = false;
         if (sessionTenant != null && sessionTenant.isTenantAware()
                 && (previousTenant == null || !previousTenant.equals(sessionTenant))) {
             TenantContextHolder.setCurrentTenant(sessionTenant);
-            tenantRebound = true;
+            isTenantRebound = true;
         }
         try {
             return tool.invoke(inputs, invokeKwargs(session));
@@ -1107,7 +1107,7 @@ public class AbilityManager {
         } catch (Exception exception) {
             throw new IllegalStateException(exception.getMessage(), exception);
         } finally {
-            if (tenantRebound) {
+            if (isTenantRebound) {
                 TenantContextHolder.setCurrentTenant(previousTenant);
             }
             SessionContextHolder.restoreCurrentSession(previousSession);

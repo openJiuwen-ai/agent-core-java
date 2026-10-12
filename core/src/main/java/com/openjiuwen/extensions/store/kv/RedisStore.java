@@ -289,7 +289,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
                 batchDeleteInternal(keys, batchSize);
             }
             logger.debug("Deleted keys by prefix: {}", prefix);
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to delete keys by prefix: {}, error: {}", prefix, e.getMessage());
             throw new RuntimeException("Failed to delete keys by prefix: " + prefix, e);
         }
@@ -344,7 +344,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
                 }
             }
             return deleted;
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             logger.error("Failed to batch delete keys, error: {}", e.getMessage());
             throw new RuntimeException("Failed to batch delete keys", e);
         }
