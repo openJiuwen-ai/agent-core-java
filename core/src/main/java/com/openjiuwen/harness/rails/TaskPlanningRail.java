@@ -84,6 +84,8 @@ public class TaskPlanningRail extends DeepAgentRail {
             // Default to file-based storage when no type is configured
             todoStore = new TodoStorageStoreAdapter(
                     new FileTodoStorage(agent.getWorkspace().root().resolve(".todo")));
+        } else {
+            Loggers.TOOL.debug("No storage configured and no workspace root available — keep the in-memory default");
         }
         if (tools.isEmpty()) {
             tools.addAll(TodoTools.createTodosTool(todoStore));
@@ -314,8 +316,8 @@ public class TaskPlanningRail extends DeepAgentRail {
                     todos = loaded;
                     todosCache.put(sessionId, new ArrayList<>(loaded));
                 }
-            } catch (RuntimeException e) {
-                Loggers.TOOL.debug("Failed to load todos from storage for session {}: {}", sessionId, e.getMessage());
+            } catch (IllegalStateException e) {
+                Loggers.TOOL.info("Failed to load todos from storage for session {}: {}", sessionId, e.getMessage());
             }
         }
         for (TodoItem todo : todos) {
@@ -476,26 +478,7 @@ public class TaskPlanningRail extends DeepAgentRail {
                 if (todos != null) {
                     for (TodoItem item : todos) {
                         if (item != null) {
-                            com.openjiuwen.harness.tools.TodoStatus toolStatus = null;
-                            if (item.getStatus() != null) {
-                                switch (item.getStatus()) {
-                                    case PENDING -> toolStatus = com.openjiuwen.harness.tools.TodoStatus.PENDING;
-                                    case IN_PROGRESS -> toolStatus = com.openjiuwen.harness.tools.TodoStatus.IN_PROGRESS;
-                                    case COMPLETED -> toolStatus = com.openjiuwen.harness.tools.TodoStatus.COMPLETED;
-                                    case CANCELLED -> toolStatus = com.openjiuwen.harness.tools.TodoStatus.CANCELLED;
-                                }
-                            }
-                            mapped.add(com.openjiuwen.harness.tools.TodoItem.builder()
-                                    .id(item.getId())
-                                    .content(item.getContent())
-                                    .activeForm(item.getActiveForm())
-                                    .description(item.getDescription())
-                                    .status(toolStatus != null ? toolStatus : com.openjiuwen.harness.tools.TodoStatus.PENDING)
-                                    .selectedModelId(item.getSelectedModelId())
-                                    .dependsOn(item.getDependsOn())
-                                    .resultSummary(item.getResultSummary())
-                                    .metaData(item.getMetaData())
-                                    .build());
+                            mapped.add(toToolTodoItem(item));
                         }
                     }
                 }
@@ -503,6 +486,33 @@ public class TaskPlanningRail extends DeepAgentRail {
             } catch (IOException e) {
                 throw new IllegalStateException("Failed to save todos", e);
             }
+        }
+
+        private static com.openjiuwen.harness.tools.TodoItem toToolTodoItem(TodoItem item) {
+            com.openjiuwen.harness.tools.TodoStatus toolStatus = resolveToolStatus(item.getStatus());
+            return com.openjiuwen.harness.tools.TodoItem.builder()
+                    .id(item.getId())
+                    .content(item.getContent())
+                    .activeForm(item.getActiveForm())
+                    .description(item.getDescription())
+                    .status(toolStatus)
+                    .selectedModelId(item.getSelectedModelId())
+                    .dependsOn(item.getDependsOn())
+                    .resultSummary(item.getResultSummary())
+                    .metaData(item.getMetaData())
+                    .build();
+        }
+
+        private static com.openjiuwen.harness.tools.TodoStatus resolveToolStatus(TodoStatus status) {
+            if (status == null) {
+                return com.openjiuwen.harness.tools.TodoStatus.PENDING;
+            }
+            return switch (status) {
+                case PENDING -> com.openjiuwen.harness.tools.TodoStatus.PENDING;
+                case IN_PROGRESS -> com.openjiuwen.harness.tools.TodoStatus.IN_PROGRESS;
+                case COMPLETED -> com.openjiuwen.harness.tools.TodoStatus.COMPLETED;
+                case CANCELLED -> com.openjiuwen.harness.tools.TodoStatus.CANCELLED;
+            };
         }
 
         private static String sessionId(Map<String, Object> kwargs) {
