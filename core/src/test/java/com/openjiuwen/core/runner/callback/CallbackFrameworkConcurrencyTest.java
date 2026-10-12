@@ -228,9 +228,11 @@ class CallbackFrameworkConcurrencyTest {
             CountDownLatch start = new CountDownLatch(1);
             Future<?> unregisterer = pool.submit(() -> unregisterRounds(start, event, group, registerGroup));
             Future<?> mutator = pool.submit(() -> mutatorRounds(start, event));
-            Future<Integer> triggerer = pool.submit(() -> triggerLoop(start, event, stop));
+            CountDownLatch firstTrigger = new CountDownLatch(1);
+            Future<Integer> triggerer = pool.submit(() -> triggerLoop(start, event, stop, firstTrigger));
             start.countDown();
             try {
+                assertThat(firstTrigger.await(60L, TimeUnit.SECONDS)).isTrue();
                 unregisterer.get(60L, TimeUnit.SECONDS);
                 mutator.get(60L, TimeUnit.SECONDS);
             } finally {
@@ -268,12 +270,14 @@ class CallbackFrameworkConcurrencyTest {
         return ROUNDS;
     }
 
-    private int triggerLoop(CountDownLatch start, String event, AtomicBoolean stop) throws Exception {
+    private int triggerLoop(CountDownLatch start, String event, AtomicBoolean stop,
+            CountDownLatch firstTrigger) throws Exception {
         start.await();
         int round = 0;
         while (!stop.get()) {
             round++;
             framework.trigger(event, Map.of("round", round));
+            firstTrigger.countDown();
         }
         return round;
     }
@@ -312,9 +316,11 @@ class CallbackFrameworkConcurrencyTest {
                 final int threadId = t;
                 futures.add(pool.submit(() -> stormRounds(start, event, threadId)));
             }
-            Future<Integer> triggerer = pool.submit(() -> triggerLoop(start, event, stop));
+            CountDownLatch firstTrigger = new CountDownLatch(1);
+            Future<Integer> triggerer = pool.submit(() -> triggerLoop(start, event, stop, firstTrigger));
             start.countDown();
             try {
+                assertThat(firstTrigger.await(60L, TimeUnit.SECONDS)).isTrue();
                 for (Future<?> future : futures) {
                     future.get(60L, TimeUnit.SECONDS);
                 }
