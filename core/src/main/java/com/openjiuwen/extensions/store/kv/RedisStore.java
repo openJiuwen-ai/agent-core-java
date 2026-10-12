@@ -680,9 +680,11 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
             return 0;
         }
 
-        InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
+        // Use the falling-back variant: multi-key DEL is rejected on Redis Cluster when the
+        // keys do not share a hash-slot, so we must be able to fall back to single-key deletes.
+        InvocationOutcome outcome = tryInvokeFallingBack(redisClient, new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
         if (!outcome.handled()) {
-            outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, keys);
+            outcome = tryInvokeFallingBack(redisClient, new String[]{"delete", "del"}, keys);
         }
         if (outcome.handled()) {
             return asDeleteCount(outcome.value(), keys.size());
@@ -701,7 +703,10 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
 
     private List<String> scanKeys(String prefix) {
         String pattern = prefix + "*";
-        InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"scanIter", "keys", "scan"}, pattern);
+        // Use the falling-back variant: a matched method may reject the call at runtime
+        // (e.g. JedisCluster forbids KEYS without a hash-tag). Treat that as unsupported so
+        // the cluster-aware fallback below can run instead of aborting the whole prefix scan.
+        InvocationOutcome outcome = tryInvokeFallingBack(redisClient, new String[]{"scanIter", "keys", "scan"}, pattern);
         if (!outcome.handled()) {
             outcome = tryInvoke(redisClient, new String[]{"scanKeys"}, prefix);
         }
@@ -730,6 +735,18 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
      */
     @SuppressWarnings("unchecked")
     private List<String> scanClusterNodes(String pattern) {
+        // Jedis 7.x UnifiedJedis/JedisCluster expose scanIteration(count, pattern) which performs a
+        // cross-node SCAN and is the cluster-safe replacement for KEYS, which JedisCluster rejects
+        // unless the pattern carries a hash-tag. Prefer it before the legacy per-node fallback.
+        InvocationOutcome iterationOutcome = tryInvoke(redisClient, new String[]{"scanIteration"}, 100, pattern);
+        if (iterationOutcome.handled() && iterationOutcome.value() != null) {
+            List<String> iterationKeys = collectIterationKeys(iterationOutcome.value());
+            if (iterationKeys != null) {
+                return iterationKeys;
+            }
+        }
+
+        // Legacy fallback for older Jedis: iterate getClusterNodes() and SCAN each node connection.
         InvocationOutcome nodesOutcome = tryInvoke(redisClient, new String[]{"getClusterNodes"});
         if (!nodesOutcome.handled() || nodesOutcome.value() == null) {
             return null;
@@ -759,6 +776,31 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
                 } finally {
                     tryInvoke(jedis, new String[]{"close"});
                 }
+            }
+        }
+        return allKeys;
+    }
+
+    /**
+     * Drains a Jedis {@code ScanIteration} by reflectively calling {@code nextBatchList()} until
+     * {@code isIterationCompleted()} returns true. Returns {@code null} when the object does not
+     * expose those methods, letting the caller continue with another fallback.
+     */
+    private List<String> collectIterationKeys(Object iteration) {
+        InvocationOutcome completed = tryInvoke(iteration, new String[]{"isIterationCompleted"});
+        if (!completed.handled()) {
+            return null;
+        }
+        List<String> allKeys = new ArrayList<>();
+        while (!Boolean.TRUE.equals(completed.value())) {
+            InvocationOutcome batch = tryInvoke(iteration, new String[]{"nextBatchList"});
+            if (!batch.handled() || batch.value() == null) {
+                break;
+            }
+            allKeys.addAll(extractKeys(batch.value(), ""));
+            completed = tryInvoke(iteration, new String[]{"isIterationCompleted"});
+            if (!completed.handled()) {
+                break;
             }
         }
         return allKeys;
@@ -996,6 +1038,19 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
             throw new IllegalStateException("Redis client invocation failed", failure);
         } catch (IllegalAccessException accessFailure) {
             throw new IllegalStateException("Redis client method is inaccessible", accessFailure);
+        }
+    }
+
+    /**
+     * Like {@link #tryInvoke(Object, String[], Object...)} but treats a runtime invocation
+     * failure (e.g. Redis Cluster rejecting a cross-slot or non-hash-tagged command) as
+     * "not handled" instead of throwing, so callers can fall back to a compatible strategy.
+     */
+    private InvocationOutcome tryInvokeFallingBack(Object target, String[] methodNames, Object... args) {
+        try {
+            return tryInvoke(target, methodNames, args);
+        } catch (IllegalStateException e) {
+            return InvocationOutcome.notHandled();
         }
     }
 
