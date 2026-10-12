@@ -692,6 +692,9 @@ public class ContextProcessorRail extends AgentRail {
         if (agent == null) {
             return Optional.empty();
         }
+        if (agent instanceof ReActAgent reactAgent) {
+            return Optional.of(reactAgent.getConfig());
+        }
         Optional<Object> reactAgent = readField(agent, "react_agent").or(() -> readField(agent, "reactAgent"));
         return reactAgent.flatMap(value -> readField(value, "_config").or(() -> readField(value, "config")));
     }
