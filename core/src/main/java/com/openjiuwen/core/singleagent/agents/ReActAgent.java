@@ -64,11 +64,6 @@ import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
 import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
 import java.nio.file.InvalidPathException;
@@ -427,24 +422,10 @@ public class ReActAgent extends BaseAgent {
         ContextWindow window = context.getContextWindow(systemMessages, toolInfoList(previous.getTools()),
                 null, null, Map.of("defer_finalization", true))
                 .toCompletableFuture().join();
-        List<BaseMessage> messages = window.getMessages().stream().map(ReActAgent::copyRequestMessage).toList();
+        List<BaseMessage> messages = window.getMessages();
         previous.setMessages(new ArrayList<>(messages));
         previous.setTools(new ArrayList<>(window.getTools()));
         previous.setModelContext(context);
-    }
-
-    private static BaseMessage copyRequestMessage(BaseMessage message) {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ObjectOutputStream output = new ObjectOutputStream(bytes)) {
-            output.writeObject(message);
-        } catch (IOException exception) {
-            throw new IllegalStateException("Cannot copy model request message", exception);
-        }
-        try (ObjectInputStream input = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
-            return BaseMessage.class.cast(input.readObject());
-        } catch (IOException | ClassNotFoundException exception) {
-            throw new IllegalStateException("Cannot restore model request message copy", exception);
-        }
     }
 
     private ContextWindow prepareModelContextWindow(AgentCallbackContext ctx, Model model, ModelCallInputs inputs) {

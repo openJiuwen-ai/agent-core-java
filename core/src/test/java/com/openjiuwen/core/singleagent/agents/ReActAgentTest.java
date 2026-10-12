@@ -450,6 +450,9 @@ class ReActAgentTest {
         RecordingModelClient client = new RecordingModelClient(false);
         ReActAgent agent = configuredKvAgent("OpenAI", false, new Model(client));
         RecordingModelContext context = new RecordingModelContext("sess-1");
+        UserMessage message = new UserMessage("question");
+        message.getMetadata().put("trace", new Object());
+        context.addMessages(message).toCompletableFuture().join();
 
         callModelForKvTest(agent, context, new MemorySession("sess-1"));
 

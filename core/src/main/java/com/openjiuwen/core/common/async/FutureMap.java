@@ -120,4 +120,9 @@ public class FutureMap<K, V> extends CompletableFuture<Map<K, V>> implements Map
     public int hashCode() {
         return value().hashCode();
     }
+
+    @Override
+    public String toString() {
+        return value().toString();
+    }
 }
