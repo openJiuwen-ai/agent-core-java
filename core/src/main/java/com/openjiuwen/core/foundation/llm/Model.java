@@ -199,6 +199,17 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         this.modelConfig = modelConfig;
     }
 
+    /**
+     * Construct a Model wrapper that shares the source model client and configuration.
+     *
+     * @param source source model
+     * @throws NullPointerException if source is null
+     * @since 0.1.13
+     */
+    protected Model(Model source) {
+        this(Objects.requireNonNull(source, "source").client, source.modelClientConfig, source.modelConfig);
+    }
+
     public static void registerInvoker(String provider, ModelInvoker invoker) {
         if (provider == null || provider.isBlank() || invoker == null) {
             throw ErrorHelper.buildError(
