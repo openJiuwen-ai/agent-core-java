@@ -72,6 +72,16 @@ public class AgentCallbackContext {
         forceFinishRequest = new ForceFinishRequest(result);
     }
 
+    /**
+     * Returns the pending finish request without consuming it or changing the consumed signal.
+     *
+     * @return pending finish request, or {@code null} when none is pending
+     * @since 0.1.17
+     */
+    public ForceFinishRequest getForceFinishRequest() {
+        return forceFinishRequest;
+    }
+
     public ForceFinishRequest consumeForceFinish() {
         ForceFinishRequest request = forceFinishRequest;
         forceFinishRequest = null;
