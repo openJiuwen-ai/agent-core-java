@@ -35,7 +35,18 @@ public abstract class DeepAgentRail extends AgentRail {
             "messages", "tools", "model_context", "response"
     );
 
+    /**
+     * Inner ReAct receives model/tool callbacks plus beforeInvoke/afterInvoke.
+     * Subclasses that override {@code beforeInvoke(AgentCallbackContext)} (the
+     * {@link AgentRail} base method) are detected by {@link AgentRail#getCallbacks()}
+     * and must be forwarded to the inner ReActAgent so the hook fires on each invoke.
+     * Outer DeepAgent lifecycle also calls {@code beforeInvoke(CallbackContext)},
+     * but that is a different overload — the two do not conflict because they have
+     * different parameter types.
+     */
     private static final Set<AgentCallbackEvent> INNER_CALLBACK_EVENTS = Set.of(
+            AgentCallbackEvent.BEFORE_INVOKE,
+            AgentCallbackEvent.AFTER_INVOKE,
             AgentCallbackEvent.BEFORE_MODEL_CALL,
             AgentCallbackEvent.AFTER_MODEL_CALL,
             AgentCallbackEvent.ON_MODEL_EXCEPTION,
@@ -49,7 +60,7 @@ public abstract class DeepAgentRail extends AgentRail {
     private Object sysOperation;
 
     protected DeepAgentRail() {
-        setPriority(100);
+        setPriority(50);
     }
 
     /**
@@ -138,9 +149,11 @@ public abstract class DeepAgentRail extends AgentRail {
     }
 
     /**
-     * Inner ReAct only receives model/tool callbacks. Outer {@code beforeInvoke}/{@code afterInvoke}
-     * and task-iteration hooks stay on the DeepAgent {@link CallbackContext} path so they are not
-     * double-fired through the inner agent rail registry.
+     * Inner ReAct receives all hook events that the subclass has overridden.
+     * {@link AgentRail#getCallbacks()} detects {@code AgentCallbackContext}-parameter
+     * overrides; {@link #addCallbackContextAdapter} adds {@code CallbackContext}-parameter
+     * adapters for model/tool hooks. The combined set is filtered to
+     * {@link #INNER_CALLBACK_EVENTS}.
      */
     @Override
     public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {

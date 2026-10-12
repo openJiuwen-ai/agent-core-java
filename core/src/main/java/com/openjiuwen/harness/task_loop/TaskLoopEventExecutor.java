@@ -51,6 +51,23 @@ public class TaskLoopEventExecutor extends TaskExecutor {
         if (session != null && session.getSessionId() != null && !session.getSessionId().isBlank()) {
             inputs.put("conversation_id", session.getSessionId());
         }
+        // Forward top-level invoke extras (e.g. model_id, target_model_id, dynamic_model_id)
+        // from the task metadata to the ReActAgent's invoke inputs so that
+        // bindDynamicModelIdFromInputs can resolve the dynamic model selection.
+        Map<String, Object> metadata = resolveTaskMetadata(taskId);
+        copyModelSelectionKeys(metadata, inputs);
+        Object extrasObj = metadata.get("_invoke_extras");
+        if (extrasObj instanceof Map<?, ?> extras) {
+            for (Map.Entry<?, ?> entry : extras.entrySet()) {
+                if (!(entry.getKey() instanceof String key)) {
+                    continue;
+                }
+                if (!"query".equals(key) && !"conversation_id".equals(key)
+                        && !inputs.containsKey(key) && entry.getValue() != null) {
+                    inputs.put(key, entry.getValue());
+                }
+            }
+        }
         try {
             Map<String, Object> result = invokeReactAgent(reactAgent, inputs, session);
             ControllerOutputPayload payload = new ControllerOutputPayload(
@@ -105,6 +122,30 @@ public class TaskLoopEventExecutor extends TaskExecutor {
             return taskId;
         }
         return tasks.get(0).getDescription();
+    }
+
+    private Map<String, Object> resolveTaskMetadata(String taskId) {
+        List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
+        if (tasks.isEmpty() || tasks.get(0).getMetadata() == null) {
+            return Map.of();
+        }
+        return tasks.get(0).getMetadata();
+    }
+
+    private static void copyModelSelectionKeys(Map<String, Object> source, Map<String, Object> target) {
+        if (source == null || target == null) {
+            return;
+        }
+        copyStringIfPresent(source, target, "model_id");
+        copyStringIfPresent(source, target, "target_model_id");
+        copyStringIfPresent(source, target, "dynamic_model_id");
+    }
+
+    private static void copyStringIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
+        Object value = source.get(key);
+        if (value instanceof String text && !text.isBlank()) {
+            target.put(key, text);
+        }
     }
 
     @SuppressWarnings("unchecked")

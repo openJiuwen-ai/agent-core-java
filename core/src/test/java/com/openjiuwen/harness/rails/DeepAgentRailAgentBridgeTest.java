@@ -81,6 +81,8 @@ class DeepAgentRailAgentBridgeTest {
 
         assertThat(rail.getCallbacks())
                 .containsKeys(
+                        AgentCallbackEvent.BEFORE_INVOKE,
+                        AgentCallbackEvent.AFTER_INVOKE,
                         AgentCallbackEvent.BEFORE_MODEL_CALL,
                         AgentCallbackEvent.AFTER_MODEL_CALL,
                         AgentCallbackEvent.ON_MODEL_EXCEPTION,
@@ -88,8 +90,6 @@ class DeepAgentRailAgentBridgeTest {
                         AgentCallbackEvent.AFTER_TOOL_CALL,
                         AgentCallbackEvent.ON_TOOL_EXCEPTION)
                 .doesNotContainKeys(
-                        AgentCallbackEvent.BEFORE_INVOKE,
-                        AgentCallbackEvent.AFTER_INVOKE,
                         AgentCallbackEvent.BEFORE_TASK_ITERATION,
                         AgentCallbackEvent.AFTER_TASK_ITERATION);
     }

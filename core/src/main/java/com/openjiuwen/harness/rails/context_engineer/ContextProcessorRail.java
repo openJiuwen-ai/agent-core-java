@@ -692,8 +692,15 @@ public class ContextProcessorRail extends AgentRail {
         if (agent == null) {
             return Optional.empty();
         }
+        // DeepAgent wraps a ReActAgent in a "reactAgent" field; try that path first.
         Optional<Object> reactAgent = readField(agent, "react_agent").or(() -> readField(agent, "reactAgent"));
-        return reactAgent.flatMap(value -> readField(value, "_config").or(() -> readField(value, "config")));
+        if (reactAgent.isPresent()) {
+            return reactAgent.flatMap(value -> readField(value, "_config").or(() -> readField(value, "config")));
+        }
+        // When init(BaseAgent) is called by BaseAgent.registerRail(), the agent
+        // is a ReActAgent that carries its config directly (no wrapper field).
+        // Fall back to reading "_config" / "config" on the agent itself.
+        return readField(agent, "_config").or(() -> readField(agent, "config"));
     }
 
     private static Optional<Object> readField(Object target, String fieldName) {

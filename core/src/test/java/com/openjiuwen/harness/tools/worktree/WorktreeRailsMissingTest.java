@@ -111,7 +111,7 @@ class WorktreeRailsMissingTest {
     private void worktreeRailDefaultsBeforeInit() {
         WorktreeRails.WorktreeRail rail = new WorktreeRails.WorktreeRail();
 
-        assertThat(rail.getPriority()).isEqualTo(100);
+        assertThat(rail.getPriority()).isEqualTo(50);
         assertThat(rail.getManager()).isNull();
     }
 
