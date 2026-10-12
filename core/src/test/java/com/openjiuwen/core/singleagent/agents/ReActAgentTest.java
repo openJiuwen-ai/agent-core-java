@@ -24,14 +24,19 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.callback.AbortError;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersRail;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.Test;
@@ -261,6 +266,90 @@ class ReActAgentTest {
             assertEquals(List.of("System", "question", "stream digest"),
                     client.streamMessages.stream().map(BaseMessage::getContentAsString).toList());
             assertEquals(0, client.invokeCount());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void afterInvokeGetsAnswerInputs() {
+        ReActAgent agent = agentWithFakeModel(new AssistantMessage("done"));
+        AtomicReference<Object> observed = new AtomicReference<>();
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void afterInvoke(AgentCallbackContext context) {
+                observed.set(context.getInputs());
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            Object result = agent.invoke(Map.of("query", "hi"), new MemorySession("answer-inputs"));
+            InvokeInputs inputs = assertInstanceOf(InvokeInputs.class, observed.get());
+            assertEquals("hi", inputs.getQuery());
+            assertSame(result, inputs.getResult());
+            assertEquals("answer", inputs.getResult().get("result_type"));
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void afterInvokeGetsInterruptInputs() {
+        AtomicReference<Object> observed = new AtomicReference<>();
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeToolCall(AgentCallbackContext context) {
+                ToolCallInputs inputs = assertInstanceOf(ToolCallInputs.class, context.getInputs());
+                InterruptRequest request = new InterruptRequest("confirm", Map.of(), "");
+                throw new AbortError("confirm", new ToolInterruptException(request,
+                        assertInstanceOf(ToolCall.class, inputs.getToolCall())));
+            }
+
+            @Override
+            public void afterInvoke(AgentCallbackContext context) {
+                observed.set(context.getInputs());
+            }
+        };
+        ToolCall call = ToolCall.builder().id("confirm-call").name("confirm").arguments("{}").build();
+        ReActAgent agent = agentWithFakeModel(AssistantMessage.builder().toolCalls(List.of(call)).build());
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            Object result = agent.invoke(Map.of("query", "hi"), new MemorySession("interrupt-inputs"));
+            InvokeInputs inputs = assertInstanceOf(InvokeInputs.class, observed.get());
+            assertSame(result, inputs.getResult());
+            assertEquals("interrupt", inputs.getResult().get("result_type"));
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void afterInvokeGetsInputsOnModelFailure() {
+        AtomicReference<Object> before = new AtomicReference<>();
+        AtomicReference<Object> after = new AtomicReference<>();
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeInvoke(AgentCallbackContext context) {
+                before.set(context.getInputs());
+            }
+
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                throw new AbortError("model failure");
+            }
+
+            @Override
+            public void afterInvoke(AgentCallbackContext context) {
+                after.set(context.getInputs());
+            }
+        };
+        ReActAgent agent = agentWithFakeModel(new AssistantMessage("unused"));
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            assertThrows(AbortError.class,
+                    () -> agent.invoke(Map.of("query", "hi"), new MemorySession("error-inputs")));
+            assertInstanceOf(InvokeInputs.class, after.get());
+            assertSame(before.get(), after.get());
         } finally {
             agent.unregisterRail(rail).toCompletableFuture().join();
         }

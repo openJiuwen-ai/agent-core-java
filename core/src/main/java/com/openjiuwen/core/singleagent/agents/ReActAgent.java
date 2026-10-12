@@ -1489,11 +1489,11 @@ public class ReActAgent extends BaseAgent {
         boolean streaming = false;
         boolean initializationComplete = false;
         AgentCallbackContext ctx = null;
+        InvokeInputs invokeInputs = new InvokeInputs();
         Object previousSession = SessionContextHolder.getCurrentSession();
         SessionContextHolder.setCurrentSession(session);
         try {
             promptBuilder.clearTransient();
-            InvokeInputs invokeInputs = new InvokeInputs();
             invokeInputs.setQuery(query);
             invokeInputs.setConversationId(conversationId);
 
@@ -1725,6 +1725,7 @@ public class ReActAgent extends BaseAgent {
             if (ctx.getTerminationReason() == null) {
                 ctx.finish(terminationReasonForResult(invokeInputs.getResult(), AgentTerminationReason.ERROR));
             }
+            ctx.setInputs(invokeInputs);
             ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
             Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
             if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
@@ -1742,6 +1743,7 @@ public class ReActAgent extends BaseAgent {
                 ctx.finish(AgentTerminationReason.ERROR);
             }
             if (initializationComplete && ctx.getEvent() != AgentCallbackEvent.AFTER_INVOKE) {
+                ctx.setInputs(invokeInputs);
                 ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
             }
             if (!iterationFailureLogged) {
