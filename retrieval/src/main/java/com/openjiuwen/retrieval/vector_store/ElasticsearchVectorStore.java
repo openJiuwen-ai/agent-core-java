@@ -237,15 +237,55 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
             requestText("POST", "/_bulk?refresh=true", ndjson.toString(), false, "application/x-ndjson");
             hasChanged = true;
         }
-        Map<String, Object> filterMap = filterExpr != null && filterExpr.expression() != null
-                ? Map.of("filter_expr", filterExpr.expression())
-                : (filterExpr != null && filterExpr.queryExpr() != null ? Map.of() : null);
+        Map<String, Object> filterMap = parseDeleteFilter(filterExpr);
         if (filterMap != null && !filterMap.isEmpty()) {
             Map<String, Object> body = Map.of("query", Map.of("bool", Map.of("filter", filterClauses(filterMap))));
             requestMap("POST", "/" + index + "/_delete_by_query?refresh=true", body, true);
             hasChanged = true;
         }
         return CompletableFuture.completedFuture(hasChanged);
+    }
+
+    /**
+     * Parses a {@link DeleteFilter} into a key-value map suitable for {@link #filterClauses(Map)}.
+     *
+     * <p>Supports two forms:
+     * <ul>
+     *   <li>Expression string like {@code "category = 'AIB'"} → {@code {"category": "AIB"}}</li>
+     *   <li>Expression string like {@code "category = AIB"} → {@code {"category": "AIB"}}</li>
+     * </ul>
+     * Falls back to treating the raw expression as a single key-value pair if parsing fails.
+     */
+    private Map<String, Object> parseDeleteFilter(DeleteFilter filterExpr) {
+        if (filterExpr == null) {
+            return Map.of();
+        }
+        if (filterExpr.queryExpr() != null) {
+            return Map.of();
+        }
+        if (filterExpr.expression() == null || filterExpr.expression().isBlank()) {
+            return Map.of();
+        }
+        String expr = filterExpr.expression().trim();
+        // Parse simple "key = 'value'" or "key = value" expressions
+        int eqIdx = expr.indexOf('=');
+        if (eqIdx > 0) {
+            String key = expr.substring(0, eqIdx).trim();
+            String value = expr.substring(eqIdx + 1).trim();
+            // Strip surrounding quotes from value
+            if (value.length() >= 2
+                    && ((value.startsWith("'") && value.endsWith("'"))
+                    || (value.startsWith("\"") && value.endsWith("\"")))) {
+                value = value.substring(1, value.length() - 1);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put(key, value);
+            return result;
+        }
+        // Fallback: treat the expression as a single filter key with empty value
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put(expr, "");
+        return result;
     }
 
     @Override

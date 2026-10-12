@@ -1743,7 +1743,7 @@ public class DeepAgent implements AutoCloseable {
     ) {
         List<Object> outputs = new ArrayList<>();
         try {
-            Map<String, Object> result = invokeWithLifecycle(normalized, session);
+            Map<String, Object> result = invokeWithLifecycle(normalized, effectiveSession);
             writeTopLevelStreamResult(effectiveSession, outputs.size(), result);
         } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException | IllegalStateException
                 | UnsupportedOperationException | ClassCastException | NullPointerException
