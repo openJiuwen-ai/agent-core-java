@@ -680,9 +680,12 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
             return 0;
         }
 
-        InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
+        // Use the falling-back variant: multi-key DEL is rejected on Redis Cluster when the
+        // keys do not share a hash-slot, so we must be able to fall back to single-key deletes.
+        InvocationOutcome outcome = tryInvokeFallingBack(redisClient,
+                new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
         if (!outcome.handled()) {
-            outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, keys);
+            outcome = tryInvokeFallingBack(redisClient, new String[]{"delete", "del"}, keys);
         }
         if (outcome.handled()) {
             return asDeleteCount(outcome.value(), keys.size());
@@ -701,7 +704,11 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
 
     private List<String> scanKeys(String prefix) {
         String pattern = prefix + "*";
-        InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"scanIter", "keys", "scan"}, pattern);
+        // Use the falling-back variant: a matched method may reject the call at runtime
+        // (e.g. JedisCluster forbids KEYS without a hash-tag). Treat that as unsupported so
+        // the cluster-aware fallback below can run instead of aborting the whole prefix scan.
+        InvocationOutcome outcome = tryInvokeFallingBack(redisClient,
+                new String[]{"scanIter", "keys", "scan"}, pattern);
         if (!outcome.handled()) {
             outcome = tryInvoke(redisClient, new String[]{"scanKeys"}, prefix);
         }
@@ -712,9 +719,93 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
             outcome = new InvocationOutcome(true, map.keySet());
         }
         if (!outcome.handled()) {
+            // Try JedisCluster: iterate cluster nodes and SCAN each node
+            Optional<List<String>> clusterKeys = scanClusterNodes(pattern);
+            if (clusterKeys.isPresent()) {
+                return extractKeys(clusterKeys.get(), prefix);
+            }
             throw new IllegalStateException("Redis client does not support scanning keys by prefix");
         }
         return extractKeys(outcome.value(), prefix);
+    }
+
+    /**
+     * Attempts to scan keys across all nodes of a Redis Cluster by iterating
+     * {@code getClusterNodes()} and calling {@code scan} on each node connection.
+     * Returns an empty Optional if the client is not a cluster client or does not
+     * expose {@code getClusterNodes}.
+     */
+    @SuppressWarnings("unchecked")
+    private Optional<List<String>> scanClusterNodes(String pattern) {
+        // Jedis 7.x UnifiedJedis/JedisCluster expose scanIteration(count, pattern) which performs a
+        // cross-node SCAN and is the cluster-safe replacement for KEYS, which JedisCluster rejects
+        // unless the pattern carries a hash-tag. Prefer it before the legacy per-node fallback.
+        InvocationOutcome iterationOutcome = tryInvoke(redisClient, new String[]{"scanIteration"}, 100, pattern);
+        if (iterationOutcome.handled() && iterationOutcome.value() != null) {
+            Optional<List<String>> iterationKeys = collectIterationKeys(iterationOutcome.value());
+            if (iterationKeys.isPresent()) {
+                return iterationKeys;
+            }
+        }
+
+        // Legacy fallback for older Jedis: iterate getClusterNodes() and SCAN each node connection.
+        InvocationOutcome nodesOutcome = tryInvoke(redisClient, new String[]{"getClusterNodes"});
+        if (!nodesOutcome.handled() || nodesOutcome.value() == null) {
+            return Optional.empty();
+        }
+        Object nodesValue = nodesOutcome.value();
+        Map<String, ?> nodes;
+        if (nodesValue instanceof Map<?, ?> rawNodes) {
+            nodes = (Map<String, ?>) rawNodes;
+        } else {
+            return Optional.empty();
+        }
+        List<String> allKeys = new ArrayList<>();
+        for (Map.Entry<String, ?> entry : nodes.entrySet()) {
+            Object nodeObj = entry.getValue();
+            if (nodeObj == null) {
+                continue;
+            }
+            // Try to get a Jedis resource from the node object
+            InvocationOutcome jedisOutcome = tryInvoke(nodeObj, new String[]{"getResource"});
+            if (jedisOutcome.handled() && jedisOutcome.value() != null) {
+                Object jedis = jedisOutcome.value();
+                try {
+                    InvocationOutcome scanOutcome = tryInvoke(jedis, new String[]{"scan", "keys"}, pattern);
+                    if (scanOutcome.handled() && scanOutcome.value() != null) {
+                        allKeys.addAll(extractKeys(scanOutcome.value(), ""));
+                    }
+                } finally {
+                    tryInvoke(jedis, new String[]{"close"});
+                }
+            }
+        }
+        return Optional.of(allKeys);
+    }
+
+    /**
+     * Drains a Jedis {@code ScanIteration} by reflectively calling {@code nextBatchList()} until
+     * {@code isIterationCompleted()} returns true. Returns an empty Optional when the object does not
+     * expose those methods, letting the caller continue with another fallback.
+     */
+    private Optional<List<String>> collectIterationKeys(Object iteration) {
+        InvocationOutcome completed = tryInvoke(iteration, new String[]{"isIterationCompleted"});
+        if (!completed.handled()) {
+            return Optional.empty();
+        }
+        List<String> allKeys = new ArrayList<>();
+        while (!Boolean.TRUE.equals(completed.value())) {
+            InvocationOutcome batch = tryInvoke(iteration, new String[]{"nextBatchList"});
+            if (!batch.handled() || batch.value() == null) {
+                break;
+            }
+            allKeys.addAll(extractKeys(batch.value(), ""));
+            completed = tryInvoke(iteration, new String[]{"isIterationCompleted"});
+            if (!completed.handled()) {
+                break;
+            }
+        }
+        return Optional.of(allKeys);
     }
 
     private boolean refreshTtlViaClientPipeline(List<String> keys, int ttlSeconds) {
@@ -949,6 +1040,19 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
             throw new IllegalStateException("Redis client invocation failed", failure);
         } catch (IllegalAccessException accessFailure) {
             throw new IllegalStateException("Redis client method is inaccessible", accessFailure);
+        }
+    }
+
+    /**
+     * Like {@link #tryInvoke(Object, String[], Object...)} but treats a runtime invocation
+     * failure (e.g. Redis Cluster rejecting a cross-slot or non-hash-tagged command) as
+     * "not handled" instead of throwing, so callers can fall back to a compatible strategy.
+     */
+    private InvocationOutcome tryInvokeFallingBack(Object target, String[] methodNames, Object... args) {
+        try {
+            return tryInvoke(target, methodNames, args);
+        } catch (IllegalStateException e) {
+            return InvocationOutcome.notHandled();
         }
     }
 
