@@ -12,9 +12,12 @@ import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.spawn.SpawnContext;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentSessionApi;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +26,15 @@ import java.util.Map;
 
 @Tag("agent-teams-recovery-slice")
 class TeamAgentSessionRecoveryCompatibilityTest {
+    private List<String> originalModelIds;
+    private String originalDefaultModelId;
+
+    @BeforeEach
+    void rememberModels() {
+        ResourceMgr resourceMgr = Runner.resourceMgr();
+        originalModelIds = resourceMgr.listModelIds();
+        originalDefaultModelId = resourceMgr.getDefaultModelId();
+    }
 
     @AfterEach
     void resetSpawnSession() {
@@ -33,6 +45,13 @@ class TeamAgentSessionRecoveryCompatibilityTest {
         // "session::team:<team>:team" but TeamBackend would publish on
         // "session:<leaked-sid>:team:<team>:team" — handlers never match).
         SpawnContext.setSessionId("");
+        ResourceMgr resourceMgr = Runner.resourceMgr();
+        for (String modelId : resourceMgr.listModelIds()) {
+            if (!originalModelIds.contains(modelId)) {
+                resourceMgr.removeModelForce(modelId, true);
+            }
+        }
+        resourceMgr.setDefaultModelId(originalDefaultModelId);
     }
 
     @Test

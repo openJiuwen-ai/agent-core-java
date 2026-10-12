@@ -49,6 +49,23 @@ class RailsTest {
     }
 
     @Test
+    void observingPendingForceFinishDoesNotConsumeRequestOrSignal() {
+        AgentCallbackContext context = new AgentCallbackContext();
+        Map<String, Object> result = Map.of("output", "verified", "result_type", "answer");
+        context.requestForceFinish(result);
+
+        ForceFinishRequest observed = context.getForceFinishRequest();
+        assertThat(observed.getResult()).isEqualTo(result);
+        assertThat(context.getForceFinishRequest()).isSameAs(observed);
+        assertThat(context.hasForceFinishRequest()).isTrue();
+        assertThat(context.consumeForceFinishSignal()).isFalse();
+        assertThat(context.consumeForceFinish()).isSameAs(observed);
+        assertThat(context.getForceFinishRequest()).isNull();
+        assertThat(context.hasForceFinishRequest()).isFalse();
+        assertThat(context.consumeForceFinishSignal()).isTrue();
+    }
+
+    @Test
     void cancellationSkipsAfterAndExceptionCallbacks() {
         RecordingContext context = new RecordingContext();
 
