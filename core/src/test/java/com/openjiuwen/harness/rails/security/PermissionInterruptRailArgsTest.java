@@ -262,7 +262,8 @@ class PermissionInterruptRailArgsTest {
             if ("deny".equals(policy)) {
                 assertThat(String.valueOf(result)).contains("[PERMISSION_DENIED]");
             } else {
-                assertThat(result).isInstanceOf(ToolInterruptException.class);
+                assertDeniedResumeDoesNotSaveApproval(agent, context, tool, rail,
+                        assertInstanceOf(ToolInterruptException.class, result));
             }
             assertThat(executions).hasValue(1);
         } finally {
@@ -272,10 +273,28 @@ class PermissionInterruptRailArgsTest {
 
     private static AbilityManager.ExecutionResult executeNative(ReActAgent agent, AgentCallbackContext context,
                                                                 LocalFunction tool) {
+        ToolInterruptionState.railState(context);
         ToolCall call = ToolCall.builder().id("permission-call").name("bash")
                 .arguments("{\"command\":\"echo test\"}").build();
         return agent.getAbilityManager().execute(context, List.of(call), false,
                 ignored -> Optional.of(tool)).get(0);
+    }
+
+    private static void assertDeniedResumeDoesNotSaveApproval(ReActAgent agent, AgentCallbackContext context,
+            LocalFunction tool, PermissionInterruptRail rail, ToolInterruptException pending) {
+        assertThat(ToolInterruptionState.railState(context).getPendingRailIds())
+                .containsEntry("permission-call", PermissionInterruptRail.class.getName());
+        Map<String, Object> denied = basePermissions();
+        denied.put("tools", Map.of("bash", "deny"));
+        rail.getHost().setPermissionsSnapshotSupplier(() -> denied);
+        rail.updateConfig(denied);
+        InteractiveInput response = new InteractiveInput();
+        response.update("permission-call", Map.of("approved", true, "auto_confirm", true));
+        assertThat(resumeNative(agent, context, tool, pending, response))
+                .allSatisfy(result -> assertThat(String.valueOf(result)).contains("[PERMISSION_DENIED]"))
+                .hasSize(1);
+        assertThat(context.getSession().getState(InterruptConstants.INTERRUPT_AUTO_CONFIRM_KEY))
+                .isEqualTo(Map.of());
     }
 
     @Test
