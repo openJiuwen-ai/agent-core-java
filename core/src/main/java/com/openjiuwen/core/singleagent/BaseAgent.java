@@ -8,12 +8,13 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -35,8 +36,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -44,6 +43,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Base class for current single-agent implementations.
@@ -323,7 +325,18 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      */
     @Override
     public void fireCallbackEvent(AgentCallbackEvent event, AgentCallbackContext ctx) {
-        agentCallbackManager.execute(event, ctx).toCompletableFuture().join();
+        try {
+            agentCallbackManager.execute(event, ctx).toCompletableFuture().join();
+        } catch (CompletionException exception) {
+            Throwable cause = exception;
+            while (cause instanceof CompletionException && cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            if (cause instanceof ToolInterruptException interruption) {
+                throw interruption;
+            }
+            throw exception;
+        }
     }
 
     /**
