@@ -258,13 +258,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
      */
     private Map<String, Object> parseDeleteFilter(DeleteFilter filterExpr) {
         if (filterExpr == null) {
-            return null;
+            return Map.of();
         }
         if (filterExpr.queryExpr() != null) {
             return Map.of();
         }
         if (filterExpr.expression() == null || filterExpr.expression().isBlank()) {
-            return null;
+            return Map.of();
         }
         String expr = filterExpr.expression().trim();
         // Parse simple "key = 'value'" or "key = value" expressions
