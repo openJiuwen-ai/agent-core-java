@@ -65,7 +65,7 @@ public class ToolInterruptionState extends BaseInterruptionState {
     }
 
     /**
-     * Obtain the shared rail state for the current invocation or resumed checkpoint.
+     * Obtain the shared rail state for the current invocation.
      *
      * @param context current invocation context
      * @return state shared by this invocation's tool callbacks
@@ -75,14 +75,6 @@ public class ToolInterruptionState extends BaseInterruptionState {
         Object current = context.getExtra().get(RAIL_STATE_KEY);
         if (current instanceof ToolInterruptionState state) {
             return state;
-        }
-        Object saved = null;
-        if (context.getSession() != null) {
-            saved = context.getSession().getState(InterruptConstants.INTERRUPTION_KEY);
-        }
-        if (saved instanceof ToolInterruptionState interruptionState) {
-            context.getExtra().put(RAIL_STATE_KEY, interruptionState);
-            return interruptionState;
         }
         ToolInterruptionState state = new ToolInterruptionState();
         context.getExtra().put(RAIL_STATE_KEY, state);

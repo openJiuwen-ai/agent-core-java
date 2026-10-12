@@ -246,13 +246,22 @@ class HarnessInterruptRailTest {
             InteractiveInput response = new InteractiveInput();
             response.update("call-1", payload);
             AgentCallbackContext context = prepare();
+            ApprovalRail second = new ApprovalRail("second");
+            second.setPriority(50);
+            agent.registerRail(second).toCompletableFuture().join();
             ToolInterruptException pending = assertInstanceOf(ToolInterruptException.class, execute(context).result());
             ToolInterruptionState state = checkpoint(context, pending);
-            assertNull(new ToolInterruptHandler(null).handleResume(resumeContext(context, state, response)));
+            ToolInterruptHandler handler = new ToolInterruptHandler(null);
+            handler.save(state, context.getSession());
+            AgentCallbackContext fresh = new AgentCallbackContext(agent);
+            fresh.setSession(context.getSession());
+            fresh.setContext(context.getContext());
+            Map<String, Object> result = handler.handleResume(resumeContext(fresh, state, response));
+            assertEquals("rejected".equals(format), result == null);
 
             Object saved = context.getSession().getState(InterruptConstants.INTERRUPT_AUTO_CONFIRM_KEY);
             assertEquals("rejected".equals(format) ? Map.of() : Map.of("confirmed_tool", true), saved);
-            assertEquals("rejected".equals(format) ? 0 : 1, executions.get());
+            assertEquals(0, executions.get());
         }
 
         private void registerSecondConfirmation() {
