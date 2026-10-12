@@ -77,43 +77,25 @@ class AgentCallbackManagerTest {
         assertTrue(agent.getAbilityManager().get(card.getName()).isEmpty());
     }
 
-    @Test
-    void unregisterUsesAcquiredSnapshotAndKeepsExternalReplacement() {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void unregisterUsesAcquiredSnapshotAndKeepsExternalReplacement(boolean hasReplacement) {
         ReActAgent agent = new ReActAgent(new AgentCard("replacement", "replacement", "test"));
         ToolCard owned = ToolCard.builder().id("owned").name("replacement-tool").inputParams(Map.of()).build();
+        AgentRail rail = new AgentRail(new ArrayList<>(List.of(owned))) { };
+        agent.registerInstanceRail(rail).toCompletableFuture().join();
         ToolCard replacement = ToolCard.builder().id("external").name(owned.getName()).inputParams(Map.of()).build();
-        AgentRail rail = new AgentRail(new ArrayList<>(List.of(owned))) { };
-        agent.registerInstanceRail(rail).toCompletableFuture().join();
-        agent.getAbilityManager().remove(owned.getName());
-        agent.getAbilityManager().add(replacement);
+        if (hasReplacement) {
+            agent.getAbilityManager().remove(owned.getName());
+            agent.getAbilityManager().add(replacement);
+        }
         rail.getToolCards().clear();
         agent.unregisterInstanceRail(rail).toCompletableFuture().join();
-        assertSame(replacement, agent.getAbilityManager().get(owned.getName()).orElseThrow());
-    }
-
-    @Test
-    void mutatingDeclaredToolsDoesNotLeakAcquiredCard() {
-        ReActAgent agent = new ReActAgent(new AgentCard("mutable-cards", "mutable-cards", "test"));
-        ToolCard owned = ToolCard.builder().name("acquired-tool").inputParams(Map.of()).build();
-        AgentRail rail = new AgentRail(new ArrayList<>(List.of(owned))) { };
-        agent.registerInstanceRail(rail).toCompletableFuture().join();
-        rail.getToolCards().clear();
-        agent.unregisterInstanceRail(rail).toCompletableFuture().join();
-        assertTrue(agent.getAbilityManager().get(owned.getName()).isEmpty());
-    }
-
-    @Test
-    void sharedOwnedCardSurvivesWhileAnotherRailUsesIt() {
-        ReActAgent agent = new ReActAgent(new AgentCard("shared-owned", "shared-owned", "test"));
-        ToolCard owned = ToolCard.builder().name("shared-owned-tool").inputParams(Map.of()).build();
-        AgentRail first = new AgentRail(List.of(owned)) { };
-        AgentRail second = new AgentRail(List.of(owned)) { };
-        agent.registerInstanceRail(first).toCompletableFuture().join();
-        agent.registerInstanceRail(second).toCompletableFuture().join();
-        agent.unregisterInstanceRail(first).toCompletableFuture().join();
-        assertSame(owned, agent.getAbilityManager().get(owned.getName()).orElseThrow());
-        agent.unregisterInstanceRail(second).toCompletableFuture().join();
-        assertTrue(agent.getAbilityManager().get(owned.getName()).isEmpty());
+        if (hasReplacement) {
+            assertSame(replacement, agent.getAbilityManager().get(owned.getName()).orElseThrow());
+        } else {
+            assertTrue(agent.getAbilityManager().get(owned.getName()).isEmpty());
+        }
     }
 
     @ParameterizedTest

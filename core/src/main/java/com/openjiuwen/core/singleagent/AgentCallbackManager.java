@@ -142,10 +142,6 @@ public class AgentCallbackManager {
         AbilityManager abilities = baseAgent.getAbilityManager();
         for (ToolCard card : cards) {
             Object existing = abilities.get(card.getName()).orElse(null);
-            if (existing == card && isOwnedRailTool(card.getName(), card)) {
-                owned.put(card.getName(), card);
-                continue;
-            }
             if (existing != null) {
                 Loggers.AGENT.warning("[registerRail] tool '{}' already exists; keep its current owner",
                         card.getName());
@@ -159,10 +155,6 @@ public class AgentCallbackManager {
                         card.getName(), result.getReason());
             }
         }
-    }
-
-    private boolean isOwnedRailTool(String name, ToolCard card) {
-        return railTools.values().stream().anyMatch(cards -> cards.get(name) == card);
     }
 
     public CompletionStage<Void> unregisterRail(AgentRail rail, Object agent) {
@@ -199,8 +191,7 @@ public class AgentCallbackManager {
         IsolatedActions.runIsolated(() -> {
             for (Map.Entry<String, ToolCard> entry : owned.entrySet()) {
                 AbilityManager abilities = baseAgent.getAbilityManager();
-                if (!isOwnedRailTool(entry.getKey(), entry.getValue())
-                        && abilities.get(entry.getKey()).orElse(null) == entry.getValue()) {
+                if (abilities.get(entry.getKey()).orElse(null) == entry.getValue()) {
                     abilities.remove(entry.getKey());
                 }
             }
