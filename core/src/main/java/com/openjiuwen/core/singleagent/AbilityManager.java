@@ -19,6 +19,8 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSession;
@@ -1080,6 +1082,22 @@ public class AbilityManager {
         if (previousSession == null && session != null) {
             SessionContextHolder.setCurrentSession(session);
         }
+        // Tool bodies run on shared background/tool-call worker threads. TenantContextHolder is
+        // an InheritableThreadLocal that is only copied at thread creation, so a reused worker
+        // would keep the stale tenant bound by a previous (different-tenant) tool call and scope
+        // KV keys (e.g. todo storage) to the wrong tenant — a cross-tenant data leak. Re-bind the
+        // tenant from the current session (session is the request-scoped source of truth) for the
+        // duration of the tool body, mirroring the session-holder save/restore above.
+        TenantContext previousTenant = TenantContextHolder.getCurrentTenant();
+        TenantContext sessionTenant = session instanceof AgentSessionApi agentSession
+                ? agentSession.getTenantContext()
+                : null;
+        boolean tenantRebound = false;
+        if (sessionTenant != null && sessionTenant.isTenantAware()
+                && (previousTenant == null || !previousTenant.equals(sessionTenant))) {
+            TenantContextHolder.setCurrentTenant(sessionTenant);
+            tenantRebound = true;
+        }
         try {
             return tool.invoke(inputs, invokeKwargs(session));
         } catch (ToolInterruptException interrupt) {
@@ -1089,6 +1107,9 @@ public class AbilityManager {
         } catch (Exception exception) {
             throw new IllegalStateException(exception.getMessage(), exception);
         } finally {
+            if (tenantRebound) {
+                TenantContextHolder.setCurrentTenant(previousTenant);
+            }
             SessionContextHolder.restoreCurrentSession(previousSession);
         }
     }

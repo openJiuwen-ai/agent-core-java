@@ -289,7 +289,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
                 batchDeleteInternal(keys, batchSize);
             }
             logger.debug("Deleted keys by prefix: {}", prefix);
-        } catch (IllegalStateException e) {
+        } catch (RuntimeException e) {
             logger.error("Failed to delete keys by prefix: {}, error: {}", prefix, e.getMessage());
             throw new RuntimeException("Failed to delete keys by prefix: " + prefix, e);
         }
@@ -344,7 +344,7 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
                 }
             }
             return deleted;
-        } catch (IllegalStateException e) {
+        } catch (RuntimeException e) {
             logger.error("Failed to batch delete keys, error: {}", e.getMessage());
             throw new RuntimeException("Failed to batch delete keys", e);
         }
@@ -712,9 +712,56 @@ public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableK
             outcome = new InvocationOutcome(true, map.keySet());
         }
         if (!outcome.handled()) {
+            // Try JedisCluster: iterate cluster nodes and SCAN each node
+            List<String> clusterKeys = scanClusterNodes(pattern);
+            if (clusterKeys != null) {
+                return extractKeys(clusterKeys, prefix);
+            }
             throw new IllegalStateException("Redis client does not support scanning keys by prefix");
         }
         return extractKeys(outcome.value(), prefix);
+    }
+
+    /**
+     * Attempts to scan keys across all nodes of a Redis Cluster by iterating
+     * {@code getClusterNodes()} and calling {@code scan} on each node connection.
+     * Returns {@code null} if the client is not a cluster client or does not
+     * expose {@code getClusterNodes}.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> scanClusterNodes(String pattern) {
+        InvocationOutcome nodesOutcome = tryInvoke(redisClient, new String[]{"getClusterNodes"});
+        if (!nodesOutcome.handled() || nodesOutcome.value() == null) {
+            return null;
+        }
+        Object nodesValue = nodesOutcome.value();
+        Map<String, ?> nodes;
+        if (nodesValue instanceof Map<?, ?> rawNodes) {
+            nodes = (Map<String, ?>) rawNodes;
+        } else {
+            return null;
+        }
+        List<String> allKeys = new ArrayList<>();
+        for (Map.Entry<String, ?> entry : nodes.entrySet()) {
+            Object nodeObj = entry.getValue();
+            if (nodeObj == null) {
+                continue;
+            }
+            // Try to get a Jedis resource from the node object
+            InvocationOutcome jedisOutcome = tryInvoke(nodeObj, new String[]{"getResource"});
+            if (jedisOutcome.handled() && jedisOutcome.value() != null) {
+                Object jedis = jedisOutcome.value();
+                try {
+                    InvocationOutcome scanOutcome = tryInvoke(jedis, new String[]{"scan", "keys"}, pattern);
+                    if (scanOutcome.handled() && scanOutcome.value() != null) {
+                        allKeys.addAll(extractKeys(scanOutcome.value(), ""));
+                    }
+                } finally {
+                    tryInvoke(jedis, new String[]{"close"});
+                }
+            }
+        }
+        return allKeys;
     }
 
     private boolean refreshTtlViaClientPipeline(List<String> keys, int ttlSeconds) {
