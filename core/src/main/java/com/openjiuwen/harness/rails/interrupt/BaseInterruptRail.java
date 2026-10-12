@@ -60,7 +60,7 @@ public class BaseInterruptRail extends DeepAgentRail {
     }
 
     /**
-     * Resolve a native tool interruption for existing rail subclasses.
+     * Pause a native tool call. Subclasses override this method to resolve user responses.
      *
      * @param context current callback context
      * @param toolCall call being evaluated
@@ -69,25 +69,7 @@ public class BaseInterruptRail extends DeepAgentRail {
      * @since 0.1.17
      */
     protected InterruptDecision resolveInterrupt(AgentCallbackContext context, ToolCall toolCall, Object userInput) {
-        CallbackContext callback = toCallbackContext(context);
-        callback.put("user_input", userInput);
-        beforeToolCall(callback);
-        applyCallbackContext(context, callback);
-        if (callback.isRejected()) {
-            ToolMessage message = null;
-            if (callback.get("tool_msg") instanceof ToolMessage toolMessage) {
-                message = toolMessage;
-            }
-            return reject(callback.get("tool_result"), message);
-        }
-        if (Boolean.TRUE.equals(callback.get("interrupt_required"))) {
-            return interrupt(new InterruptRequest("Please approve or reject?", Map.of(), toolCall.getName()));
-        }
-        String args = null;
-        if (callback.get("tool_args") instanceof String replacement) {
-            args = replacement;
-        }
-        return approve(args);
+        return interrupt(new InterruptRequest("Please approve or reject?", Map.of(), toolCall.getName()));
     }
 
     /**
