@@ -4,6 +4,14 @@
 
 package com.openjiuwen.core.foundation.llm;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -21,8 +29,11 @@ import com.openjiuwen.core.runner.callback.CallbackInfo;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.EventFilter;
 import com.openjiuwen.core.runner.callback.LLMCallEvents;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -33,13 +44,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Focused parity tests for the LLM model facade.
@@ -262,9 +266,39 @@ class ModelTest {
     }
 
     @Test
-    void multimodalGenerationMethodsDelegateWithPythonDefaults() {
+    void sharedClientConstructorPreservesConfigurationAndClientIdentity() {
+        RecordingModelClient client = new RecordingModelClient();
+        client.streamIterator = List.of(AssistantMessageChunk.builder().content("chunk").build()).iterator();
+        ModelClientConfig clientConfig = ModelClientConfig.builder().clientProvider(ProviderType.OPEN_AI).build();
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName("shared-model").build();
+        Model source = new Model(client, clientConfig, requestConfig);
+        Model wrapper = new Model(new Model(source));
+
+        assertSame(source.getModelClientConfig(), wrapper.getModelClientConfig());
+        assertSame(source.getModelConfig(), wrapper.getModelConfig());
+        assertEquals("ok", wrapper.invoke("hello").toCompletableFuture().join().getContentAsString());
+        assertEquals(1, client.invokeOptions.size());
+        assertSame(client.streamIterator, wrapper.stream("hello"));
+        client.kvCacheReleaseSupported = true;
+        assertTrue(wrapper.supportsKvCacheRelease());
+        assertTrue(wrapper.release("shared-session", List.of(), 0, List.of(), 0).toCompletableFuture().join());
+        assertEquals("shared-session", client.releaseSessionId);
+    }
+
+    @Test
+    void sharedClientConstructorRejectsNullSource() {
+        Model source = null;
+        assertThrows(NullPointerException.class, () -> new Model(source));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void multimodalGenerationMethodsDelegateWithPythonDefaults(boolean isWrapped) {
         RecordingModelClient client = new RecordingModelClient();
         Model model = new Model(client);
+        if (isWrapped) {
+            model = new Model(model);
+        }
         List<UserMessage> messages = List.of(new UserMessage("draw"));
 
         model.generateImage(messages).toCompletableFuture().join();
