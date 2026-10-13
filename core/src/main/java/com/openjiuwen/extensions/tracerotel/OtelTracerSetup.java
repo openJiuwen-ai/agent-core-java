@@ -20,8 +20,12 @@ import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * OTel tracer provider initialization.
@@ -41,6 +45,19 @@ import java.util.Map;
  * @since 0.1.7
  */
 public final class OtelTracerSetup {
+    private static final Logger LOG = LoggerFactory.getLogger(OtelTracerSetup.class);
+
+    private static final AtomicBoolean SHUTDOWN_HOOK_REGISTERED = new AtomicBoolean(false);
+
+    /**
+     * Latest provider built by {@link #initOtelTracer(OtelTracerConfig)}.
+     *
+     * <p>Held so that buffered spans can be flushed and the provider shut down on process exit;
+     * without this reference the {@code BatchSpanProcessor} buffer is unreachable and its spans
+     * are lost when the JVM exits. Mirrors {@code ObservabilitySetup}'s provider field.</p>
+     */
+    private static volatile SdkTracerProvider provider;
+
     private OtelTracerSetup() {
     }
 
@@ -89,12 +106,84 @@ public final class OtelTracerSetup {
                     null, null);
         }
 
-        SdkTracerProvider provider = providerBuilder.build();
+        SdkTracerProvider built = providerBuilder.build();
+        provider = built;
+        registerShutdownHookOnce();
 
         // Intentionally NOT calling GlobalOpenTelemetry.setTracerProvider() here.
         // tracerotel handlers hold a direct tracer reference, so global provider state
         // is not needed. This avoids conflicts with agent_teams.observability.init_observability().
-        return provider.get(config.getTracerName());
+        return built.get(config.getTracerName());
+    }
+
+    /**
+     * Force flush the TracerProvider so buffered spans are exported immediately.
+     *
+     * @since 0.1.16
+     */
+    public static void forceFlushOtelTracer() {
+        SdkTracerProvider current = provider;
+        if (current != null) {
+            try {
+                current.forceFlush();
+            } catch (IllegalStateException | SecurityException e) {
+                LOG.warn("otel: force_flush failed - {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Flush buffered spans, shut down the provider, and reset module state.
+     *
+     * <p>Called by the JVM shutdown hook so spans still buffered in the
+     * {@code BatchSpanProcessor} are exported before the process exits.</p>
+     *
+     * @since 0.1.16
+     */
+    public static synchronized void shutdownOtelTracer() {
+        SdkTracerProvider current = provider;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.forceFlush();
+        } catch (IllegalStateException | SecurityException e) {
+            LOG.warn("otel: provider force_flush failed - {}", e.getMessage());
+        }
+        try {
+            current.shutdown();
+        } catch (IllegalStateException | SecurityException e) {
+            LOG.warn("otel: provider shutdown failed - {}", e.getMessage());
+        }
+        provider = null;
+    }
+
+    /**
+     * Return whether a TracerProvider is currently active.
+     *
+     * @return {@code true} if {@link #initOtelTracer(OtelTracerConfig)} has run and the provider
+     *         has not been shut down
+     * @since 0.1.16
+     */
+    public static boolean isInitialized() {
+        return provider != null;
+    }
+
+    /**
+     * Register a one-shot JVM shutdown hook that flushes and shuts down the provider.
+     *
+     * @since 0.1.16
+     */
+    private static void registerShutdownHookOnce() {
+        if (!SHUTDOWN_HOOK_REGISTERED.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            Runtime.getRuntime().addShutdownHook(
+                    new Thread(OtelTracerSetup::shutdownOtelTracer, "otel-tracerotel-shutdown"));
+        } catch (IllegalStateException | SecurityException e) {
+            LOG.warn("otel: register shutdown hook failed - {}", e.getMessage());
+        }
     }
 
     /**
