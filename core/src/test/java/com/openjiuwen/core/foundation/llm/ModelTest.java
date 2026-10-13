@@ -29,6 +29,7 @@ import com.openjiuwen.core.runner.callback.CallbackInfo;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.EventFilter;
 import com.openjiuwen.core.runner.callback.LLMCallEvents;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -286,7 +287,8 @@ class ModelTest {
 
     @Test
     void sharedClientConstructorRejectsNullSource() {
-        assertThrows(NullPointerException.class, () -> new Model((Model) null));
+        Model source = null;
+        assertThrows(NullPointerException.class, () -> new Model(source));
     }
 
     @ParameterizedTest
