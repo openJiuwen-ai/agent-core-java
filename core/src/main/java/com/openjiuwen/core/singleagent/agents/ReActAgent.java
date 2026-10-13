@@ -73,6 +73,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -825,38 +826,55 @@ public class ReActAgent extends BaseAgent {
         List<String> loadedPaths = new ArrayList<>();
         if (toolResults != null) {
             for (Object toolResult : toolResults) {
-                for (Map<String, Object> item : iterMultimodalImageItems(toolResult)) {
-                    String sourcePath = Objects.toString(item.getOrDefault("source_path", "unknown image"));
-                    Object dataUrl = item.get("data_url");
-                    loadedPaths.add(sourcePath);
-                    content.add(new LinkedHashMap<>(Map.of(
-                            "type", "text",
-                            "text", "Image loaded from read_file: " + sourcePath
-                    )));
-                    content.add(new LinkedHashMap<>(Map.of(
-                            "type", "image_url",
-                            "image_url", new LinkedHashMap<>(Map.of("url", dataUrl))
-                    )));
-                }
+                appendMultimodalParts(iterMultimodalImageItems(toolResult), "Image", "image_url", content,
+                        loadedPaths);
+                appendMultimodalParts(iterMultimodalVideoItems(toolResult), "Video", "video_url", content,
+                        loadedPaths);
             }
         }
         if (content.isEmpty()) {
             return null;
         }
         if (loadedPaths.size() > 1) {
-            List<String> summaryLines = new ArrayList<>();
-            summaryLines.add("Images loaded by tool results:");
-            for (int i = 0; i < loadedPaths.size(); i++) {
-                summaryLines.add((i + 1) + ". " + loadedPaths.get(i));
-            }
-            content.add(0, new LinkedHashMap<>(Map.of("type", "text", "text", String.join("\n", summaryLines))));
+            content.add(0, new LinkedHashMap<>(Map.of("type", "text", "text", loadSummary(content, loadedPaths))));
         }
         UserMessage message = new UserMessage();
         message.setContent(content);
         return message;
     }
 
+    /**
+     * Collect image items from one tool result's {@code data.multimodal} list.
+     *
+     * <p>An item matches when its {@code type} is {@code image} and its
+     * {@code data_url} is a {@code data:image/} base64 URI; HTTP URLs and
+     * other types are ignored.</p>
+     *
+     * @param toolResult tool output carrying a multimodal list, may be {@code null}
+     * @return matched image items, never {@code null}
+     * @since 0.1.17
+     */
     public static List<Map<String, Object>> iterMultimodalImageItems(Object toolResult) {
+        return iterMultimodalItems(toolResult, "image", "data:image/");
+    }
+
+    /**
+     * Collect video items from one tool result's {@code data.multimodal} list.
+     *
+     * <p>An item matches when its {@code type} is {@code video} and its
+     * {@code data_url} is a {@code data:video/} base64 URI; HTTP URLs and
+     * other types are ignored, mirroring the image filtering rules.</p>
+     *
+     * @param toolResult tool output carrying a multimodal list, may be {@code null}
+     * @return matched video items, never {@code null}
+     * @since 0.1.17
+     */
+    public static List<Map<String, Object>> iterMultimodalVideoItems(Object toolResult) {
+        return iterMultimodalItems(toolResult, "video", "data:video/");
+    }
+
+    private static List<Map<String, Object>> iterMultimodalItems(Object toolResult, String itemType,
+            String dataPrefix) {
         Object data = readAttribute(toolResult, "data");
         if (!(data instanceof Map<?, ?> dataMap)) {
             return List.of();
@@ -865,19 +883,58 @@ public class ReActAgent extends BaseAgent {
         if (!(rawItems instanceof List<?> items)) {
             return List.of();
         }
-        List<Map<String, Object>> imageItems = new ArrayList<>();
+        List<Map<String, Object>> matchedItems = new ArrayList<>();
         for (Object rawItem : items) {
             if (!(rawItem instanceof Map<?, ?> rawMap)) {
                 continue;
             }
             Map<String, Object> item = stringObjectMap(rawMap);
-            Object type = item.get("type");
             Object dataUrl = item.get("data_url");
-            if ("image".equals(type) && dataUrl instanceof String text && text.startsWith("data:image/")) {
-                imageItems.add(item);
+            if (itemType.equals(item.get("type")) && dataUrl instanceof String text && text.startsWith(dataPrefix)) {
+                matchedItems.add(item);
             }
         }
-        return imageItems;
+        return matchedItems;
+    }
+
+    private static void appendMultimodalParts(List<Map<String, Object>> items, String label, String partType,
+            List<Map<String, Object>> content, List<String> loadedPaths) {
+        for (Map<String, Object> item : items) {
+            String sourcePath = Objects.toString(item.getOrDefault("source_path",
+                    "unknown " + label.toLowerCase(Locale.ROOT)));
+            Object dataUrl = item.get("data_url");
+            loadedPaths.add(sourcePath);
+            content.add(new LinkedHashMap<>(Map.of(
+                    "type", "text",
+                    "text", label + " loaded from read_file: " + sourcePath
+            )));
+            content.add(new LinkedHashMap<>(Map.of(
+                    "type", partType,
+                    partType, new LinkedHashMap<>(Map.of("url", dataUrl))
+            )));
+        }
+    }
+
+    private static String loadSummary(List<Map<String, Object>> content, List<String> loadedPaths) {
+        List<String> summaryLines = new ArrayList<>();
+        summaryLines.add(loadSummaryHeader(content));
+        for (int i = 0; i < loadedPaths.size(); i++) {
+            summaryLines.add((i + 1) + ". " + loadedPaths.get(i));
+        }
+        return String.join("\n", summaryLines);
+    }
+
+    private static String loadSummaryHeader(List<Map<String, Object>> content) {
+        boolean hasImage = false;
+        boolean hasVideo = false;
+        for (Map<String, Object> part : content) {
+            hasImage = hasImage || "image_url".equals(part.get("type"));
+            hasVideo = hasVideo || "video_url".equals(part.get("type"));
+        }
+        if (hasImage && hasVideo) {
+            return "Multimodal assets loaded by tool results:";
+        }
+        return hasVideo ? "Videos loaded by tool results:" : "Images loaded by tool results:";
     }
 
     public boolean isInterrupted(Object toolResult) {

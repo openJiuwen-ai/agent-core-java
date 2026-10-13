@@ -40,6 +40,7 @@ public final class ReActWeatherAgentExample {
         Tool weatherTool = null;
 
         try {
+            disableToolSslVerificationForDemo();
             String weatherUrl = resolveWeatherUrl();
 
             ReActAgent agent = createAgent();
@@ -129,6 +130,21 @@ public final class ReActWeatherAgentExample {
         Runner.resourceMgr().removeTool(tool.getCard().getId(), AGENT_ID, TagMatchStrategy.ALL, true);
         Runner.resourceMgr().addTool(tool, AGENT_ID);
         agent.getAbilityManager().add(tool.getCard());
+    }
+
+    /**
+     * RestfulApi requires RESTFUL_SSL_CERT for https tool URLs unless RESTFUL_SSL_VERIFY
+     * is explicitly disabled. This demo calls a public https endpoint without bundling a
+     * CA certificate, so default the switch to false when the user has not configured it.
+     * For production use, keep verification on and configure RESTFUL_SSL_CERT plus
+     * SAFE_CERT_DIR instead.
+     */
+    private static void disableToolSslVerificationForDemo() {
+        if (System.getProperty("RESTFUL_SSL_VERIFY") != null
+                || System.getenv("RESTFUL_SSL_VERIFY") != null) {
+            return;
+        }
+        System.setProperty("RESTFUL_SSL_VERIFY", "false");
     }
 
     private static String resolveWeatherUrl() {

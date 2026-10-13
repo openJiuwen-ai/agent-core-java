@@ -44,6 +44,12 @@
 | [ReActAgent演化训练](ReactAgent强化学习.md) | 演化训练、评估与优化流程 | `ReActAgentEvolve`、`examples/agent_evolving` | 聚焦 Java 当前可运行的演化训练主线。 |
 | [自优化Agent](自优化Agent.md) | 训练闭环、优化器、评估器与 checkpoint | `ReActAgentEvolve`、`InstructionOptimizer`、`DefaultEvaluator`、`Trainer` | 聚焦 Java 当前的自演化闭环。 |
 
+### 多模态推理
+
+| 页面 | 关注点 | 主要依据 | 说明 |
+| --- | --- | --- | --- |
+| [多模态推理](多模态推理.md) | 图片/视频理解注入、生图/生视频任务引擎、厂商适配 | `ReActAgent` 多模态消息链路、`OpenAIModelClient` 生成接口、`examples/multi-modal-inference` | 以 Java 当前实现与示例模块为准。 |
+
 ## 阅读提示
 
 - 先根据问题类型选择分组，再进入具体页面。
@@ -66,3 +72,4 @@
 - [示例：skill_create](../../../../examples/skill_create/README.md)
 - [示例：skill_use](../../../../examples/skill_use/README.md)
 - [示例：agent_evolving](../../../../examples/agent_evolving/README.md)
+- [示例：multi-modal-inference](../../../../examples/multi-modal-inference/README.md)
