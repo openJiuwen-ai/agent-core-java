@@ -47,12 +47,15 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -75,6 +78,31 @@ public class OpenAIModelClient extends BaseModelClient
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
+    private static final String IMAGES_GENERATIONS_PATH = "/images/generations";
+    private static final String VIDEOS_PATH = "/videos";
+    private static final String IMAGE_CREATE_PATH_KWARG = "image_create_path";
+    private static final String IMAGE_URLS_PATH_KWARG = "image_urls_path";
+    private static final String VIDEO_BODY_KWARG = "video_body";
+    private static final String VIDEO_BODY_REFERENCE = "reference";
+    private static final String VIDEO_BODY_PROMPT = "prompt";
+    private static final String VIDEO_CREATE_PATH_KWARG = "video_create_path";
+    private static final String VIDEO_POLL_PATH_KWARG = "video_poll_path";
+    private static final String VIDEO_RESULT_URL_PATH_KWARG = "video_result_url_path";
+    private static final String VIDEO_RESULT_DOWNLOAD_PATH_KWARG = "video_result_download_path";
+    private static final String VIDEO_FILE_RETRIEVE_PATH_KWARG = "video_file_retrieve_path";
+    private static final String VIDEO_FILE_URL_PATH_KWARG = "video_file_url_path";
+    private static final String VIDEO_SUCCESS_STATUSES_KWARG = "video_success_statuses";
+    private static final String VIDEO_FAILURE_STATUSES_KWARG = "video_failure_statuses";
+    private static final String VIDEO_POLL_INTERVAL_KWARG = "poll_interval_seconds";
+    private static final String VIDEO_MAX_WAIT_KWARG = "max_wait_seconds";
+    private static final String TASK_ID_PLACEHOLDER = "{taskId}";
+    private static final String FILE_ID_PLACEHOLDER = "{fileId}";
+    private static final String DEFAULT_VIDEO_FILE_URL_PATH = "file.download_url";
+    private static final long DEFAULT_VIDEO_POLL_INTERVAL_SECONDS = 5L;
+    private static final long DEFAULT_VIDEO_MAX_WAIT_SECONDS = 600L;
+    private static final Set<String> DEFAULT_VIDEO_SUCCESS_STATUSES = Set.of("completed", "succeeded", "success");
+    private static final Set<String> DEFAULT_VIDEO_FAILURE_STATUSES = Set.of("failed", "error", "cancelled",
+            "canceled", "expired", "fail");
     private static final String CONTENT_TYPE = "application/json";
     private static final String RETRY_COUNT_HEADER = "X-Stainless-Retry-Count";
     private static final String RETRY_LISTENER_KWARG = "__openjiuwen_retry_listener";
@@ -543,6 +571,34 @@ public class OpenAIModelClient extends BaseModelClient
         }
     }
 
+    /**
+     * Generate images through the OpenAI-compatible {@code POST {base}/images/generations} endpoint,
+     * or a configured alternative endpoint with a custom url-list location.
+     *
+     * <p>Body contains only fields with values: {@code model}, {@code prompt}, {@code n},
+     * {@code size}, {@code negative_prompt}, {@code seed}. Vendor-specific fields (such as a
+     * watermark flag) are passed through unchanged via {@code kwargs}. The
+     * {@code promptExtend} and {@code watermark} flags are intentionally not mapped because they
+     * are not part of the OpenAI images API and strict endpoints reject unknown fields.</p>
+     *
+     * <p>Control kwargs (removed from the create-body kwargs): {@code image_create_path} overrides
+     * the create endpoint path (default {@code /images/generations}); {@code image_urls_path} is a
+     * dotted JSON path to a JSON array of image url strings in the response (for example
+     * {@code data.image_urls}); when unset the default OpenAI response shape is parsed
+     * ({@code data[].url} plus {@code data[].b64_json}).</p>
+     *
+     * @param messages exactly one user message providing the text prompt
+     * @param model image model name; blank falls back to the configured model name
+     * @param size image size in the vendor-specific "width*height" or "widthxheight" notation
+     * @param negativePrompt optional negative prompt
+     * @param n number of images to generate
+     * @param promptExtend unused on this client; pass vendor fields via kwargs instead
+     * @param watermark unused on this client; pass vendor fields via kwargs instead
+     * @param seed optional seed; zero means omit
+     * @param kwargs extra request body fields merged into the request
+     * @return parsed image generation response with url and/or base64 payloads
+     * @throws Exception transport, protocol or validation failures
+     */
     @Override
     public ImageGenerationResponse generateImage(List<UserMessage> messages,
                                                  String model,
@@ -552,8 +608,23 @@ public class OpenAIModelClient extends BaseModelClient
                                                  boolean promptExtend,
                                                  boolean watermark,
                                                  int seed,
-                                                 Map<String, Object> kwargs) {
-        return null;
+                                                 Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> effectiveKwargs = copyMap(kwargs);
+        String createPath = stringKwarg(effectiveKwargs, IMAGE_CREATE_PATH_KWARG, IMAGES_GENERATIONS_PATH);
+        String urlsPath = stringKwarg(effectiveKwargs, IMAGE_URLS_PATH_KWARG, null);
+        GenerationCallContext call = resolveGenerationCallContext(effectiveKwargs);
+        ImageCreateSpec spec = new ImageCreateSpec(size, negativePrompt, n, seed);
+        Map<String, Object> params = buildImageGenerationParams(messages, model, spec, effectiveKwargs);
+        String resolvedModel = String.valueOf(params.get("model"));
+        Loggers.LLM.info("Before image generation request. model={}, n={}, size={}, path={}",
+                resolvedModel, n, size, createPath);
+        Map<String, Object> responseData = postJson(
+                createPath, params, null, call.transportHeaders().authorization(),
+                call.transportHeaders().headers(), call.sensitiveValues(), call.retryListener());
+        ImageGenerationResponse response = parseImageGenerationResponse(responseData, resolvedModel, urlsPath);
+        Loggers.LLM.info("Image generation succeeded. model={}, urlCount={}, base64Count={}",
+                resolvedModel, collectionSize(response.getImages()), collectionSize(response.getImagesBase64()));
+        return response;
     }
 
     @Override
@@ -565,6 +636,54 @@ public class OpenAIModelClient extends BaseModelClient
         return null;
     }
 
+    /**
+     * Generate videos through a task-based two-phase flow: create a task, poll it until it
+     * reaches a terminal state, then resolve the video payload.
+     *
+     * <p>The flow is configuration-driven so vendor-specific endpoints stay out of the framework;
+     * without any {@code video_*} kwargs the OpenAI official videos API is used. Control kwargs
+     * (all optional, removed from the create-body kwargs):</p>
+     * <ul>
+     *   <li>{@code video_body}: {@code prompt} (default, body is {@code model/prompt/size/seconds})
+     *       or {@code reference} (body is {@code model} plus a {@code content} array of text,
+     *       image_url and audio_url references with {@code duration} and {@code resolution}/{@code size}).</li>
+     *   <li>{@code video_create_path}: create endpoint path, default {@code /videos}.</li>
+     *   <li>{@code video_poll_path}: poll path template with a {@code {taskId}} placeholder, default
+     *       {@code {createPath}/{taskId}}.</li>
+     *   <li>{@code video_result_url_path}: dotted JSON path to a direct video url in the poll
+     *       response; unset falls back to a generic scan of {@code content.video_url}, {@code video_url}
+     *       and {@code url}.</li>
+     *   <li>{@code video_file_retrieve_path}: template with a {@code {fileId}} placeholder; when set,
+     *       a successful task response must carry a {@code file_id}, the file description is fetched
+     *       from this path and {@code video_file_url_path} (default {@code file.download_url}) points
+     *       to the download url inside it.</li>
+     *   <li>{@code video_result_download_path}: template with {@code {taskId}} for a binary content
+     *       download, default {@code {pollPath}/content}, used when no url is present.</li>
+     *   <li>{@code video_success_statuses} / {@code video_failure_statuses}: comma separated status
+     *       overrides; defaults cover completed/succeeded/success and failed/error/cancelled/
+     *       canceled/expired/fail.</li>
+     *   <li>{@code poll_interval_seconds} (default 5) and {@code max_wait_seconds} (default 600)
+     *       control the polling loop.</li>
+     * </ul>
+     *
+     * <p>Remaining kwargs are merged into the create request body. {@code promptExtend} and
+     * {@code watermark} are unused on this client.</p>
+     *
+     * @param messages exactly one user message providing the text prompt
+     * @param imgUrl optional image URL for image-to-video
+     * @param audioUrl optional audio URL reference
+     * @param model video model name; blank falls back to the configured model name
+     * @param size video size or resolution hint
+     * @param resolution optional resolution override
+     * @param duration video duration in seconds; zero means omit
+     * @param promptExtend unused on this client; pass vendor fields via kwargs instead
+     * @param watermark unused on this client; pass vendor fields via kwargs instead
+     * @param negativePrompt unused on this client; pass vendor fields via kwargs instead
+     * @param seed unused on this client; pass vendor fields via kwargs instead
+     * @param kwargs task-flow configuration and extra request body fields
+     * @return parsed video generation response with url and/or binary payload
+     * @throws Exception transport, polling timeout or validation failures
+     */
     @Override
     public VideoGenerationResponse generateVideo(List<UserMessage> messages,
                                                  String imgUrl,
@@ -577,8 +696,641 @@ public class OpenAIModelClient extends BaseModelClient
                                                  boolean watermark,
                                                  String negativePrompt,
                                                  Integer seed,
-                                                 Map<String, Object> kwargs) {
-        return null;
+                                                 Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> effectiveKwargs = copyMap(kwargs);
+        VideoTaskConfig config = popVideoTaskConfig(effectiveKwargs);
+        GenerationCallContext call = resolveGenerationCallContext(effectiveKwargs);
+        VideoContentSpec spec = new VideoContentSpec(imgUrl, audioUrl, size, resolution, duration);
+        String prompt = extractTextPrompt(requireSingleUserMessage(messages));
+        String resolvedModel = resolveGenerationModel(model);
+        Map<String, Object> createParams = buildVideoCreateParams(config.bodyStyle(), prompt, spec,
+                resolvedModel, effectiveKwargs);
+        Loggers.LLM.info("Before video generation create request. model={}, body={}, path={}",
+                resolvedModel, config.bodyStyle(), config.createPath());
+        Map<String, Object> created = postJson(config.createPath(), createParams, null,
+                call.transportHeaders().authorization(), call.transportHeaders().headers(),
+                call.sensitiveValues(), call.retryListener());
+        String taskId = extractVideoTaskId(created);
+        String pollPath = renderPathTemplate(config.pollPathTemplate() != null
+                        ? config.pollPathTemplate()
+                        : config.createPath() + "/" + TASK_ID_PLACEHOLDER,
+                TASK_ID_PLACEHOLDER, taskId);
+        return pollVideoTask(new VideoPollContext(taskId, pollPath, config, resolvedModel, call));
+    }
+
+    /** Resolved, vendor-agnostic task-flow configuration for one video generation call. */
+    private static final class VideoTaskConfig {
+
+        private final String createPath;
+        private final String pollPathTemplate;
+        private final String bodyStyle;
+        private final String resultUrlPath;
+        private final String resultDownloadTemplate;
+        private final String fileRetrieveTemplate;
+        private final String fileUrlPath;
+        private final Set<String> successStatuses;
+        private final Set<String> failureStatuses;
+        private final long pollIntervalSeconds;
+        private final long maxWaitSeconds;
+
+        private VideoTaskConfig(Builder builder) {
+            this.createPath = builder.createPath;
+            this.pollPathTemplate = builder.pollPathTemplate;
+            this.bodyStyle = builder.bodyStyle;
+            this.resultUrlPath = builder.resultUrlPath;
+            this.resultDownloadTemplate = builder.resultDownloadTemplate;
+            this.fileRetrieveTemplate = builder.fileRetrieveTemplate;
+            this.fileUrlPath = builder.fileUrlPath;
+            this.successStatuses = builder.successStatuses;
+            this.failureStatuses = builder.failureStatuses;
+            this.pollIntervalSeconds = builder.pollIntervalSeconds;
+            this.maxWaitSeconds = builder.maxWaitSeconds;
+        }
+
+        private String createPath() {
+            return createPath;
+        }
+
+        private String pollPathTemplate() {
+            return pollPathTemplate;
+        }
+
+        private String bodyStyle() {
+            return bodyStyle;
+        }
+
+        private String resultUrlPath() {
+            return resultUrlPath;
+        }
+
+        private String resultDownloadTemplate() {
+            return resultDownloadTemplate;
+        }
+
+        private String fileRetrieveTemplate() {
+            return fileRetrieveTemplate;
+        }
+
+        private String fileUrlPath() {
+            return fileUrlPath;
+        }
+
+        private Set<String> successStatuses() {
+            return successStatuses;
+        }
+
+        private Set<String> failureStatuses() {
+            return failureStatuses;
+        }
+
+        private long pollIntervalSeconds() {
+            return pollIntervalSeconds;
+        }
+
+        private long maxWaitSeconds() {
+            return maxWaitSeconds;
+        }
+
+        private static Builder builder() {
+            return new Builder();
+        }
+
+        private static final class Builder {
+
+            private String createPath = VIDEOS_PATH;
+            private String pollPathTemplate;
+            private String bodyStyle = VIDEO_BODY_PROMPT;
+            private String resultUrlPath;
+            private String resultDownloadTemplate;
+            private String fileRetrieveTemplate;
+            private String fileUrlPath = DEFAULT_VIDEO_FILE_URL_PATH;
+            private Set<String> successStatuses = DEFAULT_VIDEO_SUCCESS_STATUSES;
+            private Set<String> failureStatuses = DEFAULT_VIDEO_FAILURE_STATUSES;
+            private long pollIntervalSeconds = DEFAULT_VIDEO_POLL_INTERVAL_SECONDS;
+            private long maxWaitSeconds = DEFAULT_VIDEO_MAX_WAIT_SECONDS;
+
+            private Builder createPath(String value) {
+                this.createPath = value;
+                return this;
+            }
+
+            private Builder pollPathTemplate(String value) {
+                this.pollPathTemplate = value;
+                return this;
+            }
+
+            private Builder bodyStyle(String value) {
+                this.bodyStyle = value;
+                return this;
+            }
+
+            private Builder resultUrlPath(String value) {
+                this.resultUrlPath = value;
+                return this;
+            }
+
+            private Builder resultDownloadTemplate(String value) {
+                this.resultDownloadTemplate = value;
+                return this;
+            }
+
+            private Builder fileRetrieveTemplate(String value) {
+                this.fileRetrieveTemplate = value;
+                return this;
+            }
+
+            private Builder fileUrlPath(String value) {
+                this.fileUrlPath = value;
+                return this;
+            }
+
+            private Builder successStatuses(Set<String> value) {
+                this.successStatuses = value;
+                return this;
+            }
+
+            private Builder failureStatuses(Set<String> value) {
+                this.failureStatuses = value;
+                return this;
+            }
+
+            private Builder pollIntervalSeconds(long value) {
+                this.pollIntervalSeconds = value;
+                return this;
+            }
+
+            private Builder maxWaitSeconds(long value) {
+                this.maxWaitSeconds = value;
+                return this;
+            }
+
+            private VideoTaskConfig build() {
+                return new VideoTaskConfig(this);
+            }
+        }
+    }
+
+    /** Per-call transport context: auth headers, sensitive values and retry listener. */
+    private record GenerationCallContext(
+            TransportHeaders transportHeaders,
+            Collection<String> sensitiveValues,
+            ModelRetryListener retryListener) {
+    }
+
+    /** Vendor-agnostic content inputs for one video create request. */
+    private record VideoContentSpec(
+            String imgUrl,
+            String audioUrl,
+            String size,
+            String resolution,
+            int duration) {
+    }
+
+    /** Immutable context for one video generation task polling loop. */
+    private record VideoPollContext(
+            String taskId,
+            String pollPath,
+            VideoTaskConfig config,
+            String resolvedModel,
+            GenerationCallContext call) {
+    }
+
+    /** Numeric and textual options for one image create request. */
+    private record ImageCreateSpec(String size, String negativePrompt, int n, int seed) {
+    }
+
+    private Map<String, Object> buildImageGenerationParams(List<UserMessage> messages, String model,
+            ImageCreateSpec spec, Map<String, Object> kwargs) {
+        String prompt = extractTextPrompt(requireSingleUserMessage(messages));
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("model", resolveGenerationModel(model));
+        params.put("prompt", prompt);
+        if (spec.n() > 0) {
+            params.put("n", spec.n());
+        }
+        if (isNotBlank(spec.size())) {
+            params.put("size", spec.size());
+        }
+        if (isNotBlank(spec.negativePrompt())) {
+            params.put("negative_prompt", spec.negativePrompt());
+        }
+        if (spec.seed() != 0) {
+            params.put("seed", spec.seed());
+        }
+        params.putAll(toObjectMap(kwargs));
+        return params;
+    }
+
+    private ImageGenerationResponse parseImageGenerationResponse(Map<String, Object> responseData,
+                                                                 String resolvedModel, String urlsPath) {
+        List<String> images = new ArrayList<>();
+        List<String> imagesBase64 = new ArrayList<>();
+        if (urlsPath != null) {
+            images.addAll(resolveUrlList(responseData, urlsPath));
+        } else {
+            collectOpenAiImagePayloads(responseData, images, imagesBase64);
+        }
+        if (images.isEmpty() && imagesBase64.isEmpty()) {
+            throw modelCallError("No usable image url or base64 data in image generation response: "
+                    + abbreviateMap(responseData), null);
+        }
+        ImageGenerationResponse.ImageGenerationResponseBuilder builder = ImageGenerationResponse.builder()
+                .model(resolvedModel);
+        if (!images.isEmpty()) {
+            builder.images(images);
+        }
+        if (!imagesBase64.isEmpty()) {
+            builder.imagesBase64(imagesBase64);
+        }
+        if (responseData.get("created") instanceof Number created) {
+            builder.created(created.intValue());
+        }
+        return builder.build();
+    }
+
+    private static void collectOpenAiImagePayloads(Map<String, Object> responseData, List<String> images,
+            List<String> imagesBase64) {
+        if (!(responseData.get("data") instanceof List<?> items)) {
+            return;
+        }
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> entry) {
+                collectImagePayload(entry, "url", images);
+                collectImagePayload(entry, "b64_json", imagesBase64);
+            }
+        }
+    }
+
+    private static List<String> resolveUrlList(Map<String, Object> source, String dottedPath) {
+        Object current = source;
+        for (String segment : dottedPath.split("\\.")) {
+            if (!(current instanceof Map<?, ?> map)) {
+                return List.of();
+            }
+            current = map.get(segment);
+        }
+        if (!(current instanceof List<?> items)) {
+            return List.of();
+        }
+        List<String> urls = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof String url && !url.isBlank()) {
+                urls.add(url);
+            }
+        }
+        return urls;
+    }
+
+    private static String abbreviateMap(Map<String, Object> responseData) {
+        String text = Objects.toString(responseData);
+        return text.length() <= 300 ? text : text.substring(0, 300) + "...";
+    }
+
+    private static void collectImagePayload(Map<?, ?> entry, String key, List<String> target) {
+        if (entry.get(key) instanceof String value && !value.isBlank()) {
+            target.add(value);
+        }
+    }
+
+    private Map<String, Object> buildVideoCreateParams(String bodyStyle, String prompt, VideoContentSpec spec,
+            String resolvedModel, Map<String, Object> kwargs) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("model", resolvedModel);
+        if (VIDEO_BODY_REFERENCE.equals(bodyStyle)) {
+            buildContentReferenceVideoParams(params, prompt, spec);
+        } else {
+            params.put("prompt", prompt);
+            if (isNotBlank(spec.size())) {
+                params.put("size", spec.size());
+            }
+            if (spec.duration() > 0) {
+                params.put("seconds", String.valueOf(spec.duration()));
+            }
+        }
+        params.putAll(toObjectMap(kwargs));
+        return params;
+    }
+
+    private static void buildContentReferenceVideoParams(Map<String, Object> params, String prompt,
+            VideoContentSpec spec) {
+        List<Map<String, Object>> content = new ArrayList<>();
+        content.add(new LinkedHashMap<>(Map.of("type", "text", "text", prompt)));
+        if (isNotBlank(spec.imgUrl())) {
+            content.add(new LinkedHashMap<>(Map.of(
+                    "type", "image_url", "image_url", Map.of("url", spec.imgUrl()))));
+        }
+        if (isNotBlank(spec.audioUrl())) {
+            content.add(new LinkedHashMap<>(Map.of(
+                    "type", "audio_url", "audio_url", Map.of("url", spec.audioUrl()))));
+        }
+        params.put("content", content);
+        if (spec.duration() > 0) {
+            params.put("duration", spec.duration());
+        }
+        String sizeValue = isNotBlank(spec.resolution()) ? spec.resolution() : spec.size();
+        if (isNotBlank(sizeValue)) {
+            params.put(isNotBlank(spec.resolution()) ? "resolution" : "size", sizeValue);
+        }
+    }
+
+    private VideoGenerationResponse pollVideoTask(VideoPollContext context) throws Exception {
+        long deadlineMillis = System.currentTimeMillis() + context.config().maxWaitSeconds() * 1000L;
+        while (true) {
+            Map<String, Object> status = getJson(context.pollPath(), null,
+                    context.call().transportHeaders().authorization(),
+                    context.call().transportHeaders().headers(), context.call().sensitiveValues());
+            String state = Objects.toString(status.get("status"), "").trim().toLowerCase(Locale.ROOT);
+            if (context.config().successStatuses().contains(state)) {
+                Loggers.LLM.info("Video generation task succeeded. taskId={}", context.taskId());
+                return buildVideoSuccessResponse(context, status);
+            }
+            if (context.config().failureStatuses().contains(state)) {
+                throw modelCallError("Video generation task ended with status " + state
+                        + ": " + videoFailureDetail(status), null);
+            }
+            if (System.currentTimeMillis() >= deadlineMillis) {
+                throw modelCallError("Video generation polling timed out after "
+                        + context.config().maxWaitSeconds() + "s, taskId=" + context.taskId(), null);
+            }
+            Loggers.LLM.info("Video generation task in progress. taskId={}, status={}", context.taskId(), state);
+            Thread.sleep(context.config().pollIntervalSeconds() * 1000L);
+        }
+    }
+
+    private VideoGenerationResponse buildVideoSuccessResponse(VideoPollContext context,
+                                                              Map<String, Object> status) throws Exception {
+        VideoTaskConfig config = context.config();
+        Optional<String> videoUrl = resolveResultUrl(status, config.resultUrlPath());
+        if (videoUrl.isPresent()) {
+            return VideoGenerationResponse.builder()
+                    .model(context.resolvedModel())
+                    .videoUrl(videoUrl.get())
+                    .build();
+        }
+        if (config.fileRetrieveTemplate() != null) {
+            return buildFileIndirectVideoResponse(context, status);
+        }
+        String downloadTemplate = config.resultDownloadTemplate() != null
+                ? config.resultDownloadTemplate()
+                : context.pollPath() + "/content";
+        byte[] videoData = getBytes(renderPathTemplate(downloadTemplate, TASK_ID_PLACEHOLDER,
+                context.taskId()), null, context.call().transportHeaders().authorization(),
+                context.call().transportHeaders().headers(), context.call().sensitiveValues());
+        return VideoGenerationResponse.builder()
+                .model(context.resolvedModel())
+                .videoData(videoData)
+                .build();
+    }
+
+    private VideoGenerationResponse buildFileIndirectVideoResponse(VideoPollContext context,
+                                                                   Map<String, Object> status) throws Exception {
+        VideoTaskConfig config = context.config();
+        if (!(status.get("file_id") instanceof String fileId) || fileId.isBlank()) {
+            throw modelCallError("Video task succeeded but the response contains no file_id required "
+                    + "by the configured file retrieval flow", null);
+        }
+        String retrievePath = renderPathTemplate(config.fileRetrieveTemplate(), FILE_ID_PLACEHOLDER, fileId);
+        Map<String, Object> fileResponse = getJson(retrievePath, null,
+                context.call().transportHeaders().authorization(),
+                context.call().transportHeaders().headers(), context.call().sensitiveValues());
+        Optional<String> downloadUrl = resolveDottedPath(fileResponse, config.fileUrlPath());
+        if (downloadUrl.isEmpty()) {
+            throw modelCallError("File retrieval response contains no download url at "
+                    + config.fileUrlPath(), null);
+        }
+        byte[] videoData = getBytes(downloadUrl.get(), null,
+                context.call().transportHeaders().authorization(),
+                context.call().transportHeaders().headers(), context.call().sensitiveValues());
+        return VideoGenerationResponse.builder()
+                .model(context.resolvedModel())
+                .videoData(videoData)
+                .build();
+    }
+
+    private Optional<String> resolveResultUrl(Map<String, Object> status, String resultUrlPath) {
+        if (resultUrlPath != null) {
+            return resolveDottedPath(status, resultUrlPath);
+        }
+        return extractVideoUrl(status);
+    }
+
+    private static Optional<String> resolveDottedPath(Map<String, Object> source, String dottedPath) {
+        Object current = source;
+        for (String segment : dottedPath.split("\\.")) {
+            if (!(current instanceof Map<?, ?> map)) {
+                return Optional.empty();
+            }
+            current = map.get(segment);
+        }
+        return current instanceof String text && !text.isBlank() ? Optional.of(text) : Optional.empty();
+    }
+
+    private static String renderPathTemplate(String template, String placeholder, String value) {
+        return template.replace(placeholder, value);
+    }
+
+    private Optional<String> extractVideoUrl(Map<String, Object> status) {
+        if (status.get("content") instanceof Map<?, ?> contentMap
+                && contentMap.get("video_url") instanceof String contentUrl
+                && !contentUrl.isBlank()) {
+            return Optional.of(contentUrl);
+        }
+        for (String key : List.of("video_url", "url")) {
+            if (status.get(key) instanceof String url && !url.isBlank()) {
+                return Optional.of(url);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static String videoFailureDetail(Map<String, Object> status) {
+        if (status.get("error") instanceof Map<?, ?> errorMap
+                && errorMap.get("message") instanceof String message
+                && !message.isBlank()) {
+            return message;
+        }
+        return Objects.toString(status.get("error"), "");
+    }
+
+    private String extractVideoTaskId(Map<String, Object> created) {
+        for (String key : List.of("id", "task_id")) {
+            if (created.get(key) instanceof String taskId && !taskId.isBlank()) {
+                return taskId;
+            }
+        }
+        throw modelCallError("Video generation create response contains no task id", null);
+    }
+
+    private static VideoTaskConfig popVideoTaskConfig(Map<String, Object> kwargs) {
+        String bodyStyle = VIDEO_BODY_REFERENCE.equalsIgnoreCase(
+                stringKwarg(kwargs, VIDEO_BODY_KWARG, VIDEO_BODY_PROMPT))
+                ? VIDEO_BODY_REFERENCE
+                : VIDEO_BODY_PROMPT;
+        return VideoTaskConfig.builder()
+                .createPath(stringKwarg(kwargs, VIDEO_CREATE_PATH_KWARG, VIDEOS_PATH))
+                .pollPathTemplate(stringKwarg(kwargs, VIDEO_POLL_PATH_KWARG, null))
+                .bodyStyle(bodyStyle)
+                .resultUrlPath(stringKwarg(kwargs, VIDEO_RESULT_URL_PATH_KWARG, null))
+                .resultDownloadTemplate(stringKwarg(kwargs, VIDEO_RESULT_DOWNLOAD_PATH_KWARG, null))
+                .fileRetrieveTemplate(stringKwarg(kwargs, VIDEO_FILE_RETRIEVE_PATH_KWARG, null))
+                .fileUrlPath(stringKwarg(kwargs, VIDEO_FILE_URL_PATH_KWARG, DEFAULT_VIDEO_FILE_URL_PATH))
+                .successStatuses(statusesKwarg(kwargs, VIDEO_SUCCESS_STATUSES_KWARG,
+                        DEFAULT_VIDEO_SUCCESS_STATUSES))
+                .failureStatuses(statusesKwarg(kwargs, VIDEO_FAILURE_STATUSES_KWARG,
+                        DEFAULT_VIDEO_FAILURE_STATUSES))
+                .pollIntervalSeconds(removePositiveLongKwarg(kwargs, VIDEO_POLL_INTERVAL_KWARG,
+                        DEFAULT_VIDEO_POLL_INTERVAL_SECONDS))
+                .maxWaitSeconds(removePositiveLongKwarg(kwargs, VIDEO_MAX_WAIT_KWARG,
+                        DEFAULT_VIDEO_MAX_WAIT_SECONDS))
+                .build();
+    }
+
+    private GenerationCallContext resolveGenerationCallContext(Map<String, Object> effectiveKwargs) {
+        Map<String, ?> formalRequestHeaders = popFormalRequestHeaders(effectiveKwargs);
+        Map<String, ?> legacyRequestHeaders = popRequestCustomHeaders(effectiveKwargs);
+        ModelRetryListener retryListener = popRetryListener(effectiveKwargs);
+        TransportHeaders transportHeaders = resolveTransportHeaders(legacyRequestHeaders, formalRequestHeaders);
+        return new GenerationCallContext(transportHeaders, sensitiveValues(transportHeaders), retryListener);
+    }
+
+    private static String stringKwarg(Map<String, Object> kwargs, String key, String defaultValue) {
+        Object value = kwargs.remove(key);
+        if (value == null || String.valueOf(value).isBlank()) {
+            return defaultValue;
+        }
+        return String.valueOf(value).trim();
+    }
+
+    private static Set<String> statusesKwarg(Map<String, Object> kwargs, String key,
+            Set<String> defaultValues) {
+        String raw = stringKwarg(kwargs, key, null);
+        if (raw == null) {
+            return defaultValues;
+        }
+        Set<String> statuses = new LinkedHashSet<>();
+        for (String item : raw.split(",")) {
+            String normalized = item.trim().toLowerCase(Locale.ROOT);
+            if (!normalized.isEmpty()) {
+                statuses.add(normalized);
+            }
+        }
+        return statuses.isEmpty() ? defaultValues : statuses;
+    }
+
+    private static long removePositiveLongKwarg(Map<String, Object> kwargs, String key, long defaultValue) {
+        if (kwargs.get(key) instanceof Number number && number.longValue() > 0) {
+            kwargs.remove(key);
+            return number.longValue();
+        }
+        kwargs.remove(key);
+        return defaultValue;
+    }
+
+    private UserMessage requireSingleUserMessage(List<UserMessage> messages) {
+        if (messages == null || messages.size() != 1 || messages.get(0) == null) {
+            throw modelCallError("Generation requires exactly one user message", null);
+        }
+        return messages.get(0);
+    }
+
+    private String extractTextPrompt(UserMessage message) {
+        Object content = message.getContent();
+        if (content instanceof String text && !text.isBlank()) {
+            return text;
+        }
+        if (content instanceof List<?> parts) {
+            String prompt = joinTextParts(parts);
+            if (!prompt.isBlank()) {
+                return prompt;
+            }
+            if (parts.stream().anyMatch(part -> part instanceof Map<?, ?> partMap
+                    && "image_url".equals(partMap.get("type")))) {
+                throw modelCallError("Image input requires the images edits endpoint; only text-to-image "
+                        + "is supported by this client", null);
+            }
+        }
+        throw modelCallError("Generation requires non-empty text prompt", null);
+    }
+
+    private static String joinTextParts(List<?> parts) {
+        StringBuilder prompt = new StringBuilder();
+        for (Object part : parts) {
+            if (part instanceof Map<?, ?> partMap
+                    && "text".equals(partMap.get("type"))
+                    && partMap.get("text") instanceof String text) {
+                prompt.append(text);
+            }
+        }
+        return prompt.toString();
+    }
+
+    private String resolveGenerationModel(String model) {
+        return isNotBlank(model) ? model : modelConfig.getModelName();
+    }
+
+    private static boolean isNotBlank(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static int collectionSize(Collection<?> collection) {
+        return collection == null ? 0 : collection.size();
+    }
+
+    private Map<String, Object> getJson(String path, Float timeout, String authorization,
+            Map<String, String> requestHeaders, Collection<String> sensitiveValues) throws Exception {
+        HttpResponse<String> response = sendGenerationRequest(path, timeout, authorization, requestHeaders,
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response.statusCode(), response.body(), false, sensitiveValues);
+        return parseJsonObject(response.body());
+    }
+
+    private byte[] getBytes(String path, Float timeout, String authorization,
+            Map<String, String> requestHeaders, Collection<String> sensitiveValues) throws Exception {
+        HttpResponse<byte[]> response = sendGenerationRequest(path, timeout, authorization, requestHeaders,
+                HttpResponse.BodyHandlers.ofByteArray());
+        ensureSuccess(response.statusCode(), "binary content of " + path, false, sensitiveValues);
+        return response.body();
+    }
+
+    private HttpRequest buildGetRequest(String apiBase, String path, Float timeout, String authorization,
+            Map<String, String> extraHeaders) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(endpointUrl(apiBase, path)))
+                .timeout(timeoutDuration(timeout))
+                .header("Authorization", resolveAuthorization(authorization))
+                .GET();
+        for (Map.Entry<String, String> entry : extraHeaders.entrySet()) {
+            builder.setHeader(entry.getKey(), entry.getValue());
+        }
+        return builder.build();
+    }
+
+    private String resolveAuthorization(String authorization) {
+        String effectiveAuthorization = authorization != null
+                ? authorization
+                : "Bearer " + modelClientConfig.getApiKey();
+        validateAuthorizationHeader(effectiveAuthorization);
+        return effectiveAuthorization;
+    }
+
+    private <T> HttpResponse<T> sendGenerationRequest(String path, Float timeout, String authorization,
+            Map<String, String> requestHeaders, HttpResponse.BodyHandler<T> bodyHandler)
+            throws IOException, InterruptedException {
+        try {
+            return httpClient.send(buildGetRequest(modelClientConfig.getApiBase(), path, timeout,
+                    authorization, requestHeaders), bodyHandler);
+        } catch (IOException exception) {
+            String fallbackApiBase = localFixtureFallbackApiBase(exception);
+            if (fallbackApiBase == null) {
+                throw exception;
+            }
+            return ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
+                    .withSsl()
+                    .withProxy()
+                    .build()
+                    .send(buildGetRequest(fallbackApiBase, path, timeout, authorization, requestHeaders),
+                            bodyHandler);
+        }
     }
 
     protected AssistantMessage parseResponse(Map<String, Object> response, BaseOutputParser parser) {
@@ -687,8 +1439,20 @@ public class OpenAIModelClient extends BaseModelClient
             Map<String, String> requestHeaders,
             Collection<String> sensitiveValues,
             ModelRetryListener retryListener) throws JsonProcessingException {
+        return postJson(CHAT_COMPLETIONS_PATH, params, timeout, authorization, requestHeaders,
+                sensitiveValues, retryListener);
+    }
+
+    private Map<String, Object> postJson(
+            String path,
+            Map<String, Object> params,
+            Float timeout,
+            String authorization,
+            Map<String, String> requestHeaders,
+            Collection<String> sensitiveValues,
+            ModelRetryListener retryListener) throws JsonProcessingException {
         PreparedRequest preparedRequest = prepareRequest(
-                params, timeout, authorization, requestHeaders);
+                path, params, timeout, authorization, requestHeaders);
         HttpResponse<String> response;
         try {
             circuitBreaker.beforeCall();
@@ -720,7 +1484,7 @@ public class OpenAIModelClient extends BaseModelClient
             Collection<String> sensitiveValues,
             ModelRetryListener retryListener) throws Exception {
         PreparedRequest preparedRequest = prepareRequest(
-                params, timeout, authorization, requestHeaders);
+                CHAT_COMPLETIONS_PATH, params, timeout, authorization, requestHeaders);
         HttpResponse<InputStream> response;
         try {
             circuitBreaker.beforeCall();
@@ -878,19 +1642,17 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     private PreparedRequest prepareRequest(
+            String path,
             Map<String, Object> params,
             Float timeout,
             String authorization,
             Map<String, String> requestHeaders) throws JsonProcessingException {
         String bodyJson = OBJECT_MAPPER.writeValueAsString(requestBodyParams(params));
-        String effectiveAuthorization = authorization != null
-                ? authorization
-                : "Bearer " + modelClientConfig.getApiKey();
-        validateAuthorizationHeader(effectiveAuthorization);
         return new PreparedRequest(
+                path,
                 bodyJson,
                 timeoutDuration(timeout),
-                effectiveAuthorization,
+                resolveAuthorization(authorization),
                 new LinkedHashMap<>(requestHeaders));
     }
 
@@ -899,7 +1661,7 @@ public class OpenAIModelClient extends BaseModelClient
             String apiBase,
             int retryCount) {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(trimTrailingSlash(apiBase) + CHAT_COMPLETIONS_PATH))
+                .uri(URI.create(endpointUrl(apiBase, preparedRequest.path())))
                 .timeout(preparedRequest.timeout())
                 .header("Content-Type", CONTENT_TYPE)
                 .header("Authorization", preparedRequest.authorization())
@@ -919,6 +1681,7 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     private record PreparedRequest(
+            String path,
             String bodyJson,
             Duration timeout,
             String authorization,
@@ -1790,6 +2553,25 @@ public class OpenAIModelClient extends BaseModelClient
             end--;
         }
         return value.substring(0, end);
+    }
+
+    /**
+     * Resolve the endpoint URL: append the operation path to the API base, unless the base is
+     * already a full endpoint URL that ends with the operation path.
+     *
+     * @param apiBase configured API base or full endpoint URL
+     * @param path    operation path such as {@code /chat/completions}
+     * @return endpoint URL
+     */
+    private static String endpointUrl(String apiBase, String path) {
+        if (path.startsWith("http://") || path.startsWith("https://")) {
+            return path;
+        }
+        String base = trimTrailingSlash(apiBase);
+        if (base.endsWith(path)) {
+            return base;
+        }
+        return base + path;
     }
 
     private static String stringOrEmpty(Object value) {
