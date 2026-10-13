@@ -108,7 +108,7 @@ public class DialogueCompressor extends ContextProcessor {
         if (targets.isEmpty()) {
             return noOp(incoming);
         }
-        AssistantMessage response = invokeMultiBlockCompression(contextMessages, targets);
+        AssistantMessage response = invokeMultiBlockCompression(context, contextMessages, targets);
         if (response == null) {
             return noOp(incoming);
         }
@@ -295,7 +295,8 @@ public class DialogueCompressor extends ContextProcessor {
         return rounds;
     }
 
-    private AssistantMessage invokeMultiBlockCompression(List<BaseMessage> contextMessages,
+    private AssistantMessage invokeMultiBlockCompression(SessionModelContext context,
+                                                         List<BaseMessage> contextMessages,
                                                          List<CompressTarget> targets) {
         String systemPrompt = compressedPrompt.replace("{compression_target_tokens}",
                 String.valueOf(compressionTargetTokens));
@@ -308,7 +309,10 @@ public class DialogueCompressor extends ContextProcessor {
                 return null;
             }
             AssistantMessage response = model.invoke(modelMessages,
-                    ModelInvokeOptions.builder().outputParser(new JsonOutputParser()).build())
+                    ModelInvokeOptions.builder()
+                            .outputParser(new JsonOutputParser())
+                            .extraFields(compressionCacheKwargs(context.sessionId()))
+                            .build())
                     .toCompletableFuture().join();
             recordCompressionUsage(response);
             return response;

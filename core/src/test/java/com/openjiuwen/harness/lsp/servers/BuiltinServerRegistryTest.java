@@ -57,8 +57,8 @@ class BuiltinServerRegistryTest {
         assertThat(root).isNull();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void buildConfigsAsyncCreatesPlaceholderWhenSpawnIsMissing() {
         Map<String, ServerDefinition> snapshot = snapshotRegistry();
         try {
@@ -85,8 +85,8 @@ class BuiltinServerRegistryTest {
         }
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void buildConfigsAppliesCustomOverridesAndAddsCustomServers() {
         Map<String, ServerDefinition> snapshot = snapshotRegistry();
         try {
@@ -145,8 +145,8 @@ class BuiltinServerRegistryTest {
         }
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void buildConfigsRemovesDisabledBuiltin() {
         Map<String, ServerDefinition> snapshot = snapshotRegistry();
         try {

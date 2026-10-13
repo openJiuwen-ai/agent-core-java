@@ -4,14 +4,17 @@
 
 package com.openjiuwen.retrieval;
 
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.MultimodalDocument;
-import com.openjiuwen.retrieval.common.TextChunk;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.retrieval.common.TextChunk;
 import com.openjiuwen.retrieval.indexing.indexer.EmbedChunks;
 import com.openjiuwen.retrieval.indexing.processor.parser.ImageCaptioner;
 import com.openjiuwen.retrieval.indexing.processor.parser.ImageParser;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,8 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Mirrors Python's multimodal image pipeline tests in

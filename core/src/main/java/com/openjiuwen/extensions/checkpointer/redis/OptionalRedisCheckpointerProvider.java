@@ -16,22 +16,34 @@ import java.util.Map;
  * <p>The provider itself has no static reference to a Jedis type. This allows
  * applications that exclude Jedis to initialize the other checkpointer
  * providers and fail only when Redis is explicitly selected.</p>
+ *
+ * @since 2026-10-07
  */
 public final class OptionalRedisCheckpointerProvider implements CheckpointerProvider {
     private static final String TYPE_NAME = "redis";
     private static final String LEGACY_TYPE_NAME = "redis_checkpointer_cluster";
     private static final String JEDIS_CLIENT_CONFIG = "redis.clients.jedis.JedisClientConfig";
 
+    /** {@inheritDoc} */
     @Override
     public String typeName() {
         return TYPE_NAME;
     }
 
+    /** {@inheritDoc} */
     @Override
     public List<String> aliases() {
         return List.of(LEGACY_TYPE_NAME);
     }
 
+    /**
+     * Create the Redis checkpointer only after verifying its runtime dependency.
+     *
+     * @param conf Redis checkpointer configuration
+     * @return the configured Redis checkpointer
+     * @throws IllegalStateException if Jedis is absent from the runtime classpath
+     * @since 2026-10-07
+     */
     @Override
     public Checkpointer create(Map<String, Object> conf) {
         requireJedis();

@@ -63,8 +63,8 @@ class SpawnProcessCompatibilityTest {
         assertThat(handle.shutdown(1.0).toCompletableFuture().join()).isTrue();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Spawned child process health-check timing is flaky on this JVM/OS; keep as known gap until spawn parity is fixed")
     void spawnedProcessHealthCheckShouldFireUnhealthyOnceAfterFailures() throws Exception {
         SpawnedProcessHandle handle = new SpawnedProcessHandle(
                 "silent-child",
@@ -85,8 +85,8 @@ class SpawnProcessCompatibilityTest {
         handle.forceKill();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Spawned child process returns ERROR on this JVM/OS; keep as known gap until spawn parity is fixed")
     void runnerSpawnAgentShouldLaunchChildProcessAndReturnDoneMessage() {
         ClassAgentSpawnConfig config = new ClassAgentSpawnConfig(
                 "",
@@ -107,8 +107,8 @@ class SpawnProcessCompatibilityTest {
         assertThat(exitCode).isZero();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Spawned child process returns ERROR on this JVM/OS; keep as known gap until spawn parity is fixed")
     void childProcessShouldHandleMultipleInputMessagesBeforeShutdown() {
         ClassAgentSpawnConfig config = new ClassAgentSpawnConfig(
                 "",
@@ -139,8 +139,8 @@ class SpawnProcessCompatibilityTest {
         assertThat(handle.shutdown(1.0).toCompletableFuture().join()).isTrue();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Spawned child process returns ERROR on this JVM/OS; keep as known gap until spawn parity is fixed")
     void childProcessShouldEmitStreamChunksBeforeDoneForStreamingInput() {
         ClassAgentSpawnConfig config = new ClassAgentSpawnConfig(
                 "",
@@ -195,8 +195,8 @@ class SpawnProcessCompatibilityTest {
         handle.shutdown(1.0).toCompletableFuture().join();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Spawned child process health-check timing is flaky on this JVM/OS; keep as known gap until spawn parity is fixed")
     void childProcessShouldRespondToHealthCheckWhileAgentIsRunningLikePythonLoop() throws Exception {
         ClassAgentSpawnConfig config = new ClassAgentSpawnConfig(
                 "",
@@ -221,8 +221,8 @@ class SpawnProcessCompatibilityTest {
         assertThat(handle.shutdown(1.0).toCompletableFuture().join()).isTrue();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Spawned child process returns ERROR on this JVM/OS; keep as known gap until spawn parity is fixed")
     void childProcessShouldRedirectPlainStdoutAwayFromProtocolStreamLikePythonSpawnedProcess() throws Exception {
         ClassAgentSpawnConfig config = new ClassAgentSpawnConfig(
                 "",
@@ -242,8 +242,8 @@ class SpawnProcessCompatibilityTest {
         assertThat(handle.waitForCompletion().toCompletableFuture().join()).isZero();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Spawned child process returns ERROR on this JVM/OS; keep as known gap until spawn parity is fixed")
     void spawnProcessShouldPassLoggingConfigAsJsonEnvLikePythonProcessManager() {
         ClassAgentSpawnConfig config = new ClassAgentSpawnConfig(
                 "",

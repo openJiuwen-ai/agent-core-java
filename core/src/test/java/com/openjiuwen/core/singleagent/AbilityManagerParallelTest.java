@@ -116,6 +116,8 @@ class AbilityManagerParallelTest {
         );
 
         assertThat(results).hasSize(2);
+        assertThat(String.valueOf(results.get(0).result())).contains("name=read_file");
+        assertThat(String.valueOf(results.get(1).result())).contains("name=write_file");
         assertThat(order).containsExactly("read_file", "write_file");
     }
 
@@ -226,6 +228,7 @@ class AbilityManagerParallelTest {
     }
 
     private void registerNamedFileTool(String name, List<String> order) {
+        Runner.resourceMgr().removeTool(name, null, TagMatchStrategy.ALL, true);
         LocalFunction tool = new LocalFunction(
                 ToolCard.builder().id(name).name(name).description(name).inputParams(Map.of(
                         "type", "object", "properties", Map.of(), "required", List.of()

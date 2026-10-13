@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 import com.openjiuwen.retrieval.common.TextChunk;

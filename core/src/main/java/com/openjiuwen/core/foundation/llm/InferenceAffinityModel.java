@@ -34,7 +34,7 @@ import java.util.concurrent.CompletionStage;
 public class InferenceAffinityModel implements KVCacheManager.ReleaseCapableModel {
 
     private static final String CLIENT_CLASS_NAME =
-            "com.openjiuwen.core.foundation.llm.model_clients.InferenceAffinityModelClient";
+            "com.openjiuwen.core.foundation.llm.modelclients.InferenceAffinityModelClient";
 
     private final ModelRequestConfig modelConfig;
     private final ModelClientConfig modelClientConfig;

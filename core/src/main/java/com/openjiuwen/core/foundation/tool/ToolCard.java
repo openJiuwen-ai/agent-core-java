@@ -10,6 +10,7 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Tool metadata card.
@@ -130,6 +131,45 @@ public class ToolCard extends BaseCard {
     @Override
     public String toString() {
         return toStr();
+    }
+
+    /**
+     * equals.
+     *
+     * <p>Value equality over the declaration surface: the base identity
+     * (id, name, description) plus the parameter and property maps and
+     * the parallel-safe/stateless/idempotent flags. Used by the
+     * ability-declaration reuse check when a second registration claims
+     * an existing equivalent tool.</p>
+     *
+     * @param other the object to compare against
+     * @return whether the two cards declare the same tool
+     */
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (other == null || getClass() != other.getClass()) {
+            return false;
+        }
+        ToolCard toolCard = (ToolCard) other;
+        return super.equals(other)
+                && Objects.equals(inputParams, toolCard.inputParams)
+                && Objects.equals(properties, toolCard.properties)
+                && isParallelSafe == toolCard.isParallelSafe
+                && isStateless == toolCard.isStateless
+                && isIdempotent == toolCard.isIdempotent;
+    }
+
+    /**
+     * hashCode.
+     *
+     * @return the hash code consistent with {@link #equals(Object)}
+     */
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), inputParams, properties, isParallelSafe, isStateless, isIdempotent);
     }
 
     /**

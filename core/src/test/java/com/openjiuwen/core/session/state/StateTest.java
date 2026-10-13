@@ -396,9 +396,9 @@ class StateTest {
             assertEquals("value", node2State.getGlobal("shared"));
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("update and getOutputs via ioState")
+        @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
         void testSetAndGetOutputs() {
             WorkflowCommitState state = InMemoryState.create();
             WorkflowStateCollection nodeState = state.createNodeState("node1");

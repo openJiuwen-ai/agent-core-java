@@ -133,6 +133,84 @@ public class TaskManager {
         }
     }
 
+    /**
+     * Clear only the tasks belonging to the given session, leaving tasks from
+     * other sessions intact. Session-safe variant for concurrent multi-session
+     * scenarios where a shared TaskManager is used.
+     *
+     * @param sessionId the session whose tasks should be removed
+     * @since 0.1.16
+     */
+    public void clearStateForSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        lock.lock();
+        try {
+            List<String> toRemove = new ArrayList<>();
+            for (Task task : tasks.values()) {
+                if (sessionId.equals(task.getSessionId())) {
+                    toRemove.add(task.getTaskId());
+                }
+            }
+            for (String tid : toRemove) {
+                removeTaskInternal(tid, new HashSet<>(toRemove));
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Load task manager state for a specific session only, preserving tasks
+     * from other sessions. Session-safe variant of {@link #loadState} for
+     * concurrent multi-session scenarios.
+     *
+     * @param sessionId the session whose state is being loaded
+     * @param state the task manager state to load for this session
+     * @since 0.1.16
+     */
+    public void loadStateForSession(String sessionId, TaskManagerState state) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        lock.lock();
+        try {
+            // Remove existing tasks for this session first
+            List<String> toRemove = new ArrayList<>();
+            for (Task task : tasks.values()) {
+                if (sessionId.equals(task.getSessionId())) {
+                    toRemove.add(task.getTaskId());
+                }
+            }
+            for (String tid : toRemove) {
+                removeTaskInternal(tid, new HashSet<>(toRemove));
+            }
+            // Merge restored state for this session
+            if (state == null || state.getTasks() == null) {
+                return;
+            }
+            for (var entry : state.getTasks().entrySet()) {
+                Task task = entry.getValue();
+                if (task == null || !sessionId.equals(task.getSessionId())) {
+                    continue;
+                }
+                tasks.put(entry.getKey(), task.copy());
+                priorityIndex.computeIfAbsent(task.getPriority(), k -> new ArrayList<>())
+                        .add(task.getTaskId());
+                if (task.getParentTaskId() != null) {
+                    parentToChildren.computeIfAbsent(task.getParentTaskId(), k -> new HashSet<>())
+                            .add(task.getTaskId());
+                    childToParent.put(task.getTaskId(), task.getParentTaskId());
+                } else {
+                    rootTasks.add(task.getTaskId());
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
     // ==================== Task CRUD Operations ====================
 
     /**

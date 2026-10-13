@@ -149,7 +149,6 @@ class TaskExecutorPythonParityTest {
         assertThat(TrackableTaskExecutor.instancesCreated).isEqualTo(3);
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void testExecutorIsolationBetweenTasks() {
         TrackableTaskExecutor.resetTracking();

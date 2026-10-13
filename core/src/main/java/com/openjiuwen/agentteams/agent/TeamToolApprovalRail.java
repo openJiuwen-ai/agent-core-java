@@ -9,10 +9,8 @@ import com.openjiuwen.agentteams.tools.TeamMessageManager;
 import com.openjiuwen.agentteams.tools.database.TeamDatabase;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
-import com.openjiuwen.harness.rails.interrupt.ApproveResult;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
-import com.openjiuwen.harness.rails.interrupt.InterruptResult;
 import com.openjiuwen.harness.rails.interrupt.RejectResult;
 
 import java.util.Collection;
@@ -140,14 +138,6 @@ public class TeamToolApprovalRail extends ConfirmInterruptRail {
             return String.valueOf(call.getArguments());
         }
         return "{}";
-    }
-
-    private static InterruptDecision interrupt(InterruptRequest request) {
-        return new InterruptResult(request);
-    }
-
-    private static InterruptDecision approve() {
-        return new ApproveResult();
     }
 
     private static InterruptDecision reject(String toolResult) {

@@ -19,6 +19,8 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSession;
@@ -640,6 +642,38 @@ public class AbilityManager {
 
     private ExecutionResult safeRailedExecuteOne(AgentCallbackContext toolCtx, ToolCall toolCall,
                                                  ToolResolver resolver, Object session, Object tag) {
+        long timeoutMillis = OpenJiuwenExecutors.toolCallTimeoutMillis();
+        if (timeoutMillis > 0) {
+            // Wrap the tool execution with a configurable timeout so that
+            // a slow tool does not block the agent thread pool indefinitely.
+            CompletableFuture<ExecutionResult> execution = OpenJiuwenExecutors.supplyToolCallAsync(
+                    () -> doSafeRailedExecuteOne(toolCtx, toolCall, resolver, session, tag));
+            CompletableFuture<ExecutionResult> timed = OpenJiuwenExecutors.withToolCallTimeout(execution);
+            try {
+                return timed.join();
+            } catch (CancellationException e) {
+                return cancelledResult(toolCall);
+            } catch (CompletionException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                if (cause instanceof java.util.concurrent.TimeoutException) {
+                    String timeoutMsg = "Tool execution timed out after " + timeoutMillis + "ms for tool: "
+                            + toolCall.getName();
+                    Loggers.AGENT.warning(timeoutMsg);
+                    execution.cancel(true);
+                    ToolMessage toolMsg = new ToolMessage(timeoutMsg, toolCall.getId(), toolCall.getName());
+                    return new ExecutionResult(null, toolMsg);
+                }
+                if (cause instanceof RuntimeException re) {
+                    throw re;
+                }
+                throw new CompletionException(cause);
+            }
+        }
+        return doSafeRailedExecuteOne(toolCtx, toolCall, resolver, session, tag);
+    }
+
+    private ExecutionResult doSafeRailedExecuteOne(AgentCallbackContext toolCtx, ToolCall toolCall,
+                                                    ToolResolver resolver, Object session, Object tag) {
         try {
             Object railed = Rails.run(
                     toolCtx,
@@ -918,7 +952,7 @@ public class AbilityManager {
                     ? toolCall.getId()
                     : parentSessionId + ":" + toolCall.getId();
             inputs.put("conversation_id", childSessionId);
-            Object childSession = AgentSession.createAgentSession(childSessionId, null,
+            Object childSession = buildAgentChildSession(session, childSessionId,
                     agent instanceof BaseAgent baseAgent ? baseAgent.getCard() : agentCard);
             Object result = Runner.runAgent(agent, inputs, childSession, null);
             return new ExecutionResult(result, new ToolMessage(buildToolMessageContent(result),
@@ -928,6 +962,43 @@ public class AbilityManager {
                 | ClassCastException | UnsupportedOperationException exception) {
             throw AbilityExecutionError.of(toolCall, "Agent execution error: " + exception.getMessage(), exception);
         }
+    }
+
+    /**
+     * Build the child Session for one sub-Agent execution with KVC inheritance.
+     *
+     * <p>Mirrors Python {@code ability_manager.py}: when the parent session
+     * carries a shared KVC runtime, the child inherits it plus the parent's
+     * provider-facing lineage; otherwise it stays a plain self-keyed
+     * session.</p>
+     *
+     * @param session parent session object (may be an {@code AgentSessionApi})
+     * @param childSessionId child session id
+     * @param card child agent card
+     * @return the child session object
+     */
+    private Object buildAgentChildSession(Object session, String childSessionId, Object card) {
+        if (!(session instanceof AgentSessionApi parentSession)) {
+            return AgentSession.createAgentSession(childSessionId, null, card);
+        }
+        java.util.Optional<com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.ChildSessionKwargs> inheritance =
+                com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.buildChildSessionKwargs(parentSession);
+        if (inheritance.isEmpty()) {
+            return AgentSession.createAgentSession(childSessionId, null, card);
+        }
+        com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.ChildSessionKwargs inherited =
+                inheritance.get();
+        com.openjiuwen.core.session.AgentSession child = new com.openjiuwen.core.session.AgentSession(
+                childSessionId,
+                inherited.envs(),
+                card,
+                null,
+                true,
+                java.util.Map.of(),
+                inherited.kvCacheRuntime()
+        );
+        child.bindParentSessionId(inherited.parentSessionId());
+        return child;
     }
 
     private Object createWorkflowContext(String workflowId, Object session) {
@@ -1011,6 +1082,22 @@ public class AbilityManager {
         if (previousSession == null && session != null) {
             SessionContextHolder.setCurrentSession(session);
         }
+        // Tool bodies run on shared background/tool-call worker threads. TenantContextHolder is
+        // an InheritableThreadLocal that is only copied at thread creation, so a reused worker
+        // would keep the stale tenant bound by a previous (different-tenant) tool call and scope
+        // KV keys (e.g. todo storage) to the wrong tenant — a cross-tenant data leak. Re-bind the
+        // tenant from the current session (session is the request-scoped source of truth) for the
+        // duration of the tool body, mirroring the session-holder save/restore above.
+        TenantContext previousTenant = TenantContextHolder.getCurrentTenant();
+        TenantContext sessionTenant = session instanceof AgentSessionApi agentSession
+                ? agentSession.getTenantContext()
+                : null;
+        boolean isTenantRebound = false;
+        if (sessionTenant != null && sessionTenant.isTenantAware()
+                && (previousTenant == null || !previousTenant.equals(sessionTenant))) {
+            TenantContextHolder.setCurrentTenant(sessionTenant);
+            isTenantRebound = true;
+        }
         try {
             return tool.invoke(inputs, invokeKwargs(session));
         } catch (ToolInterruptException interrupt) {
@@ -1020,6 +1107,9 @@ public class AbilityManager {
         } catch (Exception exception) {
             throw new IllegalStateException(exception.getMessage(), exception);
         } finally {
+            if (isTenantRebound) {
+                TenantContextHolder.setCurrentTenant(previousTenant);
+            }
             SessionContextHolder.restoreCurrentSession(previousSession);
         }
     }
@@ -1656,7 +1746,49 @@ public class AbilityManager {
         if (toolMessage == null && toolCall != null) {
             toolMessage = new ToolMessage(error.getMessage(), toolCall.getId(), toolCall.getName());
         }
+        // When shouldFailTaskOnToolError is enabled, force-finish the task
+        // so the agent loop does not continue after a tool execution failure.
+        if (toolCtx != null && isFailTaskOnToolError(toolCtx) && toolCall != null) {
+            String errorMsg = error.getMessage();
+            Map<String, Object> outcome = new LinkedHashMap<>();
+            outcome.put("tool_name", toolCall.getName());
+            outcome.put("tool_call_id", toolCall.getId());
+            outcome.put("status", "failed");
+            outcome.put("error", errorMsg);
+
+            Map<String, Object> finishResult = new LinkedHashMap<>();
+            finishResult.put("output", errorMsg);
+            finishResult.put("result_type", "error");
+            finishResult.put("tool_outcomes", List.of(outcome));
+            toolCtx.requestForceFinish(finishResult);
+        }
         return new ExecutionResult(null, toolMessage);
+    }
+
+    /**
+     * Reads {@link ReActAgentConfig#isShouldFailTaskOnToolError()} from the tool callback
+     * context or its agent. Default is {@code true}.
+     *
+     * @param toolCtx tool execution callback context; may be null
+     * @return {@code true} when tool errors should force-finish the task
+     * @since 0.1.16
+     */
+    private static boolean isFailTaskOnToolError(AgentCallbackContext toolCtx) {
+        if (toolCtx == null) {
+            return true;
+        }
+        Object config = toolCtx.getConfig();
+        if (config instanceof ReActAgentConfig reactConfig) {
+            return reactConfig.isShouldFailTaskOnToolError();
+        }
+        Object agent = toolCtx.getAgent();
+        if (agent instanceof BaseAgent baseAgent) {
+            Object agentConfig = baseAgent.getConfig();
+            if (agentConfig instanceof ReActAgentConfig reactConfig) {
+                return reactConfig.isShouldFailTaskOnToolError();
+            }
+        }
+        return true;
     }
 
     private static ExecutionResult executionErrorResult(ToolCall toolCall, Throwable exception) {

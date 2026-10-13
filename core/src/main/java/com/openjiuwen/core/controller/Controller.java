@@ -209,9 +209,9 @@ public class Controller {
 
             Loggers.CONTROLLER.info("Restoring TaskManager state for session {}", session.getSessionId());
             TaskManagerState taskManagerState = TaskManagerState.fromMap((Map<String, Object>) tmState);
-            taskManager.loadState(taskManagerState);
-            Loggers.CONTROLLER.info("Successfully restored TaskManager state: {} tasks, {} root tasks",
-                    taskManagerState.getTasks().size(), taskManagerState.getRootTasks().size());
+            taskManager.loadStateForSession(session.getSessionId(), taskManagerState);
+            Loggers.CONTROLLER.info("Successfully restored TaskManager state for session {}: {} tasks, {} root tasks",
+                    session.getSessionId(), taskManagerState.getTasks().size(), taskManagerState.getRootTasks().size());
             return true;
         } catch (Exception e) {
             Loggers.CONTROLLER.error("Failed to restore TaskManager state for session {}: {}, clearing instead",

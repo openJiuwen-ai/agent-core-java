@@ -70,7 +70,6 @@ class BaseAgentReactiveTest {
     }
 
     /** invoke 把同步 invoke 的入参/返回值原样透传。 */
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void invokeDelegatesToInvoke() {
         FakeAgent a = new FakeAgent("a1");
@@ -82,8 +81,8 @@ class BaseAgentReactiveTest {
     }
 
     /** invoke 抛出的异常对象身份不变。 */
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void invokePropagatesExceptionUnwrapped() {
         FakeAgent a = new FakeAgent("a2");
         IllegalStateException boom = new IllegalStateException("agent boom");

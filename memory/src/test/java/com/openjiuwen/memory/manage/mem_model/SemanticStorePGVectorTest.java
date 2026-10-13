@@ -28,8 +28,8 @@ import static org.mockito.Mockito.when;
 
 class SemanticStorePGVectorTest {
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void createCollectionUsesExplicitBootstrapWithoutInsert() throws Exception {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
@@ -56,8 +56,8 @@ class SemanticStorePGVectorTest {
         verify(connection, never()).prepareStatement(org.mockito.ArgumentMatchers.startsWith("INSERT INTO"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void addDocsBootstrapsAndWritesRows() throws Exception {
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);

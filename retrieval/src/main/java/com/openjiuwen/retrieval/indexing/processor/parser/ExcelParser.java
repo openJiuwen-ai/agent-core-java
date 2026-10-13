@@ -6,7 +6,7 @@ package com.openjiuwen.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;

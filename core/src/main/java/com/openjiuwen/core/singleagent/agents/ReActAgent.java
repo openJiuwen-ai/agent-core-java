@@ -40,10 +40,13 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
+import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
+import com.openjiuwen.core.singleagent.external.ExternalToolResult;
 import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.interrupt.ResumeContext;
-import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -55,11 +58,7 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.Rails;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
-import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
-import com.openjiuwen.core.singleagent.external.ExternalToolResult;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
-import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
@@ -80,6 +79,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
@@ -126,6 +126,11 @@ public class ReActAgent extends BaseAgent {
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
     private boolean kvReleaseWarningLogged;
+    private final com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook kvCacheModelCallHook =
+            new com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook();
+
+    /** Previous LLM-bound window per session, used for affinity window-diff eviction. */
+    private final ConcurrentHashMap<String, ContextWindow> lastAffinityWindows = new ConcurrentHashMap<>();
 
     public ReActAgent(AgentCard card) {
         super(card);
@@ -170,6 +175,7 @@ public class ReActAgent extends BaseAgent {
                 llm = null;
             }
             kvReleaseWarningLogged = false;
+            kvCacheModelCallHook.resetWarnings();
         }
         refreshContextEngineIfNeeded();
         if (!Objects.equals(oldConfig.getMemScopeId(), effectiveConfig.getMemScopeId())) {
@@ -350,7 +356,6 @@ public class ReActAgent extends BaseAgent {
 
     public Object callModel(AgentCallbackContext ctx, ModelContext context, List<ToolInfo> tools) {
         ModelCallInputs inputs = new ModelCallInputs();
-        inputs.setMessages(new ArrayList<>(buildPreviewMessages(context)));
         inputs.setTools(tools == null ? null : new ArrayList<>(tools));
         inputs.setModelContext(context);
         ctx.setInputs(inputs);
@@ -367,6 +372,7 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Object railedModelCall(AgentCallbackContext ctx) {
+        prepareModelRequest(ctx);
         return Rails.run(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
@@ -377,42 +383,113 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
-        ModelCallInputs modelInputs = (ModelCallInputs) ctx.getInputs();
+        ModelCallInputs modelInputs = ModelCallInputs.class.cast(ctx.getInputs());
         Map<String, String> requestHeaders = modelInputs.consumeRequestHeaders();
         Model model = getLlm(ctx);
-        List<ToolInfo> tools = toolInfoList(modelInputs.getTools());
-        boolean enableKvRelease = config.getContextEngineConfig().isEnableKvCacheRelease();
-        boolean supportsKvRelease = model.supportsKvCacheRelease();
+        ContextWindow contextWindow = prepareModelContextWindow(ctx, model, modelInputs);
+        List<BaseMessage> messages = contextWindow.getMessages();
+        List<ToolInfo> tools = contextWindow.getTools();
+        modelInputs.setMessages(new ArrayList<>(messages));
+        modelInputs.setTools(new ArrayList<>(tools));
+        logLlmRequest(null, messages, tools);
 
-        if (enableKvRelease && !supportsKvRelease && !kvReleaseWarningLogged) {
+        ModelCallRuntime runtime = prepareModelCallRuntime(ctx, model, contextWindow);
+        ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder =
+                modelInvokeOptions(ctx, model, tools, requestHeaders, runtime.extraFields());
+        com.openjiuwen.core.kvcache.KVCacheModelHook.RuntimeLease kvLease = kvCacheModelCallHook
+                .beginInferenceLease(runtime.capabilities(), ctx.getSession(), runtime.extraFields())
+                .join();
+        runtime.extraFields().remove("__openjiuwen_kvc_model");
+        ModelInvokeOptions options = optionsBuilder.build();
+        StreamModelCall modelCall = new StreamModelCall(ctx, model, messages, options, modelInputs);
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+            return invokeNonStreaming(modelCall, kvLease);
+        }
+        return streamModelResponseWithRetry(modelCall, kvLease);
+    }
+
+    private void prepareModelRequest(AgentCallbackContext ctx) {
+        ModelCallInputs previous = ModelCallInputs.class.cast(ctx.getInputs());
+        ModelContext context = previous.getModelContext();
+        if (context == null) {
+            context = ctx.getContext();
+        }
+        String systemPrompt = promptBuilder.build();
+        List<BaseMessage> systemMessages = new ArrayList<>();
+        if (!systemPrompt.isBlank()) {
+            systemMessages.add(new SystemMessage(systemPrompt));
+        }
+        ContextWindow window = context.getContextWindow(systemMessages, toolInfoList(previous.getTools()),
+                null, null, Map.of("defer_finalization", true))
+                .toCompletableFuture().join();
+        List<BaseMessage> messages = window.getMessages();
+        previous.setMessages(new ArrayList<>(messages));
+        previous.setTools(new ArrayList<>(window.getTools()));
+        previous.setModelContext(context);
+    }
+
+    private ContextWindow prepareModelContextWindow(AgentCallbackContext ctx, Model model, ModelCallInputs inputs) {
+        boolean isKvReleaseEnabled = config.getContextEngineConfig().isEnableKvCacheRelease();
+        boolean canReleaseKvCache = model.supportsKvCacheRelease();
+
+        if (isKvReleaseEnabled && !canReleaseKvCache && !kvReleaseWarningLogged) {
             LOGGER.warning("ContextEngineConfig.enable_kv_cache_release is True, "
                     + "but the current LLM does not support KV cache release; "
                     + "KV cache release will not take effect.");
             kvReleaseWarningLogged = true;
         }
-        Map<String, Object> contextWindowKwargs = new LinkedHashMap<>();
-        if (enableKvRelease && supportsKvRelease) {
-            contextWindowKwargs.put("model", model);
+        Object releaseModel = null;
+        if (isKvReleaseEnabled && canReleaseKvCache) {
+            releaseModel = model;
         }
 
-        ContextWindow contextWindow = ctx.getContext().getContextWindow(
-                List.of(new SystemMessage(promptBuilder.build())),
-                tools,
-                null,
-                null,
-                contextWindowKwargs
-        ).toCompletableFuture().join();
-        List<BaseMessage> messages = contextWindow.getMessages();
-        tools = contextWindow.getTools();
-        modelInputs.setMessages(new ArrayList<>(messages));
-        modelInputs.setTools(new ArrayList<>(tools));
-        logLlmRequest(null, messages, tools);
+        ContextWindow window = new ContextWindow();
+        applyModelRequestMessages(window, inputs);
+        window.setTools(toolInfoList(inputs.getTools()));
+        ModelContext context = inputs.getModelContext();
+        if (context == null) {
+            context = ctx.getContext();
+        }
+        context.finalizeContextWindow(window, releaseModel);
+        return window;
+    }
+
+    private static void applyModelRequestMessages(ContextWindow window, ModelCallInputs inputs) {
+        List<BaseMessage> messages = inputs.getMessages().stream().map(BaseMessage.class::cast).toList();
+        int systemPrefixSize = 0;
+        while (systemPrefixSize < messages.size() && "system".equals(messages.get(systemPrefixSize).getRole())) {
+            systemPrefixSize++;
+        }
+        window.setSystemMessages(messages.subList(0, systemPrefixSize));
+        window.setContextMessages(messages.subList(systemPrefixSize, messages.size()));
+    }
+
+    private ModelCallRuntime prepareModelCallRuntime(AgentCallbackContext ctx, Model model,
+            ContextWindow contextWindow) {
+        com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook.KVCacheCallCapabilities kvCapabilities =
+                kvCacheModelCallHook.resolveRuntime(model, config.isEnableKvCacheAffinity());
+        String affinitySessionId = ctx.getSession() != null
+                ? ctx.getSession().getSessionId()
+                : ctx.getContext().sessionId();
+        com.openjiuwen.core.kvcache.KVCacheMetadata.Lineage kvLineage =
+                kvCacheModelCallHook.resolveLineage(kvCapabilities, ctx.getSession(), affinitySessionId);
+        kvCacheModelCallHook.handleContextWindowChange(
+                kvCapabilities,
+                model,
+                contextWindow,
+                lastAffinityWindows.get(affinitySessionId),
+                kvLineage
+        ).join();
+        lastAffinityWindows.put(affinitySessionId, contextWindow);
 
         Map<String, Object> extraFields = new LinkedHashMap<>();
         extraFields.putAll(model.buildKvCacheInvokeKwargs(
                 ctx.getSession(),
-                enableKvRelease
+                config.getContextEngineConfig().isEnableKvCacheRelease()
         ));
+        extraFields.putAll(kvCacheModelCallHook.buildInvokeKwargs(kvCapabilities, model, ctx.getSession(),
+                kvLineage));
+        extraFields.put("__openjiuwen_kvc_model", model);
         if (config.isLlmReturnTokenIds()) {
             extraFields.put("return_token_ids", true);
         }
@@ -420,7 +497,12 @@ public class ReActAgent extends BaseAgent {
             extraFields.put("logprobs", true);
             extraFields.put("top_logprobs", config.getLlmTopLogprobs());
         }
+        return new ModelCallRuntime(kvCapabilities, extraFields);
+    }
 
+    private ModelInvokeOptions.ModelInvokeOptionsBuilder modelInvokeOptions(AgentCallbackContext ctx, Model model,
+            List<ToolInfo> tools,
+            Map<String, String> requestHeaders, Map<String, Object> extraFields) {
         // Use the resolved model's name (may differ from config when a dynamic
         // model was selected via ctx.dynamicModelId) so the provider receives
         // the correct model name.
@@ -437,25 +519,38 @@ public class ReActAgent extends BaseAgent {
                     modelRetryPayload(event)
             )));
         }
-        ModelInvokeOptions options = optionsBuilder.build();
 
-        boolean streaming = Boolean.TRUE.equals(ctx.getExtra().get("_streaming"));
-        if (!streaming) {
-            logModelCallStarted(ctx, messages, tools, false);
-            long modelStartNanos = System.nanoTime();
-            AssistantMessage aiMessage;
-            try {
-                aiMessage = model.invoke(messages, options).toCompletableFuture().join();
-            } catch (RuntimeException exception) {
-                logModelCallCompleted(ctx, false, modelStartNanos, null, exception);
-                throw exception;
-            }
-            modelInputs.setResponse(aiMessage);
-            logModelResponse(ctx, aiMessage);
-            logModelCallCompleted(ctx, false, modelStartNanos, aiMessage, null);
-            return aiMessage;
+        return optionsBuilder;
+    }
+
+    private record ModelCallRuntime(
+            com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook.KVCacheCallCapabilities capabilities,
+            Map<String, Object> extraFields) {
+    }
+
+    private AssistantMessage invokeNonStreaming(StreamModelCall call,
+            com.openjiuwen.core.kvcache.KVCacheModelHook.RuntimeLease kvLease) {
+        List<?> tools = call.options() == null ? List.of() : call.options().getTools();
+        logModelCallStarted(call.ctx(), call.messages(), tools, false);
+        long modelStartNanos = System.nanoTime();
+        AssistantMessage aiMessage;
+        boolean isKvSucceeded = false;
+        try {
+            aiMessage = call.model().invoke(call.messages(), call.options())
+                    .toCompletableFuture().join();
+            isKvSucceeded = true;
+        } catch (BaseError | CompletionException | IllegalArgumentException | IllegalStateException
+                | NullPointerException | ClassCastException | UnsupportedOperationException
+                | UncheckedIOException exception) {
+            logModelCallCompleted(call.ctx(), false, modelStartNanos, null, exception);
+            com.openjiuwen.core.kvcache.KVCacheModelHook.end(kvLease, false).join();
+            throw exception;
         }
-        return streamModelResponseWithRetry(ctx, model, messages, options, modelInputs);
+        com.openjiuwen.core.kvcache.KVCacheModelHook.end(kvLease, isKvSucceeded).join();
+        call.modelInputs().setResponse(aiMessage);
+        logModelResponse(call.ctx(), aiMessage);
+        logModelCallCompleted(call.ctx(), false, modelStartNanos, aiMessage, null);
+        return aiMessage;
     }
 
     public static void renderSystemMessages(List<SystemMessage> systemMessages, Object inputs,
@@ -486,6 +581,9 @@ public class ReActAgent extends BaseAgent {
 
     public List<AbilityManager.ExecutionResult> executeToolCall(AgentCallbackContext ctx, List<ToolCall> toolCalls,
                                                                 AgentSessionApi session, ModelContext context) {
+        if (ctx != null) {
+            ToolInterruptionState.railState(ctx);
+        }
         List<AbilityManager.ExecutionResult> results = executeToolCallsAndWriteToolMessages(ctx, toolCalls, session,
                 context);
         appendMultimodalToolResultsMessage(results, context);
@@ -1032,6 +1130,7 @@ public class ReActAgent extends BaseAgent {
                 originalQuery
         );
         if (hitlInterrupt.getState() != null) {
+            hitlInterrupt.getState().copyRailStateFrom(ToolInterruptionState.railState(ctx));
             if (externalResume) {
                 contextEngine.saveContexts(session);
             }
@@ -1394,11 +1493,11 @@ public class ReActAgent extends BaseAgent {
         boolean streaming = false;
         boolean initializationComplete = false;
         AgentCallbackContext ctx = null;
+        InvokeInputs invokeInputs = new InvokeInputs();
         Object previousSession = SessionContextHolder.getCurrentSession();
         SessionContextHolder.setCurrentSession(session);
         try {
             promptBuilder.clearTransient();
-            InvokeInputs invokeInputs = new InvokeInputs();
             invokeInputs.setQuery(query);
             invokeInputs.setConversationId(conversationId);
 
@@ -1415,13 +1514,7 @@ public class ReActAgent extends BaseAgent {
             Queue<String> steeringQueue = null;
             if (inputs instanceof Map<?, ?> map) {
                 putExtra(ctx, "user_id", map.get("user_id"));
-                copyInvokeExtra(map, ctx, "run_kind");
-                copyInvokeExtra(map, ctx, "run_context");
-                copyInvokeExtra(map, ctx, "is_follow_up");
-                copyInvokeExtra(map, ctx, "loop_queues");
-                copyInvokeExtra(map, ctx, "model_id");
-                copyInvokeExtra(map, ctx, "target_model_id");
-                copyInvokeExtra(map, ctx, "dynamic_model_id");
+                copyRemainingExtras(map, ctx);
                 bindDynamicModelIdFromInputs(map, ctx);
                 Object rawSteeringQueue = map.get("_steering_queue");
                 if (rawSteeringQueue instanceof Queue<?> queue) {
@@ -1636,6 +1729,7 @@ public class ReActAgent extends BaseAgent {
             if (ctx.getTerminationReason() == null) {
                 ctx.finish(terminationReasonForResult(invokeInputs.getResult(), AgentTerminationReason.ERROR));
             }
+            ctx.setInputs(invokeInputs);
             ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
             Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
             if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
@@ -1653,6 +1747,7 @@ public class ReActAgent extends BaseAgent {
                 ctx.finish(AgentTerminationReason.ERROR);
             }
             if (initializationComplete && ctx.getEvent() != AgentCallbackEvent.AFTER_INVOKE) {
+                ctx.setInputs(invokeInputs);
                 ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
             }
             if (!iterationFailureLogged) {
@@ -2110,28 +2205,43 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    /** Inputs shared by the streaming retry loop. */
+    private record StreamModelCall(AgentCallbackContext ctx, Model model,
+            List<BaseMessage> messages, ModelInvokeOptions options, ModelCallInputs modelInputs) {
+    }
+
     /**
      * Retry empty streams and transport failures before the first chunk. Once a chunk is visible,
      * never replay the request. Empty or reasoning-only results fall back to a blocking invocation.
      */
-    private AssistantMessage streamModelResponseWithRetry(AgentCallbackContext ctx, Model model,
-                                                          List<BaseMessage> messages, ModelInvokeOptions options,
-                                                          ModelCallInputs modelInputs) {
-        int maxRetries = config.getStreamMaxRetries();
-        long retryDelayMs = config.getStreamRetryDelayMs();
+    private AssistantMessage streamModelResponseWithRetry(
+            StreamModelCall call, com.openjiuwen.core.kvcache.KVCacheModelHook.RuntimeLease kvLease) {
+        boolean isKvStreamSucceeded = false;
+        try {
+            AssistantMessage aiMessage = streamWithRetry(call, config.getStreamMaxRetries(),
+                    config.getStreamRetryDelayMs());
+            isKvStreamSucceeded = true;
+            return aiMessage;
+        } finally {
+            com.openjiuwen.core.kvcache.KVCacheModelHook.end(kvLease, isKvStreamSucceeded).join();
+        }
+    }
 
+    private AssistantMessage streamWithRetry(StreamModelCall call, int maxRetries, long retryDelayMs) {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             StreamAttempt streamAttempt = new StreamAttempt();
             try {
-                AssistantMessage aiMessage = streamModelResponse(ctx, model, messages, options, streamAttempt);
-                modelInputs.setResponse(aiMessage);
+                AssistantMessage aiMessage = streamModelResponse(call.ctx(), call.model(), call.messages(),
+                        call.options(), streamAttempt);
+                call.modelInputs().setResponse(aiMessage);
                 if (!isEmptyStreamResult(aiMessage)) {
                     return aiMessage;
                 }
                 if (hasReasoningContent(aiMessage)) {
                     Loggers.AGENT.warning("ReAct stream completed with reasoning but no answer content or "
                             + "tool calls; falling back to non-stream");
-                    return fallbackToNonStream(ctx, model, messages, options, modelInputs);
+                    return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(),
+                            call.modelInputs());
                 }
                 Loggers.AGENT.warning("ReAct stream returned empty (attempt "
                         + (attempt + 1) + "/" + (maxRetries + 1) + ")");
@@ -2159,7 +2269,7 @@ public class ReActAgent extends BaseAgent {
 
         Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
                 + " attempts, falling back to non-stream with stream wrapping");
-        return fallbackToNonStream(ctx, model, messages, options, modelInputs);
+        return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(), call.modelInputs());
     }
 
     private AssistantMessage fallbackToNonStream(AgentCallbackContext ctx, Model model,
@@ -2580,9 +2690,31 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
-    private static void copyInvokeExtra(Map<?, ?> inputs, AgentCallbackContext ctx, String key) {
-        if (inputs.containsKey(key)) {
-            ctx.getExtra().put(key, inputs.get(key));
+    /**
+     * Copy all String-keyed entries from {@code inputs} into {@code ctx}'s extra map, skipping
+     * reserved keys ({@code "query"}, {@code "conversation_id"}, {@code "user_id"},
+     * {@code "_streaming"}, {@code "_steering_queue"}) which are handled separately. This
+     * allows any custom parameter name (e.g. {@code model_id}, {@code llm_id},
+     * {@code target_model_id}, or any user-defined key) to be transparently forwarded to
+     * {@code ctx.getExtra()}.
+     *
+     * @param inputs the invoke inputs map
+     * @param ctx the callback context whose extra map to populate
+     * @since 0.1.16
+     */
+    private static void copyRemainingExtras(Map<?, ?> inputs, AgentCallbackContext ctx) {
+        Map<String, Object> extra = ctx.getExtra();
+        for (Map.Entry<?, ?> entry : inputs.entrySet()) {
+            Object keyObj = entry.getKey();
+            if (!(keyObj instanceof String)) {
+                continue;
+            }
+            String key = (String) keyObj;
+            if (!"query".equals(key) && !"conversation_id".equals(key)
+                    && !"user_id".equals(key) && !"_streaming".equals(key)
+                    && !"_steering_queue".equals(key) && entry.getValue() != null) {
+                extra.put(key, entry.getValue());
+            }
         }
     }
 

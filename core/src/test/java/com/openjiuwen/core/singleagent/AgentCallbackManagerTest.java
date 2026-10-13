@@ -4,14 +4,27 @@
 
 package com.openjiuwen.core.singleagent;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.callback.AbortError;
 import com.openjiuwen.core.runner.callback.HookType;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -23,13 +36,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Focused tests for agent callback registration and event-name scoping.
  *
@@ -37,6 +43,85 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code openjiuwen/core/single_agent/agent_callback_manager.py}.</p>
  */
 class AgentCallbackManagerTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void railDoesNotAcquireOrRemoveAnExistingTool(boolean hasSameId) {
+        ReActAgent agent = new ReActAgent(new AgentCard("existing-tool", "existing-tool", "test"));
+        ToolCard existing = ToolCard.builder().id("existing").name("shared").inputParams(Map.of()).build();
+        String declaredId = hasSameId ? "existing" : "different";
+        ToolCard declared = ToolCard.builder().id(declaredId).name("shared").inputParams(Map.of()).build();
+        AgentRail rail = new AgentRail(List.of(declared)) { };
+        agent.getAbilityManager().add(existing);
+        try {
+            agent.registerInstanceRail(rail).toCompletableFuture().join();
+            assertSame(existing, agent.getAbilityManager().get("shared").orElseThrow());
+        } finally {
+            agent.unregisterInstanceRail(rail).toCompletableFuture().join();
+        }
+        assertSame(existing, agent.getAbilityManager().get("shared").orElseThrow());
+    }
+
+    @Test
+    void railToolSurvivesUntilBothRegistrationScopesExit() {
+        ReActAgent agent = new ReActAgent(new AgentCard("both-scopes", "both-scopes", "test"));
+        ToolCard card = ToolCard.builder().name("both-scopes-tool").inputParams(Map.of()).build();
+        AgentRail rail = new AgentRail(List.of(card)) { };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            agent.registerInstanceRail(rail).toCompletableFuture().join();
+            agent.unregisterInstanceRail(rail).toCompletableFuture().join();
+            assertSame(card, agent.getAbilityManager().get(card.getName()).orElseThrow());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+        assertTrue(agent.getAbilityManager().get(card.getName()).isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void unregisterUsesAcquiredSnapshotAndKeepsExternalReplacement(boolean hasReplacement) {
+        ReActAgent agent = new ReActAgent(new AgentCard("replacement", "replacement", "test"));
+        ToolCard owned = ToolCard.builder().id("owned").name("replacement-tool").inputParams(Map.of()).build();
+        AgentRail rail = new AgentRail(new ArrayList<>(List.of(owned))) { };
+        agent.registerInstanceRail(rail).toCompletableFuture().join();
+        ToolCard replacement = ToolCard.builder().id("external").name(owned.getName()).inputParams(Map.of()).build();
+        if (hasReplacement) {
+            agent.getAbilityManager().remove(owned.getName());
+            agent.getAbilityManager().add(replacement);
+        }
+        rail.getToolCards().clear();
+        agent.unregisterInstanceRail(rail).toCompletableFuture().join();
+        if (hasReplacement) {
+            assertSame(replacement, agent.getAbilityManager().get(owned.getName()).orElseThrow());
+        } else {
+            assertTrue(agent.getAbilityManager().get(owned.getName()).isEmpty());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void declaredRailToolsFollowRegistrationLifecycle(boolean isInstanceRail) {
+        ReActAgent agent = new ReActAgent(new AgentCard("rail-tools", "rail-tools", "test"));
+        AgentRail rail = new AgentRail() { };
+        ToolCard tool = ToolCard.builder().name("rail-owned-tool").inputParams(Map.of()).build();
+        rail.getToolCards().add(tool);
+        try {
+            if (isInstanceRail) {
+                agent.registerInstanceRail(rail).toCompletableFuture().join();
+            } else {
+                agent.registerRail(rail).toCompletableFuture().join();
+            }
+            assertTrue(agent.getAbilityManager().get(tool.getName()).isPresent());
+            assertSame(tool, agent.getAbilityManager().get(tool.getName()).orElseThrow());
+        } finally {
+            if (isInstanceRail) {
+                agent.unregisterInstanceRail(rail).toCompletableFuture().join();
+            } else {
+                agent.unregisterRail(rail).toCompletableFuture().join();
+            }
+        }
+        assertTrue(agent.getAbilityManager().get(tool.getName()).isEmpty());
+    }
 
     @Test
     void eventNameUsesAgentIdPrefixAndEnumValue() {

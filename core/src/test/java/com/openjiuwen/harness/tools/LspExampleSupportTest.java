@@ -26,8 +26,8 @@ class LspExampleSupportTest {
         assertThat(operations).contains("goToDefinition", "findReferences", "outgoingCalls");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void shouldBuildManagerAndRunDefinitionDemo() {
         var manager = LspExampleSupport.newManager(tempDir);
         Map<String, Object> result = LspExampleSupport.runDefinitionDemo(tempDir, "src/Main.java");

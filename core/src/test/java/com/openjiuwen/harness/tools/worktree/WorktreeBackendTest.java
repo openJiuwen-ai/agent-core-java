@@ -26,7 +26,6 @@ class WorktreeBackendTest {
     @TempDir
     Path tempDir;
 
-    @Disabled("remote env do not support node")
     @Test
     void createNewWorktree() throws IOException, InterruptedException {
         GitBackend backend = new GitBackend(new WorktreeConfig());
@@ -41,7 +40,6 @@ class WorktreeBackendTest {
         assertThat(result.getHeadCommit()).isNotBlank();
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void createUsesFastRecoveryForExistingWorktree() throws IOException, InterruptedException {
         GitBackend backend = new GitBackend(new WorktreeConfig());
@@ -57,7 +55,6 @@ class WorktreeBackendTest {
         assertThat(second.getHeadCommit()).isNotBlank();
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void removeExistingWorktree() throws IOException, InterruptedException {
         GitBackend backend = new GitBackend(new WorktreeConfig());
@@ -84,7 +81,6 @@ class WorktreeBackendTest {
                 .hasCauseInstanceOf(java.nio.file.NoSuchFileException.class);
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void existsReturnsTrueForValidWorktree() throws IOException, InterruptedException {
         GitBackend backend = new GitBackend(new WorktreeConfig());
@@ -137,7 +133,9 @@ class WorktreeBackendTest {
 
     private Path initRepo(String name) throws IOException, InterruptedException {
         Path repo = Files.createDirectories(tempDir.resolve(name));
-        runGit(repo, "init", "-b", "main");
+        // Avoid `git init -b` (Git >= 2.28 only); old CI gits reject unknown switch `-b`.
+        runGit(repo, "init");
+        runGit(repo, "symbolic-ref", "HEAD", "refs/heads/main");
         runGit(repo, "config", "user.name", "Codex");
         runGit(repo, "config", "user.email", "codex@example.com");
         Files.writeString(repo.resolve("README.md"), "# " + name + "\n");

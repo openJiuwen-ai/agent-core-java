@@ -32,6 +32,35 @@ public interface McpClient {
         return disconnect(McpServerConfig.NO_TIMEOUT);
     }
 
+    /**
+     * Tear down and re-establish the transport after a transient failure.
+     * <p>
+     * Default implementation is {@code disconnect} followed by {@code connect}.
+     * HTTP transports serialize concurrent reconnects so a network blip does not
+     * leave tools permanently unusable.
+     * </p>
+     *
+     * @param timeout timeout in seconds for disconnect and connect
+     * @return {@code true} when reconnect succeeds
+     * @throws Exception when reconnect fails hard
+     * @since 0.1.18
+     */
+    default boolean reconnect(float timeout) throws Exception {
+        disconnect(timeout);
+        return connect(1, timeout);
+    }
+
+    /**
+     * Reconnect using the {@link McpServerConfig#NO_TIMEOUT} sentinel.
+     *
+     * @return {@code true} when reconnect succeeds
+     * @throws Exception when reconnect fails hard
+     * @since 0.1.18
+     */
+    default boolean reconnect() throws Exception {
+        return reconnect(McpServerConfig.NO_TIMEOUT);
+    }
+
     List<Object> listTools(float timeout) throws Exception;
 
     default List<Object> listTools() throws Exception {

@@ -9,7 +9,6 @@ import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.MultimodalDocument;
 import com.openjiuwen.core.common.exception.ValidationError;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
@@ -92,7 +91,6 @@ class DocumentTypesTest {
         assertThat(doc.getDashscopeInput().get("text")).isEqualTo("Hello");
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void multimodalDocumentLoadsTextAndMediaFiles(@TempDir Path localTemp) throws Exception {
         Path textFile = localTemp.resolve("note.txt");

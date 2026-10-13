@@ -51,7 +51,8 @@ class ModelBackupRailSystemMissingTest {
                         "content",
                         "你是一个数学计算助手，在适当的时候调用工具来完成计算任务。"
                 )))
-                .configureMaxIterations(3));
+                .configureMaxIterations(3)
+                .configureFailTaskOnToolError(false));
         FailingModelClient primaryClient = new FailingModelClient();
         ScriptedModelClient backupClient = new ScriptedModelClient(
                 AssistantMessage.builder()

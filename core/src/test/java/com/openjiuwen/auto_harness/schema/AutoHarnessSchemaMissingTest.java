@@ -14,7 +14,6 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ProjectProfile;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ResearchContext;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -42,7 +41,6 @@ class AutoHarnessSchemaMissingTest {
     @TempDir
     private Path tempDir;
 
-    @Disabled("remote env do not support node")
     @ParameterizedTest(name = "{0}")
     @MethodSource("passedPythonNodes")
     void passedPythonNodeParity(String nodeId) throws Exception {
@@ -187,9 +185,9 @@ class AutoHarnessSchemaMissingTest {
                             .resolveCiGatePythonExecutable()).isEqualTo("/tmp/python3.11");
             case "tests/unit_tests/auto_harness/test_schema.py::TestVenvPythonCandidates::test_windows_candidates" ->
                     assertThat(AutoHarnessSchema.venvPythonCandidates("/tmp/project"))
-                            .containsExactly(Path.of("/tmp/project").resolve(".venv").resolve("Scripts").resolve("python.exe"));
+                            .containsExactly(expectedVenvPython(Path.of("/tmp/project")));
             case "tests/unit_tests/auto_harness/test_schema.py::TestVenvPythonCandidates::test_resolve_ci_gate_venv_found" -> {
-                Path venvPython = windowsVenvPython(tempDir);
+                Path venvPython = expectedVenvPython(tempDir);
                 Files.createDirectories(venvPython.getParent());
                 Files.writeString(venvPython, "# mock python");
                 AutoHarnessConfig config = AutoHarnessConfig.builder().workspace(tempDir.toString()).build();
@@ -317,46 +315,6 @@ class AutoHarnessSchemaMissingTest {
         }
     }
 
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testExperienceDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testWorktreesDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testRunsDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testRuntimeExtensionsDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testCacheRepoDirFromDataDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testBuildPathsIncludesRuntimeExtensionsDirDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_WINDOWS_PATH_FAILURE_REASON)
-    void testCacheRepoDirUsesUpstreamRepoDisabledWithPythonFailure() {
-    }
-
-    @Test
-    @Disabled(PYTHON_UNIX_SKIP_REASON)
-    void testUnixCandidatesDisabledWithPythonSkip() {
-    }
-
     private static Stream<String> passedPythonNodes() {
         return Stream.of(
                 "tests/unit_tests/auto_harness/test_schema.py::TestTaskStatus::test_values",
@@ -409,7 +367,11 @@ class AutoHarnessSchemaMissingTest {
         return System.getenv().keySet().stream().findFirst().orElse("PATH");
     }
 
-    private static Path windowsVenvPython(Path baseDir) {
-        return baseDir.resolve(".venv").resolve("Scripts").resolve("python.exe");
+    private static Path expectedVenvPython(Path baseDir) {
+        Path venv = baseDir.resolve(".venv");
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return venv.resolve("Scripts").resolve("python.exe");
+        }
+        return venv.resolve("bin").resolve("python");
     }
 }

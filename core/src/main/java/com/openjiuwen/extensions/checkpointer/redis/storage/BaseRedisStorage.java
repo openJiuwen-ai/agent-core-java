@@ -100,8 +100,14 @@ public abstract class BaseRedisStorage {
         if (dumpType == null || blob == null) {
             throw new IllegalArgumentException("Redis checkpoint is incomplete: dump type and blob must both exist");
         }
-        if (!(blob instanceof byte[] bytes)) {
-            throw new IllegalArgumentException("Redis checkpoint blob must be byte[]");
+        byte[] bytes;
+        if (blob instanceof byte[] raw) {
+            bytes = raw;
+        } else if (blob instanceof String text) {
+            bytes = text.getBytes(StandardCharsets.UTF_8);
+        } else {
+            throw new IllegalArgumentException("Redis checkpoint blob must be byte[] or String, got: "
+                + blob.getClass().getSimpleName());
         }
         String dumpTypeText = decodeDumpType(dumpType);
         validateStoredDumpType(dumpTypeText);

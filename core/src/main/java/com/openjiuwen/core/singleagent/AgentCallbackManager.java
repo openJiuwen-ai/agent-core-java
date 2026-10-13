@@ -4,7 +4,11 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.IsolatedActions;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.callback.AbortError;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -12,10 +16,11 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -35,6 +40,7 @@ public class AgentCallbackManager {
     private final CallbackFramework instanceCallbackFramework;
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> railCallbacks = new IdentityHashMap<>();
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> instanceRailCallbacks = new IdentityHashMap<>();
+    private final Map<AgentRail, Map<String, ToolCard>> railTools = new IdentityHashMap<>();
 
     public AgentCallbackManager(String agentId) {
         this(agentId, new ReflectionRunnerCallbackFramework());
@@ -83,7 +89,10 @@ public class AgentCallbackManager {
                     rail.getPriority()
             ));
         }
-        return chain.thenApply(ignored -> this);
+        return chain.thenApply(ignored -> {
+            registerRailTools(rail, agent);
+            return this;
+        });
     }
 
     public CompletionStage<AgentCallbackManager> register_rail(AgentRail rail, Object agent) {
@@ -115,7 +124,38 @@ public class AgentCallbackManager {
                     rail.getPriority()
             ));
         }
-        return chain.thenApply(ignored -> this);
+        return chain.thenApply(ignored -> {
+            registerRailTools(rail, agent);
+            return this;
+        });
+    }
+
+    private void registerRailTools(AgentRail rail, Object agent) {
+        if (!(agent instanceof BaseAgent baseAgent) || railTools.containsKey(rail)) {
+            return;
+        }
+        Map<String, ToolCard> owned = new LinkedHashMap<>();
+        railTools.put(rail, owned);
+        List<ToolCard> cards = rail.getToolCards();
+        if (cards == null) {
+            return;
+        }
+        AbilityManager abilities = baseAgent.getAbilityManager();
+        for (ToolCard card : cards) {
+            Object existing = abilities.get(card.getName()).orElse(null);
+            if (existing != null) {
+                Loggers.AGENT.warning("[registerRail] tool '{}' already exists; keep its current owner",
+                        card.getName());
+                continue;
+            }
+            AddAbilityResult result = abilities.add(card);
+            if (result.isAdded() && "added_tool".equals(result.getReason())) {
+                owned.put(card.getName(), card);
+            } else {
+                Loggers.AGENT.warning("[registerRail] tool '{}' was not acquired: {}",
+                        card.getName(), result.getReason());
+            }
+        }
     }
 
     public CompletionStage<Void> unregisterRail(AgentRail rail, Object agent) {
@@ -126,12 +166,43 @@ public class AgentCallbackManager {
         if (callbacks == null) {
             callbacks = rail.getCallbacks();
         }
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
-            chain = chain.thenCompose(ignored -> globalCallbackFramework.unregister(getAgentEvent(entry.getKey()),
-                    entry.getValue()));
+            // Per-callback isolation: one failing unregister (e.g. a broken
+            // callback key) must not abort the remaining rails.
+            IsolatedActions.runIsolated(() -> globalCallbackFramework
+                    .unregister(getAgentEvent(entry.getKey()), entry.getValue())
+                    .toCompletableFuture().join())
+                    .ifPresent(error -> Loggers.AGENT.error(
+                            "[unregisterRail] rail '{}' callback unregister failed for '{}'; continue",
+                            railName(rail), entry.getKey(), error));
         }
-        return chain;
+        unregisterRailTools(rail, agent);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private void unregisterRailTools(AgentRail rail, Object agent) {
+        if (railCallbacks.containsKey(rail) || instanceRailCallbacks.containsKey(rail)) {
+            return;
+        }
+        Map<String, ToolCard> owned = railTools.remove(rail);
+        if (owned == null || !(agent instanceof BaseAgent baseAgent)) {
+            return;
+        }
+        // Release the registration snapshot, never the rail's mutable declaration.
+        IsolatedActions.runIsolated(() -> {
+            for (Map.Entry<String, ToolCard> entry : owned.entrySet()) {
+                AbilityManager abilities = baseAgent.getAbilityManager();
+                if (abilities.get(entry.getKey()).orElse(null) == entry.getValue()) {
+                    abilities.remove(entry.getKey());
+                }
+            }
+            return null;
+        }).ifPresent(error -> Loggers.AGENT.error(
+                "[unregisterRail] rail '{}' tool-card removal failed; continue", railName(rail), error));
+    }
+
+    private static String railName(AgentRail rail) {
+        return rail == null ? "null" : rail.getClass().getName();
     }
 
     public CompletionStage<Void> unregister_rail(AgentRail rail, Object agent) {
@@ -154,22 +225,44 @@ public class AgentCallbackManager {
         List<AgentRail> instanceRails = new ArrayList<>(instanceRailCallbacks.keySet());
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (AgentRail rail : rails) {
-            chain = chain.thenCompose(ignored -> unregisterRail(rail, agent).thenApply(v -> {
-                if (rail != null && agent instanceof BaseAgent baseAgent) {
-                    rail.uninit(baseAgent);
-                }
-                return v;
-            }));
+            // Per-rail isolation: rail cleanup (unregister + uninit) runs user
+            // code outside core control, so one broken rail must not abort the
+            // batch and leave the remaining rails pinned.
+            chain = chain.thenCompose(ignored -> unregisterRail(rail, agent)
+                    .thenAccept(v -> uninitQuietly(rail, agent))
+                    .exceptionally(error -> null));
         }
         for (AgentRail rail : instanceRails) {
-            chain = chain.thenCompose(ignored -> unregisterInstanceRail(rail, agent).thenApply(v -> {
-                if (rail != null && agent instanceof BaseAgent baseAgent) {
-                    rail.uninit(baseAgent);
-                }
-                return v;
-            }));
+            chain = chain.thenCompose(ignored -> unregisterInstanceRail(rail, agent)
+                    .thenAccept(v -> uninitQuietly(rail, agent))
+                    .exceptionally(error -> null));
         }
         return chain;
+    }
+
+    /**
+     * Runs the rail's uninit inline, capturing any failure it throws so one
+     * broken rail does not abort the batch; the failure is logged and the
+     * batch continues. Dispatches through the typed {@code uninit(BaseAgent)}
+     * overload whenever the host is a BaseAgent so rails that only override
+     * the typed hook (e.g. cleanup in {@code uninit(BaseAgent)}) still run.
+     *
+     * @param rail the rail to uninitialize, may be null
+     * @param agent the agent instance passed to the rail's uninit
+     */
+    private static void uninitQuietly(AgentRail rail, Object agent) {
+        IsolatedActions.runIsolated(() -> {
+            if (rail == null) {
+                return null;
+            }
+            if (agent instanceof BaseAgent baseAgent) {
+                rail.uninit(baseAgent);
+            } else {
+                rail.uninit(agent);
+            }
+            return null;
+        }).ifPresent(error -> Loggers.AGENT.error("[unregisterAllRails] rail '{}' uninit failed; continue",
+                rail != null ? rail.getClass().getName() : "null", error));
     }
 
     public CompletionStage<Void> unregisterInstanceRail(AgentRail rail, Object agent) {
@@ -185,7 +278,7 @@ public class AgentCallbackManager {
             chain = chain.thenCompose(ignored -> instanceCallbackFramework.unregister(getInstanceEvent(entry.getKey()),
                     entry.getValue()));
         }
-        return chain;
+        return chain.thenRun(() -> unregisterRailTools(rail, agent));
     }
 
     public CompletionStage<Void> unregister(AgentCallbackEvent event, AgentCallback callback) {
@@ -278,7 +371,7 @@ public class AgentCallbackManager {
     }
 
     private static final class ReflectionRunnerCallbackFramework implements CallbackFramework {
-        private final Map<AgentCallback, Function<Map<String, Object>, Object>> wrappers = new IdentityHashMap<>();
+        private final Map<AgentCallback, Function<Map<String, Object>, Object>> wrappers = new HashMap<>();
 
         @Override
         public CompletionStage<Void> register(String event, AgentCallback callback, int priority) {
@@ -292,6 +385,8 @@ public class AgentCallbackManager {
                     if (context != null) {
                         try {
                             callback.handle(context).toCompletableFuture().join();
+                        } catch (ToolInterruptException interruption) {
+                            throw new AbortError(interruption.getMessage(), interruption);
                         } catch (CompletionException exception) {
                             throw normalizeCallbackFailure(exception);
                         }
@@ -324,13 +419,18 @@ public class AgentCallbackManager {
 
         @Override
         public CompletionStage<Void> unregister(String event, AgentCallback callback) {
+            // Wrapper extraction stays outside the best-effort catch: a
+            // broken callback key (hashCode/equals throwing) must surface
+            // to the caller's per-callback isolation instead of being
+            // silently dropped with the callback left registered.
+            Function<Map<String, Object>, Object> wrapper = wrappers.remove(callback);
+            if (wrapper == null) {
+                return CompletableFuture.completedFuture(null);
+            }
             try {
-                Function<Map<String, Object>, Object> wrapper = wrappers.remove(callback);
-                if (wrapper != null) {
-                    runnerCallbackFramework().getClass()
-                            .getMethod("unregister", String.class, Function.class)
-                            .invoke(runnerCallbackFramework(), event, wrapper);
-                }
+                runnerCallbackFramework().getClass()
+                        .getMethod("unregister", String.class, Function.class)
+                        .invoke(runnerCallbackFramework(), event, wrapper);
             } catch (ReflectiveOperationException | RuntimeException ignored) {
                 // Match Python's best-effort unregistration surface when framework is absent.
             }
@@ -389,6 +489,9 @@ public class AgentCallbackManager {
 
         private static RuntimeException normalizeCallbackFailure(Throwable error) {
             Throwable normalized = unwrapCallbackFailure(error);
+            if (normalized instanceof ToolInterruptException interruption) {
+                return new AbortError(interruption.getMessage(), interruption);
+            }
             if (normalized instanceof AbortError abortError) {
                 throw abortError;
             }

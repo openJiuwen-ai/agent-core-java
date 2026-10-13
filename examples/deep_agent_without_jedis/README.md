@@ -40,6 +40,11 @@ mvn -f examples/deep_agent_without_jedis/pom.xml dependency:tree
 ```
 
 The Maven Enforcer rule fails the build if `redis.clients:jedis` is present.
+The build also runs regression tests on this excluded classpath: SPI discovery,
+default in-memory checkpoints, graph state save/recovery with in-memory and
+persistence checkpointers, and actionable errors for both Redis provider names.
+These tests need neither a model endpoint nor a Redis server.
+
 Run the real Agent after setting the model configuration:
 
 ```bash

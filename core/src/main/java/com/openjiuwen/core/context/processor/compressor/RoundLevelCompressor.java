@@ -627,7 +627,10 @@ public class RoundLevelCompressor extends ContextProcessor {
         try {
             response = getModel().invoke(
                     modelMessages,
-                    ModelInvokeOptions.builder().outputParser(new JsonOutputParser()).build())
+                    ModelInvokeOptions.builder()
+                            .outputParser(new JsonOutputParser())
+                            .extraFields(compressionCacheKwargs(context.sessionId()))
+                            .build())
                     .toCompletableFuture()
                     .join();
             recordCompressionUsage(response);

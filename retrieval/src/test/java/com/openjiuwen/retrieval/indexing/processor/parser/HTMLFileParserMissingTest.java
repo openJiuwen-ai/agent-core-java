@@ -11,7 +11,6 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -221,11 +220,6 @@ class HTMLFileParserMissingTest {
         assertThat(element).isNotNull();
         assertThat(element.tagName()).isEqualTo(expectedTag);
         assertThat(HTMLFileParser.textLength(element)).isGreaterThan(100);
-    }
-
-    @Test
-    @Disabled(PYTHON_FAILURE_REASON)
-    void titleTagWithNestedMarkupUsesStringReprDisabledWithPythonFailure() {
     }
 
     private static Stream<String> standardPassedNodes() {

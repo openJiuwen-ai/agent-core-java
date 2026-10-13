@@ -394,11 +394,26 @@ public class SessionModelContext implements ModelContext {
         }
 
         validateAndFixContextWindow(window);
-        if (kvCacheManager != null) {
+        if (kvCacheManager != null && !Boolean.TRUE.equals(effectiveKwargs.get("defer_finalization"))) {
             kvCacheManager.release(window, effectiveKwargs.get("model"));
         }
         window.setStatistic(statContextWindow(window));
         return CompletableFuture.completedFuture(window);
+    }
+
+    /**
+     * Recount the edited request and release KV cache against the selected model.
+     *
+     * @param window processed request after model rails
+     * @param model selected release model, or null when release is disabled
+     * @since 0.1.16
+     */
+    @Override
+    public void finalizeContextWindow(ContextWindow window, Object model) {
+        window.setStatistic(statContextWindow(window));
+        if (kvCacheManager != null && model != null) {
+            kvCacheManager.release(window, model);
+        }
     }
 
     @Override

@@ -69,6 +69,11 @@ public final class SseMcpClientProvider implements McpClientProvider {
         }
 
         @Override
+        public boolean reconnect(float timeout) throws Exception {
+            return sseClient.reconnect(timeout).join();
+        }
+
+        @Override
         public List<Object> listTools(float timeout) throws Exception {
             return sseClient.listTools(timeout).join();
         }

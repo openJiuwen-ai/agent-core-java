@@ -30,9 +30,9 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class CompiledGraphTest {
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @DisplayName("invoke commits user inputs and calls workflow checkpoint hooks")
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void testInvokeCommitsUserInputsAndRunsCheckpointHooks() {
         RecordingPregel pregel = new RecordingPregel(Map.of("result", 1), null);
         RecordingCheckpointer checkpointer = new RecordingCheckpointer(false);

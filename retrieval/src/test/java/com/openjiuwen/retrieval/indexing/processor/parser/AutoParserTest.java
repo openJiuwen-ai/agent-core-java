@@ -4,8 +4,11 @@
 
 package com.openjiuwen.retrieval.indexing.processor.parser;
 
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,8 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Predicate;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Focused tests for the top-level parser router.

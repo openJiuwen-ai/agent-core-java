@@ -265,7 +265,7 @@ public class MultimodalDocument extends Document {
         }
         String mime = Files.probeContentType(path);
         if (mime != null && mime.contains("/")) {
-            return mime;
+            return normalizeMimeType(mime);
         }
         if ("image".equals(kind) && name.endsWith(".png")) {
             return "image/png";
@@ -280,6 +280,25 @@ public class MultimodalDocument extends Document {
             return "video/mp4";
         }
         return null;
+    }
+
+    /**
+     * Map legacy / OS-specific MIME aliases to the canonical types used in data URIs.
+     *
+     * <p>Linux {@link Files#probeContentType(Path)} often reports {@code audio/x-wav} for
+     * {@code .wav} files while Python {@code mimetypes} and DashScope-style clients expect
+     * {@code audio/wav}.</p>
+     *
+     * @param mime probed or guessed MIME type
+     * @return normalized MIME type
+     */
+    private static String normalizeMimeType(String mime) {
+        return switch (mime) {
+            case "audio/x-wav", "audio/wave", "audio/x-pn-wav" -> "audio/wav";
+            case "image/x-png" -> "image/png";
+            case "image/pjpeg" -> "image/jpeg";
+            default -> mime;
+        };
     }
 
     private static List<Map<String, Object>> deepCopyList(List<Map<String, Object>> source) {

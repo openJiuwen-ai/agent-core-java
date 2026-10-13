@@ -159,9 +159,9 @@ class StreamOutputFullTest {
             assertDoesNotThrow(() -> emitter.close());
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("emit after close throws IllegalStateException")
+        @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
         void testEmitAfterClose() {
             emitter.close();
             assertThrows(IllegalStateException.class, () -> emitter.emit("data"));
@@ -278,9 +278,9 @@ class StreamOutputFullTest {
             assertTrue(queue.isClosed());
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("send to closed queue throws")
+        @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
         void testSendToClosedQueue() {
             AsyncStreamQueue queue = new AsyncStreamQueue();
             queue.close();
@@ -338,9 +338,9 @@ class StreamOutputFullTest {
             assertNull(schema.get("non_existent"));
         }
 
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
         @Test
         @DisplayName("OutputSchema fromMap with null throws")
+        @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
         void testOutputSchemaFromMapNull() {
             assertThrows(IllegalArgumentException.class, () -> OutputSchema.fromMap(null));
         }

@@ -9,7 +9,6 @@ import com.openjiuwen.core.retrieval.embedding.APIEmbedding;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.MultimodalDocument;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -178,7 +177,6 @@ class DashscopeEmbeddingTest {
         assertThrows(BaseError.class, () -> model.embedDocumentsSync(List.of(), null, Map.of()));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void apiEmbeddingRetriesHttpNon2xxBeforeFailing() throws Exception {
         HttpClient httpClient = mock(HttpClient.class);
@@ -201,7 +199,7 @@ class DashscopeEmbeddingTest {
 
         List<Double> embedding = model.embedQuerySync("test");
 
-        assertEquals(List.of(0.1f, 0.2f), embedding);
+        assertEquals(List.of(0.1d, 0.2d), embedding);
         verify(httpClient, times(2)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
     }
 

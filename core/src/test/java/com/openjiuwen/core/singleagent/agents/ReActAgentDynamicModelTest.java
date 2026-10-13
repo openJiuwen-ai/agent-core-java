@@ -6,10 +6,12 @@ package com.openjiuwen.core.singleagent.agents;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mockStatic;
 
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -21,6 +23,7 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.Tag;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
@@ -30,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -61,6 +65,7 @@ class ReActAgentDynamicModelTest {
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
     private static final String PREFIX = "dm-ut-e-" + UUID.randomUUID() + "-";
     private final List<String> registeredModelIds = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private String originalDefaultModelId;
 
     @BeforeAll
     static void ensureFactoryRegistered() {
@@ -82,19 +87,17 @@ class ReActAgentDynamicModelTest {
     @BeforeEach
     void setup() {
         registeredModelIds.clear();
+        originalDefaultModelId = Runner.resourceMgr().getDefaultModelId();
     }
 
     @AfterEach
     void cleanup() {
         for (String modelId : registeredModelIds) {
-            try {
-                if (Runner.resourceMgr().listModelIds().contains(modelId)) {
-                    Runner.resourceMgr().removeModelForce(modelId, true);
-                }
-            } catch (RuntimeException ignored) {
-                // Best effort cleanup
+            if (Runner.resourceMgr().listModelIds().contains(modelId)) {
+                Runner.resourceMgr().removeModelForce(modelId, true);
             }
         }
+        Runner.resourceMgr().setDefaultModelId(originalDefaultModelId);
     }
 
     private ModelClientConfig newClientConfig() {
@@ -243,19 +246,13 @@ class ReActAgentDynamicModelTest {
         @Test
         @DisplayName("UT-E-04: getLlm(ctx) with no registered models falls back to lazy load")
         void getLlmCtx_noMgrModelFallsBackLazy() {
-            // With null dynamicModelId, getLlm(ctx) should resolve via ModelMgr (default path).
-            // If no models registered, resolveModel throws IllegalStateException,
-            // proving the fallback path was attempted.
             ReActAgent agent = newAgent();
             AgentCallbackContext ctx = newCtx(null);
 
-            try {
-                Model resolved = agent.getLlm(ctx);
-                assertNotNull(resolved);
-            } catch (IllegalStateException e) {
-                // Expected when no models registered and no config 鈥?this proves
-                // the fallback to getLlm() was attempted
-                assertTrue(e.getMessage().contains("model_client_config") || e.getMessage().contains("no model"));
+            try (MockedStatic<Runner> runner = mockStatic(Runner.class)) {
+                runner.when(Runner::resourceMgr).thenReturn(new ResourceMgr());
+                IllegalStateException error = assertThrows(IllegalStateException.class, () -> agent.getLlm(ctx));
+                assertTrue(error.getMessage().contains("model_client_config"));
             }
         }
 

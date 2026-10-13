@@ -2,7 +2,7 @@ package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -113,8 +113,8 @@ class ReActAgentInterruptRegressionTest {
         assertEquals("answer", result.get("result_type"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void askUserInterruptResumesAndToolReceivesSession() {
         ReActAgent agent = newAgent("interrupt-regression-agent");
         Tool askUserTool = createAskUserTool();
@@ -146,8 +146,8 @@ class ReActAgentInterruptRegressionTest {
         assertTrue(finalOutput.contains("Alice"), "final answer should contain resumed user input");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void streamShouldYieldAssistantDeltaBeforeFinalAnswer() {
         ReActAgent agent = newAgent("streaming-regression-agent");
         Model model = Mockito.mock(Model.class);

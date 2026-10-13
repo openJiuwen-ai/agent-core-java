@@ -44,6 +44,7 @@ class CustomOperationExtensionMissingTest {
     void cleanup() throws Exception {
         Runner.resourceMgr.removeSysOperation(CARD_ID);
         Runner.stop().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        OperationRegistry.restoreAfterTest();
     }
 
     @Test

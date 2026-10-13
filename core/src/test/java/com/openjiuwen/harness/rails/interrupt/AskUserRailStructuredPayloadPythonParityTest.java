@@ -11,14 +11,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.harness.rails.CallbackContext;
+
+import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.TestFactory;
+import org.junit.jupiter.api.function.Executable;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.DynamicTest;
-import org.junit.jupiter.api.TestFactory;
-import org.junit.jupiter.api.function.Executable;
 
 /**
  * Mirrors Python's structured ask_user payload tests in
@@ -27,6 +30,7 @@ import org.junit.jupiter.api.function.Executable;
 class AskUserRailStructuredPayloadPythonParityTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final CallbackContext ABSENT_CONTEXT = null;
 
     @TestFactory
     Collection<DynamicTest> askUserStructuredPayloadPythonParity() {
@@ -64,7 +68,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void firstCallInterruptContainsQuestionsField() {
         InterruptResult decision = assertInstanceOf(InterruptResult.class,
-                rail().resolveInterrupt(null, toolCall(singleQuestionArgs()), null));
+                rail().resolveInterrupt(ABSENT_CONTEXT, toolCall(singleQuestionArgs()), null));
         AskUserRail.AskUserRequest request = request(decision);
 
         assertNotNull(request.getQuestions());
@@ -78,7 +82,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void resumeWithAnswerStringReturnsFormattedResult() {
         RejectResult decision = reject(rail().resolveInterrupt(
-                null,
+                ABSENT_CONTEXT,
                 toolCall(singleQuestionArgs()),
                 Map.of("answers", Map.of("Which feature should be enabled?", "Dark Mode"))
         ));
@@ -89,7 +93,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void resumeWithAskUserPayloadReturnsFormattedResult() {
         RejectResult decision = reject(rail().resolveInterrupt(
-                null,
+                ABSENT_CONTEXT,
                 toolCall(singleQuestionArgs()),
                 new AskUserRail.AskUserPayload(Map.of("Which feature should be enabled?", "Auto Save"))
         ));
@@ -99,7 +103,8 @@ class AskUserRailStructuredPayloadPythonParityTest {
     }
 
     private void resumeWithStringForMultiQuestionOnlyAnswersFirst() {
-        RejectResult decision = reject(rail().resolveInterrupt(null, toolCall(multiQuestionArgs()), "React"));
+        RejectResult decision = reject(rail().resolveInterrupt(
+                ABSENT_CONTEXT, toolCall(multiQuestionArgs()), "React"));
 
         assertContains(decision.toolResult(), "User has answered your questions:");
         assertContains(decision.toolResult(), "\"Which framework?\"=\"React\"");
@@ -108,7 +113,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void resumeWithStructuredAnswersReturnsFormattedResult() {
         RejectResult decision = reject(rail().resolveInterrupt(
-                null,
+                ABSENT_CONTEXT,
                 toolCall(multiQuestionArgs()),
                 Map.of("answers", Map.of(
                         "Which framework?", "React",
@@ -121,7 +126,8 @@ class AskUserRailStructuredPayloadPythonParityTest {
     }
 
     private void resumeWithStringDirectlyReturnsFormattedResult() {
-        RejectResult decision = reject(rail().resolveInterrupt(null, toolCall(singleQuestionArgs()), "Dark Mode"));
+        RejectResult decision = reject(rail().resolveInterrupt(
+                ABSENT_CONTEXT, toolCall(singleQuestionArgs()), "Dark Mode"));
 
         assertContains(decision.toolResult(), "User has answered your questions:");
         assertContains(decision.toolResult(), "\"Which feature should be enabled?\"=\"Dark Mode\"");
@@ -129,7 +135,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void multiQuestionInterruptContainsAllQuestions() {
         InterruptResult decision = assertInstanceOf(InterruptResult.class,
-                rail().resolveInterrupt(null, toolCall(multiQuestionArgs()), null));
+                rail().resolveInterrupt(ABSENT_CONTEXT, toolCall(multiQuestionArgs()), null));
 
         List<Map<String, Object>> questions = request(decision).getQuestions();
         assertEquals(2, questions.size());
@@ -139,7 +145,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void invalidUserInputReturnsInterrupt() {
         InterruptDecision decision = rail().resolveInterrupt(
-                null,
+                ABSENT_CONTEXT,
                 toolCall(singleQuestionArgs()),
                 Map.of("invalid_field", "value")
         );
@@ -149,7 +155,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void emptyQuestionsReturnsInterrupt() {
         InterruptResult decision = assertInstanceOf(InterruptResult.class,
-                rail().resolveInterrupt(null, toolCall(Map.of("questions", List.of())), null));
+                rail().resolveInterrupt(ABSENT_CONTEXT, toolCall(Map.of("questions", List.of())), null));
 
         assertEquals(List.of(), request(decision).getQuestions());
         assertEquals("", request(decision).getMessage());
@@ -157,7 +163,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void noToolCallReturnsInterrupt() {
         InterruptResult decision = assertInstanceOf(InterruptResult.class,
-                rail().resolveInterrupt(null, null, null));
+                rail().resolveInterrupt(ABSENT_CONTEXT, null, null));
 
         assertEquals(List.of(), request(decision).getQuestions());
         assertEquals("", request(decision).getMessage());
@@ -166,7 +172,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
     @SuppressWarnings("unchecked")
     private void previewFieldPassedThroughInQuestions() {
         InterruptResult decision = assertInstanceOf(InterruptResult.class,
-                rail().resolveInterrupt(null, toolCall(singleQuestionWithPreviewArgs()), null));
+                rail().resolveInterrupt(ABSENT_CONTEXT, toolCall(singleQuestionWithPreviewArgs()), null));
 
         List<Map<String, Object>> questions = request(decision).getQuestions();
         assertEquals(1, questions.size());
@@ -180,7 +186,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
     private void noQuestionsReturnsSimpleAnswer() {
         RejectResult decision = reject(rail().resolveInterrupt(
-                null,
+                ABSENT_CONTEXT,
                 toolCall(Map.of("questions", List.of())),
                 Map.of("answers", Map.of("", "simple answer"))
         ));

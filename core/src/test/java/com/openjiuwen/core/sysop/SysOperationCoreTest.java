@@ -38,9 +38,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SysOperationCoreTest {
 
     @BeforeEach
-    @AfterEach
-    void cleanRegistry() {
+    void isolateRegistry() {
         OperationRegistry.clearForTest();
+    }
+
+    @AfterEach
+    void restoreRegistry() {
+        OperationRegistry.restoreAfterTest();
     }
 
     @Test

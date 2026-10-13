@@ -4,7 +4,7 @@
 
 package examples.deepagent;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -17,9 +17,13 @@ import java.util.Map;
 
 final class DeepAgentWithoutJedisConfigLoader {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final JavaType CONFIG_TYPE = MAPPER.getTypeFactory()
+            .constructMapType(Map.class, String.class, String.class);
+    private static final Object CACHE_LOCK = new Object();
     private static volatile Map<String, String> cache;
 
     private DeepAgentWithoutJedisConfigLoader() {
+        // Static configuration access only.
     }
 
     static String apiBase() {
@@ -59,7 +63,7 @@ final class DeepAgentWithoutJedisConfigLoader {
         if (current != null) {
             return current;
         }
-        synchronized (DeepAgentWithoutJedisConfigLoader.class) {
+        synchronized (CACHE_LOCK) {
             if (cache == null) {
                 cache = loadFromCandidates();
             }
@@ -77,8 +81,7 @@ final class DeepAgentWithoutJedisConfigLoader {
         try (InputStream input = DeepAgentWithoutJedisConfigLoader.class.getClassLoader()
                 .getResourceAsStream("apiconfig.json")) {
             if (input != null) {
-                return MAPPER.readValue(input, new TypeReference<Map<String, String>>() {
-                });
+                return MAPPER.readValue(input, CONFIG_TYPE);
             }
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to read model configuration", exception);
@@ -104,8 +107,7 @@ final class DeepAgentWithoutJedisConfigLoader {
 
     private static Map<String, String> read(Path path) {
         try (InputStream input = Files.newInputStream(path)) {
-            return MAPPER.readValue(input, new TypeReference<Map<String, String>>() {
-            });
+            return MAPPER.readValue(input, CONFIG_TYPE);
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to read model configuration: " + path, exception);
         }

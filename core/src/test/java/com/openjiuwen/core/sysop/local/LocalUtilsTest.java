@@ -5,7 +5,6 @@
 package com.openjiuwen.core.sysop.local;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,11 +54,12 @@ class LocalUtilsTest {
         assertThat(result.getException()).isNull();
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void invokeTimeoutReturnsPartialBuffersAndTimeoutException() throws Exception {
-        Process process = startScript("Write-Output 'before'; Start-Sleep -Milliseconds 1500; Write-Output 'after'");
-        InvokeData result = OperationUtils.createHandler(process, "utf-8", 1).invoke().get(10, TimeUnit.SECONDS);
+        // Block forever after "before" so a killed sleep child cannot advance to "after".
+        Process process = startScript(
+                "Write-Output 'before'; while ($true) { Start-Sleep -Seconds 30 }; Write-Output 'after'");
+        InvokeData result = OperationUtils.createHandler(process, "utf-8", 1).invoke().get(15, TimeUnit.SECONDS);
 
         assertThat(result.getStdout()).contains("before");
         assertThat(result.getStdout()).doesNotContain("after");
@@ -102,7 +102,7 @@ class LocalUtilsTest {
 
     private static String toBashScript(String powerShellScript) {
         if (powerShellScript.contains("Start-Sleep")) {
-            return "printf 'before\\n'; sleep 1.5; printf 'after\\n'";
+            return "printf 'before\\n'; while true; do sleep 30; done; printf 'after\\n'";
         }
         if (powerShellScript.contains("warn")) {
             return "printf 'hello\\n'; printf 'warn\\n' 1>&2; exit "

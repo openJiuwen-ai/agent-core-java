@@ -6,7 +6,6 @@ package com.openjiuwen.core.session.checkpointer;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -224,12 +223,11 @@ class CheckpointerFactorySpiTest {
         assertInstanceOf(InMemoryCheckpointer.class, cp);
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
-    @DisplayName("create(CheckpointerConfig) with null throws IllegalArgumentException")
-    void createWithNullConfigThrows() {
-        assertThrows(IllegalArgumentException.class,
-                () -> CheckpointerFactory.create((CheckpointerConfig) null));
+    @DisplayName("create(CheckpointerConfig) with null uses empty CheckpointerConfig defaults")
+    void createWithNullConfigDefaultsToEmptyConfig() {
+        Checkpointer checkpointer = CheckpointerFactory.create((CheckpointerConfig) null);
+        assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
     }
 
     @Test

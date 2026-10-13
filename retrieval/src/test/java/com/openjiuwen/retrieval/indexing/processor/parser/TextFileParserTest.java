@@ -12,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.openjiuwen.core.retrieval.common.Document;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -38,11 +37,12 @@ class TextFileParserTest {
         assertEquals("Hello World", docs.get(0).getText());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void parseMissingFileThrows() {
         TextFileParser parser = new TextFileParser();
-        assertThrows(Exception.class, () -> parser.parse("/nonexistent/file.txt", "doc-1", null, Map.of()));
+        // parse() returns a FutureList; the failure surfaces on join/size, not on construction.
+        assertThrows(Exception.class,
+                () -> parser.parse("/nonexistent/file.txt", "doc-1", null, Map.of()).join());
     }
 
     @Test

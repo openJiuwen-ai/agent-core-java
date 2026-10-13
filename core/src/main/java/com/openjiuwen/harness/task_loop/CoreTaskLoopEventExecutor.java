@@ -287,6 +287,21 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
         copyIfPresent(metadata, effective, "model_id");
         copyIfPresent(metadata, effective, "target_model_id");
         copyIfPresent(metadata, effective, "dynamic_model_id");
+        // Forward top-level invoke extras (e.g. model_id, llm_id) to ReActAgent's ctx.getExtra()
+        Object extrasObj = metadata.get("_invoke_extras");
+        if (extrasObj instanceof Map<?, ?> extras) {
+            for (Map.Entry<?, ?> entry : extras.entrySet()) {
+                Object keyObj = entry.getKey();
+                if (!(keyObj instanceof String)) {
+                    continue;
+                }
+                String key = (String) keyObj;
+                if (!"query".equals(key) && !"conversation_id".equals(key)
+                        && !effective.containsKey(key) && entry.getValue() != null) {
+                    effective.put(key, entry.getValue());
+                }
+            }
+        }
         LoopQueues queues = null;
         if (metadata.get("loop_queues") instanceof LoopQueues typed) {
             queues = typed;

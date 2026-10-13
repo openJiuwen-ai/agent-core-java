@@ -15,7 +15,7 @@ import com.openjiuwen.core.common.eventbus.events.ModelChangeEvent;
 import com.openjiuwen.core.common.eventbus.events.ModelRemovedEvent;
 import com.openjiuwen.core.common.eventbus.events.ModelUpdatedEvent;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;

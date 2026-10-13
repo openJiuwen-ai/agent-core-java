@@ -93,8 +93,8 @@ class LongTermMemoryTest {
         LongTermMemory.resetInstance();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void setScopeConfigPersistsAndDecryptsConfiguration() {
         LongTermMemory memory = registeredMemory();
         memory.setConfig(MemoryEngineConfig.builder().cryptoKey(TEST_KEY).build());
@@ -257,8 +257,8 @@ class LongTermMemoryTest {
         assertTrue(seconds < 60, "timestamp should follow system default timezone");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void searchUserMemSearchesOnlyThreeFragmentTypesAndKeepsResultTypes() throws Exception {
         LongTermMemory memory = registeredMemory();
         memory.setConfig(MemoryEngineConfig.builder().cryptoKey(TEST_KEY).build());

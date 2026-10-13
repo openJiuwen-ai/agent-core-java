@@ -275,7 +275,7 @@ class NewReActAgentMockTest {
                 .content("")
                 .toolCalls(List.of(toolCall("call-1", "add", "{\"a\":1,\"b\":2}")))
                 .build());
-        agent.configure(new ReActAgentConfig().configureMaxIterations(1));
+        agent.configure(new ReActAgentConfig().configureMaxIterations(1).configureFailTaskOnToolError(false));
         agent.getAbilityManager().add(addToolCard());
 
         Map<String, Object> result = invokeMap(agent, Map.of("conversation_id", "test_session", "query", "math"));
@@ -738,7 +738,7 @@ class NewReActAgentMockTest {
     private static ScriptedReActAgent scriptedAgent(Object... responses) {
         ScriptedReActAgent agent = new ScriptedReActAgent(agentCard("test_agent", "test_agent", "Test agent"),
                 List.of(responses));
-        agent.configure(new ReActAgentConfig().configureMaxIterations(5));
+        agent.configure(new ReActAgentConfig().configureMaxIterations(5).configureFailTaskOnToolError(false));
         return agent;
     }
 

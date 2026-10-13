@@ -34,8 +34,8 @@ class CheckpointerFactoryTest {
         CheckpointerFactory.releaseDefaultCheckpointer();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void returnsDefaultInMemoryCheckpointer() {
         Checkpointer checkpointer = CheckpointerFactory.getCheckpointer();
 
@@ -43,8 +43,8 @@ class CheckpointerFactoryTest {
         assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), CheckpointerFactory.getCheckpointer("in_memory"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void doesNotExposeRawDefaultCheckpointerSetter() {
         boolean exposesSetter = Arrays.stream(CheckpointerFactory.class.getDeclaredMethods())
                 .anyMatch(method -> method.getName().equals("setDefaultCheckpointer"));

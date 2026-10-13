@@ -4,14 +4,17 @@
 
 package com.openjiuwen.harness.rails.interrupt;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import java.util.List;
-import java.util.Map;
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.harness.rails.CallbackContext;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * <p>Mirrors Python's {@code test_hitl_ask_user_rail} in
@@ -20,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 class DeepAgentAskUserRailMissingTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final CallbackContext ABSENT_CONTEXT = null;
 
     @Test
     void testHitlAskUserRail() throws Exception {
@@ -27,7 +31,7 @@ class DeepAgentAskUserRailMissingTest {
         ToolCall toolCall = askUserToolCall();
 
         InterruptResult firstResult = assertInstanceOf(InterruptResult.class,
-                rail.resolveInterrupt(null, toolCall, null));
+                rail.resolveInterrupt(ABSENT_CONTEXT, toolCall, null));
         AskUserRail.AskUserRequest request = assertInstanceOf(
                 AskUserRail.AskUserRequest.class,
                 firstResult.request());
@@ -41,7 +45,7 @@ class DeepAgentAskUserRailMissingTest {
 
         RejectResult resumed = assertInstanceOf(RejectResult.class,
                 rail.resolveInterrupt(
-                        null,
+                        ABSENT_CONTEXT,
                         toolCall,
                         Map.of("answers", Map.of("What is the filename?", "user_answer.txt"))));
 

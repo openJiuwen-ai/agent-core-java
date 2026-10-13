@@ -22,7 +22,6 @@ class HarnessUtilityToolsCompatibilityTest {
     @TempDir
     Path tempDir;
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void filesystemToolShouldWriteReadListAndSearch() throws Exception {
         FilesystemTool tool = new FilesystemTool(tempDir.toString());
@@ -34,12 +33,18 @@ class HarnessUtilityToolsCompatibilityTest {
 
         assertThat(written.isSuccess()).isTrue();
         assertThat(read.getData()).isEqualTo("hello memory");
-        assertThat(listed.getData()).isEqualTo(List.of("notes/a.txt"));
-        assertThat(searched.getData()).isEqualTo(List.of("notes/a.txt"));
+        assertThat(normalizePaths(listed.getData())).containsExactly("notes/a.txt");
+        assertThat(normalizePaths(searched.getData())).containsExactly("notes/a.txt");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
+    private static List<String> normalizePaths(Object data) {
+        @SuppressWarnings("unchecked")
+        List<String> paths = (List<String>) data;
+        return paths.stream().map(path -> path.replace('\\', '/')).toList();
+    }
+
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void memoryToolsShouldWriteReadEditAndSearch() throws Exception {
         Workspace workspace = new Workspace(tempDir.resolve("memory"));
         MemoryToolContext ctx = new MemoryToolContext();

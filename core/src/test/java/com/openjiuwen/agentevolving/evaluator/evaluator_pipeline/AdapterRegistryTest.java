@@ -40,8 +40,8 @@ class AdapterRegistryTest {
         assertEquals("glm-5", adapter.getConfig().get("model_name"));
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("NoClassDefFoundError for optional dependency; cannot assert IllegalArgumentException")
     void createUnknownAgentReportsAvailableNames() {
         AdapterRegistry.registerAgent("known", FakeAgentAdapter.class);
 

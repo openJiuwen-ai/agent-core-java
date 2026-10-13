@@ -5,7 +5,6 @@
 package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.harness.tools.FilesystemTools.GrepTool;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -163,36 +162,6 @@ class GrepSelectStringTest {
         assertFalse(output.isSuccess());
         assertTrue(output.getError().toLowerCase().contains("rg")
                 || output.getError().toLowerCase().contains("multiline"));
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: requires Windows with no rg in PATH")
-    void ssContentModeBasic() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: requires Windows with no rg in PATH")
-    void ssFilesWithMatchesMode() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: requires Windows with no rg in PATH")
-    void ssCountMode() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: requires Windows with no rg in PATH")
-    void ssGlobFilter() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: requires Windows with no rg in PATH")
-    void ssExcludesVcsDirectory() {
-    }
-
-    @Test
-    @Disabled("Skipped in Python source: requires Windows with no rg in PATH")
-    void ssCaseInsensitive() {
     }
 
     private String build(Path path) {

@@ -13,7 +13,6 @@ class HarnessBashToolCompatibilityTest {
     @TempDir
     Path tempDir;
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void bashToolShouldExecuteCommandAndInterpretGrepExit() {
         BashTool tool = new BashTool();
@@ -42,8 +41,8 @@ class HarnessBashToolCompatibilityTest {
         assertThat(blockedWrite.getError()).contains("Read-only");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Still failing after re-enable; kept disabled pending targeted fix")
     void bashToolShouldSupportWorkdirBackgroundAndWarnings() {
         BashTool tool = new BashTool();
 

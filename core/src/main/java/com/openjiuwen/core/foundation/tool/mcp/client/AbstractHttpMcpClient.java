@@ -6,6 +6,8 @@ package com.openjiuwen.core.foundation.tool.mcp.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
@@ -22,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.StringJoiner;
@@ -31,13 +34,18 @@ import java.util.concurrent.atomic.AtomicLong;
  * Base class for HTTP-based MCP transports.
  */
 abstract class AbstractHttpMcpClient implements McpClient {
+    private static final LoggerProtocol LOG = Loggers.MCP;
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final long DEFAULT_CONNECT_TIMEOUT_SECONDS = 10L;
+
+    /** Fallback request timeout in seconds for non-positive timeout arguments. */
+    private static final float DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0f;
 
     protected final McpServerConfig config;
     protected final HttpClient httpClient;
     protected final AtomicLong requestCounter = new AtomicLong();
     protected volatile boolean connected;
+    private final Object reconnectLock = new Object();
 
     protected AbstractHttpMcpClient(McpServerConfig config) {
         this.config = config;
@@ -74,7 +82,7 @@ abstract class AbstractHttpMcpClient implements McpClient {
         int maxAttempts = Math.max(0, retryTimes);
         for (int i = 0; i <= maxAttempts; i++) {
             try {
-                handshake(timeout);
+                handshake(resolveDiscoveryTimeout(timeout));
                 this.connected = true;
                 return true;
             } catch (InterruptedException e) {
@@ -108,8 +116,20 @@ abstract class AbstractHttpMcpClient implements McpClient {
     }
 
     @Override
+    public boolean reconnect(float timeout) throws Exception {
+        synchronized (reconnectLock) {
+            disconnect(timeout);
+            return connect(1, timeout);
+        }
+    }
+
+    @Override
     public List<Object> listTools(float timeout) throws Exception {
-        Map<String, Object> result = callRpc("tools/list", Map.of(), timeout);
+        return executeWithReconnect(timeout, () -> doListTools(timeout));
+    }
+
+    private List<Object> doListTools(float timeout) throws IOException, InterruptedException {
+        Map<String, Object> result = callRpc("tools/list", Map.of(), resolveDiscoveryTimeout(timeout));
         List<Object> tools = new ArrayList<>();
         for (Map<String, Object> item : asListOfMaps(result.get("tools"))) {
             tools.add(toToolCard(item));
@@ -119,22 +139,83 @@ abstract class AbstractHttpMcpClient implements McpClient {
 
     @Override
     public List<Object> listResources(float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doListResources(timeout));
+    }
+
+    private List<Object> doListResources(float timeout) throws IOException, InterruptedException {
         Map<String, Object> result = callRpc("resources/list", Map.of(), timeout);
         return new ArrayList<>(asListOfMaps(result.get("resources")));
     }
 
     @Override
     public List<Object> readResource(String uri, float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doReadResource(uri, timeout));
+    }
+
+    private List<Object> doReadResource(String uri, float timeout) throws IOException, InterruptedException {
         Map<String, Object> result = callRpc("resources/read", Map.of("uri", uri), timeout);
         return new ArrayList<>(asListOfMaps(result.get("contents")));
     }
 
     @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
+        return executeWithReconnect(timeout, () -> doCallTool(toolName, arguments, timeout));
+    }
+
+    private Object doCallTool(String toolName, Map<String, Object> arguments, float timeout)
+            throws IOException, InterruptedException {
         Map<String, Object> result = callRpc("tools/call",
                 Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), timeout);
         Object flattened = flattenToolTextContent(result.get("content"));
-        return flattened != null ? flattened : result;
+        if (flattened != null) {
+            return flattened;
+        }
+        return result;
+    }
+
+    private <T> T executeWithReconnect(float timeout, McpOperation<T> operation) throws Exception {
+        try {
+            return operation.execute();
+        } catch (IOException transportError) {
+            return retryAfterReconnect(timeout, operation, transportError);
+        } catch (IllegalStateException stateError) {
+            if (!isRetryableStateError(stateError)) {
+                throw stateError;
+            }
+            return retryAfterReconnect(timeout, operation, stateError);
+        }
+    }
+
+    private <T> T retryAfterReconnect(float timeout, McpOperation<T> operation, Exception firstError)
+            throws Exception {
+        LOG.warning("MCP transport error, reconnecting once: server={}, error={}", config.getServerPath(),
+                firstError.toString());
+        if (!reconnect(timeout)) {
+            throw firstError;
+        }
+        return operation.execute();
+    }
+
+    private static boolean isRetryableStateError(IllegalStateException error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("not connected") || lower.contains("connection reset")
+                || lower.contains("broken pipe") || lower.contains("connection closed");
+    }
+
+    @FunctionalInterface
+    private interface McpOperation<T extends Object> {
+        /**
+         * Runs one MCP client operation over the current HTTP transport.
+         *
+         * @return operation result
+         * @throws IOException when the transport fails
+         * @throws InterruptedException when the call is interrupted
+         */
+        T execute() throws IOException, InterruptedException;
     }
 
     private static Object flattenToolTextContent(Object content) {
@@ -228,14 +309,29 @@ abstract class AbstractHttpMcpClient implements McpClient {
         postJsonRpc(requestBody, timeout);
     }
 
+    /**
+     * POSTs a JSON-RPC body to the configured server path and parses the JSON response map.
+     * <p>
+     * Empty response bodies are treated as an empty map (typical for notifications).
+     *
+     * @param requestBody JSON-RPC request or notification payload
+     * @param timeout request timeout in seconds; a positive value bounds the request, any
+     *        non-positive value (including {@link McpServerConfig#NO_TIMEOUT}) disables the
+     *        request timeout — baseline semantics. Discovery-family callers resolve a
+     *        bounded value through {@link #resolveDiscoveryTimeout(float)} before dispatch
+     *        (the sentinel is never passed through to discovery RPCs).
+     * @return parsed response body as a map, or empty map when the body is blank
+     * @throws IOException when serialization, HTTP I/O, or JSON parse fails
+     * @throws InterruptedException when the HTTP call is interrupted
+     * @since 0.1.14
+     */
     private Map<String, Object> postJsonRpc(Map<String, Object> requestBody, float timeout)
             throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(withAuthQuery(config.getServerPath())))
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers
                         .ofString(MAPPER.writeValueAsString(requestBody), StandardCharsets.UTF_8));
-        if (Float.compare(timeout, McpServerConfig.NO_TIMEOUT) != 0 && timeout > 0) {
-            long timeoutMillis = BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(1000L)).longValue();
-            builder.timeout(Duration.ofMillis(timeoutMillis));
+        if (timeout > 0f) {
+            builder.timeout(Duration.ofMillis(secondsToMillis(timeout)));
         }
         for (Map.Entry<String, String> entry : config.getAuthHeaders().entrySet()) {
             builder.header(entry.getKey(), entry.getValue());
@@ -251,6 +347,31 @@ abstract class AbstractHttpMcpClient implements McpClient {
         });
     }
 
+    /**
+     * Resolves the bounded timeout for discovery-family RPCs (initialize,
+     * notifications/initialized, tools/list): a positive timeout is used
+     * as-is; any non-positive value (including the
+     * {@link McpServerConfig#NO_TIMEOUT} sentinel) falls back to the 30s
+     * client default (bounded discovery and the connect-side guard).
+     * resources/list and the execution-family
+     * RPCs (tools/call, resources/read) keep the baseline sentinel
+     * semantics and never pass through this resolver.
+     *
+     * @param timeout caller-supplied timeout in seconds
+     * @return the bounded timeout in seconds, always positive
+     * @since 0.1.16
+     */
+    private static float resolveDiscoveryTimeout(float timeout) {
+        return timeout > 0f ? timeout : DEFAULT_REQUEST_TIMEOUT_SECONDS;
+    }
+
+    /**
+     * toToolCard.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     protected McpToolCard toToolCard(Map<String, Object> item) {
         Map<String, Object> inputSchema = asMap(item.get("inputSchema"));
         if (inputSchema == null) {
@@ -305,5 +426,16 @@ abstract class AbstractHttpMcpClient implements McpClient {
             result.put(String.valueOf(entry.getKey()), entry.getValue());
         }
         return result;
+    }
+
+    /**
+     * Converts a timeout in seconds to milliseconds with exact decimal
+     * arithmetic, so fractional second values do not lose precision.
+     *
+     * @param seconds timeout value in seconds
+     * @return the same timeout value in milliseconds
+     */
+    private static long secondsToMillis(float seconds) {
+        return BigDecimal.valueOf(seconds).multiply(BigDecimal.valueOf(1000L)).longValue();
     }
 }

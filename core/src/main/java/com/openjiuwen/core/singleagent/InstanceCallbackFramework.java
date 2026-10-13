@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.runner.callback.AbortError;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 
@@ -117,7 +118,7 @@ final class InstanceCallbackFramework implements AgentCallbackManager.CallbackFr
     }
 
     private static boolean shouldPropagate(Throwable error) {
-        return error instanceof AbortError || error instanceof Error;
+        return error instanceof AbortError || error instanceof ToolInterruptException || error instanceof Error;
     }
 
     private static Throwable unwrap(Throwable error) {

@@ -12,6 +12,7 @@ import com.openjiuwen.core.sysop.OperationRegistry;
 import com.openjiuwen.core.sysop.local.LocalCodeOperation;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -35,6 +36,11 @@ class OperationRegistryTest {
     void testGetOperationInfoNotFound() {
         OperationDef def = OperationRegistry.getOperationInfo("non_existent", OperationMode.LOCAL);
         assertNull(def);
+    }
+
+    @AfterEach
+    void restoreRegistry() {
+        OperationRegistry.restoreAfterTest();
     }
 
     @Test

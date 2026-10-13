@@ -8,6 +8,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.kvcache.KVCacheSubagentLifecycle;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -49,12 +50,53 @@ public class TaskTool extends AbstractHarnessTool {
     }
 
     public static String buildSubSessionId(String parentSessionId, String subagentType) {
+        return buildSubSessionId(parentSessionId, subagentType,
+                KVCacheSubagentLifecycle.DEFAULT_STABLE_SUB_SESSION_TYPES);
+    }
+
+    /**
+     * Build the sub-session id, honoring the configured stable sub-session
+     * types: a type listed there reuses {@code parentSessionId + "_sub_" +
+     * type} across calls so its cache identity stays stable, while every
+     * other type gets a UUID suffix.
+     *
+     * @param parentSessionId parent product session id
+     * @param subagentType requested subagent type
+     * @param stableSubSessionTypes types configured for stable sub-session ids
+     * @return sub-session id
+     * @since 0.1.17
+     */
+    public static String buildSubSessionId(String parentSessionId, String subagentType,
+            java.util.Collection<String> stableSubSessionTypes) {
         String normalizedType = stringValue(subagentType).trim();
-        if ("browser_agent".equals(normalizedType) || "verification_agent".equals(normalizedType)) {
+        boolean isStableType = stableSubSessionTypes != null && stableSubSessionTypes.stream()
+                .anyMatch(type -> type != null && type.strip().equals(normalizedType));
+        if (isStableType) {
             return parentSessionId + "_sub_" + normalizedType;
         }
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         return parentSessionId + "_sub_" + normalizedType + "_" + suffix;
+    }
+
+    /**
+     * Build the provider-facing sub-session id with a parent scope digest.
+     *
+     * <p>Mirrors Python's {@code scope_sub_session_id} in
+     * {@code kv_cache_subagent_lifecycle.py}: when the parent cache id differs
+     * from the runtime parent session id (Team branch), append a short digest
+     * so same-named children of different branches cannot collide on one
+     * cache key.</p>
+     *
+     * @param subSessionId runtime sub-session id
+     * @param runtimeParentSessionId runtime parent session id
+     * @param parentCacheId provider-facing parent cache id
+     * @return scoped sub-session id
+     * @since 0.1.16
+     */
+    public static String scopeSubSessionId(String subSessionId, String runtimeParentSessionId,
+            String parentCacheId) {
+        return KVCacheSubagentLifecycle.scopeSubSessionId(
+                subSessionId, runtimeParentSessionId, parentCacheId);
     }
 
     public static List<Tool> createTaskTool(DeepAgent parentAgent, String availableAgents, String language) {
@@ -79,24 +121,51 @@ public class TaskTool extends AbstractHarnessTool {
             throw new IllegalArgumentException("TaskTool requires a valid session in kwargs");
         }
         String subagentType = requiredString(inputs, "subagent_type");
+        boolean isAffinityEnabled = KVCacheSubagentLifecycle
+                .affinityEnabled(parentAgent);
+        java.util.Collection<String> stableTypes =
+                KVCacheSubagentLifecycle.stableSubSessionTypes(parentAgent);
+        String subSessionId = buildSubSessionId(parentSession.getSessionId(), subagentType, stableTypes);
+        if (isAffinityEnabled) {
+            // Mirrors task_tool.py: scope the child id by the parent's cache
+            // identity so same-named children of different Team branches do
+            // not collide on one cache key.
+            subSessionId = KVCacheSubagentLifecycle.scopeSubSessionId(
+                    subSessionId,
+                    parentSession.getSessionId(),
+                    KVCacheSubagentLifecycle
+                            .resolveSubagentParentCacheId(parentSession));
+        }
         String taskDescription = requiredString(inputs, "task_description");
-        String subSessionId = buildSubSessionId(parentSession.getSessionId(), subagentType);
+        return spawnSubagent(parentSession, subagentType, subSessionId, taskDescription);
+    }
 
+    private Object spawnSubagent(AgentSessionApi parentSession, String subagentType, String subSessionId,
+            String taskDescription) {
         DeepAgent subagent;
         try {
             subagent = parentAgent.createSubagent(subagentType, subSessionId);
-        } catch (Exception exception) {
+        } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new IllegalStateException(
                     "Subagent " + subagentType + " creation failed: " + exception.getMessage(),
                     exception
             );
         }
 
+        // KVC lineage inheritance (mirrors Python subagent_runtime/session_manager):
+        // the child shares the parent's runtime and points at the parent's
+        // provider-facing cache id; verification_agent is sticky (prepare on
+        // entry, suspend on success), every other type is evicted on finish.
+        AgentSessionApi subSession = buildSubSession(parentSession, subSessionId);
+        KVCacheSubagentLifecycle.prepareSubagent(
+                parentAgent, subSession, subagentType).join();
+        boolean isSucceeded = false;
         try {
             Map<String, Object> result = subagent.invoke(linkedMap(
                     "query", taskDescription,
                     "conversation_id", subSessionId
-            ));
+            ), subSession);
+            isSucceeded = true;
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("output", stringValue(result == null ? null : result.getOrDefault("output", "")));
             data.put("agent_id", subagent.getCard().getId());
@@ -107,12 +176,37 @@ public class TaskTool extends AbstractHarnessTool {
                     "Subagent " + subagentType + " execution failed: " + cause.getMessage(),
                     cause
             );
-        } catch (Exception exception) {
+        } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new IllegalStateException(
                     "Subagent " + subagentType + " execution failed: " + exception.getMessage(),
                     exception
             );
+        } finally {
+            KVCacheSubagentLifecycle.finishSubagent(
+                    parentAgent, subSession, subagentType, isSucceeded).join();
         }
+    }
+
+    /**
+     * Build the child session for one TaskTool call with KVC inheritance.
+     *
+     * @param parentSession parent product session
+     * @param subSessionId runtime sub-session id
+     * @return child session (never {@code null}); without affinity it is a
+     *         plain self-keyed session
+     */
+    private static AgentSessionApi buildSubSession(AgentSessionApi parentSession, String subSessionId) {
+        java.util.Optional<com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.ChildSessionKwargs> inheritance =
+                com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.buildChildSessionKwargs(parentSession);
+        if (inheritance.isEmpty()) {
+            return parentSession;
+        }
+        return KVCacheSubagentLifecycle.createSubagentSession(
+                parentSession,
+                subSessionId,
+                inheritance.get().parentSessionId(),
+                null
+        );
     }
 
     private Object invokeLegacyRunner(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {

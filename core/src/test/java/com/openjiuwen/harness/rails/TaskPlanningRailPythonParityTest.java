@@ -107,7 +107,8 @@ class TaskPlanningRailPythonParityTest {
         Workspace workspace = assertInstanceOf(Workspace.class, rail.getWorkspace());
         assertEquals("/tmp/test_ws", workspace.getRootPath());
         assertFalse(rail.getTools().isEmpty());
-        assertTrue(agent.getTools().containsKey("TodoCreateTool"));
+        // DeepAgent.getTools() keys by ToolCard name — the functional name (Python parity).
+        assertTrue(agent.getTools().containsKey("todo_create"));
     }
 
     private void initRegistersWithoutWorkspace() {
@@ -117,7 +118,7 @@ class TaskPlanningRailPythonParityTest {
         rail.init(agent);
 
         assertFalse(rail.getTools().isEmpty());
-        assertTrue(agent.getTools().containsKey("TodoListTool"));
+        assertTrue(agent.getTools().containsKey("todo_list"));
     }
 
     private void uninitSafeWithoutTools() {
@@ -132,7 +133,7 @@ class TaskPlanningRailPythonParityTest {
         rail.uninit(agent);
 
         assertTrue(rail.getTools().isEmpty());
-        assertFalse(agent.getTools().containsKey("TodoCreateTool"));
+        assertFalse(agent.getTools().containsKey("todo_create"));
     }
 
     private void priorityIs90() {

@@ -14,7 +14,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum StoreType {
     MILVUS("milvus"),
     CHROMA("chroma"),
-    PGVECTOR("pgvector");
+    PGVECTOR("pgvector"),
+    ELASTICSEARCH("elasticsearch");
 
     private final String value;
 

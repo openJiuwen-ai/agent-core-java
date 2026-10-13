@@ -1,7 +1,6 @@
 package com.openjiuwen.core.common.logging;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -47,7 +46,6 @@ class LoggingBackendDecouplingTest {
                 "SDK tests must not require a concrete Logback backend. Matching paths: " + logbackReferences);
     }
 
-    @Disabled("remote env do not support node")
     @Test
     void projectPomDoesNotExposeLogbackAsSdkDependency() {
         List<String> exposedLogbackDependencies = findExposedLogbackDependencies();

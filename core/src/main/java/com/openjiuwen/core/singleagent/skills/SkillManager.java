@@ -38,10 +38,15 @@ import java.util.Set;
 /**
  * Registry for skill metadata loaded from {@code SKILL.md} files.
  *
- * <p>Mirrors Python's {@code SkillManager} in
- * {@code openjiuwen/core/single_agent/skills/skill_manager.py}.</p>
+ * <p>Supports incremental refresh: discovers skills under grouping directories
+ * (stops at the first SKILL.md on each branch), only loads new or mtime-changed
+ * skills, removes stale skills, and maintains directory traversal order.</p>
  */
 public class SkillManager {
+    private static final long MAX_SKILL_FILE_SIZE_BYTES = 10L * 1024 * 1024;
+    private static final Set<String> SKILL_SCAN_SKIP_DIRS =
+            Set.of("output", "temp", "assets", "node_modules");
+
     private final Map<String, Skill> registry = new LinkedHashMap<>();
     private final Map<String, Long> updateAtCache = new LinkedHashMap<>();
     private final List<String> skillOrder = new ArrayList<>();
@@ -178,8 +183,9 @@ public class SkillManager {
     /**
      * Incrementally refresh skills from given root directories.
      *
-     * <p>Only loads new or mtime-changed skills, removes stale skills
-     * (directories that no longer exist), and maintains traversal order.</p>
+     * <p>Discovers skills by walking into grouping directories, but stops at the first
+     * directory that contains {@code SKILL.md} / {@code Skill.md}. Only loads new or
+     * mtime-changed skills, removes stale skills, and maintains traversal order.</p>
      *
      * @param roots list of skill root directories to scan
      */
@@ -202,30 +208,16 @@ public class SkillManager {
             discovered.sort(Comparator.comparing(d -> d.directory().getFileName().toString()));
             for (DiscoveredSkill item : discovered) {
                 String key = item.directory().toAbsolutePath().normalize().toString();
+                long skillSize = skillMdSizeBytes(item.skillMd());
+                if (skillSize > MAX_SKILL_FILE_SIZE_BYTES) {
+                    Loggers.AGENT.warning("SKILL.md file size exceeds 10MB, skipping: {} (size: {} bytes)",
+                            key, skillSize);
+                    continue;
+                }
                 long mtime = skillMdMtime(item.skillMd());
                 discoveredKeys.add(key);
                 orderedKeys.add(key);
-
-                Long cachedMtime = updateAtCache.get(key);
-                if (cachedMtime == null || cachedMtime != mtime) {
-                    try {
-                        Optional<Skill> skill = createSkillFromPath(fs, item.skillMd(), false);
-                        if (skill.isPresent()) {
-                            Skill registered = skill.get();
-                            registered.setUpdateAt(mtime);
-                            // Earlier roots win on name collision (hot-load prepend / getAllInOrder).
-                            Skill existing = registry.get(registered.getName());
-                            if (existing == null
-                                    || (existing.getDirectory() != null
-                                    && existing.getDirectory().toAbsolutePath().normalize().toString().equals(key))) {
-                                registry.put(registered.getName(), registered);
-                            }
-                            updateAtCache.put(key, mtime);
-                        }
-                    } catch (IOException | RuntimeException error) {
-                        Loggers.AGENT.warning("Failed to refresh skill at {}: {}", key, error.getMessage());
-                    }
-                }
+                refreshSkillIfChanged(fs, item, key, mtime);
             }
         }
 
@@ -236,8 +228,33 @@ public class SkillManager {
         Loggers.AGENT.debug("refreshIncrementally completed in {} ms, skills count: {}", elapsed, registry.size());
     }
 
+    private void refreshSkillIfChanged(BaseFsOperation fs, DiscoveredSkill item, String key, long mtime) {
+        Long cachedMtime = updateAtCache.get(key);
+        if (cachedMtime != null && cachedMtime == mtime) {
+            return;
+        }
+        try {
+            Optional<Skill> skill = createSkillFromPath(fs, item.skillMd(), false);
+            if (skill.isPresent()) {
+                Skill registered = skill.get();
+                registered.setUpdateAt(mtime);
+                Skill existing = registry.get(registered.getName());
+                if (existing == null
+                        || (existing.getDirectory() != null
+                        && existing.getDirectory().toAbsolutePath().normalize().toString().equals(key))) {
+                    registry.put(registered.getName(), registered);
+                }
+                updateAtCache.put(key, mtime);
+            }
+        } catch (IOException | RuntimeException error) {
+            Loggers.AGENT.warning("Failed to refresh skill at {}: {}", key, error.getMessage());
+        }
+    }
+
     /**
      * Build a snapshot signature of all visible skill directories and their SKILL.md mtimes.
+     *
+     * <p>Discovery depth matches {@link #refreshIncrementally(List)}.</p>
      *
      * @param roots list of skill root directories to scan
      * @return list of (absolute-directory-path, mtime) entries
@@ -344,10 +361,10 @@ public class SkillManager {
                 null
         ));
         if (dirsResult.getCode() != 0) {
-            Optional<Skill> direct = createSkillFromPath(fs, root, useMetadataName);
-            if (direct.isPresent()) {
-                addToRegistry(direct.get(), overwrite);
-                registered.add(direct.get());
+            Optional<Skill> asFile = createSkillFromPath(fs, root, useMetadataName);
+            if (asFile.isPresent()) {
+                addToRegistry(asFile.get(), overwrite);
+                registered.add(asFile.get());
             }
             return registered;
         }
@@ -362,21 +379,8 @@ public class SkillManager {
             return registered;
         }
 
-        FileSystemData dirData = dirsResult.getData();
-        List<FileSystemItem> dirItems = dirData == null ? null : dirData.getListItems();
-        if (dirItems == null) {
-            return registered;
-        }
-
-        for (FileSystemItem child : dirItems) {
-            if (child == null || child.getPath() == null || child.getName() == null) {
-                continue;
-            }
-            Optional<Path> childSkillMd = findSkillMd(fs, child.getPath());
-            if (childSkillMd.isEmpty()) {
-                continue;
-            }
-            Optional<Skill> skill = createSkillFromPath(fs, childSkillMd.get(), useMetadataName);
+        for (DiscoveredSkill discovered : discoverSkillDirs(fs, root)) {
+            Optional<Skill> skill = createSkillFromPath(fs, discovered.skillMd(), useMetadataName);
             if (skill.isPresent()) {
                 addToRegistry(skill.get(), overwrite);
                 registered.add(skill.get());
@@ -510,43 +514,83 @@ public class SkillManager {
 
     private List<DiscoveredSkill> discoverSkillDirs(BaseFsOperation fs, Path root) {
         List<DiscoveredSkill> discovered = new ArrayList<>();
+        Set<String> visited = new LinkedHashSet<>();
         try {
-            ListDirsResult dirsResult = join(fs.listDirectories(
-                    root.toString(),
-                    false,
-                    null,
-                    BaseFsOperation.SortBy.NAME,
-                    false,
-                    null
-            ));
-            if (dirsResult.getCode() != 0) {
-                Optional<Path> directSkillMd = findSkillMd(fs, root.toString());
-                if (directSkillMd.isPresent()) {
-                    discovered.add(new DiscoveredSkill(root.toAbsolutePath().normalize(), directSkillMd.get()));
-                }
-                return discovered;
-            }
-
-            FileSystemData dirData = dirsResult.getData();
-            List<FileSystemItem> dirItems = dirData == null ? null : dirData.getListItems();
-            if (dirItems == null) {
-                return discovered;
-            }
-            for (FileSystemItem child : dirItems) {
-                if (child == null || child.getPath() == null || child.getName() == null) {
-                    continue;
-                }
-                Optional<Path> childSkillMd = findSkillMd(fs, child.getPath());
-                if (childSkillMd.isEmpty()) {
-                    continue;
-                }
-                Path childDir = Path.of(child.getPath()).toAbsolutePath().normalize();
-                discovered.add(new DiscoveredSkill(childDir, childSkillMd.get()));
-            }
+            walkSkillDirs(fs, root, discovered, visited);
         } catch (IOException error) {
             Loggers.AGENT.warning("Failed to discover skills under {}: {}", root, error.getMessage());
         }
         return discovered;
+    }
+
+    /**
+     * Recursively walk {@code directory} looking for skill packages.
+     * Stop at the first directory that contains {@code SKILL.md}/{@code Skill.md}.
+     */
+    private void walkSkillDirs(
+            BaseFsOperation fs,
+            Path directory,
+            List<DiscoveredSkill> found,
+            Set<String> visited) throws IOException {
+        if (directory == null || !visited.add(visitKey(directory))) {
+            return;
+        }
+        ListDirsResult dirsResult = join(fs.listDirectories(
+                directory.toString(),
+                false,
+                null,
+                BaseFsOperation.SortBy.NAME,
+                false,
+                null
+        ));
+        if (dirsResult.getCode() != 0) {
+            return;
+        }
+        FileSystemData dirData = dirsResult.getData();
+        List<FileSystemItem> dirItems = dirData == null ? null : dirData.getListItems();
+        if (dirItems == null) {
+            return;
+        }
+        List<FileSystemItem> ordered = new ArrayList<>(dirItems);
+        ordered.sort(Comparator.comparing(item -> item.getName() == null ? "" : item.getName()));
+        for (FileSystemItem child : ordered) {
+            if (child == null || child.getPath() == null || child.getName() == null) {
+                continue;
+            }
+            if (shouldSkipSkillScanDir(child.getName())) {
+                continue;
+            }
+            Optional<Path> childSkillMd = findSkillMd(fs, child.getPath());
+            Path childDir = Path.of(child.getPath()).toAbsolutePath().normalize();
+            if (childSkillMd.isPresent()) {
+                found.add(new DiscoveredSkill(childDir, childSkillMd.get()));
+                continue;
+            }
+            walkSkillDirs(fs, childDir, found, visited);
+        }
+    }
+
+    private static boolean shouldSkipSkillScanDir(String name) {
+        return name.startsWith(".") || SKILL_SCAN_SKIP_DIRS.contains(name);
+    }
+
+    private static String visitKey(Path directory) {
+        try {
+            return directory.toRealPath().toString();
+        } catch (IOException error) {
+            return directory.toAbsolutePath().normalize().toString();
+        }
+    }
+
+    private static long skillMdSizeBytes(Path skillMd) {
+        try {
+            if (skillMd != null && Files.exists(skillMd)) {
+                return Files.size(skillMd);
+            }
+        } catch (IOException ignored) {
+            // Fall through to 0.
+        }
+        return 0L;
     }
 
     private static long skillMdMtime(Path skillMd) {

@@ -71,7 +71,7 @@ public class ReActAgentConfig {
      * continuing the ReAct loop toward a misleading COMPLETED state (issue #51).
      */
     @JsonProperty("fail_task_on_tool_error")
-    private boolean shouldFailTaskOnToolError;
+    private boolean shouldFailTaskOnToolError = true;
 
     @JsonProperty("llm_return_token_ids")
     private boolean llmReturnTokenIds;
@@ -81,6 +81,15 @@ public class ReActAgentConfig {
 
     @JsonProperty("llm_top_logprobs")
     private int llmTopLogprobs = 1;
+
+    /**
+     * Whether the unified {@code agent_hint} KV-cache affinity protocol is
+     * enabled for this agent. Mirrors Python's
+     * {@code kv_cache_affinity_config.enable_kv_cache_affinity}; effective use
+     * still requires the model to declare affinity capability.
+     */
+    @JsonProperty("enable_kv_cache_affinity")
+    private boolean isEnableKvCacheAffinity;
 
     @JsonProperty("model_client_config")
     private ModelClientConfig modelClientConfig;
@@ -401,6 +410,26 @@ public class ReActAgentConfig {
         this.llmLogprobs = llmLogprobs;
     }
 
+    /**
+     * Whether the agent-level affinity switch is on.
+     *
+     * @return true when affinity is requested
+     * @since 0.1.16
+     */
+    public boolean isEnableKvCacheAffinity() {
+        return isEnableKvCacheAffinity;
+    }
+
+    /**
+     * Set the agent-level affinity switch.
+     *
+     * @param isEnableKvCacheAffinity affinity switch
+     * @since 0.1.16
+     */
+    public void setEnableKvCacheAffinity(boolean isEnableKvCacheAffinity) {
+        this.isEnableKvCacheAffinity = isEnableKvCacheAffinity;
+    }
+
     public int getLlmTopLogprobs() {
         return llmTopLogprobs;
     }
@@ -554,6 +583,18 @@ public class ReActAgentConfig {
          */
         public Builder maxParallelToolCalls(int maxParallelToolCalls) {
             config.setMaxParallelToolCalls(maxParallelToolCalls);
+            return this;
+        }
+
+        /**
+         * Configure whether tool execution errors should force-finish the task.
+         *
+         * @param shouldFailTaskOnToolError true to fail the task on tool error
+         * @return this builder
+         * @since 0.1.16
+         */
+        public Builder shouldFailTaskOnToolError(boolean shouldFailTaskOnToolError) {
+            config.setShouldFailTaskOnToolError(shouldFailTaskOnToolError);
             return this;
         }
 

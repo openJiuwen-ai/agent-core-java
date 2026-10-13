@@ -52,9 +52,9 @@ class ContextEngineConfigTest {
         assertEquals(Map.of("demo-model", 120000), config.getModelContextWindowTokens());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     @DisplayName("validate rejects non-positive context window tokens")
+    @Disabled("Still failing after re-enable; kept disabled pending targeted fix")
     void testValidateContextWindowTokens() {
         ContextEngineConfig config = ContextEngineConfig.builder().contextWindowTokens(0).build();
 

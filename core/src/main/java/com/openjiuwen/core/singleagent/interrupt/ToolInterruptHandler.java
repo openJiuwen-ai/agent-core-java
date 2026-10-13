@@ -161,9 +161,9 @@ public class ToolInterruptHandler {
         ToolInterruptionState state = resumeContext.getState();
         Object userInput = resumeContext.getUserInput();
         AgentCallbackContext ctx = resumeContext.getCtx();
-        int resumeIteration = state.getIteration();
         saveAutoConfirmFromState(state, userInput, resumeContext.getSession());
         if (ctx != null) {
+            ToolInterruptionState.railState(ctx).copyRailStateFrom(state);
             ctx.getExtra().put(InterruptConstants.RESUME_USER_INPUT_KEY, userInput);
         }
 
@@ -184,10 +184,16 @@ public class ToolInterruptHandler {
             throw new IllegalStateException("executeToolCall is required to resume interrupted tools");
         }
         if (ctx != null) {
+            state.setRailSettledDecisions(ToolInterruptionState.railState(ctx).getRailSettledDecisions());
             ctx.getExtra().remove(InterruptConstants.RESUME_USER_INPUT_KEY);
         }
 
+        saveAutoConfirmFromState(state, userInput, resumeContext.getSession());
+
         CollectResult collectResult = collectInterrupts(results, toolsToExecute);
+        if (ctx != null) {
+            state.copyRailStateFrom(ToolInterruptionState.railState(ctx));
+        }
         state.setInterruptedTools(collectResult.getInterruptedTools());
         state.setAutoConfirmMapping(collectResult.getAutoConfirmMapping());
         if (!collectResult.getInterruptedTools().isEmpty()) {
@@ -195,7 +201,7 @@ public class ToolInterruptHandler {
                     collectResult.getPayloads());
         }
         if (ctx != null) {
-            ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, resumeIteration + 1);
+            ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, state.getIteration() + 1);
         }
         return null;
     }
@@ -280,7 +286,7 @@ public class ToolInterruptHandler {
         }
         for (Map.Entry<String, Object> entry : interactiveInput.getUserInputs().entrySet()) {
             Object userValue = entry.getValue();
-            if (!(userValue instanceof Map<?, ?> userMap) || !Boolean.TRUE.equals(userMap.get("auto_confirm"))) {
+            if (!isAutoConfirmation(userValue) || !hasValidatedApproval(state, entry.getKey())) {
                 continue;
             }
             String autoConfirmKey = state.getAutoConfirmMapping().get(entry.getKey());
@@ -289,6 +295,50 @@ public class ToolInterruptHandler {
             }
         }
         session.updateState(Map.of(InterruptConstants.INTERRUPT_AUTO_CONFIRM_KEY, config));
+    }
+
+    private static boolean hasValidatedApproval(ToolInterruptionState state, String toolCallId) {
+        String pending = state.getPendingRailIds().get(toolCallId);
+        if (pending == null) {
+            return true;
+        }
+        ToolInterruptionState.SettledDecision decision = state.getRailSettledDecisions()
+                .get(toolCallId + "\u0000" + pending);
+        return decision != null && decision.isApproved();
+    }
+
+    private static boolean isAutoConfirmation(Object value) {
+        if (value instanceof ConfirmationResponse response) {
+            return response.isApproved() && response.isAutoConfirm();
+        }
+        if (value instanceof Map<?, ?> map) {
+            Object autoConfirm = map.containsKey("auto_confirm") ? map.get("auto_confirm") : map.get("autoConfirm");
+            return Boolean.TRUE.equals(map.get("approved")) && Boolean.TRUE.equals(autoConfirm);
+        }
+        return false;
+    }
+
+    /**
+     * Standard confirmation flags used when persisting future approvals.
+     *
+     * @since 0.1.17
+     */
+    public interface ConfirmationResponse {
+        /**
+         * Return whether this response approves the action.
+         *
+         * @return approval flag
+         * @since 0.1.17
+         */
+        boolean isApproved();
+
+        /**
+         * Return whether future matching actions should be approved.
+         *
+         * @return auto-confirm flag
+         * @since 0.1.17
+         */
+        boolean isAutoConfirm();
     }
 
     private void saveAgentContexts(AgentSessionApi session) {

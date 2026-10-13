@@ -36,8 +36,8 @@ class TaskLoopWorkspaceCompatibilityTest {
         assertThat(workspace.unlinkTeam("teamA")).isTrue();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void loopCoordinatorAndQueuesShouldTrackStopAndFollowUps() {
         CompletionPromiseEvaluator completion = new CompletionPromiseEvaluator("DONE", 2);
         LoopCoordinator coordinator = new LoopCoordinator(List.of(completion));

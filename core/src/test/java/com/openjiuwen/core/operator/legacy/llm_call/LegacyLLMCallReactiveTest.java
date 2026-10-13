@@ -5,7 +5,7 @@
 package com.openjiuwen.core.operator.legacy.llm_call;
 
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -136,8 +136,8 @@ class LegacyLLMCallReactiveTest {
     }
 
     /** invoke propagates exception unwrapped. */
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void invokePropagatesExceptionUnwrapped() throws Exception {
         registerTestProvider(null);
         FakeModelClient client = new FakeModelClient();

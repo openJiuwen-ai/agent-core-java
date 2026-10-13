@@ -16,8 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class A2ATransformerCompatibilityTest {
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void toA2aRequestShouldMapQueryConversationAndMetadata() {
         Map<String, Object> request = Map.of(
                 "query", "hello",
@@ -35,8 +35,8 @@ class A2ATransformerCompatibilityTest {
         assertThat(result.getMetadata()).containsEntry("tenant", "demo");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void fromA2aResponseShouldMapTaskPayload() {
         Map<String, Object> response = Map.of(
                 "result", Map.of(
@@ -64,8 +64,8 @@ class A2ATransformerCompatibilityTest {
         assertThat(result.getArtifacts().get(0).getParts().get(0).getText()).isEqualTo("done");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void fromA2aResponseShouldMapStatusUpdatePayload() {
         Map<String, Object> response = Map.of(
                 "result", Map.of(

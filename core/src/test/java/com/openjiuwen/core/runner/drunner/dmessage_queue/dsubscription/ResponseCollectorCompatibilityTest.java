@@ -14,7 +14,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ResponseCollectorCompatibilityTest {
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void collectorShouldReturnSingleResultAndClose() throws Exception {
         ResponseCollector collector = new ResponseCollector("m-1", "remote-1", null, 5.0);
@@ -24,7 +23,7 @@ class ResponseCollectorCompatibilityTest {
 
         collector.putMessage(response);
 
-        assertThat(collector.result(1.0)).isEqualTo("ok");
+        assertThat(collector.result(1.0).join()).isEqualTo("ok");
         assertThat(collector.isCancelled()).isTrue();
     }
 
@@ -46,8 +45,8 @@ class ResponseCollectorCompatibilityTest {
         assertThat(stream.get(0)).isEqualTo("chunk-1");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void collectorShouldTranslateQueueFullAndTtlCancellation() {
         ResponseCollector collector = new ResponseCollector("m-3", "remote-1", null, 5.0);
         collector.close(CancelReason.QUEUE_FULL);
@@ -60,8 +59,8 @@ class ResponseCollectorCompatibilityTest {
                 .isInstanceOf(TimeoutException.class);
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
+    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void collectorShouldSurfaceRemoteErrorResponses() {
         ResponseCollector collector = new ResponseCollector("m-5", "remote-1", null, 5.0);
         DmqResponseMessage response = new DmqResponseMessage();

@@ -5,7 +5,6 @@
 package com.openjiuwen.harness.cli.prompts;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
@@ -137,7 +136,6 @@ class CliPromptBuilderTest {
         assertEquals(tempDir, CliPromptBuilder.findProjectRoot(sub.toString()).orElseThrow());
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
     void findProjectRootReturnsEmptyWhenNoMarkerExists() {
         assertTrue(CliPromptBuilder.findProjectRoot(tempDir.resolve("tmp").toString()).isEmpty());

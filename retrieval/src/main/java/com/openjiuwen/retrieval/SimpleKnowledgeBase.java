@@ -7,7 +7,7 @@ package com.openjiuwen.retrieval;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.async.FutureList;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.retrieval.common.IndexConfig;
 import com.openjiuwen.retrieval.common.KnowledgeBaseConfig;

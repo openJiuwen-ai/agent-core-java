@@ -78,6 +78,7 @@ class DeepAgentSteerInnerLoopMissingTest {
     private static ReActAgent reactAgent(BlockingScriptedModel modelClient, ModelCallObserver observer) {
         ReActAgentConfig config = new ReActAgentConfig();
         config.setMaxIterations(3);
+        config.setShouldFailTaskOnToolError(false);
         config.setPromptTemplate(List.of(Map.of("role", "system", "content", "You are a test assistant.")));
 
         ReActAgent reactAgent = new ReActAgent(new AgentCard("react", "react", "test"));
