@@ -27,6 +27,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CyclicBarrier;
 
 import org.junit.jupiter.api.Test;
 
@@ -147,6 +149,60 @@ class TaskLoopEventHandlerTest {
 
         assertThat(ack).containsEntry("status", "submitted");
         assertThat(result).containsEntry("output", "waited");
+    }
+
+    /**
+     * Reproduces the "串台" (cross-talk) defect: two concurrent sessions calling
+     * waitCompletion on the same handler instance can have their results swapped
+     * because waitCompletion writes the shared {@code lastResult} field then
+     * reads it back via {@code getLastResult()}.
+     */
+    @Test
+    void concurrentWaitCompletionNoCrossTalk() throws Exception {
+        for (int iter = 0; iter < 200; iter++) {
+            TaskLoopEventHandler handler = new TaskLoopEventHandler(makeAgent());
+            handler.setTaskManager(new RecordingTaskManager());
+
+            int roundA = handler.prepareRound("session-a", false);
+            int roundB = handler.prepareRound("session-b", false);
+
+            // Pre-complete both futures with distinct results before threads race.
+            handler.resolveFuture(Map.of("output", "result-a"), roundA);
+            handler.resolveFuture(Map.of("output", "result-b"), roundB);
+
+            CyclicBarrier barrier = new CyclicBarrier(2);
+            ConcurrentHashMap<String, String> outcomes = new ConcurrentHashMap<>();
+
+            Thread threadA = new Thread(() -> {
+                awaitBarrier(barrier);
+                Map<String, Object> r = handler.waitCompletion(5.0D, "session-a");
+                outcomes.put("a", String.valueOf(r.get("output")));
+            }, "session-a");
+            Thread threadB = new Thread(() -> {
+                awaitBarrier(barrier);
+                Map<String, Object> r = handler.waitCompletion(5.0D, "session-b");
+                outcomes.put("b", String.valueOf(r.get("output")));
+            }, "session-b");
+
+            threadA.start();
+            threadB.start();
+            threadA.join(10_000);
+            threadB.join(10_000);
+
+            if (!"result-a".equals(outcomes.get("a")) || !"result-b".equals(outcomes.get("b"))) {
+                throw new AssertionError(String.format(
+                        "Cross-talk detected at iteration %d: a=%s, b=%s (expected a=result-a, b=result-b)",
+                        iter, outcomes.get("a"), outcomes.get("b")));
+            }
+        }
+    }
+
+    private static void awaitBarrier(CyclicBarrier barrier) {
+        try {
+            barrier.await();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static DeepAgent makeAgent() {

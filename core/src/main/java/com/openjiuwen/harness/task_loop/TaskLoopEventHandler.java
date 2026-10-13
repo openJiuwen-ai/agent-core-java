@@ -171,8 +171,9 @@ public class TaskLoopEventHandler extends EventHandler {
     public Map<String, Object> waitCompletion(Double timeout, String sessionId) {
         RoundState state = stateForWait(sessionId);
         if (state == null) {
-            lastResult = resultMap("error", "no active round");
-            return getLastResult();
+            Map<String, Object> completion = resultMap("error", "no active round");
+            lastResult = completion;
+            return new LinkedHashMap<>(completion);
         }
         CompletableFuture<Map<String, Object>> future = state.future;
 
@@ -188,8 +189,9 @@ public class TaskLoopEventHandler extends EventHandler {
             // Leave the round registered and its future uncancelled so the caller's
             // retry loop keeps waiting on the same round; a late completion still
             // lands on this future instead of being dropped.
-            lastResult = resultMap("error", "completion_timeout");
-            return getLastResult();
+            Map<String, Object> completion = resultMap("error", "completion_timeout");
+            lastResult = completion;
+            return new LinkedHashMap<>(completion);
         } catch (CancellationException exception) {
             result = resultMap("error", "cancelled");
         } catch (InterruptedException exception) {
@@ -200,9 +202,10 @@ public class TaskLoopEventHandler extends EventHandler {
             result = resultMap("error", cause.getMessage() == null ? cause.getClass().getName() : cause.getMessage());
         }
 
-        lastResult = normalizeCompletionResult(result);
+        Map<String, Object> completion = normalizeCompletionResult(result);
+        lastResult = completion;
         cleanupRound(state);
-        return getLastResult();
+        return new LinkedHashMap<>(completion);
     }
 
     /**
