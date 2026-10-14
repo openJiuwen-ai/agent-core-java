@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.foundation.llm.multimodal.MaterialAccessConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -107,6 +108,9 @@ public class ReActAgentConfig {
     private List<ContextEngine.ProcessorSpec> contextProcessors;
 
     private Object workspace;
+
+    @JsonProperty("material_access")
+    private MaterialAccessConfig materialAccess;
 
     public ReActAgentConfig configureModel(String modelName) {
         this.modelName = normalizeString(modelName);
@@ -250,6 +254,18 @@ public class ReActAgentConfig {
 
     public ReActAgentConfig configure_context_processors(List<ContextEngine.ProcessorSpec> processors) {
         return configureContextProcessors(processors);
+    }
+
+    /**
+     * Configure multimodal material access (allowed roots, asset root and budgets).
+     *
+     * @param materialAccess material access configuration; {@code null} keeps framework defaults
+     * @return this configuration for chaining
+     * @since 0.1.17
+     */
+    public ReActAgentConfig configureMaterialAccess(MaterialAccessConfig materialAccess) {
+        setMaterialAccess(materialAccess);
+        return this;
     }
 
     public String getMemScopeId() {
@@ -482,6 +498,26 @@ public class ReActAgentConfig {
         this.workspace = workspace;
     }
 
+    /**
+     * Return the multimodal material access configuration.
+     *
+     * @return configured material access; {@code null} keeps framework defaults
+     * @since 0.1.17
+     */
+    public MaterialAccessConfig getMaterialAccess() {
+        return materialAccess;
+    }
+
+    /**
+     * Set the multimodal material access configuration.
+     *
+     * @param materialAccess material access configuration; {@code null} keeps framework defaults
+     * @since 0.1.17
+     */
+    public void setMaterialAccess(MaterialAccessConfig materialAccess) {
+        this.materialAccess = materialAccess;
+    }
+
     private static ContextEngineConfig defaultContextEngineConfig() {
         ContextEngineConfig config = new ContextEngineConfig();
         config.setMaxContextMessageNum(200);
@@ -636,6 +672,18 @@ public class ReActAgentConfig {
 
         public Builder workspace(Object workspace) {
             config.setWorkspace(workspace);
+            return this;
+        }
+
+        /**
+         * Configure multimodal material access on the builder.
+         *
+         * @param materialAccess material access configuration; may be {@code null}
+         * @return this builder
+         * @since 0.1.17
+         */
+        public Builder materialAccess(MaterialAccessConfig materialAccess) {
+            config.setMaterialAccess(materialAccess);
             return this;
         }
 
