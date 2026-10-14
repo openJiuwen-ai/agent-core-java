@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.harness.deep_agent;
+package com.openjiuwen.harness.deepagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +22,7 @@ import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.runbudget.RunBudgetConfig;
 import com.openjiuwen.core.singleagent.runbudget.RunBudgetRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 
 import org.junit.jupiter.api.AfterEach;
@@ -39,7 +40,6 @@ import java.util.concurrent.CompletableFuture;
  * {@link RunBudgetConfig}, and the rail then fires from the DeepAgent-driven loop.
  */
 class RunBudgetRailDeepAgentTest {
-
     private DeepAgent agent;
 
     @AfterEach
@@ -54,7 +54,7 @@ class RunBudgetRailDeepAgentTest {
         // Given a DeepAgent whose inner ReActAgent carries a turn-budget rail
         AgentCard card = AgentCard.builder().id("run-budget-deep-001").description("budget").build();
         agent = new DeepAgent(card, DeepAgentConfig.builder().enableTaskLoop(true).build(), null);
-        ReActAgent inner = (ReActAgent) agent.reactAgent();
+        ReActAgent inner = innerReActAgent(agent);
         inner.registerRail(new RunBudgetRail(RunBudgetConfig.builder()
                 .turnEnabled(true)
                 .suggestedRounds(2)
@@ -87,7 +87,6 @@ class RunBudgetRailDeepAgentTest {
     @Test
     void runBudgetRailDeclaredInConfigRailsEmitsGuaranteeEvent() {
         // Given the budget rail declared at creation time via DeepAgentConfig.rails
-        List<String> eventTypes = new ArrayList<>();
         AgentCard card = AgentCard.builder().id("run-budget-deep-002").description("budget").build();
         agent = new DeepAgent(card, DeepAgentConfig.builder()
                 .enableTaskLoop(true)
@@ -96,10 +95,11 @@ class RunBudgetRailDeepAgentTest {
                         .suggestedRounds(2)
                         .build())))
                 .build(), null);
-        ((ReActAgent) agent.reactAgent()).setLlm(stubModel());
+        innerReActAgent(agent).setLlm(stubModel());
 
         LoggerProtocol original = LogManager.getLogger("agent");
         LoggerProtocol recording = mock(LoggerProtocol.class);
+        List<String> eventTypes = new ArrayList<>();
         doAnswer(invocation -> {
             Object[] arguments = invocation.getArguments();
             if (arguments.length >= 3 && arguments[arguments.length - 1] instanceof Map<?, ?>) {
@@ -118,6 +118,14 @@ class RunBudgetRailDeepAgentTest {
         } finally {
             LogManager.registerLogger("agent", original);
         }
+    }
+
+    private static ReActAgent innerReActAgent(DeepAgent deepAgent) {
+        Object innerAgent = deepAgent.reactAgent();
+        if (!(innerAgent instanceof ReActAgent inner)) {
+            throw new AssertionError("inner agent is not a ReActAgent: " + innerAgent);
+        }
+        return inner;
     }
 
     private static Model stubModel() {
