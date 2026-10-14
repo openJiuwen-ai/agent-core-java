@@ -9,6 +9,8 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -59,7 +61,9 @@ public class LLMExecutable extends ComponentExecutable {
 
         String response;
         try {
-            AssistantMessage llmResponse = llm.invoke(modelInputs).toCompletableFuture().join();
+            AssistantMessage llmResponse = llm.invoke(modelInputs, ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, llm.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             response = llmResponse.getContent() != null ? llmResponse.getContent().toString() : "";
         } catch (Exception e) {
             String fallback = localFixtureFallback(modelInputs);
@@ -259,7 +263,9 @@ public class LLMExecutable extends ComponentExecutable {
 
         String llmOutputContent;
         try {
-            AssistantMessage llmOutput = llm.invoke(modelInputs).toCompletableFuture().join();
+            AssistantMessage llmOutput = llm.invoke(modelInputs, ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, llm.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             llmOutputContent = llmOutput.getContent() != null ? llmOutput.getContent().toString() : "";
         } catch (Exception e) {
             String fallback = localFixtureFallback(modelInputs);
@@ -284,7 +290,9 @@ public class LLMExecutable extends ComponentExecutable {
 
         Iterator<AssistantMessageChunk> llmStream;
         try {
-            llmStream = llm.stream(modelInputs);
+            llmStream = llm.stream(modelInputs, ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, llm.getModelClientConfig()))
+                    .build());
         } catch (Exception e) {
             if (config.isCacheStream()) {
                 state.clear();

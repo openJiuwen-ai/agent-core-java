@@ -70,6 +70,16 @@ public abstract class BaseModelClient implements Model.ModelClient {
     }
 
     /**
+     * Returns the client connection configuration, exposed so per-call timeout resolution can
+     * read the configured tiered values (FEAT-058).
+     *
+     * @return client connection configuration
+     */
+    public ModelClientConfig getModelClientConfig() {
+        return modelClientConfig;
+    }
+
+    /**
      * Java equivalent of Python subclass registration. Java has no
      * {@code __init_subclass__} hook, so subclasses call this from static
      * initializers when they need registry parity.

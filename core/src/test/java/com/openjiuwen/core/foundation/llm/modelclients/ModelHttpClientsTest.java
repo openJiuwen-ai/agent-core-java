@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.llm.modelclients;
@@ -23,8 +23,8 @@ class ModelHttpClientsTest {
 
     @Test
     void buildsHttp2ClientWhenVersionConfigured() {
-        HttpClient client = ModelHttpClients.builder(clientConfig(ModelHttpVersion.HTTP_2), "https://api.example.test/v1")
-                .connectTimeout(Duration.ofSeconds(7))
+        HttpClient client = ModelHttpClients.builder(
+                clientConfig(ModelHttpVersion.HTTP_2, 7.0D), "https://api.example.test/v1")
                 .build();
 
         assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_2);
@@ -33,8 +33,8 @@ class ModelHttpClientsTest {
 
     @Test
     void buildsHttp11ClientWhenVersionConfigured() {
-        HttpClient client = ModelHttpClients.builder(clientConfig(ModelHttpVersion.HTTP_1_1), "https://api.example.test/v1")
-                .connectTimeout(Duration.ofSeconds(5))
+        HttpClient client = ModelHttpClients.builder(
+                clientConfig(ModelHttpVersion.HTTP_1_1, 5.0D), "https://api.example.test/v1")
                 .build();
 
         assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_1_1);
@@ -43,30 +43,31 @@ class ModelHttpClientsTest {
 
     @Test
     void defaultsToHttp11WhenHttpVersionIsNotConfigured() {
-        HttpClient client = ModelHttpClients.builder(clientConfig(null), "https://api.example.test/v1")
-                .connectTimeout(Duration.ofSeconds(3))
+        HttpClient client = ModelHttpClients.builder(
+                clientConfig(null, 6.0D), "https://api.example.test/v1")
                 .build();
 
         assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_1_1);
-        assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(3));
+        assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(6));
     }
 
     @Test
-    void connectTimeoutCanBeOverridden() {
-        HttpClient client = ModelHttpClients.builder(clientConfig(ModelHttpVersion.HTTP_1_1), "https://api.example.test/v1")
-                .connectTimeout(Duration.ofSeconds(11))
+    void connectTimeoutComesFromConfigField() {
+        HttpClient client = ModelHttpClients.builder(
+                clientConfig(ModelHttpVersion.HTTP_1_1, 11.0D), "https://api.example.test/v1")
                 .build();
 
         assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(11));
     }
 
     @Test
-    void buildUsesConfigTimeoutAndVersionWhenTimeoutIsNotExplicitlyOverridden() {
-        HttpClient client = ModelHttpClients.builder(clientConfig(ModelHttpVersion.HTTP_2), "https://api.example.test/v1")
+    void legacyTimeoutDoesNotDriveConnectTimeout() {
+        HttpClient client = ModelHttpClients.builder(
+                clientConfig(ModelHttpVersion.HTTP_2, null), "https://api.example.test/v1")
                 .build();
 
         assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_2);
-        assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(9));
+        assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(10));
     }
 
     @Test
@@ -95,13 +96,16 @@ class ModelHttpClientsTest {
         assertProxyAddress(httpsProxySelector, "secure-proxy.example.test", 443);
     }
 
-    private static ModelClientConfig clientConfig(ModelHttpVersion httpVersion) {
-        return ModelClientConfig.builder()
+    private static ModelClientConfig clientConfig(ModelHttpVersion httpVersion, Double connectTimeoutSeconds) {
+        ModelClientConfig.ModelClientConfigBuilder builder = ModelClientConfig.builder()
                 .clientProvider(ProviderType.OPEN_AI)
                 .apiBase("https://api.example.test/v1")
                 .httpVersion(httpVersion)
-                .timeout(9.0D)
-                .build();
+                .timeout(9.0D);
+        if (connectTimeoutSeconds != null) {
+            builder.connectTimeoutSeconds(connectTimeoutSeconds);
+        }
+        return builder.build();
     }
 
     private static void assertProxyAddress(ProxySelector proxySelector, String host, int port) {

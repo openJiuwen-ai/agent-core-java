@@ -17,6 +17,8 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.http.HttpResponse;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -444,8 +446,8 @@ class ModelClientTracerMissingTest {
         }
 
         @Override
-        protected HttpStreamResult postStream(Map<String, Object> payload, Float timeout) {
-            return new HttpStreamResult(200, nextStreamLines, String.join("\n", nextStreamLines));
+        protected HttpResponse<InputStream> postStream(Map<String, Object> payload, double idleSeconds) {
+            return TieredTimeoutStubServer.fakeStreamingResponse(200, nextStreamLines);
         }
     }
 

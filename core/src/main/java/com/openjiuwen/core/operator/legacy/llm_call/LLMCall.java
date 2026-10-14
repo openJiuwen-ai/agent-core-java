@@ -6,6 +6,7 @@ package com.openjiuwen.core.operator.legacy.llm_call;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -162,6 +163,7 @@ public class LLMCall {
         return ModelInvokeOptions.builder()
                 .model(modelName)
                 .tools(tools == null ? null : List.copyOf(tools))
+                .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, llm.getModelClientConfig()))
                 .build();
     }
 

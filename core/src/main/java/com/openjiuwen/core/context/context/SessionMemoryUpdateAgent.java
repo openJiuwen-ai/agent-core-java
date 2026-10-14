@@ -5,6 +5,8 @@
 package com.openjiuwen.core.context.context;
 
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -189,7 +191,9 @@ public class SessionMemoryUpdateAgent {
 
     private void invokeDirectModelAttempt(Model model, List<BaseMessage> promptMessages, int attempt, int attempts,
                                           CompletableFuture<AssistantMessage> result) {
-        model.invoke(promptMessages).whenComplete((response, failure) -> {
+        model.invoke(promptMessages, ModelInvokeOptions.builder()
+                .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                .build()).whenComplete((response, failure) -> {
             if (failure == null) {
                 result.complete(response);
                 return;

@@ -23,6 +23,7 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -32,7 +33,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -589,9 +589,8 @@ public class DashScopeModelClient extends BaseModelClient {
         }
     }
 
-    static HttpClient createDashScopeHttpClient(ModelClientConfig clientConfig, Duration connectTimeout) {
+    static HttpClient createDashScopeHttpClient(ModelClientConfig clientConfig) {
         return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
-                .connectTimeout(connectTimeout)
                 .build();
     }
 
@@ -725,10 +724,10 @@ public class DashScopeModelClient extends BaseModelClient {
                 case MULTIMODAL_CONVERSATION -> "/services/aigc/multimodal-generation/generation";
                 case VIDEO_SYNTHESIS -> "/services/aigc/video-generation/video-synthesis";
             };
-            long timeoutSeconds = Math.max(1L, Math.round(clientConfig.getTimeout()));
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(stripTrailingSlashes(clientConfig.getApiBase()) + endpoint))
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
+                    .timeout(ModelTimeoutResolver.toDuration(
+                            ModelTimeoutResolver.resolveHeaderWaitSeconds(clientConfig)))
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json");
             if (clientConfig.getApiKey() != null && !clientConfig.getApiKey().isEmpty()) {
@@ -741,11 +740,13 @@ public class DashScopeModelClient extends BaseModelClient {
                     }
                 });
             }
-            HttpClient client = createDashScopeHttpClient(clientConfig, Duration.ofSeconds(timeoutSeconds));
-            HttpResponse<String> response = client.send(
+            HttpClient client = createDashScopeHttpClient(clientConfig);
+            double idleSeconds = ModelTimeoutResolver.resolveStreamIdleSeconds(clientConfig);
+            HttpResponse<InputStream> response = client.send(
                     requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build(),
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            Map<String, Object> responseMap = OBJECT_MAPPER.readValue(response.body(), Map.class);
+                    IdleBoundInputStream.bodyHandler(idleSeconds));
+            String responseBody = IdleGuardedBodyReader.readFully(response.body(), idleSeconds, false);
+            Map<String, Object> responseMap = OBJECT_MAPPER.readValue(responseBody, Map.class);
             responseMap.putIfAbsent("http_status", response.statusCode());
             return responseMap;
         }

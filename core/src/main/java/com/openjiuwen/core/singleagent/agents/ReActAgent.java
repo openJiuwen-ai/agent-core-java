@@ -15,6 +15,7 @@ import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -488,7 +489,8 @@ public class ReActAgent extends BaseAgent {
                 .model(resolveModelName(model))
                 .tools(tools)
                 .requestHeaders(requestHeaders)
-                .extraFields(extraFields);
+                .extraFields(extraFields)
+                .timeout(resolvePerCallIdleTimeout(model));
         clampModelCallTimeoutToRemainingBudget(ctx, optionsBuilder);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
@@ -557,6 +559,12 @@ public class ReActAgent extends BaseAgent {
         if (remaining < configuredTimeout) {
             builder.timeout((float) remaining);
         }
+    private Float resolvePerCallIdleTimeout(Model model) {
+        ModelClientConfig clientConfig = model == null
+                ? config.getModelClientConfig()
+                : model.getModelClientConfig();
+        return ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                config.getModelStreamIdleSeconds(), clientConfig);
     }
 
     public static void renderSystemMessages(List<SystemMessage> systemMessages, Object inputs,

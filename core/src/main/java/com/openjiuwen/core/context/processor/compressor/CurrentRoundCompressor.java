@@ -13,6 +13,8 @@ import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
@@ -297,7 +299,9 @@ public class CurrentRoundCompressor extends ContextProcessor {
             if (model == null) {
                 return null;
             }
-            response = model.invoke(List.of(new UserMessage(filledPrompt))).toCompletableFuture().join();
+            response = model.invoke(List.of(new UserMessage(filledPrompt)), ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             recordCompressionUsage(response);
         } catch (RuntimeException ex) {
             return null;
@@ -334,7 +338,9 @@ public class CurrentRoundCompressor extends ContextProcessor {
             if (model == null) {
                 return null;
             }
-            response = model.invoke(List.of(new UserMessage(filledPrompt))).toCompletableFuture().join();
+            response = model.invoke(List.of(new UserMessage(filledPrompt)), ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             recordCompressionUsage(response);
         } catch (RuntimeException ex) {
             return null;

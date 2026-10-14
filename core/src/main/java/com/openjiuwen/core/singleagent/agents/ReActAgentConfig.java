@@ -94,6 +94,13 @@ public class ReActAgentConfig {
     @JsonProperty("model_client_config")
     private ModelClientConfig modelClientConfig;
 
+    /**
+     * Per-call idle (peer silence) timeout declaration in seconds for this agent's model
+     * calls; null means undeclared and the model client configuration applies.
+     */
+    @JsonProperty("model_stream_idle_seconds")
+    private Double modelStreamIdleSeconds;
+
     @JsonProperty("model_config_obj")
     private ModelRequestConfig modelConfigObj;
 
@@ -392,6 +399,35 @@ public class ReActAgentConfig {
 
     public boolean isLlmReturnTokenIds() {
         return llmReturnTokenIds;
+    }
+
+    /**
+     * Returns the per-call idle timeout declaration, or null when undeclared.
+     *
+     * @return idle timeout in seconds, nullable
+     */
+    public Double getModelStreamIdleSeconds() {
+        return modelStreamIdleSeconds;
+    }
+
+    /**
+     * Sets the per-call idle (peer silence) timeout declaration; null means undeclared.
+     *
+     * @param modelStreamIdleSeconds idle timeout in seconds, nullable
+     */
+    public void setModelStreamIdleSeconds(Double modelStreamIdleSeconds) {
+        this.modelStreamIdleSeconds = modelStreamIdleSeconds;
+    }
+
+    /**
+     * Chain-style setter for the per-call idle timeout declaration.
+     *
+     * @param modelStreamIdleSeconds idle timeout in seconds, nullable
+     * @return this config
+     */
+    public ReActAgentConfig configureModelStreamIdleSeconds(Double modelStreamIdleSeconds) {
+        this.modelStreamIdleSeconds = modelStreamIdleSeconds;
+        return this;
     }
 
     public void setLlmReturnTokenIds(boolean llmReturnTokenIds) {

@@ -22,6 +22,7 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -695,7 +696,7 @@ public class LlmEventHandler extends EventHandler {
                     .tools(contextWindow.getTools())
                     .temperature((float) modelInfo.getTemperature())
                     .topP((float) modelInfo.getTopP())
-                    .timeout((float) modelInfo.getTimeout())
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
                     .extraFields(new LinkedHashMap<>(modelInfo.getExtraFields()))
                     .build();
             AssistantMessage llmOutput = model.invoke(contextWindow.getMessages(), options)

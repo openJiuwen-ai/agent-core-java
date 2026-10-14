@@ -12,6 +12,8 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.schema.Param;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -137,7 +139,10 @@ public final class MemoryAnalyzer {
         int maxRetries = Math.max(1, retries);
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                AssistantMessage response = baseChatModel.invoke(modelInput).toCompletableFuture().join();
+                AssistantMessage response = baseChatModel.invoke(modelInput, ModelInvokeOptions.builder()
+                        .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                                null, baseChatModel.getModelClientConfig()))
+                        .build()).toCompletableFuture().join();
                 Object parsed = parser.parse(response.getContentAsString()).toCompletableFuture().join();
                 if (parsed instanceof Map<?, ?> parsedMap) {
                     MemoryAnalyzerResult result = fromMap(parsedMap);

@@ -414,23 +414,45 @@ public class DeepAgent implements AutoCloseable {
             if (provider == null || apiKey == null || apiBase == null) {
                 return;
             }
-            ModelClientConfig clientConfig = ModelClientConfig.builder()
+            ModelClientConfig.ModelClientConfigBuilder clientConfigBuilder = ModelClientConfig.builder()
                     .clientId(string(firstPresent(backendMap, new String[] {"client_id", "clientId"})))
                     .clientProvider(provider)
                     .apiKey(apiKey)
                     .apiBase(apiBase)
-                    .timeout(doubleOrDefault(firstPresent(backendMap, new String[] {"timeout"}), 60.0))
                     .maxRetries(intOrDefault(firstPresent(backendMap, new String[] {"max_retries", "maxRetries"}), 3))
                     .verifySsl(booleanOrDefault(
                             firstPresent(backendMap, new String[] {"verify_ssl", "verifySsl"}),
                             true))
                     .sslCert(string(firstPresent(backendMap, new String[] {"ssl_cert", "sslCert"})))
-                    .headers(headers(firstPresent(backendMap, new String[] {"headers"})))
-                    .build();
+                    .headers(headers(firstPresent(backendMap, new String[] {"headers"})));
+            Object legacyTimeout = firstPresent(backendMap, new String[] {"timeout"});
+            if (legacyTimeout != null) {
+                clientConfigBuilder.timeout(doubleOrDefault(legacyTimeout, 60.0));
+            }
+            applyTieredTimeoutKeys(clientConfigBuilder, backendMap);
+            ModelClientConfig clientConfig = clientConfigBuilder.build();
             runtimeConfig.setModelClientConfig(clientConfig);
             runtimeConfig.setModelProvider(provider);
             runtimeConfig.setApiKey(apiKey);
             runtimeConfig.setApiBase(apiBase);
+        }
+    }
+
+    private static void applyTieredTimeoutKeys(ModelClientConfig.ModelClientConfigBuilder clientConfigBuilder,
+            Map<?, ?> backendMap) {
+        Object connectTimeoutSeconds = firstPresent(backendMap,
+                new String[] {"connect_timeout_seconds", "connectTimeoutSeconds"});
+        if (connectTimeoutSeconds != null) {
+            clientConfigBuilder.connectTimeoutSeconds(
+                    ModelClientConfig.validateConnectTimeoutSeconds(
+                            doubleOrDefault(connectTimeoutSeconds, 10.0)));
+        }
+        Object streamIdleSeconds = firstPresent(backendMap,
+                new String[] {"stream_idle_seconds", "streamIdleSeconds"});
+        if (streamIdleSeconds != null) {
+            clientConfigBuilder.streamIdleSeconds(
+                    ModelClientConfig.validateStreamIdleSeconds(
+                            doubleOrDefault(streamIdleSeconds, 600.0)));
         }
     }
 

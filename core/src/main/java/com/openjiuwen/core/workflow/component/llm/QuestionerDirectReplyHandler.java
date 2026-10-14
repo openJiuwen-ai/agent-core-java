@@ -10,6 +10,8 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
@@ -235,7 +237,9 @@ public class QuestionerDirectReplyHandler {
     private Map<String, Object> invokeLlmForExtraction(List<BaseMessage> llmInputs) {
         String response;
         try {
-            AssistantMessage msg = model.invoke(llmInputs).toCompletableFuture().join();
+            AssistantMessage msg = model.invoke(llmInputs, ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             response = msg.getContent() != null ? msg.getContent().toString() : "";
         } catch (Exception e) {
             Map<String, Object> fixtureFields = localFixtureExtraction(llmInputs);

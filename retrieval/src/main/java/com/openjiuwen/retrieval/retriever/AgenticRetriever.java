@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.retrieval.retriever;
@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.SearchResult;
@@ -404,7 +405,7 @@ public class AgenticRetriever implements Retriever {
                     null,
                     null,
                     null,
-                    null,
+                    ModelTimeoutResolver.resolvePerCallIdleTimeout(null, llmClient.getModelClientConfig()),
                     Map.of()
             );
             return response == null ? null : response.getContentAsString();

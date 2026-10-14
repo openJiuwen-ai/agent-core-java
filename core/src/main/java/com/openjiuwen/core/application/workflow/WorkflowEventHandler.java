@@ -23,6 +23,7 @@ import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -513,7 +514,8 @@ public class WorkflowEventHandler extends EventHandler {
                     (double) modelInfo.getTimeout());
             Loggers.CONTROLLER.info("Intent detection messages: {}", messages);
 
-            AssistantMessage llmOutput = getModel().invoke(
+            Model intentModel = getModel();
+            AssistantMessage llmOutput = intentModel.invoke(
                     messages,
                     null,
                     null,
@@ -522,7 +524,7 @@ public class WorkflowEventHandler extends EventHandler {
                     null,
                     modelInfo.getModelName(),
                     null,
-                    null,
+                    ModelTimeoutResolver.resolvePerCallIdleTimeout(null, intentModel.getModelClientConfig()),
                     null
             );
             WorkflowSchema detectedWorkflow = mapWorkflowFromIntentOutput(llmOutput, workflows);

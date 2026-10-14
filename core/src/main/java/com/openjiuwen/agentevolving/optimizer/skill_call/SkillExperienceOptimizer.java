@@ -263,6 +263,8 @@ public class SkillExperienceOptimizer extends BaseOptimizer {
                             ModelInvokeOptions.builder()
                                     .model(model)
                                     .temperature(0.1f)
+                                    // per-call timeout overrides only the idle (peer silence) layer,
+                                    // not a total cap (FEAT-058)
                                     .timeout((float) RETRY_PARSE_TIMEOUT_SECS)
                                     .build()
                     )

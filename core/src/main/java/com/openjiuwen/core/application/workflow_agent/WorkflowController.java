@@ -14,6 +14,8 @@ import com.openjiuwen.core.controller.legacy.task.Task;
 import com.openjiuwen.core.controller.legacy.task.TaskInput;
 import com.openjiuwen.core.controller.legacy.task.TaskStatus;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
@@ -574,7 +576,10 @@ public class WorkflowController {
                 .extraFields(extraFields)
                 .build();
         Model model = new Model(clientConfig, requestConfig);
-        AssistantMessage message = model.invoke(intentDetectionMessages(event, candidates)).toCompletableFuture().join();
+        AssistantMessage message = model.invoke(intentDetectionMessages(event, candidates),
+                ModelInvokeOptions.builder()
+                        .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                        .build()).toCompletableFuture().join();
         IntentModelResult result = parseIntentModelResult(message == null ? "" : message.getContentAsString());
         detectedWorkflowArguments = result.arguments();
         int selected = result.selected();

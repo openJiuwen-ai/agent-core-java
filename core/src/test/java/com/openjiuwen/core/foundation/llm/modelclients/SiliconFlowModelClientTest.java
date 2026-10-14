@@ -18,7 +18,9 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import org.junit.jupiter.api.Test;
 
+import java.io.InputStream;
 import java.net.http.HttpClient;
+import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -305,10 +307,9 @@ class SiliconFlowModelClientTest {
         }
 
         @Override
-        protected HttpStreamResult postStream(Map<String, Object> payload, Float timeout) {
+        protected HttpResponse<InputStream> postStream(Map<String, Object> payload, double idleSeconds) {
             this.lastPayload = new LinkedHashMap<>(payload);
-            this.lastTimeout = timeout;
-            return new HttpStreamResult(nextStatus, nextStreamLines, String.join("\n", nextStreamLines));
+            return TieredTimeoutStubServer.fakeStreamingResponse(nextStatus, nextStreamLines);
         }
     }
 

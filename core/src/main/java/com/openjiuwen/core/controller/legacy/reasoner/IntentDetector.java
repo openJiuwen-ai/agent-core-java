@@ -19,6 +19,7 @@ import com.openjiuwen.core.controller.legacy.task.Task;
 import com.openjiuwen.core.controller.legacy.task.TaskInput;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
@@ -448,6 +449,7 @@ public class IntentDetector {
                     .build();
             ModelInvokeOptions options = ModelInvokeOptions.builder()
                     .model(modelInfo.getModelName())
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, modelClientConfig))
                     .build();
             return new Model(modelClientConfig, modelRequestConfig)
                     .invoke(llmInputs, options)
