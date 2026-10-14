@@ -10,7 +10,7 @@ import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 
 /**
- * Static facade for publishing FEAT-057 run-budget events.
+ * Static facade for publishing run-budget events.
  *
  * <p>{@code LoggerProtocol} does not expose {@code logEvent}, so the facade resolves the
  * "agent" logger from {@link LogManager} and uses the structured-event entry point when the

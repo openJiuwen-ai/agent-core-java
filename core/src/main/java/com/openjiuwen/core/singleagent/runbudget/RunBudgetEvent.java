@@ -11,7 +11,7 @@ import com.openjiuwen.core.common.logging.events.ModuleType;
 import java.util.Map;
 
 /**
- * Structured event payload for FEAT-057 run-budget and progress events.
+ * Structured event payload for run-budget and progress events.
  *
  * <p>Field set is fixed by the L2 contract (section 2.1); producers fill only the fields
  * relevant to the concrete event type, unset fields are omitted from {@link #toMap()}.</p>

@@ -9,7 +9,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 /**
  * Immutable run-budget configuration carried by {@link RunBudgetRail}.
  *
- * <p>Covers both dimensions of FEAT-057: the turn dimension (guaranteed rounds,
+ * <p>Covers both dimensions: the turn dimension (guaranteed rounds,
  * checkpoint cadence, safety valve) and the time dimension (wall-clock total budget,
  * near-deadline threshold). All validation runs in {@link Builder#build()} so invalid
  * combinations fail fast at wiring time.</p>

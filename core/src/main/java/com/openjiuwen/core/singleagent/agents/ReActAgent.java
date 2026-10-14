@@ -18,6 +18,7 @@ import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolCallArgumentUtils;
@@ -106,9 +107,6 @@ public class ReActAgent extends BaseAgent {
 
     /** Chunk size (characters) when wrapping non-stream responses as stream chunks. */
     private static final int STREAM_CHUNK_SIZE = 200;
-
-    // FEAT-057 clamp baseline: mirrors the ModelClientConfig default timeout; keep in sync.
-    private static final double DEFAULT_MODEL_CALL_TIMEOUT_SECONDS = 60.0D;
 
     /** JDK 17: bounded platform pool; JDK 21+: virtual thread per task. */
     private static final ExecutorService STREAM_EXECUTOR =
@@ -560,11 +558,11 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * FEAT-057 time dimension: clamp the per-call model timeout to the remaining budget.
+     * Clamp the per-call model timeout to the remaining time budget.
      *
      * <p>No-op when no time-budgeted run-budget state is present, keeping the legacy path
      * byte-identical. The clamped value travels through {@code ModelInvokeOptions.timeout},
-     * the single-call timeout channel defined by FEAT-058.</p>
+     * the single-call timeout channel.</p>
      *
      * @param ctx callback context carrying the run-budget state
      * @param builder options builder under construction
@@ -580,7 +578,7 @@ public class ReActAgent extends BaseAgent {
             return;
         }
         double configuredTimeout = config.getModelClientConfig() != null
-                ? config.getModelClientConfig().getTimeout() : DEFAULT_MODEL_CALL_TIMEOUT_SECONDS;
+                ? config.getModelClientConfig().getTimeout() : ModelClientConfig.DEFAULT_TIMEOUT_SECONDS;
         if (remaining < configuredTimeout) {
             builder.timeout((float) remaining);
         }
@@ -2491,7 +2489,7 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * FEAT-057 time dimension: clamp the stream-retry wait to the remaining budget.
+     * Clamp the stream-retry wait to the remaining time budget.
      *
      * <p>Returns the original delay unchanged when no time-budgeted run-budget state is
      * present; an exhausted budget yields zero so the retry no longer sleeps and the next

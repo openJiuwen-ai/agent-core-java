@@ -50,7 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
 /**
- * Shared fixtures for FEAT-057 run-budget tests: scripted model double, recording logger
+ * Shared fixtures for Run-budget tests: scripted model double, recording logger
  * binding and echo-tool registration. Helpers stay package-private; test classes carry the
  * scenario javadoc.
  */

@@ -715,7 +715,7 @@ public class AbilityManager {
         if (previousSession == null && effectiveSession != null) {
             SessionContextHolder.setCurrentSession(effectiveSession);
         }
-        // FEAT-057: expose the time budget to the per-tool timeout resolver on this lane thread.
+        // Expose the remaining time budget to the per-tool timeout resolver on this lane thread.
         Optional<RunBudgetState> budgetState = RunBudgetState.from(toolCtx.getExtra());
         boolean isBudgetAttached = budgetState.isPresent() && budgetState.get().isTimeEnabled();
         Optional<RunBudgetState> displacedBudget = isBudgetAttached
@@ -1026,7 +1026,7 @@ public class AbilityManager {
         if (callTimeout == null) {
             callTimeout = MAX_TOOL_CALL_TIMEOUT_HARD_LIMIT;
         }
-        // FEAT-057: clamp the tool wait to the remaining time budget when a budget is attached.
+        // Clamp the tool wait to the remaining time budget when a budget is attached.
         OptionalDouble remainingBudget = RunBudgetContext.currentRemainingSeconds();
         if (remainingBudget.isPresent() && remainingBudget.getAsDouble() > 0
                 && remainingBudget.getAsDouble() < callTimeout) {

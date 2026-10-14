@@ -18,7 +18,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * Run-budget rail implementing FEAT-057 (main loop run budget and progress tracking).
+ * Run-budget rail implementing the main-loop run budget and progress tracking.
  *
  * <p>Carries both budget dimensions over the existing rail primitives: prompts go through the
  * steering queue, termination goes through {@code requestForceFinish}, and progress facts are

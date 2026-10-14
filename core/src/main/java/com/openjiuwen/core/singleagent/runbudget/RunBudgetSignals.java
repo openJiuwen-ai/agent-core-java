@@ -7,7 +7,7 @@ package com.openjiuwen.core.singleagent.runbudget;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 
 /**
- * Host-facing injection surface for "no substantive progress" facts (FEAT-057).
+ * Host-facing injection surface for "no substantive progress" facts.
  *
  * <p>Host assembly rails (for example deepanalyze-java saturation/loop detectors) call
  * {@link #reportNoProgress} from their own hooks to feed host tool-semantics evidence into

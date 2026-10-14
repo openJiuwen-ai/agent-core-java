@@ -34,6 +34,11 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ModelClientConfig {
 
+    /**
+     * Default per-call timeout in seconds applied when the configuration does not declare one.
+     */
+    public static final double DEFAULT_TIMEOUT_SECONDS = 60.0;
+
     private static final Set<String> DEFERRED_PARITY_PROVIDERS = Set.of(
             "qwen",
             "test",
@@ -53,7 +58,7 @@ public class ModelClientConfig {
     @JsonProperty("api_base")
     private String apiBase;
 
-    private double timeout = 60.0;
+    private double timeout = DEFAULT_TIMEOUT_SECONDS;
 
     @JsonProperty("max_retries")
     private int maxRetries = 3;
@@ -234,7 +239,7 @@ public class ModelClientConfig {
         private Object clientProvider;
         private String apiKey;
         private String apiBase;
-        private double timeout = 60.0;
+        private double timeout = DEFAULT_TIMEOUT_SECONDS;
         private int maxRetries = 3;
         private boolean verifySsl = true;
         private String sslCert;

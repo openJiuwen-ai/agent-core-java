@@ -23,7 +23,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Event-surface tests for FEAT-057: all eleven LogEventType values are registered, the
+ * Event-surface tests for All eleven LogEventType values are registered, the
  * guarantee event payload carries the contract keys, terminated events log at WARNING, and
  * the facade degrades cleanly for host-registered custom loggers.
  */

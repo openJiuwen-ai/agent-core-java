@@ -153,7 +153,7 @@ public enum LogEventType {
     CORO_MANAGER_TASK_CANCELLED("coro_manager_task_cancelled"),
     CORO_MANAGER_DEBUG_TASK_TREE("coro_manager_debug_task_tree"),
 
-    // Run budget events (FEAT-057)
+    // Run budget events
     TURN_BUDGET_GUARANTEE_EFFECTIVE("turn_budget_guarantee_effective"),
     TURN_BUDGET_CHECKPOINT("turn_budget_checkpoint"),
     TURN_BUDGET_EXTENDED("turn_budget_extended"),

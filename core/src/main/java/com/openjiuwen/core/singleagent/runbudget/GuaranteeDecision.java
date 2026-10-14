@@ -9,7 +9,7 @@ package com.openjiuwen.core.singleagent.runbudget;
  *
  * <p>Carries the effective guaranteed rounds, the source of the value
  * ({@link #SOURCE_CONFIGURED} or {@link #SOURCE_DEFAULT}) and the absolute hard limit.
- * Defined by FEAT-057 (main loop run budget and progress tracking).</p>
+ * Resolved once per invocation from the configured and default guarantee sources.</p>
  *
  * @param guaranteedRounds effective guaranteed rounds for this invocation
  * @param source value source, {@link #SOURCE_CONFIGURED} or {@link #SOURCE_DEFAULT}
