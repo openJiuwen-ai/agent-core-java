@@ -1077,6 +1077,13 @@ public class SessionModelContext implements ModelContext {
             message = toolMessage;
         } else if ("system".equals(role)) {
             message = new SystemMessage(stringValue(content, ""));
+        } else if (content instanceof List<?>) {
+            // Multimodal wire parts: keep the structured content on
+            // restore, mirroring the tool branch above; images would be lost
+            // if the list were flattened into its toString form.
+            UserMessage userMessage = new UserMessage();
+            userMessage.setContent(content);
+            message = userMessage;
         } else {
             message = new UserMessage(stringValue(content, ""));
         }
