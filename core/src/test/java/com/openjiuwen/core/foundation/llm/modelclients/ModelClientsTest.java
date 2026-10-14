@@ -45,7 +45,6 @@ class ModelClientsTest {
                 "OpenRouter",
                 "SiliconFlow",
                 "DashScope",
-                "InferenceAffinity",
                 "AscendAffinity",
                 "DeepSeek",
                 "intelli_router"

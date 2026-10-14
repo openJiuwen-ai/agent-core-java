@@ -94,7 +94,7 @@ public class SkillEvaluator {
                 .configureModelClient(modelProvider, apiKey, apiBase, modelName, verifySsl)
                 .configurePromptTemplate(List.of(Map.of("role", "system", "content", systemPrompt)))
                 .configureMaxIterations(maxIterations)
-                .configureContextEngine(null, null, false, false);
+                .configureContextEngine(null, null, false);
         config.setSysOperationId(sysopCard.getId());
         this.agent.configure(config);
 

@@ -35,8 +35,6 @@ public final class DefaultModelClientFactories {
         Model.registerFactory(new OpenRouterModelClientFactory());
         Model.registerFactory(new SiliconFlowModelClientFactory());
         Model.registerFactory(new DashScopeModelClientFactory());
-        Model.registerFactory(new InferenceAffinityModelClientFactory("InferenceAffinity"));
-        Model.registerFactory(new InferenceAffinityModelClientFactory("inference_affinity"));
         // AscendAffinity rides the OpenAI-compatible transport; the client
         // reads extensions.kv_cache.mode=affinity for capability declaration.
         Model.registerFactory(new AscendAffinityModelClientFactory("AscendAffinity"));

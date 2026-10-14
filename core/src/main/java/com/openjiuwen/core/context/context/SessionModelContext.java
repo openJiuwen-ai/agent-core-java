@@ -75,7 +75,6 @@ public class SessionModelContext implements ModelContext {
     private final List<ContextProcessorPort> processors;
     private final ContextProcessorStateRecorder processorStateRecorder;
     private final ReentrantLock processorLock = new ReentrantLock();
-    private final KvCacheManagerPort kvCacheManager;
     private final ToolInfo reloaderToolCard;
 
     private Object sessionRef;
@@ -83,19 +82,19 @@ public class SessionModelContext implements ModelContext {
     private OffloadMessageBuffer offloadMessageBuffer;
 
     public SessionModelContext(String contextId, String sessionId, ContextEngineConfig config) {
-        this(contextId, sessionId, config, List.of(), List.of(), null, null, null, null, null, null);
+        this(contextId, sessionId, config, List.of(), List.of(), null, null, null, null, null);
     }
 
     public SessionModelContext(String contextId, String sessionId, ContextEngineConfig config,
                                List<BaseMessage> historyMessages, List<ContextProcessorPort> processors,
                                TokenCounterPort tokenCounter) {
-        this(contextId, sessionId, config, historyMessages, processors, tokenCounter, null, null, null, null, null);
+        this(contextId, sessionId, config, historyMessages, processors, tokenCounter, null, null, null, null);
     }
 
     public SessionModelContext(String contextId, String sessionId, ContextEngineConfig config,
                                List<BaseMessage> historyMessages, List<ContextProcessorPort> processors,
                                TokenCounterPort tokenCounter, Object sessionRef, WorkspacePort workspace,
-                               SysOperationPort sysOperation, KvCacheManagerPort kvCacheManager,
+                               SysOperationPort sysOperation,
                                ModelContextWindowTokenProvider tokenProvider) {
         ContextEngineConfig safeConfig = config == null ? new ContextEngineConfig() : config;
         validateMessages(historyMessages == null ? List.of() : historyMessages);
@@ -116,7 +115,6 @@ public class SessionModelContext implements ModelContext {
         this.processors = processors == null ? new ArrayList<>() : new ArrayList<>(processors);
         this.processorStateRecorder = new ContextProcessorStateRecorder(
                 sessionId, contextId, this::getSessionRef, adaptStateTokenCounter(tokenCounter), 100, null);
-        this.kvCacheManager = safeConfig.isEnableKvCacheRelease() ? kvCacheManager : null;
         this.offloadMessageBuffer = new OffloadMessageBuffer();
         bindOffloadBuffer();
         this.reloaderToolCard = ToolInfo.builder()
@@ -394,26 +392,8 @@ public class SessionModelContext implements ModelContext {
         }
 
         validateAndFixContextWindow(window);
-        if (kvCacheManager != null && !Boolean.TRUE.equals(effectiveKwargs.get("defer_finalization"))) {
-            kvCacheManager.release(window, effectiveKwargs.get("model"));
-        }
         window.setStatistic(statContextWindow(window));
         return CompletableFuture.completedFuture(window);
-    }
-
-    /**
-     * Recount the edited request and release KV cache against the selected model.
-     *
-     * @param window processed request after model rails
-     * @param model selected release model, or null when release is disabled
-     * @since 0.1.16
-     */
-    @Override
-    public void finalizeContextWindow(ContextWindow window, Object model) {
-        window.setStatistic(statContextWindow(window));
-        if (kvCacheManager != null && model != null) {
-            kvCacheManager.release(window, model);
-        }
     }
 
     @Override
@@ -1313,16 +1293,6 @@ public class SessionModelContext implements ModelContext {
         default Object compressionUsage() {
             return null;
         }
-    }
-
-    /**
-     * KV cache release adapter.
-     *
-     * <p>Mirrors Python's {@code KVCacheManager.release} collaborator in
-     * {@code openjiuwen/core/context_engine/context/context.py}.</p>
-     */
-    public interface KvCacheManagerPort {
-        void release(ContextWindow contextWindow, Object model);
     }
 
     /**

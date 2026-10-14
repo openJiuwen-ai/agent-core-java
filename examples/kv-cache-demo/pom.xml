@@ -11,8 +11,6 @@
     <packaging>jar</packaging>
 
     <name>kv-cache-demo</name>
-    <description>Standalone demo for MicroCompactProcessor + KV cache release
-        (InferenceAffinity provider + vLLM openJiuwen-vllm-affinity plugin).</description>
 
     <properties>
         <java.version>17</java.version>

@@ -25,7 +25,6 @@ class ContextEngineConfigTest {
         ContextEngineConfig config = new ContextEngineConfig();
 
         assertEquals(3.0, config.getOpenrouterRequestTimeout());
-        assertFalse(config.isEnableKvCacheRelease());
         assertFalse(config.isEnableReload());
         assertFalse(config.isEnableTiktokenCounter());
         assertFalse(config.isEnableOpenrouterModelContextWindowTokens());

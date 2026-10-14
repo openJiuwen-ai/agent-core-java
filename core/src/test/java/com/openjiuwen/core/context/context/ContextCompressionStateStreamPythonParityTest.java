@@ -136,7 +136,6 @@ class ContextCompressionStateStreamPythonParityTest {
                 session,
                 null,
                 null,
-                null,
                 null
         );
 
@@ -175,7 +174,6 @@ class ContextCompressionStateStreamPythonParityTest {
                 processors,
                 null,
                 session,
-                null,
                 null,
                 null,
                 null

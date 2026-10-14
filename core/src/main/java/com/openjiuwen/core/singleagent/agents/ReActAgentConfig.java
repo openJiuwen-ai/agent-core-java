@@ -148,23 +148,19 @@ public class ReActAgentConfig {
 
     public ReActAgentConfig configureContextEngine(Integer maxContextMessageNum,
                                                    Integer defaultWindowRoundNum,
-                                                   boolean enableReload,
-                                                   boolean enableKvCacheRelease) {
+                                                   boolean isReloadEnabled) {
         ContextEngineConfig config = new ContextEngineConfig();
         config.setMaxContextMessageNum(maxContextMessageNum);
         config.setDefaultWindowRoundNum(defaultWindowRoundNum);
-        config.setEnableReload(enableReload);
-        config.setEnableKvCacheRelease(enableKvCacheRelease);
+        config.setEnableReload(isReloadEnabled);
         this.contextEngineConfig = config;
         return this;
     }
 
     public ReActAgentConfig configure_context_engine(Integer maxContextMessageNum,
                                                      Integer defaultWindowRoundNum,
-                                                     boolean enableReload,
-                                                     boolean enableKvCacheRelease) {
-        return configureContextEngine(maxContextMessageNum, defaultWindowRoundNum, enableReload,
-                enableKvCacheRelease);
+                                                     boolean isReloadEnabled) {
+        return configureContextEngine(maxContextMessageNum, defaultWindowRoundNum, isReloadEnabled);
     }
 
     public ReActAgentConfig configureMemScope(String memScopeId) {

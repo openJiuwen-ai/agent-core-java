@@ -24,7 +24,6 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.callback.CallbackInfo;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.EventFilter;
@@ -234,38 +233,6 @@ class ModelTest {
     }
 
     @Test
-    void releaseAndKvCacheHelpersMirrorUnderlyingClientCapability() {
-        RecordingModelClient client = new RecordingModelClient();
-        client.kvCacheReleaseSupported = true;
-        Model model = new Model(client);
-
-        CompletionStage<Boolean> result = model.release(
-                "session-1",
-                List.of(new BaseMessage("user", "old")),
-                0,
-                List.of(ToolInfo.builder().name("search").build()),
-                0
-        );
-        Map<String, Object> kwargs = model.buildKvCacheInvokeKwargs(new SessionStub("session-1"), true);
-
-        assertTrue(result.toCompletableFuture().join());
-        assertEquals("session-1", client.releaseSessionId);
-        assertEquals(0, client.releaseMessagesReleasedIndex);
-        assertEquals("session-1", kwargs.get("session_id"));
-        assertEquals(true, kwargs.get("enable_cache_sharing"));
-        assertTrue(model.supportsKvCacheRelease());
-    }
-
-    @Test
-    void nonKvClientReturnsEmptyKvKwargsAndFalseRelease() {
-        Model model = new Model(new RecordingModelClient());
-
-        assertFalse(model.supportsKvCacheRelease());
-        assertTrue(model.buildKvCacheInvokeKwargs(new SessionStub("ignored"), true).isEmpty());
-        assertFalse(model.release("session", List.of(), 0, null, null).toCompletableFuture().join());
-    }
-
-    @Test
     void sharedClientConstructorPreservesConfigurationAndClientIdentity() {
         RecordingModelClient client = new RecordingModelClient();
         client.streamIterator = List.of(AssistantMessageChunk.builder().content("chunk").build()).iterator();
@@ -279,10 +246,6 @@ class ModelTest {
         assertEquals("ok", wrapper.invoke("hello").toCompletableFuture().join().getContentAsString());
         assertEquals(1, client.invokeOptions.size());
         assertSame(client.streamIterator, wrapper.stream("hello"));
-        client.kvCacheReleaseSupported = true;
-        assertTrue(wrapper.supportsKvCacheRelease());
-        assertTrue(wrapper.release("shared-session", List.of(), 0, List.of(), 0).toCompletableFuture().join());
-        assertEquals("shared-session", client.releaseSessionId);
     }
 
     @Test
@@ -354,9 +317,6 @@ class ModelTest {
         private final List<ModelInvokeOptions> invokeOptions = new ArrayList<>();
         private List<AssistantMessageChunk> streamChunks = List.of();
         private Iterator<AssistantMessageChunk> streamIterator;
-        private boolean kvCacheReleaseSupported;
-        private String releaseSessionId;
-        private Integer releaseMessagesReleasedIndex;
         private Model.ImageGenerationOptions lastImageOptions;
         private Model.SpeechGenerationOptions lastSpeechOptions;
         private Model.VideoGenerationOptions lastVideoOptions;
@@ -376,24 +336,11 @@ class ModelTest {
         }
 
         @Override
-        public CompletionStage<Boolean> release(String sessionId, List<BaseMessage> messages,
-                                                Integer messagesReleasedIndex, List<ToolInfo> tools,
-                                                Integer toolsReleasedIndex) {
-            releaseSessionId = sessionId;
-            releaseMessagesReleasedIndex = messagesReleasedIndex;
-            return CompletableFuture.completedFuture(kvCacheReleaseSupported);
-        }
-
-        @Override
-        public boolean supportsKvCacheRelease() {
-            return kvCacheReleaseSupported;
-        }
-
-        @Override
         public CompletionStage<ImageGenerationResponse> generateImage(List<UserMessage> messages,
                                                                       Model.ImageGenerationOptions options) {
             lastImageOptions = options;
-            return CompletableFuture.completedFuture(ImageGenerationResponse.builder().images(List.of("image")).build());
+            return CompletableFuture.completedFuture(
+                    ImageGenerationResponse.builder().images(List.of("image")).build());
         }
 
         @Override
