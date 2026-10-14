@@ -559,7 +559,8 @@ public final class Runner {
             CwdContext.reset();
         }
 
-        private Optional<TenantContext> resolveTenantContext(Object session, TenantContext explicitTenantCtx) {
+        private Optional<TenantContext> resolveTenantContext(Object session, TenantContext explicitTenantCtx,
+                                                             TenantContext callerTenantCtx) {
             if (explicitTenantCtx != null) {
                 return Optional.of(explicitTenantCtx);
             }
@@ -568,6 +569,15 @@ public final class Runner {
                 if (sessionCtx != null && sessionCtx.isTenantAware()) {
                     return Optional.of(sessionCtx);
                 }
+            }
+            // Fallback to the submitter's tenant context. The async hand-off to the
+            // ForkJoinPool worker does not propagate InheritableThreadLocal state, so
+            // the caller-side context must be captured before supplyAsync and passed
+            // in explicitly; otherwise preRun (worker thread) and postRun (consumer
+            // thread) would derive different tenant-aware session keys for the same
+            // session and the checkpointer would fail with "agent store not found".
+            if (callerTenantCtx != null && callerTenantCtx.isTenantAware()) {
+                return Optional.of(callerTenantCtx);
             }
             return Optional.empty();
         }
@@ -635,8 +645,9 @@ public final class Runner {
         private CompletionStage<Object> runWorkflow(Object workflow, Object inputs, Object session,
                                                     ModelContext context, Map<String, Object> envs,
                                                     TenantContext tenantCtx) {
+            TenantContext callerTenantCtx = TenantContextHolder.getCurrentTenant();
             return CompletableFuture.supplyAsync(() -> {
-                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx, callerTenantCtx);
                 boolean bound = resolved.isPresent();
                 if (bound) {
                     bindTenantContext(resolved.get());
@@ -670,8 +681,9 @@ public final class Runner {
                 List<StreamMode> streamModes,
                 Map<String, Object> envs,
                 TenantContext tenantCtx) {
+            TenantContext callerTenantCtx = TenantContextHolder.getCurrentTenant();
             return CompletableFuture.supplyAsync(() -> {
-                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx, callerTenantCtx);
                 boolean bound = resolved.isPresent();
                 if (bound) {
                     bindTenantContext(resolved.get());
@@ -688,7 +700,7 @@ public final class Runner {
                     isSuccessful = true;
                     return iterator;
                 } finally {
-                    if (bound && !isSuccessful) {
+                    if (bound) {
                         unbindTenantContext();
                     }
                 }
@@ -703,8 +715,9 @@ public final class Runner {
         private CompletionStage<Object> runAgent(Object agent, Object inputs, Object session,
                                                  ModelContext context, Map<String, Object> envs,
                                                  TenantContext tenantCtx) {
+            TenantContext callerTenantCtx = TenantContextHolder.getCurrentTenant();
             return CompletableFuture.supplyAsync(() -> {
-                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx, callerTenantCtx);
                 boolean bound = resolved.isPresent();
                 if (bound) {
                     bindTenantContext(resolved.get());
@@ -763,8 +776,9 @@ public final class Runner {
                                                                     List<StreamMode> streamModes,
                                                                     Map<String, Object> envs,
                                                                     TenantContext tenantCtx) {
+            TenantContext callerTenantCtx = TenantContextHolder.getCurrentTenant();
             return CompletableFuture.supplyAsync(() -> {
-                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx, callerTenantCtx);
                 boolean bound = resolved.isPresent();
                 if (bound) {
                     bindTenantContext(resolved.get());
@@ -801,7 +815,10 @@ public final class Runner {
                     isSuccessful = true;
                     return iterator;
                 } finally {
-                    if (bound && !isSuccessful) {
+                    // Always unbind on the worker thread (including the success path):
+                    // pooled workers are reused, and a leaked tenant binding here would
+                    // contaminate unrelated tasks that later run on the same thread.
+                    if (bound) {
                         unbindTenantContext();
                     }
                 }
@@ -811,6 +828,30 @@ public final class Runner {
         private static Iterator<Object> postRunAfterIterator(Iterator<Object> delegate, AgentSession session) {
             class PostRunIterator implements Iterator<Object>, AutoCloseable {
                 private boolean closed;
+                private final TenantContext runTenantCtx = TenantContextHolder.getCurrentTenant();
+
+                /**
+                 * Runs postRun under the exact tenant context that was bound during the
+                 * run (captured when the iterator was created on the worker thread), so
+                 * that the checkpointer derives the same tenant-aware session key as
+                 * preAgentExecute did — regardless of which thread consumes the
+                 * iterator. The consumer thread's previous binding, if any, is restored
+                 * afterwards to avoid cross-tenant leakage into unrelated work.
+                 */
+                private void runPostRunUnderRunTenant() {
+                    TenantContext previous = TenantContextHolder.getCurrentTenant();
+                    boolean sameAsRun = java.util.Objects.equals(previous, runTenantCtx);
+                    try {
+                        if (!sameAsRun) {
+                            TenantContextHolder.setCurrentTenant(runTenantCtx);
+                        }
+                        session.postRun();
+                    } finally {
+                        if (!sameAsRun) {
+                            TenantContextHolder.setCurrentTenant(previous);
+                        }
+                    }
+                }
 
                 @Override
                 public boolean hasNext() {
@@ -846,7 +887,7 @@ public final class Runner {
                             closeable.close();
                         }
                     } finally {
-                        session.postRun();
+                        runPostRunUnderRunTenant();
                     }
                 }
 
@@ -856,7 +897,7 @@ public final class Runner {
                     }
                     closed = true;
                     closeDelegateBestEffort();
-                    session.postRun();
+                    runPostRunUnderRunTenant();
                 }
 
                 private void closeDelegateBestEffort() {
@@ -952,8 +993,9 @@ public final class Runner {
         private CompletionStage<Object> runAgentTeam(Object agentTeam, Object inputs, boolean member,
                                                      Object session, ModelContext context,
                                                      Map<String, Object> envs, TenantContext tenantCtx) {
+            TenantContext callerTenantCtx = TenantContextHolder.getCurrentTenant();
             return CompletableFuture.supplyAsync(() -> {
-                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx, callerTenantCtx);
                 boolean bound = resolved.isPresent();
                 if (bound) {
                     bindTenantContext(resolved.get());

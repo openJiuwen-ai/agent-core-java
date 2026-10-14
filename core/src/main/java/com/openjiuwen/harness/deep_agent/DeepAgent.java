@@ -885,16 +885,23 @@ public class DeepAgent implements AutoCloseable {
         }
         // Sync MCP servers already registered externally (e.g. ResourceMgr.addMcpServer).
         syncMcpServersFromResourceMgr();
-        if (config.getPermissions() != null && Boolean.TRUE.equals(config.getPermissions().get("enabled"))) {
-            PermissionInterruptRail rail = PermissionFactory.buildPermissionInterruptRail(
-                    config.getPermissions(),
-                    config.getPermissionHost(),
-                    workspaceRootPath()
-            );
-            rail.init(this);
-            registeredRails.add(rail);
-            if (agent != null && railsBoundToAgent.add(rail)) {
-                agent.registerRail(rail).toCompletableFuture().join();
+        if (config.getPermissions() != null) {
+            Object enabledFlag = config.getPermissions().get("enabled");
+            // Consistent with PermissionEngine.boolOrDefault(config.get("enabled"), true):
+            // when "enabled" is missing (null), default to true; only explicit false disables.
+            if (!(enabledFlag instanceof Boolean b && !b)) {
+                PermissionInterruptRail rail = PermissionFactory.buildPermissionInterruptRail(
+                        config.getPermissions(),
+                        config.getPermissionHost(),
+                        workspaceRootPath()
+                );
+                if (rail != null) {
+                    rail.init(this);
+                    registeredRails.add(rail);
+                    if (agent != null && railsBoundToAgent.add(rail)) {
+                        agent.registerRail(rail).toCompletableFuture().join();
+                    }
+                }
             }
         }
         if (config.isEnableTaskLoop()) {

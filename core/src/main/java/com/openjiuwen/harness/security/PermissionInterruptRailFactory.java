@@ -49,8 +49,14 @@ public final class PermissionInterruptRailFactory {
             ToolPermissionHost host,
             Path workspaceRoot
     ) {
-        Map<String, Object> config = permissions == null ? new LinkedHashMap<>() : new LinkedHashMap<>(permissions);
-        if (!Boolean.TRUE.equals(config.get("enabled"))) {
+        // When permissions is null, no permission section was configured — don't mount a rail.
+        if (permissions == null) {
+            return null;
+        }
+        Map<String, Object> config = new LinkedHashMap<>(permissions);
+        // Consistent with PermissionEngine.boolOrDefault(config.get("enabled"), true):
+        // when "enabled" is missing (null), default to true; only explicit false disables.
+        if (config.get("enabled") instanceof Boolean enabledFlag && !enabledFlag) {
             return null;
         }
 

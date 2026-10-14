@@ -57,8 +57,13 @@ public class DeepAgentConfig {
     @Builder.Default
     private boolean enableReadImageMultimodal = true;
     private Double completionTimeout;
-    @Builder.Default
-    private Map<String, Object> permissions = new LinkedHashMap<>();
+    /**
+     * Permission configuration map. When null (the default), no permission
+     * rail is mounted by {@code DeepAgent.runInitializationSequence()} —
+     * matching the fork-version behaviour where the rail is only registered
+     * when the caller explicitly configures permissions.
+     */
+    private Map<String, Object> permissions;
     @Builder.Default
     private List<Object> tools = new ArrayList<>();
     @Builder.Default
