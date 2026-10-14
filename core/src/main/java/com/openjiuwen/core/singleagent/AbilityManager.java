@@ -72,6 +72,9 @@ import java.util.concurrent.TimeoutException;
 public class AbilityManager {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> FILE_PATH_TOOL_NAMES = Set.of("read_file", "write_file", "edit_file");
+
+    /** Per-field truncation limit of the structured summary for multimodal tool results. */
+    private static final int MAX_SUMMARY_FIELD_CHARS = 500;
     private static final double DEFAULT_TOOL_CALL_TIMEOUT_SECONDS = envDouble(
             "DEFAULT_TOOL_CALL_TIMEOUT", 300.0D);
     private static final double MAX_TOOL_CALL_TIMEOUT_HARD_LIMIT = envDouble(
@@ -1286,6 +1289,22 @@ public class AbilityManager {
         return text.isEmpty() ? "?" : text;
     }
 
+    /**
+     * Build the ToolMessage text content of one tool result.
+     *
+     * <p>Failure surfaces the error text; {@code data.content} is used when
+     * present. A result whose {@code data} carries a {@code multimodal} list
+     * but no text content is summarized structurally (success flag, item
+     * count, per-item type and source path, other fields truncated) instead
+     * of stringifying the whole envelope: the media itself is attached once
+     * by the multimodal UserMessage channel, so dumping encoded base64 into
+     * the text context would send the same payload twice. Every other result
+     * keeps the legacy {@code String.valueOf} fallback unchanged.</p>
+     *
+     * @param result tool result envelope; may be {@code null}
+     * @return tool message text, never {@code null}
+     * @since 0.1.17
+     */
     public static String buildToolMessageContent(Object result) {
         Object data = attribute(result, "data");
         Object error = attribute(result, "error");
@@ -1310,7 +1329,68 @@ public class AbilityManager {
         if (result == null) {
             return "";
         }
+        if (data instanceof Map<?, ?> multimodalData && multimodalData.containsKey("multimodal")) {
+            return summarizeMultimodalToolData(success, multimodalData);
+        }
         return String.valueOf(result);
+    }
+
+    private static String summarizeMultimodalToolData(Object success, Map<?, ?> dataMap) {
+        Object items = dataMap.get("multimodal");
+        int count = items instanceof List<?> list ? list.size() : 0;
+        List<String> lines = new ArrayList<>();
+        lines.add("Tool returned no text content (success=" + success + "); multimodal items: " + count
+                + ". Media payloads are attached as separate image/video parts;"
+                + " encoded data is omitted here.");
+        if (items instanceof List<?> list) {
+            for (int index = 0; index < list.size(); index++) {
+                lines.add((index + 1) + ". " + describeMultimodalItem(list.get(index)));
+            }
+        }
+        Map<String, Object> otherFields = new LinkedHashMap<>();
+        dataMap.forEach((key, value) -> {
+            if (!"multimodal".equals(String.valueOf(key))) {
+                otherFields.put(String.valueOf(key), truncateSummaryField(value));
+            }
+        });
+        if (!otherFields.isEmpty()) {
+            lines.add("other data fields: " + otherFields);
+        }
+        return String.join("\n", lines);
+    }
+
+    private static String describeMultimodalItem(Object item) {
+        if (!(item instanceof Map<?, ?> itemMap)) {
+            return "item is not a map (" + (item == null ? "null" : item.getClass().getSimpleName()) + ")";
+        }
+        Object rawType = itemMap.get("type");
+        StringBuilder description = new StringBuilder("type=").append(rawType == null ? "unknown" : rawType);
+        Object sourcePath = itemMap.get("source_path");
+        if (sourcePath != null) {
+            description.append(" source_path=").append(sourcePath);
+        }
+        return description.append(" data_url=").append(describeDataUrl(itemMap.get("data_url"))).toString();
+    }
+
+    private static String describeDataUrl(Object dataUrl) {
+        if (dataUrl == null) {
+            return "missing";
+        }
+        String text = String.valueOf(dataUrl);
+        if (text.startsWith("data:")) {
+            int comma = text.indexOf(',');
+            String header = comma > 0 ? text.substring(0, Math.min(comma, 64)) : "data:";
+            return header + ",<base64 " + text.length() + " chars omitted>";
+        }
+        return "<non-data URL of " + text.length() + " chars, not attached as media>";
+    }
+
+    private static String truncateSummaryField(Object value) {
+        String text = String.valueOf(value);
+        if (text.length() <= MAX_SUMMARY_FIELD_CHARS) {
+            return text;
+        }
+        return text.substring(0, MAX_SUMMARY_FIELD_CHARS) + "...<" + text.length() + " chars truncated>";
     }
 
     public static List<ToolCall> normalizeToolCalls(Object toolCall) {
