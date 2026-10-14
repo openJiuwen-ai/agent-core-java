@@ -16,6 +16,13 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
+import com.openjiuwen.core.foundation.llm.multimodal.ContentBlock;
+import com.openjiuwen.core.foundation.llm.multimodal.DefaultMultimodalContentNormalizer;
+import com.openjiuwen.core.foundation.llm.multimodal.ImageMaterialProvider;
+import com.openjiuwen.core.foundation.llm.multimodal.MaterialAccessConfig;
+import com.openjiuwen.core.foundation.llm.multimodal.MaterialAccessContext;
+import com.openjiuwen.core.foundation.llm.multimodal.MultimodalContentNormalizer;
+import com.openjiuwen.core.foundation.llm.multimodal.MultimodalContentResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -65,6 +72,9 @@ import com.openjiuwen.core.singleagent.skills.SkillUtil;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
+import com.openjiuwen.harness.tools.multimodal.FileSystemImageAssetStore;
+import com.openjiuwen.harness.tools.multimodal.LocalImageMaterialProvider;
+import com.openjiuwen.harness.tools.multimodal.MaterialAccessContexts;
 import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.io.UncheckedIOException;
@@ -114,6 +124,9 @@ public class ReActAgent extends BaseAgent {
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
+
+    /** Stateless normalizer shared by all structured multimodal entry inputs. */
+    private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
     private static final String EXTERNAL_TOOL_RESULT_ID_ERROR =
             "External tool results must contain exactly all pending tool_call_id values";
     private static final String EXTERNAL_TOOL_RESULTS_REQUIRED_ERROR =
@@ -127,6 +140,7 @@ public class ReActAgent extends BaseAgent {
     private volatile ContextEngine contextEngine;
     private ContextEngineConfig appliedContextEngineConfig;
     private volatile Model llm;
+    private volatile ImageMaterialProvider materialProvider;
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
     private final com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook kvCacheModelCallHook =
@@ -1430,6 +1444,114 @@ public class ReActAgent extends BaseAgent {
         return String.valueOf(userInput);
     }
 
+    /**
+     * Normalize one user input into ordered multimodal content blocks.
+     *
+     * <p>Companion of {@link #extractUserText(Object)}: the text extractor
+     * keeps its original semantics for {@code _original_query} and other text
+     * usages, while this method exposes the normalized block view required by
+     * the multimodal contract. Both coexist.</p>
+     *
+     * @param userInput string, content block list, structured message map or
+     *                  {@link BaseMessage}; may be {@code null}
+     * @return immutable ordered blocks, never {@code null}
+     * @throws com.openjiuwen.core.common.exception.BaseError with
+     *         {@code details.reason=CONTENT_INVALID} when the structure
+     *         violates the content block contract
+     * @since 0.1.17
+     */
+    public List<ContentBlock> extractUserContentBlocks(Object userInput) {
+        return MULTIMODAL_NORMALIZER.normalize(userInput);
+    }
+
+    /**
+     * Inject the image material provider used to resolve structured entry input.
+     *
+     * <p>Material resolution is an injected capability, not a static utility:
+     * the contract lives on the message side while this default implementation
+     * lives in the image domain of the harness.</p>
+     *
+     * @param materialProvider provider instance; {@code null} restores the
+     *                         framework default built per request
+     * @since 0.1.17
+     */
+    public void setMaterialProvider(ImageMaterialProvider materialProvider) {
+        this.materialProvider = materialProvider;
+    }
+
+    /**
+     * Return the injected image material provider.
+     *
+     * @return injected provider, or {@code null} when the default applies
+     * @since 0.1.17
+     */
+    public ImageMaterialProvider getMaterialProvider() {
+        return materialProvider;
+    }
+
+    private boolean isMultimodalContentInput(Object inputs, Object userInput) {
+        return inputs instanceof List
+                || inputs instanceof BaseMessage
+                || MultimodalContentNormalizer.isMultimodalContent(userInput);
+    }
+
+    private String extractOriginalQueryText(Object inputs, Object userInput) {
+        if (!isMultimodalContentInput(inputs, userInput)) {
+            return extractUserText(userInput);
+        }
+        StringBuilder text = new StringBuilder();
+        for (ContentBlock block : MULTIMODAL_NORMALIZER.normalize(userInput)) {
+            if (block instanceof ContentBlock.Text textBlock) {
+                if (text.length() > 0) {
+                    text.append('\n');
+                }
+                text.append(textBlock.text());
+            }
+        }
+        return text.toString();
+    }
+
+    private UserMessage buildEntryUserMessage(Object inputs, Object userInput) {
+        if (!isMultimodalContentInput(inputs, userInput)) {
+            return new UserMessage(extractUserText(userInput));
+        }
+        MaterialAccessConfig materialAccess = config.getMaterialAccess();
+        MaterialAccessContext access = MaterialAccessContexts.fromConfig(materialAccess);
+        List<ContentBlock> blocks = MULTIMODAL_NORMALIZER.normalize(userInput);
+        Loggers.AGENT.debug("structured multimodal input accepted, blocks={}", blocks.size());
+        String imageDetail = materialAccess == null ? null : materialAccess.getImageDetail();
+        MultimodalContentResolver resolver =
+                new MultimodalContentResolver(resolveMaterialProvider(access), imageDetail);
+        MultimodalContentResolver.ResolutionResult result = resolver.resolve(blocks, access);
+        UserMessage message = new UserMessage();
+        message.setContent(result.contentParts());
+        attachEntryMultimodalMetadata(message, result);
+        return message;
+    }
+
+    private void attachEntryMultimodalMetadata(UserMessage message,
+                                               MultimodalContentResolver.ResolutionResult result) {
+        if (result.itemErrors().isEmpty() && result.provenance().isEmpty()) {
+            return;
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (!result.itemErrors().isEmpty()) {
+            metadata.put("multimodal_item_errors", result.itemErrors());
+        }
+        if (!result.provenance().isEmpty()) {
+            metadata.put("multimodal_provenance", result.provenance());
+        }
+        message.setMetadata(metadata);
+    }
+
+    private ImageMaterialProvider resolveMaterialProvider(MaterialAccessContext access) {
+        ImageMaterialProvider injected = materialProvider;
+        if (injected != null) {
+            return injected;
+        }
+        return new LocalImageMaterialProvider(new FileSystemImageAssetStore(Path.of(access.assetRoot())));
+    }
+
     public InteractiveInput buildInteractiveInput(Object userQuery, List<String> componentIds) {
         if (userQuery instanceof InteractiveInput interactiveInput) {
             Set<String> providedIds = new HashSet<>(interactiveInput.getUserInputs().keySet());
@@ -1527,8 +1649,30 @@ public class ReActAgent extends BaseAgent {
         return invoke(inputs, apiSession);
     }
 
+    /**
+     * Run one agent invocation.
+     *
+     * <p>Accepted input shapes: a {@code Map} carrying {@code query} (the
+     * query value may itself be a string, a multimodal content block list, a
+     * structured message with {@code content}, or a {@link BaseMessage}), a
+     * plain string, a multimodal content block list, or a {@link BaseMessage}
+     * instance. Structured shapes share one dispatch point with the streaming
+     * entry because {@code stream} delegates here.</p>
+     *
+     * @param inputs agent input; see the accepted shapes above
+     * @param session target session; {@code null} creates a temporary one
+     * @param kwargs extra invoke options such as {@code _streaming}
+     * @return invocation result map, never {@code null}
+     * @throws IllegalArgumentException when the input shape is not accepted
+     * @throws com.openjiuwen.core.common.exception.BaseError with
+     *         {@code details.reason} such as {@code CONTENT_INVALID} or
+     *         {@code SOURCE_UNRESOLVED} when structured input violates the
+     *         multimodal contract; parsing never falls back to stringifying
+     * @since 0.1.17
+     */
     public Object invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
-        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
+        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String)
+                && !(inputs instanceof List) && !(inputs instanceof BaseMessage))) {
             throw new IllegalArgumentException("Input must be Map with 'query' or String");
         }
         Object query;
@@ -1648,7 +1792,7 @@ public class ReActAgent extends BaseAgent {
             } else if (externalResume) {
                 ctx.getExtra().put("_original_query", externalPending.getOriginalQuery());
             } else {
-                ctx.getExtra().put("_original_query", extractUserText(userInput));
+                ctx.getExtra().put("_original_query", extractOriginalQueryText(inputs, userInput));
             }
 
             ModelContext context = initContext(session);
@@ -1675,7 +1819,7 @@ public class ReActAgent extends BaseAgent {
                     startIteration = popInt(ctx.getExtra(), InterruptConstants.RESUME_START_ITERATION_KEY, 0);
                 } else if (interruptionState instanceof InterruptionState workflowState) {
                     ctx.enterIteration(workflowState.getIteration());
-                    context.addMessages(new UserMessage(extractUserText(userInput))).toCompletableFuture().join();
+                    context.addMessages(buildEntryUserMessage(inputs, userInput)).toCompletableFuture().join();
                     Object resumeResult = handleResume(interruptionState, userInput, ctx, context, session,
                             invokeInputs);
                     if (resumeResult == null) {
@@ -1683,7 +1827,7 @@ public class ReActAgent extends BaseAgent {
                     }
                 }
             } else {
-                context.addMessages(new UserMessage(extractUserText(userInput))).toCompletableFuture().join();
+                context.addMessages(buildEntryUserMessage(inputs, userInput)).toCompletableFuture().join();
             }
 
             if (invokeInputs.getResult() == null) {

@@ -271,3 +271,54 @@ ReActAgent 最终输出结果：
 
 建议外出时携带雨具，注意防雨防滑。需要其他天气信息可以随时告诉我哦~
 ```
+
+
+# 图文多模态输入
+
+`invoke` 与 `stream` 的输入除纯字符串与旧业务 Map 外，还接受有序内容块列表、含 `content` 的结构化消息（Map）或 `BaseMessage` 实例；两个入口共用同一分流点（`stream` 内部转调 `invoke`）。纯字符串与旧业务 Map 的请求体和返回值与旧版本保持一致。
+
+内容块契约字段为 `type`/`id`/`text`/`source`/`mediaType`/`filename`/`description`/`provenance`。`type` 只接受 `text`/`image`/`video`/`file`/`tool_result`，其中 `video` 为预留位、本版不处理，`tool_result` 只属于工具结果通道；不识别的类型、`source` 多 kind 冲突、缺必填字段都会显式失败并定位到块 ID、字段名与输入下标，不会回退为字符串拍平。旧 OpenAI 风格 `text`/`image_url` 块会自动转换为内部来源，`image_url.url` 只接受 `data:` 或 `http(s):` 地址，本地路径必须改用 `kind=path` 的内部契约。
+
+`source.kind` 显式区分四种来源，只能存在一种：
+
+- `raw`：调用方已解码的内联 `byte[]`（或 base64 字符串，只解码一次，不重复解码）；
+- `path`：受控工作目录内的本地文件，可选 `sha256:<64位hex>` 形式的 `version` 固定内容；
+- `asset`：框架内部资产引用，必须携带 `version`，同 ID 换版本不会静默读到新内容；
+- `url`：本版仅保留契约，解析时显式报 `SOURCE_UNRESOLVED`，不透传给模型。
+
+读取与编码在请求发送前完成，模型收到的是 `data:` URL，路径字符串不会发给模型。MIME 以实际字节为准，推断不出时要求 `mediaType` 显式声明，不会默认按 `image/png` 处理。多图不排序、不去重、不移除；单张失败不影响其他图片，错误项以带原始下标的文本说明占位、不伪造图片，逐项错误同时写入用户消息 metadata 的 `multimodal_item_errors`。非图片 `file` 块在没有可用处理链时报 `FILE_PROCESSING_REQUIRED`；`mediaType` 为图片的 `file` 块会按图片处理。
+
+```java
+Map<String, Object> imageBlock = Map.of(
+        "type", "image",
+        "id", "img-1",
+        "source", Map.of("kind", "path", "path", "/workspace/uploads/a.png"),
+        "mediaType", "image/png",
+        "description", "第一页");
+
+Object result = reactAgent.invoke(
+        Map.of("query", List.of(
+                Map.of("type", "text", "text", "比较两张材料中的印章位置"),
+                imageBlock)),
+        session);
+```
+
+受控访问与预算通过 `ReActAgentConfig` 的 `material_access` 配置，字段全部可选：
+
+```java
+MaterialAccessConfig materialAccess = new MaterialAccessConfig();
+materialAccess.setAllowedRoots(List.of("/workspace"));
+materialAccess.setAssetRoot("/workspace/.material-assets");
+materialAccess.setMaxImageBytes(20L * 1024 * 1024);
+materialAccess.setMaxTotalImageBytes(80L * 1024 * 1024);
+materialAccess.setReadTimeoutMillis(10_000L);
+materialAccess.setImageDetail("low");
+
+reactAgent.configure(new ReActAgentConfig().configureMaterialAccess(materialAccess));
+```
+
+未配置时：`allowedRoots` 默认取执行环境的受控工作目录（workspace、cwd、projectRoot、teamWorkspace），`assetRoot` 默认绑定工作区下的 `.material-assets`（不使用全局临时目录），预算默认单图 20 MiB、请求总量 80 MiB、读取超时 10 秒，`imageDetail` 默认不携带。受控目录外的路径被拒绝；超预算或超时显式失败，大文件按已知大小预检，不会全量进堆后才被拒。
+
+图片素材解析是注入能力而非静态工具类：契约在 `com.openjiuwen.core.foundation.llm.multimodal`，默认实现 `LocalImageMaterialProvider` 在图片功能域，`agent.setMaterialProvider(provider)` 可替换。失败通过统一 `BaseError` 机制返回，`details.reason` 取 `CONTENT_INVALID`、`SOURCE_UNRESOLVED`、`FILE_PROCESSING_REQUIRED`、`IMAGE_LOAD_FAILED`、`IMAGE_PROCESS_FAILED`、`VERSION_CONFLICT`，details 同时携带块 ID、字段名、`sourceId`、`stage` 与原输入下标。
+
+限制说明：多轮会话、恢复与 offload 场景的上下文图文保全由既有需求承载，本入口当前只保证单轮调用；模型图文能力校验（发送前拦截）不在本版范围，发给不支持图片的模型将由下游报错。
