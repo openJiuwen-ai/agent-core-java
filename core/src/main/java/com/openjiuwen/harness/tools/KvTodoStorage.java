@@ -91,7 +91,13 @@ public class KvTodoStorage implements TodoStorage {
             logger.info("No todo data found in Redis for key: {}", key);
             return new ArrayList<>();
         }
-        TodoItem[] items = MAPPER.readValue(json, TodoItem[].class);
+        TodoItem[] items;
+        try {
+            items = MAPPER.readValue(json, TodoItem[].class);
+        } catch (Exception e) {
+            logger.warn("Failed to parse todo JSON for key: {}, returning empty list", key, e);
+            return new ArrayList<>();
+        }
         List<TodoItem> result = items == null ? new ArrayList<>() : new ArrayList<>(List.of(items));
         afterRead.accept(key);
         return result;

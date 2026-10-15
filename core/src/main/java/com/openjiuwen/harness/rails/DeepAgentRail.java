@@ -49,7 +49,7 @@ public abstract class DeepAgentRail extends AgentRail {
     private Object sysOperation;
 
     protected DeepAgentRail() {
-        setPriority(100);
+        setPriority(50);
     }
 
     /**
