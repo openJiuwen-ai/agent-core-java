@@ -178,7 +178,7 @@ class ReActAgentExternalToolPendingTest {
                 "external_tool_results", List.of(externalResult("call-external", "from browser"))
         ), session, Map.of("_streaming", true));
 
-        assertThat(outputToolCallIds(outputsOfType(session, "tool_result")))
+        assertThat(outputToolCallIds(outputsOfType(session, "tool_output")))
                 .containsExactly("call-external", "call-normal");
     }
 
