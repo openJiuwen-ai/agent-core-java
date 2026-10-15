@@ -6,7 +6,6 @@ package com.openjiuwen.harness.deepagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -130,8 +129,6 @@ class RunBudgetRailDeepAgentTest {
 
     private static Model stubModel() {
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), anyBoolean())).thenReturn(Map.of());
         when(model.invoke(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(CompletableFuture.completedFuture(
                         AssistantMessage.builder().content("done").toolCalls(List.of()).build()));

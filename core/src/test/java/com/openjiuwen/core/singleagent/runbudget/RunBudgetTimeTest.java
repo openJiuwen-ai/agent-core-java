@@ -6,7 +6,6 @@ package com.openjiuwen.core.singleagent.runbudget;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -187,8 +186,6 @@ class RunBudgetTimeTest {
         registerExtraRail(new LongBackoffRail(50));
         AtomicInteger calls = new AtomicInteger();
         Model failing = mock(Model.class);
-        when(failing.supportsKvCacheRelease()).thenReturn(false);
-        when(failing.buildKvCacheInvokeKwargs(any(), anyBoolean())).thenReturn(Map.of());
         when(failing.invoke(anyList(), any(ModelInvokeOptions.class))).thenAnswer(invocation -> {
             calls.incrementAndGet();
             LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(400L));
@@ -221,8 +218,6 @@ class RunBudgetTimeTest {
                 .turnEnabled(false).totalBudgetSeconds(1).build());
         AtomicInteger calls = new AtomicInteger();
         Model failing = mock(Model.class);
-        when(failing.supportsKvCacheRelease()).thenReturn(false);
-        when(failing.buildKvCacheInvokeKwargs(any(), anyBoolean())).thenReturn(Map.of());
         when(failing.invoke(anyList(), any(ModelInvokeOptions.class))).thenAnswer(invocation -> {
             calls.incrementAndGet();
             LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1200L));
@@ -251,8 +246,6 @@ class RunBudgetTimeTest {
         rail = RunBudgetTestFixture.registerBudgetRail(agent, RunBudgetConfig.builder()
                 .turnEnabled(false).totalBudgetSeconds(5).build());
         Model streaming = mock(Model.class);
-        when(streaming.supportsKvCacheRelease()).thenReturn(false);
-        when(streaming.buildKvCacheInvokeKwargs(any(), anyBoolean())).thenReturn(Map.of());
         when(streaming.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenAnswer(invocation -> Collections.emptyIterator());
         when(streaming.invoke(anyList(), any(ModelInvokeOptions.class)))
