@@ -347,11 +347,6 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     @Override
-    public boolean supportsKvCacheRelease() {
-        return false;
-    }
-
-    @Override
     public CompletableFuture<Boolean> evictKvc(String sessionId, String parentSessionId,
             com.openjiuwen.core.kvcache.AgentHint.KvCacheRange range, Double timeout) {
         return invokeKvCacheAffinityAction("evict", sessionId, parentSessionId, range, timeout);

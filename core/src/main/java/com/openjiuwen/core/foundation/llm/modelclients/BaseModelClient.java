@@ -539,39 +539,6 @@ public abstract class BaseModelClient implements Model.ModelClient {
         }
     }
 
-    public Boolean release(String sessionId,
-                           Object messages,
-                           int messagesReleasedIndex,
-                           Object tools,
-                           Integer toolsReleasedIndex,
-                           String model) throws Exception {
-        return false;
-    }
-
-    @Override
-    public CompletionStage<Boolean> release(String sessionId,
-                                            List<BaseMessage> messages,
-                                            Integer messagesReleasedIndex,
-                                            List<ToolInfo> tools,
-                                            Integer toolsReleasedIndex) {
-        try {
-            return CompletableFuture.completedFuture(Boolean.TRUE.equals(release(
-                    sessionId,
-                    messages,
-                    messagesReleasedIndex == null ? 0 : messagesReleasedIndex,
-                    tools,
-                    toolsReleasedIndex,
-                    null
-            )));
-        } catch (Exception exception) {
-            return CompletableFuture.failedFuture(exception);
-        }
-    }
-
-    public boolean supportsKvCacheRelease() {
-        return false;
-    }
-
     private static Object modelDumpIfPresent(Object value) {
         if (value == null) {
             return null;

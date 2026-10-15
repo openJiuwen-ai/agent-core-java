@@ -231,6 +231,6 @@ mock 网关验证的是**协议正确性与调度语义**（hint 结构、edits 
 ## 使用边界
 
 - 网关必须实现 OpenAI 兼容端点并识别 `agent_hint`（`昇腾算力亲和` 插件）；对普通 OpenAI 端点发出管理请求会被当作普通补全处理。
-- Ascend-affinity 与 InferenceAffinity 的 release 模式**互斥**：affinity 客户端 `supportsKvCacheRelease()` 恒为 false，二者不可同时启用。
+- 缓存生命周期统一由 ascend-affinity 的 `agent_hint` 协议管理；affinity 客户端不支持独立的 release 端点。
 - 已知缺口：`enableTaskLoop=true` 时任务循环使用自己的有效会话执行子代理推理，该推理的 `agent_hint` 为自指身份（父缓存链接丢失）；管理动作不受影响。默认 2s 动作超时在动作执行器共享、排队较深时偏紧，可能触发 fail-open，可按需调大 `KVCacheConfig`。
 - 全链路默认关闭，需显式打开 `enableKvCacheAffinity` 并让模型声明 `mode=affinity`。

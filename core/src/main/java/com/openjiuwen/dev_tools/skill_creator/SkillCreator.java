@@ -162,7 +162,7 @@ public class SkillCreator {
                             Map.of("role", "system", "content", systemPrompt)
                     ))
                     .configureMaxIterations(maxIterations)
-                    .configureContextEngine(null, null, false, false);
+                    .configureContextEngine(null, null, false);
 
             config.setSysOperationId(sysopCard.getId());
             this.agent.configure(config);

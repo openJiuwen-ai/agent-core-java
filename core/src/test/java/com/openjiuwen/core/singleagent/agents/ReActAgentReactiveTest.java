@@ -37,8 +37,6 @@ class ReActAgentReactiveTest {
     void invokeDelegatesThroughConcreteReActAgentInvoke() throws Exception {
         ReActAgent agent = newAgent("reactive-react-invoke");
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.invoke(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(CompletableFuture.completedFuture(
                         AssistantMessage.builder().content("reactive invoke ok").build()));
@@ -57,8 +55,6 @@ class ReActAgentReactiveTest {
     void streamDelegatesThroughConcreteReActAgentStream() throws Exception {
         ReActAgent agent = newAgent("reactive-react-stream");
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(List.of(
                         AssistantMessageChunk.builder().content("reactive stream ok").build()

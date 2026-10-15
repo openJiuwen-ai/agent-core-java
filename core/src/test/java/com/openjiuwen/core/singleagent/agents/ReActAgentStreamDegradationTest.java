@@ -111,8 +111,6 @@ class ReActAgentStreamDegradationTest {
                 .build());
 
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(Collections.emptyIterator());
         when(model.invoke(anyList(), any(ModelInvokeOptions.class)))
@@ -148,8 +146,6 @@ class ReActAgentStreamDegradationTest {
                 .build());
 
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(Collections.<AssistantMessageChunk>emptyIterator())
                 .thenReturn(List.<AssistantMessageChunk>of(
@@ -181,8 +177,6 @@ class ReActAgentStreamDegradationTest {
                 .build());
 
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenThrow(new RuntimeException("connection timeout"));
         agent.setLlm(model);
@@ -214,8 +208,6 @@ class ReActAgentStreamDegradationTest {
                 .streamRetryDelayMs(0)
                 .build());
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(failingStreamBeforeFirstChunk())
                 .thenReturn(List.<AssistantMessageChunk>of(AssistantMessageChunk.builder()
@@ -244,8 +236,6 @@ class ReActAgentStreamDegradationTest {
                 .streamRetryDelayMs(0)
                 .build());
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(failingStreamAfterChunk("partial content"));
         agent.setLlm(model);
@@ -273,8 +263,6 @@ class ReActAgentStreamDegradationTest {
                 .streamRetryDelayMs(0)
                 .build());
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(List.<AssistantMessageChunk>of(AssistantMessageChunk.builder()
                         .content("")
@@ -302,8 +290,6 @@ class ReActAgentStreamDegradationTest {
     void normalStreamNotAffected() throws Exception {
         ReActAgent agent = newAgent("normal-stream");
         Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
                 .thenReturn(List.of(
                         AssistantMessageChunk.builder().content("Hello ").build(),

@@ -178,8 +178,10 @@ class ModelContextMissingTest {
         assertThat(context.getMessages(0, true)).isEmpty();
         assertThat(context.getMessages(10, true)).containsExactlyElementsOf(messages.subList(90, 100));
         assertThat(context.getMessages(100, true)).containsExactlyElementsOf(messages);
-        assertThat(context.getMessages(101, true)).containsExactlyElementsOf(concat(history.subList(99, 100), messages));
-        assertThat(context.getMessages(150, true)).containsExactlyElementsOf(concat(history.subList(50, 100), messages));
+        assertThat(context.getMessages(101, true))
+                .containsExactlyElementsOf(concat(history.subList(99, 100), messages));
+        assertThat(context.getMessages(150, true))
+                .containsExactlyElementsOf(concat(history.subList(50, 100), messages));
         assertThat(context.getMessages(200, true)).containsExactlyElementsOf(concat(history, messages));
         assertThat(context.getMessages(201, true)).containsExactlyElementsOf(concat(history, messages));
         assertThat(context.getMessages(0, false)).isEmpty();
@@ -396,8 +398,8 @@ class ModelContextMissingTest {
     void testModelContextSetContextWindowWithContextMessages() {
         List<BaseMessage> messages = users("test", 100);
         List<BaseMessage> systemMessages = List.of(system("system message"));
-        SessionModelContext context = createContext(List.of(), 10, null, null, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 10, null, null, false,
+                List.of(), defaultTokenCounter());
         await(context.addMessages(messages));
 
         ContextWindow window = window(context, systemMessages, List.of(), null, null);
@@ -411,8 +413,8 @@ class ModelContextMissingTest {
     void testModelContextSetContextWindowWithLimitedSize() {
         List<BaseMessage> messages = users("test", 100);
         List<BaseMessage> systemMessages = List.of(system("system message"));
-        SessionModelContext context = createContext(List.of(), 1, null, null, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 1, null, null, false,
+                List.of(), defaultTokenCounter());
         await(context.addMessages(messages));
 
         ContextWindow window = window(context, systemMessages, List.of(), null, null);
@@ -423,7 +425,7 @@ class ModelContextMissingTest {
 
         messages = users("test", 100);
         systemMessages = List.of(system("system message-1"), system("system message-2"));
-        context = createContext(List.of(), 1, null, null, false, false, List.of(), defaultTokenCounter(), null);
+        context = createContext(List.of(), 1, null, null, false, List.of(), defaultTokenCounter());
         await(context.addMessages(messages));
         window = window(context, systemMessages, List.of(), null, null);
 
@@ -441,8 +443,8 @@ class ModelContextMissingTest {
         SessionModelContext context = createContext();
         await(context.addMessages(messages));
 
-        assertMessageStats(context.statistic(), 100, 25, 25, 25, 25);
-        assertMessageStats(window(context).getStatistic(), 100, 25, 25, 25, 25);
+        assertMessageStats(context.statistic(), new MessageStats(100, 25, 25, 25, 25));
+        assertMessageStats(window(context).getStatistic(), new MessageStats(100, 25, 25, 25, 25));
     }
 
     @Test
@@ -485,8 +487,8 @@ class ModelContextMissingTest {
     void testModelContextWindowValidation() {
         List<BaseMessage> messages = concat(List.of(tool("tool-0", "tc-0"), tool("tool-1", "tc-1"),
                 tool("tool-2", "tc-2")), users("human", 10));
-        SessionModelContext context = createContext(List.of(), 20, null, null, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 20, null, null, false,
+                List.of(), defaultTokenCounter());
         await(context.addMessages(messages));
 
         List<BaseMessage> systemMessages = List.of(system("sys"));
@@ -498,8 +500,8 @@ class ModelContextMissingTest {
 
     @Test
     void testModelContextWindowWithDialogueRound() {
-        SessionModelContext context = createContext(List.of(), 100, 1, null, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 100, 1, null, false,
+                List.of(), defaultTokenCounter());
         List<List<BaseMessage>> dialogues = completeDialogues();
         List<BaseMessage> messages = flatten(dialogues);
 
@@ -529,8 +531,8 @@ class ModelContextMissingTest {
 
     @Test
     void testMaxContextMessageNumTriggersResize() {
-        SessionModelContext context = createContext(List.of(), 100, null, 50, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 100, null, 50, false,
+                List.of(), defaultTokenCounter());
 
         await(context.addMessages(users("m", 150)));
 
@@ -539,8 +541,8 @@ class ModelContextMissingTest {
 
     @Test
     void testMaxContextMessageNumNoneNoLimit() {
-        SessionModelContext context = createContext(List.of(), 100, null, null, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 100, null, null, false,
+                List.of(), defaultTokenCounter());
 
         await(context.addMessages(users("m", 200)));
 
@@ -549,8 +551,8 @@ class ModelContextMissingTest {
 
     @Test
     void testEnableReloadAddsReloaderPrompt() {
-        ContextWindow window = window(createContext(List.of(), 100, null, null, true, false,
-                List.of(), defaultTokenCounter(), null));
+        ContextWindow window = window(createContext(List.of(), 100, null, null, true,
+                List.of(), defaultTokenCounter()));
 
         assertThat(window.getSystemMessages()).hasSize(1);
         assertThat(window.getSystemMessages().get(0).getContentAsString())
@@ -559,8 +561,8 @@ class ModelContextMissingTest {
 
     @Test
     void testEnableReloadFalseNoReloaderPrompt() {
-        ContextWindow window = window(createContext(List.of(), 100, null, null, false, false,
-                List.of(), defaultTokenCounter(), null));
+        ContextWindow window = window(createContext(List.of(), 100, null, null, false,
+                List.of(), defaultTokenCounter()));
 
         assertThat(window.getSystemMessages()).isEmpty();
     }
@@ -568,33 +570,13 @@ class ModelContextMissingTest {
     @Test
     void testEnableReloadWithCustomSystemMessages() {
         List<BaseMessage> systemMessages = List.of(system("custom sys"));
-        ContextWindow window = window(createContext(List.of(), 100, null, null, true, false,
-                List.of(), defaultTokenCounter(), null), systemMessages, List.of(), null, null);
+        ContextWindow window = window(createContext(List.of(), 100, null, null, true,
+                List.of(), defaultTokenCounter()), systemMessages, List.of(), null, null);
 
         assertThat(window.getSystemMessages()).hasSize(2);
         assertThat(window.getSystemMessages().get(0).getContentAsString()).isEqualTo("custom sys");
         assertThat(window.getSystemMessages().get(1).getContentAsString())
                 .contains("reload_original_context_messages");
-    }
-
-    @Test
-    void testEnableKvCacheReleaseCreatesManager() {
-        SessionModelContext context = createContext(List.of(), 100, null, null, false, true,
-                List.of(), defaultTokenCounter(), new RecordingKvCacheManager());
-
-        assertThat(readField(context, "kvCacheManager")).isNotNull();
-    }
-
-    @Test
-    void testEnableKvCacheReleaseCallsReleaseOnGetWindow() {
-        RecordingKvCacheManager manager = new RecordingKvCacheManager();
-        SessionModelContext context = createContext(List.of(), 100, null, null, false, true,
-                List.of(), defaultTokenCounter(), manager);
-
-        window(context);
-        window(context);
-
-        assertThat(manager.callCount).isGreaterThanOrEqualTo(1);
     }
 
     @Test
@@ -611,8 +593,8 @@ class ModelContextMissingTest {
 
     @Test
     void testTokenCounterMockReturnsTokens() {
-        SessionModelContext context = createContext(List.of(), 100, null, null, false, false,
-                List.of(), new FixedTokenCounter(10, 5), null);
+        SessionModelContext context = createContext(List.of(), 100, null, null, false,
+                List.of(), new FixedTokenCounter(10, 5));
         await(context.addMessages(List.of(user("hi"))));
 
         ContextStats stat = context.statistic();
@@ -625,8 +607,8 @@ class ModelContextMissingTest {
 
     @Test
     void testProcessorsEmptyAddMessagesSucceeds() {
-        SessionModelContext context = createContext(List.of(), 100, null, null, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 100, null, null, false,
+                List.of(), defaultTokenCounter());
 
         await(context.addMessages(List.of(user("hi"))));
 
@@ -635,8 +617,8 @@ class ModelContextMissingTest {
 
     @Test
     void testProcessorExceptionDoesNotBlockAddMessages() {
-        SessionModelContext context = createContext(List.of(), 10, null, null, false, false,
-                List.of(new FailingProcessor()), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 10, null, null, false,
+                List.of(new FailingProcessor()), defaultTokenCounter());
 
         await(context.addMessages(List.of(user("msg"))));
 
@@ -764,8 +746,8 @@ class ModelContextMissingTest {
 
     @Test
     void testDialogueRoundOverridesWindowSizeWhenBothPassed() {
-        SessionModelContext context = createContext(List.of(), 100, 1, null, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 100, 1, null, false,
+                List.of(), defaultTokenCounter());
         List<List<BaseMessage>> dialogues = List.of(List.of(user("u1"), assistant("a1")),
                 List.of(user("u2"), assistant("a2")));
         List<BaseMessage> messages = flatten(dialogues);
@@ -807,8 +789,8 @@ class ModelContextMissingTest {
 
     @Test
     void testModelContextWindowWithIncompleteDialogueRound() {
-        SessionModelContext context = createContext(List.of(), 100, 1, null, false, false,
-                List.of(), defaultTokenCounter(), null);
+        SessionModelContext context = createContext(List.of(), 100, 1, null, false,
+                List.of(), defaultTokenCounter());
         List<List<BaseMessage>> dialogues = incompleteDialogues();
         List<BaseMessage> messages = flatten(dialogues);
 
@@ -842,23 +824,21 @@ class ModelContextMissingTest {
     }
 
     private static SessionModelContext createContext(List<BaseMessage> history) {
-        return createContext(history, 100, null, null, false, false, List.of(), defaultTokenCounter(), null);
+        return createContext(history, 100, null, null, false, List.of(), defaultTokenCounter());
     }
 
     private static SessionModelContext createContext(List<BaseMessage> history, Integer windowLimit,
                                                      Integer dialogueRound, Integer maxContextMessageNum,
-                                                     boolean enableReload, boolean enableKvCacheRelease,
+                                                     boolean isReloadEnabled,
                                                      List<SessionModelContext.ContextProcessorPort> processors,
-                                                     SessionModelContext.TokenCounterPort tokenCounter,
-                                                     SessionModelContext.KvCacheManagerPort kvCacheManager) {
+                                                     SessionModelContext.TokenCounterPort tokenCounter) {
         ContextEngineConfig config = new ContextEngineConfig();
         config.setDefaultWindowMessageNum(windowLimit);
         config.setDefaultWindowRoundNum(dialogueRound);
         config.setMaxContextMessageNum(maxContextMessageNum);
-        config.setEnableReload(enableReload);
-        config.setEnableKvCacheRelease(enableKvCacheRelease);
+        config.setEnableReload(isReloadEnabled);
         return new SessionModelContext(CONTEXT_ID, SESSION_ID, config, history, processors, tokenCounter,
-                null, null, null, kvCacheManager, null);
+                null, null, null, null);
     }
 
     private static SessionModelContext.TokenCounterPort defaultTokenCounter() {
@@ -989,12 +969,18 @@ class ModelContextMissingTest {
                 .containsExactlyElementsOf(expected.stream().map(BaseMessage::getContentAsString).toList());
     }
 
-    private static void assertMessageStats(ContextStats stat, int total, int system, int assistant, int tool, int user) {
-        assertThat(stat.getTotalMessages()).isEqualTo(total);
-        assertThat(stat.getSystemMessages()).isEqualTo(system);
-        assertThat(stat.getAssistantMessages()).isEqualTo(assistant);
-        assertThat(stat.getToolMessages()).isEqualTo(tool);
-        assertThat(stat.getUserMessages()).isEqualTo(user);
+    /**
+     * Expected per-role message counts for {@link #assertMessageStats(ContextStats, MessageStats)}.
+     */
+    private record MessageStats(int total, int system, int assistant, int tool, int user) {
+    }
+
+    private static void assertMessageStats(ContextStats stat, MessageStats expected) {
+        assertThat(stat.getTotalMessages()).isEqualTo(expected.total());
+        assertThat(stat.getSystemMessages()).isEqualTo(expected.system());
+        assertThat(stat.getAssistantMessages()).isEqualTo(expected.assistant());
+        assertThat(stat.getToolMessages()).isEqualTo(expected.tool());
+        assertThat(stat.getUserMessages()).isEqualTo(expected.user());
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -1051,15 +1037,6 @@ class ModelContextMissingTest {
                                                                                 boolean force,
                                                                                 Map<String, Object> kwargs) {
             throw new IllegalStateException("processor failed");
-        }
-    }
-
-    private static final class RecordingKvCacheManager implements SessionModelContext.KvCacheManagerPort {
-        private int callCount;
-
-        @Override
-        public void release(ContextWindow contextWindow, Object model) {
-            callCount++;
         }
     }
 }

@@ -44,7 +44,6 @@ public final class ModelClients {
             ProviderType.OPEN_ROUTER.getValue(),
             ProviderType.SILICON_FLOW.getValue(),
             ProviderType.DASH_SCOPE.getValue(),
-            ProviderType.INFERENCE_AFFINITY.getValue(),
             ProviderType.ASCEND_AFFINITY.getValue(),
             ProviderType.DEEP_SEEK.getValue(),
             ProviderType.INTELLI_ROUTER.getValue()
@@ -59,7 +58,6 @@ public final class ModelClients {
         BUILTIN_CLASS_NAMES.put(ProviderType.OPEN_ROUTER.getValue(), PACKAGE_NAME + ".OpenAIModelClient");
         BUILTIN_CLASS_NAMES.put(ProviderType.SILICON_FLOW.getValue(), PACKAGE_NAME + ".SiliconFlowModelClient");
         BUILTIN_CLASS_NAMES.put(ProviderType.DASH_SCOPE.getValue(), PACKAGE_NAME + ".DashScopeModelClient");
-        BUILTIN_CLASS_NAMES.put(ProviderType.INFERENCE_AFFINITY.getValue(), PACKAGE_NAME + ".InferenceAffinityModelClient");
         // Mirrors the Python AscendAffinity endpoint profile: OpenAI-compatible
         // transport; affinity capability is declared via
         // extensions.kv_cache.mode=affinity read by OpenAIModelClient.

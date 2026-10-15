@@ -460,7 +460,7 @@ class ToolResultBudgetProcessorTest {
                                                    SessionModelContext.SysOperationPort sysOperation) {
         SessionModelContext.WorkspacePort workspace = workspaceRoot == null ? null : () -> workspaceRoot.toString();
         return new SessionModelContext("ctx", "session", new ContextEngineConfig(),
-                List.of(), List.of(processor), tokenCounter, null, workspace, sysOperation, null, null);
+                List.of(), List.of(processor), tokenCounter, null, workspace, sysOperation, null);
     }
 
     private static SessionModelContext contextWithoutProcessor(ModelContext.TokenCounterPort tokenCounter) {

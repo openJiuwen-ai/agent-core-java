@@ -339,8 +339,7 @@ public final class CliAgentFactory {
                 "com.openjiuwen.core.foundation.llm.modelclients.DashScopeModelClient",
                 "com.openjiuwen.core.foundation.llm.modelclients.DeepSeekModelClient",
                 "com.openjiuwen.core.foundation.llm.modelclients.SiliconFlowModelClient",
-                "com.openjiuwen.core.foundation.llm.modelclients.IntelliRouterModelClient",
-                "com.openjiuwen.core.foundation.llm.modelclients.InferenceAffinityModelClient")) {
+                "com.openjiuwen.core.foundation.llm.modelclients.IntelliRouterModelClient")) {
             try {
                 Class.forName(className);
             } catch (ClassNotFoundException ignored) {

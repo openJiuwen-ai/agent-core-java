@@ -14,7 +14,6 @@ import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -162,20 +161,15 @@ class SessionModelContextTest {
     }
 
     @Test
-    void getContextWindowRunsProcessorsAndKvCacheRelease() {
-        ContextEngineConfig config = new ContextEngineConfig();
-        config.setEnableKvCacheRelease(true);
+    void getContextWindowRunsProcessors() {
         RecordingGetProcessor processor = new RecordingGetProcessor();
-        RecordingKvCacheManager kvCacheManager = new RecordingKvCacheManager();
-        SessionModelContext context = new SessionModelContext("ctx", "session", config, List.of(), List.of(processor),
-                null, null, null, null, kvCacheManager, null);
+        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(processor), null, null, null, null, null);
 
         ContextWindow window = context.getContextWindow(List.of(), List.of(), null, null,
                 Map.of("model", "m1")).toCompletableFuture().join();
 
         assertThat(window.getContextMessages()).extracting(BaseMessage::getContent).containsExactly("processed");
-        assertThat(kvCacheManager.releasedWindows).hasSize(1);
-        assertThat(kvCacheManager.models).containsExactly("m1");
     }
 
     /**
@@ -249,20 +243,4 @@ class SessionModelContextTest {
         }
     }
 
-    /**
-     * KV-cache release test double.
-     *
-     * <p>Mirrors Python's {@code KVCacheManager} collaborator in
-     * {@code openjiuwen/core/context_engine/context/context.py}.</p>
-     */
-    private static final class RecordingKvCacheManager implements SessionModelContext.KvCacheManagerPort {
-        private final List<ContextWindow> releasedWindows = new ArrayList<>();
-        private final List<Object> models = new ArrayList<>();
-
-        @Override
-        public void release(ContextWindow contextWindow, Object model) {
-            releasedWindows.add(contextWindow);
-            models.add(model);
-        }
-    }
 }

@@ -7,7 +7,6 @@ package com.openjiuwen.core.context;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.context.ContextUtils;
-import com.openjiuwen.core.context.context.KVCacheManager;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressor;
 import com.openjiuwen.core.context.processor.compressor.DialogueCompressor;
@@ -136,7 +135,6 @@ public class ContextEngine {
                 session,
                 workspace,
                 sysOperation,
-                config.isEnableKvCacheRelease() ? new KVCacheManager(sessionId) : null,
                 modelContextWindowTokenProvider
         );
     }

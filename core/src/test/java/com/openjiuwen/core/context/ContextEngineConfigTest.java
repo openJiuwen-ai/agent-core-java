@@ -25,7 +25,6 @@ class ContextEngineConfigTest {
         assertNull(config.getMaxContextMessageNum());
         assertNull(config.getDefaultWindowMessageNum());
         assertNull(config.getDefaultWindowRoundNum());
-        assertFalse(config.isEnableKvCacheRelease());
         assertFalse(config.isEnableReload());
         assertFalse(config.isTiktokenCounterEnabled());
         assertNull(config.getContextWindowTokens());
@@ -37,14 +36,13 @@ class ContextEngineConfigTest {
     @DisplayName("Builder sets all fields correctly")
     void testBuilderSetsFields() {
         ContextEngineConfig config = ContextEngineConfig.builder().maxContextMessageNum(100).defaultWindowMessageNum(20)
-                .defaultWindowRoundNum(5).enableKvCacheRelease(true).enableReload(true).enableTiktokenCounter(true)
+                .defaultWindowRoundNum(5).enableReload(true).enableTiktokenCounter(true)
                 .contextWindowTokens(120000).modelName("demo-model")
                 .modelContextWindowTokens(Map.of("demo-model", 120000)).build();
 
         assertEquals(100, config.getMaxContextMessageNum());
         assertEquals(20, config.getDefaultWindowMessageNum());
         assertEquals(5, config.getDefaultWindowRoundNum());
-        assertTrue(config.isEnableKvCacheRelease());
         assertTrue(config.isEnableReload());
         assertTrue(config.isTiktokenCounterEnabled());
         assertEquals(120000, config.getContextWindowTokens());

@@ -126,7 +126,6 @@ public class ReActAgent extends BaseAgent {
     private volatile Model llm;
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
-    private boolean kvReleaseWarningLogged;
     private final com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook kvCacheModelCallHook =
             new com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook();
 
@@ -175,7 +174,6 @@ public class ReActAgent extends BaseAgent {
             synchronized (llmLock) {
                 llm = null;
             }
-            kvReleaseWarningLogged = false;
             kvCacheModelCallHook.resetWarnings();
         }
         refreshContextEngineIfNeeded();
@@ -387,7 +385,7 @@ public class ReActAgent extends BaseAgent {
         ModelCallInputs modelInputs = ModelCallInputs.class.cast(ctx.getInputs());
         Map<String, String> requestHeaders = modelInputs.consumeRequestHeaders();
         Model model = getLlm(ctx);
-        ContextWindow contextWindow = prepareModelContextWindow(ctx, model, modelInputs);
+        ContextWindow contextWindow = prepareModelContextWindow(modelInputs);
         List<BaseMessage> messages = contextWindow.getMessages();
         List<ToolInfo> tools = contextWindow.getTools();
         modelInputs.setMessages(new ArrayList<>(messages));
@@ -421,7 +419,7 @@ public class ReActAgent extends BaseAgent {
             systemMessages.add(new SystemMessage(systemPrompt));
         }
         ContextWindow window = context.getContextWindow(systemMessages, toolInfoList(previous.getTools()),
-                null, null, Map.of("defer_finalization", true))
+                null, null, Map.of())
                 .toCompletableFuture().join();
         List<BaseMessage> messages = window.getMessages();
         previous.setMessages(new ArrayList<>(messages));
@@ -429,29 +427,10 @@ public class ReActAgent extends BaseAgent {
         previous.setModelContext(context);
     }
 
-    private ContextWindow prepareModelContextWindow(AgentCallbackContext ctx, Model model, ModelCallInputs inputs) {
-        boolean isKvReleaseEnabled = config.getContextEngineConfig().isEnableKvCacheRelease();
-        boolean canReleaseKvCache = model.supportsKvCacheRelease();
-
-        if (isKvReleaseEnabled && !canReleaseKvCache && !kvReleaseWarningLogged) {
-            LOGGER.warning("ContextEngineConfig.enable_kv_cache_release is True, "
-                    + "but the current LLM does not support KV cache release; "
-                    + "KV cache release will not take effect.");
-            kvReleaseWarningLogged = true;
-        }
-        Object releaseModel = null;
-        if (isKvReleaseEnabled && canReleaseKvCache) {
-            releaseModel = model;
-        }
-
+    private ContextWindow prepareModelContextWindow(ModelCallInputs inputs) {
         ContextWindow window = new ContextWindow();
         applyModelRequestMessages(window, inputs);
         window.setTools(toolInfoList(inputs.getTools()));
-        ModelContext context = inputs.getModelContext();
-        if (context == null) {
-            context = ctx.getContext();
-        }
-        context.finalizeContextWindow(window, releaseModel);
         return window;
     }
 
@@ -484,10 +463,6 @@ public class ReActAgent extends BaseAgent {
         lastAffinityWindows.put(affinitySessionId, contextWindow);
 
         Map<String, Object> extraFields = new LinkedHashMap<>();
-        extraFields.putAll(model.buildKvCacheInvokeKwargs(
-                ctx.getSession(),
-                config.getContextEngineConfig().isEnableKvCacheRelease()
-        ));
         extraFields.putAll(kvCacheModelCallHook.buildInvokeKwargs(kvCapabilities, model, ctx.getSession(),
                 kvLineage));
         extraFields.put("__openjiuwen_kvc_model", model);
@@ -2157,7 +2132,6 @@ public class ReActAgent extends BaseAgent {
             appliedContextEngineConfig = configSnapshot;
             contextEngine = refreshedContextEngine;
             getAbilityManager().setContextEngine(refreshedContextEngine);
-            kvReleaseWarningLogged = false;
             return contextEngine;
         }
     }
@@ -2174,7 +2148,6 @@ public class ReActAgent extends BaseAgent {
                 .maxContextMessageNum(source.getMaxContextMessageNum())
                 .defaultWindowMessageNum(source.getDefaultWindowMessageNum())
                 .defaultWindowRoundNum(source.getDefaultWindowRoundNum())
-                .enableKvCacheRelease(source.isEnableKvCacheRelease())
                 .enableReload(source.isEnableReload())
                 .enableTiktokenCounter(source.isTiktokenCounterEnabled())
                 .contextWindowTokens(source.getContextWindowTokens())
@@ -2205,10 +2178,6 @@ public class ReActAgent extends BaseAgent {
 
     public SystemPromptBuilder getSystemPromptBuilder() {
         return systemPromptBuilder;
-    }
-
-    public boolean isKvReleaseWarningLogged() {
-        return kvReleaseWarningLogged;
     }
 
     public static String summarizeToolCall(Object toolCall) {

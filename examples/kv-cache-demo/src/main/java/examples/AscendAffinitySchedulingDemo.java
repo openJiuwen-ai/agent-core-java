@@ -7,6 +7,7 @@ package examples;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.context.SessionModelContext;
@@ -96,6 +97,10 @@ public final class AscendAffinitySchedulingDemo {
      * @throws Exception when a chain fails unexpectedly
      */
     public static void main(String[] args) throws Exception {
+        if (!Boolean.parseBoolean(System.getProperty("openjiuwen.example.quietLog", "false"))) {
+            UserConfig.setIsSensitive(false);
+        }
+
         DefaultModelClientFactories.ensureRegistered();
         ContextEngine.registerProcessor(PROCESSOR_TYPE, config -> WINDOW_REWRITER);
         AffinityMockGateway gateway = new AffinityMockGateway();
