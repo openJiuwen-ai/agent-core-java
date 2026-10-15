@@ -5,7 +5,6 @@
 package com.openjiuwen.core.singleagent.runbudget;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -177,8 +176,6 @@ final class RunBudgetTestFixture {
 
         private Model buildMock() {
             Model mocked = mock(Model.class);
-            when(mocked.supportsKvCacheRelease()).thenReturn(false);
-            when(mocked.buildKvCacheInvokeKwargs(any(), anyBoolean())).thenReturn(Map.of());
             when(mocked.invoke(anyList(), any(ModelInvokeOptions.class))).thenAnswer(this::answerInvoke);
             when(mocked.stream(anyList(), any(ModelInvokeOptions.class))).thenAnswer(this::answerStream);
             return mocked;
