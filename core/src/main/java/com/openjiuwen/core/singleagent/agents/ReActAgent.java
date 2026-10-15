@@ -2409,6 +2409,17 @@ public class ReActAgent extends BaseAgent {
         }
         logModelResponse(ctx, aiMessage);
         logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
+        // In streaming mode, tool_calls are accumulated but not yet written
+        // to the stream as an llm_output chunk (content chunks were written
+        // incrementally above). Emit the accumulated tool_calls here so the
+        // stream contains a llm_output chunk with tool_calls, matching the
+        // non-streaming path (writeNonStreamAsStreamChunks).
+        if (ctx.getSession() != null && aiMessage.getToolCalls() != null
+                && !aiMessage.getToolCalls().isEmpty()) {
+            Map<String, Object> toolPayload = new LinkedHashMap<>();
+            toolPayload.put("tool_calls", aiMessage.getToolCalls());
+            ctx.getSession().writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx), toolPayload));
+        }
         if (ctx.getSession() != null && aiMessage.getUsageMetadata() != null) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());

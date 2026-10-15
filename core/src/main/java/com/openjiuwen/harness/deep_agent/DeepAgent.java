@@ -870,35 +870,57 @@ public class DeepAgent implements AutoCloseable {
      * rails, external MCP sync, permission rail, task-loop runtime.
      */
     private void runInitializationSequence() {
+        registerConfiguredTools();
+        // Register config.mcps before rails (Python _register_pending_mcps).
+        registerPendingMcps();
+        initWorkspace();
+        registerConfiguredRails();
+        // Sync MCP servers already registered externally (e.g. ResourceMgr.addMcpServer).
+        syncMcpServersFromResourceMgr();
+        registerPermissionRailIfNeeded();
+        if (config.isEnableTaskLoop()) {
+            ensureTaskLoopRuntime();
+        }
+    }
+
+    private void registerConfiguredTools() {
         if (config.getTools() != null) {
             for (Object tool : config.getTools()) {
                 registerConfiguredTool(tool);
             }
         }
-        // Register config.mcps before rails (Python _register_pending_mcps).
-        registerPendingMcps();
-        initWorkspace();
+    }
+
+    private void registerConfiguredRails() {
         if (config.getRails() != null) {
             for (Object rail : config.getRails()) {
                 setupSingleRail(rail);
             }
         }
-        // Sync MCP servers already registered externally (e.g. ResourceMgr.addMcpServer).
-        syncMcpServersFromResourceMgr();
-        if (config.getPermissions() != null && Boolean.TRUE.equals(config.getPermissions().get("enabled"))) {
-            PermissionInterruptRail rail = PermissionFactory.buildPermissionInterruptRail(
-                    config.getPermissions(),
-                    config.getPermissionHost(),
-                    workspaceRootPath()
-            );
-            rail.init(this);
-            registeredRails.add(rail);
-            if (agent != null && railsBoundToAgent.add(rail)) {
-                agent.registerRail(rail).toCompletableFuture().join();
-            }
+    }
+
+    private void registerPermissionRailIfNeeded() {
+        if (config.getPermissions() == null) {
+            return;
         }
-        if (config.isEnableTaskLoop()) {
-            ensureTaskLoopRuntime();
+        Object enabledFlag = config.getPermissions().get("enabled");
+        // Consistent with PermissionEngine.boolOrDefault(config.get("enabled"), true):
+        // when "enabled" is missing (null), default to true; only explicit false disables.
+        if (enabledFlag instanceof Boolean isDisabled && !isDisabled) {
+            return;
+        }
+        PermissionInterruptRail rail = PermissionFactory.buildPermissionInterruptRail(
+                config.getPermissions(),
+                config.getPermissionHost(),
+                workspaceRootPath()
+        );
+        if (rail == null) {
+            return;
+        }
+        rail.init(this);
+        registeredRails.add(rail);
+        if (agent != null && railsBoundToAgent.add(rail)) {
+            agent.registerRail(rail).toCompletableFuture().join();
         }
     }
 

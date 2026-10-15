@@ -56,7 +56,7 @@ final class ToolLifecycleOutputFactory {
                     ? AbilityManager.buildToolMessageContent(result.result())
                     : "");
         }
-        return new OutputSchema("tool_result", index, payload);
+        return new OutputSchema("tool_output", index, payload);
     }
 
     static OutputSchema buildExternalToolPendingOutput(List<ExternalToolCallRequest> calls, int index) {

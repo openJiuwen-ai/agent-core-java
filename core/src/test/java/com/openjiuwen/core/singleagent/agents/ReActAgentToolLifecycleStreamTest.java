@@ -78,7 +78,7 @@ class ReActAgentToolLifecycleStreamTest {
         ));
 
         OutputSchema toolCall = singleOutput(outputs, "tool_call");
-        OutputSchema toolResult = singleOutput(outputs, "tool_result");
+        OutputSchema toolResult = singleOutput(outputs, "tool_output");
         assertThat(toolCall.getIndex()).isLessThan(toolResult.getIndex());
         assertThat(payload(toolCall))
                 .containsEntry("tool_call_id", "call-global")
@@ -108,7 +108,7 @@ class ReActAgentToolLifecycleStreamTest {
                 List.of()
         ));
 
-        assertThat(payload(singleOutput(outputs, "tool_result")))
+        assertThat(payload(singleOutput(outputs, "tool_output")))
                 .containsEntry("tool_call_id", "call-broken")
                 .containsEntry("tool_name", "brokenTool")
                 .containsEntry("status", "error")
@@ -131,7 +131,7 @@ class ReActAgentToolLifecycleStreamTest {
 
         String generatedId = String.valueOf(payload(singleOutput(outputs, "tool_call")).get("tool_call_id"));
         assertThat(generatedId).isNotBlank();
-        assertThat(payload(singleOutput(outputs, "tool_result"))).containsEntry("tool_call_id", generatedId);
+        assertThat(payload(singleOutput(outputs, "tool_output"))).containsEntry("tool_call_id", generatedId);
         assertThat(agent.getCapturedToolMessageIds()).contains(generatedId);
     }
 
@@ -157,7 +157,7 @@ class ReActAgentToolLifecycleStreamTest {
 
         assertThat(toolCallIds(outputsOfType(outputs, "tool_call")))
                 .containsExactlyInAnyOrder("call-first", "call-second");
-        assertThat(toolCallIds(outputsOfType(outputs, "tool_result")))
+        assertThat(toolCallIds(outputsOfType(outputs, "tool_output")))
                 .containsExactlyInAnyOrder("call-first", "call-second");
         // Non-answer events share a monotonic index; final answer always uses index=0 (Python parity).
         List<Integer> nonAnswerIndexes = outputs.stream()
@@ -189,7 +189,7 @@ class ReActAgentToolLifecycleStreamTest {
 
         List<OutputSchema> outputs = collectOutput(agent.stream(Map.of("query", "echo"), session, List.of()));
 
-        assertThat(payload(singleOutput(outputs, "tool_result")))
+        assertThat(payload(singleOutput(outputs, "tool_output")))
                 .containsEntry("tool_call_id", "call-skill")
                 .containsEntry("tool_name", "echoTool")
                 .containsEntry("status", "completed")
@@ -216,7 +216,7 @@ class ReActAgentToolLifecycleStreamTest {
         Object result = agent.invoke(Map.of("query", "which env?"), new MemorySession("invoke-session"));
 
         assertThat(result).isInstanceOf(Map.class);
-        assertThat(result.toString()).doesNotContain("tool_call").doesNotContain("tool_result");
+        assertThat(result.toString()).doesNotContain("tool_call").doesNotContain("tool_output");
     }
 
     @Test
@@ -253,7 +253,7 @@ class ReActAgentToolLifecycleStreamTest {
                 List.of()
         ));
 
-        Map<String, Object> resultPayload = payload(singleOutput(outputs, "tool_result"));
+        Map<String, Object> resultPayload = payload(singleOutput(outputs, "tool_output"));
         assertThat(resultPayload)
                 .containsEntry("tool_call_id", "call-bad-json")
                 .containsEntry("tool_name", "lookupEnv")
@@ -293,7 +293,7 @@ class ReActAgentToolLifecycleStreamTest {
                 List.of()
         ));
 
-        assertThat(payload(singleOutput(outputs, "tool_result")))
+        assertThat(payload(singleOutput(outputs, "tool_output")))
                 .containsEntry("tool_call_id", "call-failing")
                 .containsEntry("tool_name", "failingTool")
                 .containsEntry("status", "error")
@@ -315,7 +315,7 @@ class ReActAgentToolLifecycleStreamTest {
         ));
 
         assertThat(outputsOfType(outputs, "tool_call")).hasSize(1);
-        assertThat(outputsOfType(outputs, "tool_result")).isEmpty();
+        assertThat(outputsOfType(outputs, "tool_output")).isEmpty();
         assertThat(outputsOfType(outputs, InterruptConstants.INTERACTION)).hasSize(1);
     }
 

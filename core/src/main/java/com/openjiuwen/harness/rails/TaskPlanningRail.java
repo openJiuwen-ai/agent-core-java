@@ -47,6 +47,7 @@ public class TaskPlanningRail extends DeepAgentRail {
     private final Map<String, ModelUsageRecord> usageRecords = new LinkedHashMap<>();
     private final List<Tool> tools = new ArrayList<>();
     private TodoTools.TodoStore todoStore = new InMemoryTodoStore();
+    private TodoStorage todoStorage;  // direct reference for getInProgressModelId
     private String defaultModelId;
 
     public TaskPlanningRail() {
@@ -78,7 +79,18 @@ public class TaskPlanningRail extends DeepAgentRail {
         String todoStorageType = agent.getConfig().getTodoStorageType();
         if (todoStorageType != null && !todoStorageType.isBlank()) {
             TodoStorage storage = resolveTodoStorage(agent, todoStorageType);
+            todoStorage = storage;
             todoStore = new TodoStorageStoreAdapter(storage);
+        } else if (agent.getWorkspace() != null && agent.getWorkspace().root() != null) {
+            // Default: use file-based todo storage so externally injected todos
+            // (e.g. by tests via TodoTool) are visible to the rail.
+            TodoStorage storage = new FileTodoStorage(agent.getWorkspace().root().resolve(".todo"));
+            todoStorage = storage;
+            todoStore = new TodoStorageStoreAdapter(storage);
+        } else {
+            // No todo storage configured and no workspace root available — use a no-op store.
+            Loggers.TOOL.warning("No todo storage type configured and no workspace root available;"
+                + " todo features will be limited");
         }
         if (tools.isEmpty()) {
             tools.addAll(TodoTools.createTodosTool(todoStore));
@@ -292,9 +304,18 @@ public class TaskPlanningRail extends DeepAgentRail {
         List<TodoItem> todos = sessionId == null ? List.of() : todosCache.get(sessionId);
         if (todos == null || todos.isEmpty()) {
             todos = todosFromContext(ctx);
-            if (sessionId != null && !todos.isEmpty()) {
+            if ((todos == null || todos.isEmpty()) && sessionId != null) {
+                // Cache and context miss — try loading from the todo store
+                // (e.g. FileTodoStorage or KvTodoStorage) so todos injected
+                // outside the agent's tool flow are still visible.
+                todos = loadTodosFromStore(sessionId);
+            }
+            if (todos != null && !todos.isEmpty() && sessionId != null) {
                 todosCache.put(sessionId, new ArrayList<>(todos));
             }
+        }
+        if (todos == null || todos.isEmpty()) {
+            return null;
         }
         for (TodoItem todo : todos) {
             if (todo.getStatus() == TodoStatus.IN_PROGRESS) {
@@ -302,6 +323,38 @@ public class TaskPlanningRail extends DeepAgentRail {
             }
         }
         return null;
+    }
+
+    /**
+     * Best-effort load from the configured {@link TodoStorage}.
+     * Returns an empty list on any failure so that storage errors never
+     * block model selection.
+     */
+    private List<TodoItem> loadTodosFromStore(String sessionId) {
+        if (sessionId == null || sessionId.isBlank() || todoStorage == null) {
+            return List.of();
+        }
+        try {
+            List<com.openjiuwen.harness.tools.TodoItem> loaded = todoStorage.load(sessionId);
+            List<TodoItem> result = new ArrayList<>();
+            for (com.openjiuwen.harness.tools.TodoItem item : loaded) {
+                if (item != null) {
+                    Map<String, Object> map = new LinkedHashMap<>();
+                    map.put("id", item.getId());
+                    map.put("content", item.getContent());
+                    map.put("active_form", item.getActiveForm());
+                    map.put("description", item.getDescription());
+                    if (item.getStatus() != null) {
+                        map.put("status", item.getStatus().name().toLowerCase());
+                    }
+                    map.put("selected_model_id", item.getSelectedModelId());
+                    result.add(TodoItem.fromMap(map));
+                }
+            }
+            return result;
+        } catch (IOException | RuntimeException e) {
+            return List.of();
+        }
     }
 
     public FormattedTaskContent formatTaskContent(List<TodoItem> todos) {
