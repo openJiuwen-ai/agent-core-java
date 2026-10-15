@@ -17,6 +17,8 @@ DeepAgent 是 openjiuwen Java Harness 层的高阶智能体封装，在核心 `R
   - [2. Tool 注册与使用](#2-tool-注册与使用星期--日期java-tool)
   - [3. Rail 使用](#3-rail-使用llm-调用前注入用户偏好)
   - [4. 权限中断](#4-权限中断禁止用户发起的文件删除)
+  - [5. 运行预算](#5-运行预算run-budget)
+  - [6. 多租户隔离](#6-多租户隔离)
 - [Demo 命令速查](#demo-命令速查)
 - [多租户隔离](#多租户隔离)
 - [Stream 并发与线程池](#stream-并发与线程池)
@@ -61,8 +63,6 @@ Map<String, Object> result = (Map<String, Object>) agent.run(Map.of(
 Runner.stop();
 ```
 
-LLM 配置参见 Demo 工程 `src/main/resources/apiconfig.json`（DashScope 兼容 OpenAI API）。
-
 ---
 
 ## 执行模式
@@ -82,13 +82,9 @@ LLM 配置参见 Demo 工程 `src/main/resources/apiconfig.json`（DashScope 兼
 - **Plan 模式**：`AgentMode.PLAN` + `ensurePlanFile()`
 - **harness_config.yaml**：`DeepAgentsFactory.createDeepAgent(path)`
 
-详见 Demo 工程 `DeepAgentDemoMain` 各 demo 名称（`mvn exec:java -Dexec.args=list`）。
-
 ---
 
 ## 扩展能力示例
-
-以下四节与 `DeepAgentExample` 中 `extended` 预设一一对应，可直接运行验证。
 
 ### 1. Skill 注册与使用（日期 → 星期，Python 脚本）
 
@@ -102,13 +98,6 @@ workspace/skills/date_to_weekday/
 └── scripts/
     └── date_to_weekday.py   # 输入 YYYY-MM-DD，输出英文/中文星期
 ```
-
-Demo 工程在运行时通过 `SkillResourceSupport.materializeDateToWeekdaySkill(workspace)` 将 classpath 资源复制到上述路径；源码位于：
-
-- `DeepAgentExample/skills/date_to_weekday/`（便于编辑）
-- `DeepAgentExample/src/main/resources/skills/date_to_weekday/`（打包进 jar）
-
-`SKILL.md` 建议至少包含 front matter 中的 `description:`（`SkillManager` 会解析该字段）：
 
 ```yaml
 ---
@@ -179,8 +168,6 @@ agent.run(Map.of(
 // 期望输出含 Wednesday 或 星期三
 ```
 
-**Demo**：`mvn exec:java -Dexec.args=skill`（源码 `SkillUsageDemo.java`）
-
 ---
 
 ### 2. Tool 注册与使用（星期 → 日期，Java Tool）
@@ -227,8 +214,6 @@ public final class WeekdayToDateTool extends Tool {
 }
 ```
 
-完整实现见 Demo 工程：`com.example.deepagent.tools.WeekdayToDateTool`。
-
 #### 注册与调用
 
 ```java
@@ -255,9 +240,6 @@ agent.run(Map.of(
 - `ToolCard` 定义 `id`、`name`、`description`、`inputParams`（JSON Schema）；
 - `registerHarnessTool()` 同时写入 `Runner.resourceMgr()` 与内层 `AbilityManager`；
 - 简单函数式工具仍可用 `LocalFunction`（它本身也 extends `Tool`）；
-- 卸载：`unregisterHarnessTool(tool)`。
-
-**Demo**：`mvn exec:java -Dexec.args=custom-tool`（源码 `CustomToolDemo.java`）
 
 ---
 
@@ -319,8 +301,6 @@ Rail 常见钩子：
 | `afterModelCall` | 记录 token、审计 |
 | `beforeToolCall` | 权限检查、参数改写、拦截 |
 | `afterToolCall` | 结果清洗 |
-
-**Demo**：`mvn exec:java -Dexec.args=user-preference-rail`
 
 ---
 
@@ -408,8 +388,6 @@ assert Files.exists(workspace.resolve("notes/keep-me.txt"));
 | `PermissionInterruptRail` | 工具名 | 全局禁止 `write_file` |
 | `DeleteCommandGuardRail` | 工具参数 / 命令内容 | 禁止 `rm`、`del`、删除类中文指令 |
 
-**Demo**：`mvn exec:java -Dexec.args=permission-delete`
-
 ---
 
 ### 5. 运行预算（Run Budget）
@@ -452,27 +430,7 @@ DeepAgentConfig.builder()
 
 ---
 
-## Demo 命令速查
-
-```powershell
-cd D:\cursor\DeepAgentExample
-
-# 四个扩展能力一次验证
-mvn -q exec:java "-Dexec.args=extended"
-
-# 单项
-mvn -q exec:java "-Dexec.args=skill"
-mvn -q exec:java "-Dexec.args=custom-tool"
-mvn -q exec:java "-Dexec.args=user-preference-rail"
-mvn -q exec:java "-Dexec.args=permission-delete"
-
-# 全部 demo 列表
-mvn -q exec:java "-Dexec.args=list"
-```
-
----
-
-## 多租户隔离
+### 6. 多租户隔离
 
 DeepAgent 自 `0.1.7` 起支持多租户数据隔离。在 `DeepAgentConfig` 上设置 `enableTenantIsolation(true)` 即进入**严格模式**：每次调用必须携带有效 `TenantContext`，否则 `invoke` / `stream` 在绑定工作区之前直接抛 `IllegalStateException`（`Tenant isolation is enabled but no tenantId was provided`），不会静默回退到默认工作区。
 
@@ -498,47 +456,3 @@ agent.invoke(inputs, session);
 - DeepAgent 实现 `AutoCloseable`，`close()` 会停止 `TmpFileCleaner`，适合 try-with-resources 管理生命周期。
 
 完整的隔离资源清单、目录结构、KV 前缀、安全防护与清理接口，见 [多租户数据隔离](../多租户数据隔离.md)。
-
----
-
-## Stream 并发与线程池
-
-DeepAgent 的 `stream()`（含开启 task loop 时的 `streamTaskLoop`）将每条 stream 会话提交到统一模块池 **`deep-agent-stream`**（`OpenJiuwenExecutors.newBoundedModulePool`），限制**同时进行中的 stream 会话数**，与 `invoke()` 路径分离。
-
-| 项 | 说明 |
-| --- | --- |
-| 默认 max | `max(40, CPU 核数 × 8)`（I/O 型 workload，随 CPU 缩放） |
-| 默认 queue | `128` |
-| 覆盖方式 | `-Dopenjiuwen.executor.deep-agent-stream.max-size=N` 或环境变量 `OPENJIUWEN_EXECUTOR_DEEP_AGENT_STREAM_MAX_SIZE` |
-| 读取顺序 | **JVM 系统属性优先**，环境变量兜底；池创建时读取，不支持热更新 |
-
-饱和时模块池使用 `AbortPolicy`（`RejectedExecutionException`），不会无限排队。调大 stream 槽位后，仍需关注 LLM HTTP 并发（`openjiuwen.llm.http.max-requests-per-host` 等，**仅 `-D` 系统属性**）与厂商 API 配额。
-
-完整命名规则、模块默认表与其它模块池说明见 **[执行器 Runner — 运行时线程池配置](../执行器Runner.md#运行时线程池配置)**。
-
----
-
-## 注意事项
-
-1. **`invoke()` vs `run()`**：单轮推理请用 `run()`；仅开 task loop 时 `invoke()` 才驱动多轮循环。
-2. **Skill 目录**：`skillDirectories` 指向包含各 skill 子目录的**父路径**（如 `workspace/skills`）；skill 名称默认取**目录名**；`SkillManager` 当前主要解析 front matter 中的 `description:`。
-3. **Skill 与执行分离**：Skill 只提供元数据与 `SKILL.md`；执行脚本需显式注册 `bash` / `executeCmd` 等工具（Demo 用 `DemoToolFactory.bashTool`）。无需也不应编写 Java `ScriptRunner`。
-4. **自定义 Tool**：派生 `Tool` 并实现 `invoke()` / `stream()`；`LocalFunction` 适用于简单函数包装。
-5. **权限配置**：`permissions.enabled=true` 时 `ensureInitialized()` 自动挂载 `PermissionInterruptRail`；可与自定义 Guard Rail 叠加。
-6. **LLM 配置**：编辑 `apiconfig.json`，或通过环境变量 `API_KEY`、`API_BASE` 等覆盖。
-7. **Todo 存储配置**：默认使用本地文件（`todoStorageType="file"`）；生产环境可配置 `todoStorageType="kv"` + `kvStoreConfig` 切换到 Redis 存储，Todo 与 Checkpointer 共享同一套 KV 连接配置。详见 [多租户数据隔离](../多租户数据隔离.md) 的「Todo 存储可替换」章节。
-
----
-
-## 相关源码
-
-| 模块 | 路径 |
-|------|------|
-| DeepAgent | `com.openjiuwen.harness.deep_agent.DeepAgent` |
-| Tool 基类 | `com.openjiuwen.core.foundation.tool.Tool` |
-| SkillUseRail | `com.openjiuwen.harness.rails.SkillUseRail` |
-| Agent Skills 文档 | `documents/zh/2.开发指南/高阶用法/Agent Skills.md` |
-| PermissionFactory | `com.openjiuwen.harness.security.PermissionFactory` |
-| Demo · WeekdayToDateTool | `DeepAgentExample/.../tools/WeekdayToDateTool.java` |
-| Demo · Skill 资源 | `DeepAgentExample/skills/date_to_weekday/` |
-| Demo 示例入口 | `DeepAgentExample/src/main/java/com/example/deepagent/` |
