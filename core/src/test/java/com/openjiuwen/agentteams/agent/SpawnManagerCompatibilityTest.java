@@ -250,6 +250,17 @@ class SpawnManagerCompatibilityTest {
     }
 
     @Test
+    void shutdownAllHandlesCancelsInFlightRecoveryTasks() {
+        TeamAgent agent = TeamFactory.createAgentTeam(teamSpec());
+        // Deliberately do not wait for the recovery to finish: once shutdown returns, no
+        // in-flight or queued recovery task may remain, otherwise it could respawn a teammate
+        // into the just-torn-down handle set (a ghost nobody cleans up).
+        agent.getSpawnManager().triggerUnhealthyRecovery("missing-worker");
+        agent.getSpawnManager().shutdownAllHandles();
+        assertThat(agent.getSpawnManager().getRecoveryTaskCount()).isZero();
+    }
+
+    @Test
     void cancelRecoveryTasksShouldCancelAndClearTrackedTasks() throws Exception {
         TeamAgent agent = TeamFactory.createAgentTeam(teamSpec());
         Future<?> recoveryTask = agent.getSpawnManager().triggerUnhealthyRecovery("missing-worker");
