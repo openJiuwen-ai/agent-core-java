@@ -37,7 +37,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
  * {@code openjiuwen/core/foundation/llm/model_clients/dashscope_model_client.py}.</p>
  */
 class DashScopeModelClientTest {
-
     @Test
     void generateImageBuildsDashScopeMessageAndExtractsImages() throws Exception {
         CapturingTransport transport = new CapturingTransport(Map.of(

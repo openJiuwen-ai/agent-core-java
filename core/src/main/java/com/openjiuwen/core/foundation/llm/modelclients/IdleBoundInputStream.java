@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.llm.modelclients;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.math.BigDecimal;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -31,7 +32,6 @@ import java.util.concurrent.TimeUnit;
  * @since 2026-10-09
  */
 final class IdleBoundInputStream extends InputStream {
-
     private static final Object END_OF_STREAM = new Object();
 
     private final BlockingQueue<Object> chunks = new LinkedBlockingQueue<>();
@@ -39,13 +39,14 @@ final class IdleBoundInputStream extends InputStream {
     private final double idleSeconds;
 
     private volatile Flow.Subscription subscription;
-    private volatile boolean closed;
+    private volatile boolean isClosed;
     private byte[] current;
     private int offset;
 
     private IdleBoundInputStream(double idleSeconds) {
         this.idleSeconds = idleSeconds;
-        this.idleNanos = (long) (idleSeconds * 1_000_000_000.0D);
+        this.idleNanos = BigDecimal.valueOf(idleSeconds)
+                .multiply(BigDecimal.valueOf(1_000_000_000L)).longValue();
     }
 
     /**
@@ -90,7 +91,7 @@ final class IdleBoundInputStream extends InputStream {
 
     @Override
     public void close() {
-        closed = true;
+        isClosed = true;
         Flow.Subscription active = subscription;
         if (active != null) {
             active.cancel();
@@ -120,7 +121,7 @@ final class IdleBoundInputStream extends InputStream {
     }
 
     private Object pollNext() throws IOException {
-        if (closed && chunks.isEmpty()) {
+        if (isClosed && chunks.isEmpty()) {
             return END_OF_STREAM;
         }
         Object next;
@@ -162,7 +163,6 @@ final class IdleBoundInputStream extends InputStream {
      * Raised when the peer stays silent beyond the idle window during a body read.
      */
     static final class IdleTimeoutIOException extends IOException {
-
         private static final long serialVersionUID = 1L;
 
         private final transient double idleSeconds;
@@ -178,7 +178,6 @@ final class IdleBoundInputStream extends InputStream {
     }
 
     private static final class QueueingBodySubscriber implements HttpResponse.BodySubscriber<InputStream> {
-
         private final IdleBoundInputStream stream;
         private final CompletableFuture<InputStream> body;
 

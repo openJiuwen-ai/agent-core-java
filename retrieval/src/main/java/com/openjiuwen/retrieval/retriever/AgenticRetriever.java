@@ -29,7 +29,6 @@ import java.util.Map;
  * {@code openjiuwen/core/retrieval/retriever/agentic_retriever.py}.
  */
 public class AgenticRetriever implements Retriever {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(AgenticRetriever.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String READ_PROMPT = """

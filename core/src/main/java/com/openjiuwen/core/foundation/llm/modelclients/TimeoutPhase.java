@@ -13,7 +13,6 @@ package com.openjiuwen.core.foundation.llm.modelclients;
  * @since 2026-10-09
  */
 public enum TimeoutPhase {
-
     /**
      * Request sent but TCP/TLS connection not yet established.
      */

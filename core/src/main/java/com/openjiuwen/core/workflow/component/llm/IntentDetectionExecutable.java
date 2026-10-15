@@ -35,7 +35,6 @@ import java.util.regex.Pattern;
   * Python file: {@code openjiuwen/core/workflow/components/llm/intent_detection_comp.py}.
  */
 public class IntentDetectionExecutable extends ComponentExecutable {
-
     private static final String CLASS_KEY = "class";
     private static final String REASON_KEY = "reason";
     private static final String CLASSIFICATION_ID = "classificationId";

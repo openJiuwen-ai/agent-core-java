@@ -64,7 +64,6 @@ import java.util.Map;
  * {@code openjiuwen.core.application.workflow_agent}.</p>
  */
 public class WorkflowEventHandler extends EventHandler {
-
     private static final String INTERACTION = "__interaction__";
     private static final String STATE_KEY = "workflow_controller";
     private static final String CALL_MODE_STATE_KEY = "__workflow_agent_call_mode";

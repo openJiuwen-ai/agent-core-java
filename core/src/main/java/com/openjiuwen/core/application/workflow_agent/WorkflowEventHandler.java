@@ -59,7 +59,6 @@ import java.util.logging.Logger;
  * {@code openjiuwen/core/application/workflow_agent/workflow_event_handler.py}.</p>
  */
 public class WorkflowEventHandler extends EventHandler {
-
     private static final Logger LOGGER = Logger.getLogger(WorkflowEventHandler.class.getName());
     private static final String WORKFLOW_CONTROLLER_STATE = "workflow_controller";
     private static final String INTERRUPTED_TASKS = "interrupted_tasks";

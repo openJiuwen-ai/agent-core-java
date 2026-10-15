@@ -58,7 +58,6 @@ import java.util.function.Consumer;
  * {@code openjiuwen/core/foundation/llm/model_clients/siliconflow_model_client.py}.</p>
  */
 public class SiliconFlowModelClient extends BaseModelClient {
-
     public static final String __client_name__ = ProviderType.SILICON_FLOW.getValue();
     public static final String CLIENT_NAME = __client_name__;
 
@@ -335,6 +334,15 @@ public class SiliconFlowModelClient extends BaseModelClient {
         }
     }
 
+    /**
+     * Sends a non-streaming POST to the chat completions endpoint with idle-bounded body read.
+     *
+     * @param payload request payload
+     * @param timeout per-call idle override in seconds, null for the configured default
+     * @return HTTP result envelope
+     * @throws IOException on transport failure
+     * @throws InterruptedException when interrupted while sending
+     */
     protected HttpResult postJson(Map<String, Object> payload, Float timeout)
             throws IOException, InterruptedException {
         validateApiBaseUrl();
@@ -574,7 +582,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
             if (cause instanceof Error error) {
                 throw error;
             }
-            throw new IllegalStateException(cause == null ? exception : cause);
+            if (cause == null) {
+                throw new IllegalStateException(exception);
+            }
+            throw new IllegalStateException(cause);
         }
     }
 
@@ -678,9 +689,9 @@ public class SiliconFlowModelClient extends BaseModelClient {
         private final BufferedReader reader;
         private final double idleSeconds;
         private AssistantMessageChunk nextChunk;
-        private boolean firstSegmentReceived;
-        private boolean done;
-        private boolean closed;
+        private boolean isFirstSegmentReceived;
+        private boolean isDone;
+        private boolean isClosed;
 
         SiliconFlowSseIterator(InputStream inputStream, double idleSeconds) {
             this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
@@ -692,10 +703,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
             if (nextChunk != null) {
                 return true;
             }
-            if (done) {
+            if (isDone) {
                 return false;
             }
-            nextChunk = readNextChunk();
+            nextChunk = readNextChunk().orElse(null);
             return nextChunk != null;
         }
 
@@ -711,16 +722,16 @@ public class SiliconFlowModelClient extends BaseModelClient {
 
         @Override
         public void close() {
-            if (closed) {
+            if (isClosed) {
                 return;
             }
-            closed = true;
-            done = true;
+            isClosed = true;
+            isDone = true;
             closeReaderQuietly();
         }
 
-        private AssistantMessageChunk readNextChunk() {
-            boolean keepOpen = false;
+        private Optional<AssistantMessageChunk> readNextChunk() {
+            boolean shouldKeepOpen = false;
             try {
                 String rawLine;
                 while ((rawLine = reader.readLine()) != null) {
@@ -728,18 +739,18 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     if (line.isEmpty() || !line.startsWith("data:")) {
                         continue;
                     }
-                    firstSegmentReceived = true;
+                    isFirstSegmentReceived = true;
                     if ("[DONE]".equals(line.substring("data:".length()).strip())) {
                         break;
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(line);
                     if (chunk != null) {
-                        keepOpen = true;
-                        return chunk;
+                        shouldKeepOpen = true;
+                        return Optional.of(chunk);
                     }
                 }
                 finish();
-                return null;
+                return Optional.empty();
             } catch (IOException exception) {
                 finish();
                 throwIfIdleTimeout(exception);
@@ -752,21 +763,21 @@ public class SiliconFlowModelClient extends BaseModelClient {
                                 "siliconFlow API stream read failure: " + exception.getMessage())
                 );
             } finally {
-                if (!keepOpen) {
+                if (!shouldKeepOpen) {
                     close();
                 }
             }
         }
 
         private void finish() {
-            done = true;
+            isDone = true;
             close();
         }
 
         private void throwIfIdleTimeout(IOException exception) {
             if (exception instanceof IdleBoundInputStream.IdleTimeoutIOException idleTimeout) {
                 throw ModelTimeoutErrorFactory.idleTimeoutError(
-                        firstSegmentReceived
+                        isFirstSegmentReceived
                                 ? TimeoutPhase.AFTER_FIRST_SEGMENT
                                 : TimeoutPhase.BEFORE_FIRST_SEGMENT,
                         idleTimeout.idleSeconds(), true, exception);
@@ -852,7 +863,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         private final Iterator<AssistantMessageChunk> delegate;
         private final Object tracerRecordData;
         private AssistantMessageChunk mergedMessage;
-        private boolean responseRecorded;
+        private boolean isResponseRecorded;
 
         TracingCollectingIterator(Iterator<AssistantMessageChunk> delegate, Object tracerRecordData) {
             this.delegate = delegate;
@@ -871,9 +882,15 @@ public class SiliconFlowModelClient extends BaseModelClient {
         @Override
         public AssistantMessageChunk next() {
             AssistantMessageChunk chunk = delegate.next();
-            mergedMessage = mergedMessage == null
-                    ? chunk
-                    : (AssistantMessageChunk) mergedMessage.merge(chunk);
+            if (mergedMessage == null) {
+                mergedMessage = chunk;
+                return chunk;
+            }
+            Object merged = mergedMessage.merge(chunk);
+            if (!(merged instanceof AssistantMessageChunk mergedChunk)) {
+                throw new IllegalStateException("merged stream chunk is not an AssistantMessageChunk");
+            }
+            mergedMessage = mergedChunk;
             return chunk;
         }
 
@@ -886,8 +903,8 @@ public class SiliconFlowModelClient extends BaseModelClient {
         }
 
         private void recordMergedResponse() {
-            if (!responseRecorded) {
-                responseRecorded = true;
+            if (!isResponseRecorded) {
+                isResponseRecorded = true;
                 callTracer(tracerRecordData, singlePayload("llm_response", mergedMessage));
             }
         }

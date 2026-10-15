@@ -41,7 +41,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * Query Rewriter (QR): rewrites short user query into a standalone query suitable for retrieval.
  */
 public class QueryRewriter {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
     private static final String PROMPT_RESOURCE_DIR = "/com/openjiuwen/retrieval/query_rewriter/prompts/";

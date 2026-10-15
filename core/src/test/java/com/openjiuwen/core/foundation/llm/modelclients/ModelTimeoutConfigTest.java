@@ -20,7 +20,6 @@ import org.junit.jupiter.params.provider.ValueSource;
  * @since 2026-10-09
  */
 class ModelTimeoutConfigTest {
-
     private static final double TOLERANCE = 0.0001D;
 
     @Test

@@ -38,7 +38,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code openjiuwen/core/foundation/llm/model_clients/siliconflow_model_client.py}.</p>
  */
 class SiliconFlowModelClientTest {
-
     @Test
     void buildAndSanitizeParamsCleansAssistantToolCalls() {
         RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();

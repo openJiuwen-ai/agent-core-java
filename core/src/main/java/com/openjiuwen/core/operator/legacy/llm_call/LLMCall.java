@@ -30,7 +30,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/operator/legacy/llm_call/base.py}.</p>
  */
 public class LLMCall {
-
     public static final String DEFAULT_USER_PROMPT = "{{query}}";
 
     private final Model llm;
@@ -223,7 +222,6 @@ public class LLMCall {
     }
 
     private static final class LegacyStream implements Iterator<AssistantMessageChunk>, AutoCloseable {
-
         private final Iterator<AssistantMessageChunk> delegate;
         private final String llmCallId;
         private final Map<String, Object> inputs;

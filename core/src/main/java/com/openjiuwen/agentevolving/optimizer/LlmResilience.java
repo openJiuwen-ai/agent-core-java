@@ -30,7 +30,6 @@ import java.util.function.Predicate;
  * {@code openjiuwen/agent_evolving/optimizer/llm_resilience.py}.</p>
  */
 public final class LlmResilience {
-
     private LlmResilience() {
     }
 

@@ -22,7 +22,6 @@ import java.nio.charset.StandardCharsets;
  * @since 2026-10-09
  */
 final class IdleGuardedBodyReader {
-
     private static final int READ_BUFFER_SIZE = 8192;
 
     private IdleGuardedBodyReader() {
@@ -33,12 +32,12 @@ final class IdleGuardedBodyReader {
      *
      * @param inputStream response body stream, may be null (yields empty body)
      * @param idleSeconds peer silence window in seconds (recorded in the error surface)
-     * @param streaming true for streaming calls (recorded in the error surface)
+     * @param isStreaming true for streaming calls (recorded in the error surface)
      * @return the decoded body, empty string when the stream is null
      * @throws IOException on read failures other than the idle timeout
      * @throws InterruptedException when the consuming thread is interrupted while reading
      */
-    static String readFully(InputStream inputStream, double idleSeconds, boolean streaming)
+    static String readFully(InputStream inputStream, double idleSeconds, boolean isStreaming)
             throws IOException, InterruptedException {
         if (inputStream == null) {
             return "";
@@ -55,7 +54,7 @@ final class IdleGuardedBodyReader {
                     read = inputStream.read(buffer);
                 } catch (IdleBoundInputStream.IdleTimeoutIOException idleTimeout) {
                     throw ModelTimeoutErrorFactory.idleTimeoutError(
-                            idlePhase(body.size()), idleSeconds, streaming, idleTimeout);
+                            idlePhase(body.size()), idleSeconds, isStreaming, idleTimeout);
                 }
                 if (read < 0) {
                     break;

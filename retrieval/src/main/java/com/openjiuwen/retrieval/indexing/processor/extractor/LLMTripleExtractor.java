@@ -34,7 +34,6 @@ import java.util.concurrent.TimeUnit;
  * LLM-backed triple extractor aligned with the Python implementation.
  */
 public class LLMTripleExtractor extends Extractor {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final BaseModelClient llmClient;

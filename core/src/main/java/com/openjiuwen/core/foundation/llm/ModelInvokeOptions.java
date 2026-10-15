@@ -22,7 +22,6 @@ import java.util.Map;
 @Value
 @Builder(toBuilder = true)
 public class ModelInvokeOptions {
-
     List<?> tools;
 
     Float temperature;

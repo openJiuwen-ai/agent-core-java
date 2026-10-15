@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.llm.modelclients;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 
 /**
@@ -24,7 +25,6 @@ import java.time.Duration;
  * @since 2026-10-09
  */
 public final class ModelTimeoutResolver {
-
     /**
      * Default connect timeout in seconds.
      */
@@ -165,7 +165,8 @@ public final class ModelTimeoutResolver {
      * @return duration, never zero or negative
      */
     public static Duration toDuration(double seconds) {
-        long millis = Math.max(1L, Math.round(seconds * 1000.0D));
+        long millis = Math.max(1L, BigDecimal.valueOf(seconds)
+                .multiply(BigDecimal.valueOf(1000L)).longValue());
         return Duration.ofMillis(millis);
     }
 

@@ -53,7 +53,6 @@ import java.util.regex.Pattern;
  * {@code openjiuwen/agent_evolving/optimizer/skill_call/team_skill_experience_optimizer.py}.</p>
  */
 public class TeamSkillExperienceOptimizer extends BaseOptimizer {
-
     public static final LlmResilience.LLMInvokePolicy TEAM_SKILL_RECORD_LLM_POLICY =
             new LlmResilience.LLMInvokePolicy(120, 420, 3, 1.0, true);
     static final int PATCH_RETRY_SKILL_CONTENT_CHARS = 3000;

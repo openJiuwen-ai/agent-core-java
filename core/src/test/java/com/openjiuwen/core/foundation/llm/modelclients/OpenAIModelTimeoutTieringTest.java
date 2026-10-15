@@ -35,7 +35,6 @@ import java.util.function.Function;
  * @since 2026-10-09
  */
 class OpenAIModelTimeoutTieringTest {
-
     private static final double TOLERANCE = 0.0001D;
 
     @BeforeAll
@@ -254,7 +253,11 @@ class OpenAIModelTimeoutTieringTest {
             assertThat(detailMap.get("phase")).isEqualTo("BEFORE_FIRST_SEGMENT");
             assertThat(detailMap.get("layer")).isEqualTo("stream_idle");
             assertThat(detailMap.get("stream")).isEqualTo(true);
-            assertThat(((Number) detailMap.get("timeout_seconds")).doubleValue())
+            Object timeoutSeconds = detailMap.get("timeout_seconds");
+            if (!(timeoutSeconds instanceof Number timeoutNumber)) {
+                throw new AssertionError("timeout_seconds is not a Number: " + timeoutSeconds);
+            }
+            assertThat(timeoutNumber.doubleValue())
                     .isCloseTo(2.0D, org.assertj.core.data.Offset.offset(TOLERANCE));
         }
     }

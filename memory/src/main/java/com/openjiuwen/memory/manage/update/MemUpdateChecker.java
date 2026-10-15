@@ -30,7 +30,6 @@ import java.util.concurrent.CompletableFuture;
  * Detects redundant and conflicting memories and returns add/delete actions.
  */
 public class MemUpdateChecker {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final java.util.concurrent.Executor IO_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("mem-update-checker-io", true);

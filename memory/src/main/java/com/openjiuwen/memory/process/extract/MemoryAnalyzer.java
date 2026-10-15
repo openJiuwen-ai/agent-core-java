@@ -35,7 +35,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/memory/process/extract/memory_analyzer.py}.
  */
 public final class MemoryAnalyzer {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int DEFAULT_RETRIES = 3;

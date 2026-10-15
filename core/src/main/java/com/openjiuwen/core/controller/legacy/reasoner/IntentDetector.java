@@ -52,7 +52,6 @@ import java.util.stream.IntStream;
  * {@code openjiuwen/core/controller/legacy/reasoner/intent_detector.py}.</p>
  */
 public class IntentDetector {
-
     private static final Logger LOG = LoggerFactory.getLogger(IntentDetector.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Pattern JSON_CODE_FENCE = Pattern.compile("^\\s*```json\\s*|\\s*```\\s*$",

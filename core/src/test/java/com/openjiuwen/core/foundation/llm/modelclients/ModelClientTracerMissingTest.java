@@ -34,7 +34,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Mirrors Python's {@code tests/unit_tests/core/foundation/llm/test_model_client_tracer.py}.</p>
  */
 class ModelClientTracerMissingTest {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test

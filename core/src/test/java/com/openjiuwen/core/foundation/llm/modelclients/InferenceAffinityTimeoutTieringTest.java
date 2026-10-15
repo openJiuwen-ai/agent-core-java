@@ -28,7 +28,6 @@ import java.util.List;
  * @since 2026-10-09
  */
 class InferenceAffinityTimeoutTieringTest {
-
     @Test
     void affinityConnectTimeoutAligned() {
         // Given an affinity client pointing at a black-hole address with a 5s connect window

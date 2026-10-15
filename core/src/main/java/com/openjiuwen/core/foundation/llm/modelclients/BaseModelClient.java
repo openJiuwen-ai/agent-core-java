@@ -46,7 +46,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/foundation/llm/model_clients/base_model_client.py}.</p>
  */
 public abstract class BaseModelClient implements Model.ModelClient {
-
     protected static final String __client_name__ = null;
     public static final String __client_type__ = "llm";
     public static final String CLIENT_TYPE = __client_type__;

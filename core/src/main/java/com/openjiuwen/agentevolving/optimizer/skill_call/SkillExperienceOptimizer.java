@@ -44,7 +44,6 @@ import java.util.regex.Pattern;
  * {@code openjiuwen/agent_evolving/optimizer/skill_call/experience_optimizer.py}.</p>
  */
 public class SkillExperienceOptimizer extends BaseOptimizer {
-
     static final Map<String, Double> INITIAL_SCORE_BY_SIGNAL = Map.of(
             "execution_failure", 0.65,
             "user_correction", 0.70,

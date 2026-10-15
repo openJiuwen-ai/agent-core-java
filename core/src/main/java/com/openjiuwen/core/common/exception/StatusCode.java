@@ -14,7 +14,6 @@ package com.openjiuwen.core.common.exception;
  * {@code openjiuwen/core/common/exception/codes.py}.</p>
  */
 public enum StatusCode {
-
     // ===== Generic =====
     SUCCESS(0, "success"),
     ERROR(-1, "error"),

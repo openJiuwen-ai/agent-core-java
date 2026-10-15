@@ -32,7 +32,6 @@ import javax.net.ssl.SSLSession;
  * @since 2026-10-09
  */
 final class TieredTimeoutStubServer implements AutoCloseable {
-
     private static final long HANG_AFTER_SCRIPT_MILLIS = 30_000L;
 
     private final HttpServer server;
@@ -174,11 +173,11 @@ final class TieredTimeoutStubServer implements AutoCloseable {
             List<String> events = script.events;
             for (int index = 0; index < events.size(); index++) {
                 writeEvent(exchange, events.get(index));
-                if (index < events.size() - 1 || script.silentAfterEvents) {
+                if (index < events.size() - 1 || script.isSilentAfterEvents) {
                     sleepQuietly(script.gapMillis);
                 }
             }
-            if (script.silentAfterEvents) {
+            if (script.isSilentAfterEvents) {
                 sleepQuietly(Math.max(script.gapMillis, HANG_AFTER_SCRIPT_MILLIS));
             }
         }
@@ -211,7 +210,7 @@ final class TieredTimeoutStubServer implements AutoCloseable {
         private long headerDelayMillis;
         private List<String> events = List.of();
         private long gapMillis;
-        private boolean silentAfterEvents;
+        private boolean isSilentAfterEvents;
 
         /**
          * Sets the HTTP status returned after the header delay.
@@ -274,7 +273,7 @@ final class TieredTimeoutStubServer implements AutoCloseable {
          * @return this script
          */
         StubScript silentAfterEvents() {
-            this.silentAfterEvents = true;
+            this.isSilentAfterEvents = true;
             return this;
         }
     }

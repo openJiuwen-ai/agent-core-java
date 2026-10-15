@@ -41,7 +41,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/memory/process/extract/generation.py}.
  */
 public class Generator {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private static final Map<String, MemoryType> CATEGORY_TO_CLASS = Map.of(
             "user_profile", MemoryType.USER_PROFILE,

@@ -60,7 +60,6 @@ import java.util.logging.Logger;
  * {@code openjiuwen/core/application/workflow_agent/workflow_controller.py}.
  */
 public class WorkflowController {
-
     private static final Logger LOGGER = Logger.getLogger(WorkflowController.class.getName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String STATE_KEY = "workflow_controller";

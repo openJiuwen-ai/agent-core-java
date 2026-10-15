@@ -74,7 +74,6 @@ import java.util.regex.Pattern;
  * {@code openjiuwen/core/application/llm_agent/llm_controller.py}.</p>
  */
 public class LlmEventHandler extends EventHandler {
-
     private static final String INTERACTION = "__interaction__";
     private static final String LLM_OUTPUT = "llm_output";
     private static final String STATE_KEY = "llm_controller";

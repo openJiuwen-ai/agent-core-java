@@ -15,7 +15,6 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 
 final class ModelHttpClients {
-
     private final ModelClientConfig clientConfig;
     private final String targetUrl;
     private final HttpClient.Builder builder;

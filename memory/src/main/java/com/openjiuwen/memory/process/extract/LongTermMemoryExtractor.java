@@ -36,7 +36,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/memory/process/extract/long_term_memory_extractor.py}.
  */
 public final class LongTermMemoryExtractor {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private static final int DEFAULT_RETRIES = 3;
     private static final DateTimeFormatter MONTH_DAY_FORMAT = DateTimeFormatter.ofPattern("MM.dd");

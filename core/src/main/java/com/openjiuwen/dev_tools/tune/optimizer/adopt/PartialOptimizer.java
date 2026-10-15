@@ -29,7 +29,6 @@ import java.util.Objects;
  * {@code openjiuwen/dev_tools/tune/optimizer/adopt/adopt_optimizer.py}.</p>
  */
 public class PartialOptimizer extends InstructionOptimizer {
-
     private final Model model;
     private final String modelName;
 

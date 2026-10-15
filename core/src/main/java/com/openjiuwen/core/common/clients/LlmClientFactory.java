@@ -20,7 +20,6 @@ import java.util.concurrent.CompletableFuture;
  * {@code openjiuwen/core/common/clients/llm_client.py}.</p>
  */
 public final class LlmClientFactory {
-
     static {
         ConnectorPoolManager.registerProvider("httpx", config -> CompletableFuture.completedFuture(
                 new HttpXConnectorPool(toHttpxConfig(config, true))));

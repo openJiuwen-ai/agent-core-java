@@ -51,7 +51,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/workflow/components/resource/knowledge_retrieval_comp.py}.</p>
  */
 public class KnowledgeRetrievalExecutable extends ComponentExecutable<Object, Object> {
-
     private final KnowledgeRetrievalCompConfig config;
     private List<KnowledgeBase> knowledgeBases = new ArrayList<>();
     private BaseModelClient llmClient;
@@ -357,7 +356,6 @@ public class KnowledgeRetrievalExecutable extends ComponentExecutable<Object, Ob
      * {@link BaseModelClient} contract used by {@code AgenticRetriever}.
      */
     private static final class ModelBackedModelClient extends BaseModelClient {
-
         private final Model model;
 
         private ModelBackedModelClient(Model model) {

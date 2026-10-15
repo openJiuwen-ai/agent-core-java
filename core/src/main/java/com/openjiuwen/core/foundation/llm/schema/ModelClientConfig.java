@@ -36,12 +36,11 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ModelClientConfig {
-
+public class ModelClientConfig {
     /**
-     * Default per-call timeout in seconds applied when the configuration does not declare one.
+     * Legacy timeout field default; explicitness checks compare against this value.
      */
-    public static final double DEFAULT_TIMEOUT_SECONDS = 60.0;
+    public static final double DEFAULT_LEGACY_TIMEOUT_SECONDS = 60.0D;
 
     private static final Set<String> DEFERRED_PARITY_PROVIDERS = Set.of(
             "qwen",
@@ -50,10 +49,7 @@ public class ModelClientConfig {
             "OpenAI1111"
     );
 
-    /**
-     * Legacy timeout field default; explicitness checks compare against this value.
-     */
-    public static final double DEFAULT_LEGACY_TIMEOUT_SECONDS = 60.0D;
+    private static final double TIMEOUT_EPSILON = 1e-9;
 
     private static final double CONNECT_MIN_SECONDS = 5.0D;
     private static final double CONNECT_MAX_SECONDS = 15.0D;
@@ -72,7 +68,7 @@ public class ModelClientConfig {
     @JsonProperty("api_base")
     private String apiBase;
 
-    private double timeout = DEFAULT_TIMEOUT_SECONDS;
+    private double timeout = 60.0;
 
     @JsonProperty("connect_timeout_seconds")
     private Double connectTimeoutSeconds;
@@ -83,7 +79,7 @@ public class ModelClientConfig {
     @JsonIgnore
     @Setter(AccessLevel.NONE)
     @EqualsAndHashCode.Exclude
-    private boolean timeoutExplicit;
+    private boolean isTimeoutExplicit;
 
     @JsonProperty("max_retries")
     private int maxRetries = 3;
@@ -110,7 +106,7 @@ public class ModelClientConfig {
         this.apiKey = apiKey;
         this.apiBase = apiBase;
         this.timeout = validatePositiveTimeout(timeout);
-        this.timeoutExplicit = timeout != DEFAULT_LEGACY_TIMEOUT_SECONDS;
+        this.isTimeoutExplicit = isNonDefaultLegacyTimeout(timeout);
         this.maxRetries = maxRetries;
         this.verifySsl = verifySsl;
         this.sslCert = sslCert;
@@ -140,8 +136,8 @@ public class ModelClientConfig {
 
     public void setTimeout(double timeout) {
         this.timeout = validatePositiveTimeout(timeout);
-        if (timeout != DEFAULT_LEGACY_TIMEOUT_SECONDS) {
-            this.timeoutExplicit = true;
+        if (isNonDefaultLegacyTimeout(timeout)) {
+            this.isTimeoutExplicit = true;
         }
     }
 
@@ -211,8 +207,13 @@ public class ModelClientConfig {
      *
      * @return true when legacy timeout was explicitly configured
      */
+    @JsonIgnore
     public boolean isTimeoutExplicit() {
-        return timeoutExplicit;
+        return isTimeoutExplicit;
+    }
+
+    private static boolean isNonDefaultLegacyTimeout(double timeout) {
+        return Math.abs(timeout - DEFAULT_LEGACY_TIMEOUT_SECONDS) > TIMEOUT_EPSILON;
     }
 
     public int getMaxRetries() {
@@ -318,10 +319,10 @@ public class ModelClientConfig {
         private Object clientProvider;
         private String apiKey;
         private String apiBase;
-        private double timeout = DEFAULT_TIMEOUT_SECONDS;
+        private double timeout = 60.0;
         private Double connectTimeoutSeconds;
         private Double streamIdleSeconds;
-        private boolean timeoutExplicit;
+        private boolean isTimeoutExplicit;
         private int maxRetries = 3;
         private boolean verifySsl = true;
         private String sslCert;
@@ -359,8 +360,8 @@ public class ModelClientConfig {
 
         public ModelClientConfigBuilder timeout(double timeout) {
             this.timeout = timeout;
-            if (timeout != DEFAULT_LEGACY_TIMEOUT_SECONDS) {
-                this.timeoutExplicit = true;
+            if (isNonDefaultLegacyTimeout(timeout)) {
+                this.isTimeoutExplicit = true;
             }
             return this;
         }
@@ -442,7 +443,7 @@ public class ModelClientConfig {
             config.streamIdleSeconds = streamIdleSeconds == null
                     ? null
                     : validateStreamIdleSeconds(streamIdleSeconds);
-            config.timeoutExplicit = timeoutExplicit;
+            config.isTimeoutExplicit = isTimeoutExplicit;
             config.maxRetries = maxRetries;
             config.verifySsl = verifySsl;
             config.sslCert = sslCert;

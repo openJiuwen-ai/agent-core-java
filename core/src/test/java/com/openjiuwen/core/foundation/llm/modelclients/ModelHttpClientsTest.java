@@ -20,7 +20,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ModelHttpClientsTest {
-
     @Test
     void buildsHttp2ClientWhenVersionConfigured() {
         HttpClient client = ModelHttpClients.builder(

@@ -41,7 +41,6 @@ import java.util.Map;
  * {@code openjiuwen/core/controller/modules/intent_recognizer.py}.
  */
 public class IntentRecognizer {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MAX_MESSAGE_LEN = 50;
 

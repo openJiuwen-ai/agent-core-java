@@ -42,7 +42,6 @@ import java.util.stream.Collectors;
  * {@code openjiuwen/dev_tools/tune/optimizer/adopt/adopt_optimizer.py}.</p>
  */
 public class AdoptOptimizer extends BaseOptimizer {
-
     public static final int DEFAULT_BAD_CASES_SAMPLE_NUM = 5;
     public static final int DEFAULT_MODEL_RETRY_NUM = 5;
     public static final int DEFAULT_PARALLEL_NUM = 8;

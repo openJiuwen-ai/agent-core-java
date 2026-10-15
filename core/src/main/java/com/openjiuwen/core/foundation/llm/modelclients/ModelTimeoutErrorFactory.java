@@ -22,7 +22,6 @@ import java.util.Optional;
  * @since 2026-10-09
  */
 final class ModelTimeoutErrorFactory {
-
     private static final String LAYER_CONNECT = "connect";
     private static final String LAYER_HEADER_WAIT = "header_wait";
     private static final String LAYER_STREAM_IDLE = "stream_idle";
@@ -36,21 +35,21 @@ final class ModelTimeoutErrorFactory {
      * reversing the order would mislabel connect failures as header-wait timeouts.
      *
      * @param error failure thrown by the send stage
-     * @param streaming true for streaming calls
+     * @param isStreaming true for streaming calls
      * @param config model client config for effective timeout values
      * @return the tiered timeout error, or empty when the failure is not a timeout
      */
-    static Optional<BaseError> fromSendException(Throwable error, boolean streaming,
+    static Optional<BaseError> fromSendException(Throwable error, boolean isStreaming,
             ModelClientConfig config) {
         Throwable cursor = error;
         while (cursor != null) {
             if (cursor instanceof HttpConnectTimeoutException) {
                 return Optional.of(timeoutError(TimeoutPhase.BEFORE_CONNECT, LAYER_CONNECT,
-                        ModelTimeoutResolver.resolveConnectTimeoutSeconds(config), streaming, error));
+                        ModelTimeoutResolver.resolveConnectTimeoutSeconds(config), isStreaming, error));
             }
             if (cursor instanceof HttpTimeoutException) {
                 return Optional.of(timeoutError(TimeoutPhase.BEFORE_FIRST_SEGMENT, LAYER_HEADER_WAIT,
-                        ModelTimeoutResolver.resolveHeaderWaitSeconds(config), streaming, error));
+                        ModelTimeoutResolver.resolveHeaderWaitSeconds(config), isStreaming, error));
             }
             cursor = cursor.getCause();
         }
@@ -62,23 +61,23 @@ final class ModelTimeoutErrorFactory {
      *
      * @param phase BEFORE_FIRST_SEGMENT or AFTER_FIRST_SEGMENT
      * @param timeoutSeconds effective idle window in seconds
-     * @param streaming true for streaming calls
+     * @param isStreaming true for streaming calls
      * @param cause underlying failure, may be null
      * @return the tiered timeout error
      */
-    static BaseError idleTimeoutError(TimeoutPhase phase, double timeoutSeconds, boolean streaming,
+    static BaseError idleTimeoutError(TimeoutPhase phase, double timeoutSeconds, boolean isStreaming,
             Throwable cause) {
-        return timeoutError(phase, LAYER_STREAM_IDLE, timeoutSeconds, streaming, cause);
+        return timeoutError(phase, LAYER_STREAM_IDLE, timeoutSeconds, isStreaming, cause);
     }
 
     private static BaseError timeoutError(TimeoutPhase phase, String layer, double timeoutSeconds,
-            boolean streaming, Throwable cause) {
+            boolean isStreaming, Throwable cause) {
         String message = layer + " timeout after " + timeoutSeconds + "s";
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("phase", phase.name());
         details.put("timeout_seconds", timeoutSeconds);
         details.put("layer", layer);
-        details.put("stream", streaming);
+        details.put("stream", isStreaming);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("phase", phase.name());
         params.put("timeout", String.valueOf(timeoutSeconds));

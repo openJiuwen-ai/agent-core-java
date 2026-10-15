@@ -50,7 +50,6 @@ import java.util.regex.Pattern;
  * {@code openjiuwen/auto_harness/stages/merge.py}.</p>
  */
 public class MergeActivationBlock {
-
     public static final String NAME = "merge_ext";
 
     private static final Logger LOGGER = Logger.getLogger(MergeActivationBlock.class.getName());

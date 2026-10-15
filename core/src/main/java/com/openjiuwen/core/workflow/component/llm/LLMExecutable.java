@@ -33,7 +33,6 @@ import java.util.Map;
   * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
  */
 public class LLMExecutable extends ComponentExecutable {
-
     private static final String ROLE_KEY = "role";
     private static final String TYPE_KEY = "type";
 

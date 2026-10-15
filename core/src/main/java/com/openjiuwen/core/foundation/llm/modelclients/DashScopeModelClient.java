@@ -47,7 +47,6 @@ import java.util.Map;
  * {@code openjiuwen/core/foundation/llm/model_clients/dashscope_model_client.py}.</p>
  */
 public class DashScopeModelClient extends BaseModelClient {
-
     public static final String __client_name__ = ProviderType.DASH_SCOPE.getValue();
     public static final String CLIENT_NAME = __client_name__;
 

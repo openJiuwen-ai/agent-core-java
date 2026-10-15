@@ -725,7 +725,6 @@ public class OpenAIModelClient extends BaseModelClient
 
     /** Resolved, vendor-agnostic task-flow configuration for one video generation call. */
     private static final class VideoTaskConfig {
-
         private final String createPath;
         private final String pollPathTemplate;
         private final String bodyStyle;
@@ -801,7 +800,6 @@ public class OpenAIModelClient extends BaseModelClient
         }
 
         private static final class Builder {
-
             private String createPath = VIDEOS_PATH;
             private String pollPathTemplate;
             private String bodyStyle = VIDEO_BODY_PROMPT;
@@ -2091,7 +2089,7 @@ public class OpenAIModelClient extends BaseModelClient
         private final double idleSeconds;
         private AssistantMessageChunk nextChunk;
         private String pendingToolCallFinishReason = "null";
-        private boolean firstSegmentReceived;
+        private boolean isFirstSegmentReceived;
         private boolean closed;
 
         private SseChunkIterator(
@@ -2129,7 +2127,7 @@ public class OpenAIModelClient extends BaseModelClient
 
         private AssistantMessageChunk readNextChunk() {
             String currentEvent = "";
-            boolean keepOpen = false;
+            boolean shouldKeepOpen = false;
             try {
                 String rawLine;
                 while ((rawLine = reader.readLine()) != null) {
@@ -2139,7 +2137,7 @@ public class OpenAIModelClient extends BaseModelClient
                     }
                     String data = line.substring("data:".length()).strip();
                     currentEvent = data;
-                    firstSegmentReceived = true;
+                    isFirstSegmentReceived = true;
                     if ("[DONE]".equals(data)) {
                         close();
                         return finalToolCallChunk();
@@ -2153,7 +2151,7 @@ public class OpenAIModelClient extends BaseModelClient
                         continue;
                     }
                     AssistantMessageChunk parsedChunk = applyStreamingParser(adaptedChunk);
-                    keepOpen = true;
+                    shouldKeepOpen = true;
                     return parsedChunk;
                 }
                 close();
@@ -2168,7 +2166,7 @@ public class OpenAIModelClient extends BaseModelClient
                 Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
                 throw streamException(currentEvent, exception, sensitiveValues);
             } finally {
-                if (!keepOpen) {
+                if (!shouldKeepOpen) {
                     close();
                 }
             }
@@ -2177,7 +2175,7 @@ public class OpenAIModelClient extends BaseModelClient
         private void throwIfIdleTimeout(IOException exception) {
             if (exception instanceof IdleBoundInputStream.IdleTimeoutIOException idleTimeout) {
                 throw ModelTimeoutErrorFactory.idleTimeoutError(
-                        firstSegmentReceived
+                        isFirstSegmentReceived
                                 ? TimeoutPhase.AFTER_FIRST_SEGMENT
                                 : TimeoutPhase.BEFORE_FIRST_SEGMENT,
                         idleTimeout.idleSeconds(), true, exception);
@@ -2384,16 +2382,16 @@ public class OpenAIModelClient extends BaseModelClient
 
     private BaseError classifySendException(
             IOException exception,
-            boolean streaming,
+            boolean isStreaming,
             Collection<String> sensitiveValues) {
         Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
-                exception, streaming, modelClientConfig);
-        return timeoutError.orElseGet(() -> transportException(exception, streaming, sensitiveValues));
+                exception, isStreaming, modelClientConfig);
+        return timeoutError.orElseGet(() -> transportException(exception, isStreaming, sensitiveValues));
     }
 
     private BaseError transportException(
             Exception exception,
-            boolean streaming,
+            boolean isStreaming,
             Collection<String> sensitiveValues) {
         return modelCallError(
                 "transport failure at send_request: " + safeExceptionMessage(exception, sensitiveValues),
@@ -2403,7 +2401,7 @@ public class OpenAIModelClient extends BaseModelClient
     private BaseError responseParseException(
             String body,
             Exception exception,
-            boolean streaming,
+            boolean isStreaming,
             String phase,
             Collection<String> sensitiveValues) {
         ErrorResponseBodySanitizer.SanitizedBody sanitized =
@@ -2435,7 +2433,7 @@ public class OpenAIModelClient extends BaseModelClient
 
     private BaseError clientInternalException(
             Exception exception,
-            boolean streaming,
+            boolean isStreaming,
             String phase,
             Collection<String> sensitiveValues) {
         return modelCallError(
@@ -2451,7 +2449,7 @@ public class OpenAIModelClient extends BaseModelClient
     private void ensureSuccess(
             int statusCode,
             String body,
-            boolean streaming,
+            boolean isStreaming,
             Collection<String> sensitiveValues) {
         if (statusCode >= 200 && statusCode < 300) {
             return;
@@ -2471,8 +2469,8 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     private static String readBodyWithIdleTimeout(InputStream inputStream, double idleSeconds,
-            boolean streaming) throws IOException, InterruptedException {
-        return IdleGuardedBodyReader.readFully(inputStream, idleSeconds, streaming);
+            boolean isStreaming) throws IOException, InterruptedException {
+        return IdleGuardedBodyReader.readFully(inputStream, idleSeconds, isStreaming);
     }
 
     HttpClient httpClientForTesting() {
@@ -2485,7 +2483,6 @@ public class OpenAIModelClient extends BaseModelClient
                 .withExplicitPortProxy()
                 .build();
     }
-
 
     private static Map<String, String> extractExtraHeaders(Object extraHeaders) {
         if (!(extraHeaders instanceof Map<?, ?> map)) {

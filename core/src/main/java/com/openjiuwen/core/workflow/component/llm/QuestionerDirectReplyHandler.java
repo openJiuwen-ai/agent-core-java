@@ -34,7 +34,6 @@ import java.util.stream.Collectors;
  * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 public class QuestionerDirectReplyHandler {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Pattern JSON_BLOCK_PATTERN =
             Pattern.compile("^\\s*```json\\s*|\\s*```\\s*$", Pattern.CASE_INSENSITIVE);

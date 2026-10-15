@@ -36,7 +36,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/retrieval/indexing/processor/parser/captioner.py}.
  */
 public class ImageCaptioner {
-
     public static final String IMAGE_CAPTION_PROMPT = "You are an assistant specialized in document and image analysis. "
             + "Your task is to provide a detailed, qualitative description of the provided image "
             + "so that it can be embedded and used for semantic retrieval. "
