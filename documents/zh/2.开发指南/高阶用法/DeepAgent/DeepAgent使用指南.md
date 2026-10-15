@@ -412,6 +412,46 @@ assert Files.exists(workspace.resolve("notes/keep-me.txt"));
 
 ---
 
+### 5. 运行预算（Run Budget）
+
+运行预算给主循环加两道闸：**轮次维**（保障轮次内自由运行，之后按检查点评估进展，停滞则注入提示，触及绝对上限即终止）与**时间维**（墙钟预算，到期后不再派发新的模型/工具调用，临近截止时注入一次收尾提示）。两维独立开关，默认全部关闭（不配置即零行为变化）。任务被预算终止时返回可辨识的终止面（`result_type=error` + `turn_budget`/`time_budget` 载荷），与模型/工具异常区分开。
+
+挂载方式与自定义 Rail 相同——创建时写入 `DeepAgentConfig.rails`（初始化时注册到内层 ReActAgent）：
+
+```java
+DeepAgentConfig.builder()
+        .enableTaskLoop(true)
+        .rails(List.of(new RunBudgetRail(RunBudgetConfig.builder()
+                .turnEnabled(true)              // 轮次维
+                .suggestedRounds(30)            // 保障轮次
+                .hardLimit(60)                  // 绝对上限（缺省取 max(保障*2, 200)）
+                .totalBudgetSeconds(600)        // 时间维：总预算秒数（缺省关闭）
+                .nearDeadlineThresholdSeconds(60) // 临期提示阈值（缺省取 min(60, 总预算)）
+                .build())))
+        .build();
+```
+
+运行中重新配置：经 `reactAgent()` 拿到内层 ReActAgent 后注册新 rail（配置不可变，换配置即换 rail）：
+
+```java
+((ReActAgent) agent.reactAgent())
+        .registerRail(new RunBudgetRail(newConfig)).toCompletableFuture().join();
+```
+
+行为要点：
+
+| 配置 | 维度 | 作用 |
+|------|------|------|
+| `suggestedRounds` | 轮次 | 保障轮次，期内不干预 |
+| `firstCheckpoint` 等 | 轮次 | 检查点节奏（下限 max(10, 保障轮次)） |
+| `hardLimit` | 轮次 | 绝对上限；触顶后先给一轮收尾（安全阀），仍不收敛则终止 |
+| `totalBudgetSeconds` | 时间 | 墙钟总预算；到期即终止，不再派发新动作 |
+| `nearDeadlineThresholdSeconds` | 时间 | 剩余低于阈值时注入一次「尽快收尾」提示 |
+
+时间维生效时，单次模型调用的超时与流式重试等待会被钳制到剩余预算内（只缩不放），避免长尾调用烧穿预算。
+
+---
+
 ## Demo 命令速查
 
 ```powershell
