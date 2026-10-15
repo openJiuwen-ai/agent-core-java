@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -324,7 +325,10 @@ public class CurrentRoundCompressor extends ContextProcessor {
                             .build()).toCompletableFuture().join();
             recordCompressionUsage(response);
             return Optional.of(response);
-        } catch (RuntimeException ex) {
+        } catch (BaseError | IllegalStateException
+                | IllegalArgumentException | NullPointerException
+                | java.util.concurrent.CompletionException exception) {
+            // 故障隔离：压缩失败仅本次不压缩，不阻断主对话回路
             return Optional.empty();
         }
     }

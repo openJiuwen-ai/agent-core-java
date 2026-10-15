@@ -49,8 +49,6 @@ public class ModelClientConfig {
             "OpenAI1111"
     );
 
-    private static final double TIMEOUT_EPSILON = 1e-9;
-
     private static final double CONNECT_MIN_SECONDS = 5.0D;
     private static final double CONNECT_MAX_SECONDS = 15.0D;
     private static final double IDLE_MIN_SECONDS = 300.0D;
@@ -213,7 +211,8 @@ public class ModelClientConfig {
     }
 
     private static boolean isNonDefaultLegacyTimeout(double timeout) {
-        return Math.abs(timeout - DEFAULT_LEGACY_TIMEOUT_SECONDS) > TIMEOUT_EPSILON;
+        return java.math.BigDecimal.valueOf(timeout)
+                .compareTo(java.math.BigDecimal.valueOf(DEFAULT_LEGACY_TIMEOUT_SECONDS)) != 0;
     }
 
     public int getMaxRetries() {
