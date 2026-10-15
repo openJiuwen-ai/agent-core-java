@@ -94,7 +94,7 @@ public class KvTodoStorage implements TodoStorage {
         TodoItem[] items;
         try {
             items = MAPPER.readValue(json, TodoItem[].class);
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException e) {
             logger.warn("Failed to parse todo JSON for key: {}, returning empty list", key, e);
             return new ArrayList<>();
         }

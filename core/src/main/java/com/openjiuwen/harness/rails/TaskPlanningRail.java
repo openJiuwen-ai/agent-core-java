@@ -87,6 +87,10 @@ public class TaskPlanningRail extends DeepAgentRail {
             TodoStorage storage = new FileTodoStorage(agent.getWorkspace().root().resolve(".todo"));
             todoStorage = storage;
             todoStore = new TodoStorageStoreAdapter(storage);
+        } else {
+            // No todo storage configured and no workspace root available — use a no-op store.
+            Loggers.TOOL.warning("No todo storage type configured and no workspace root available;"
+                + " todo features will be limited");
         }
         if (tools.isEmpty()) {
             tools.addAll(TodoTools.createTodosTool(todoStore));
@@ -348,7 +352,7 @@ public class TaskPlanningRail extends DeepAgentRail {
                 }
             }
             return result;
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException e) {
             return List.of();
         }
     }

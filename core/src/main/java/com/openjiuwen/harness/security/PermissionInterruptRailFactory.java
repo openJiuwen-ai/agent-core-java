@@ -56,7 +56,7 @@ public final class PermissionInterruptRailFactory {
         Map<String, Object> config = new LinkedHashMap<>(permissions);
         // Consistent with PermissionEngine.boolOrDefault(config.get("enabled"), true):
         // when "enabled" is missing (null), default to true; only explicit false disables.
-        if (config.get("enabled") instanceof Boolean enabledFlag && !enabledFlag) {
+        if (config.get("enabled") instanceof Boolean isPermissionDisabled && !isPermissionDisabled) {
             return null;
         }
 

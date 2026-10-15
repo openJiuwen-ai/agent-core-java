@@ -840,14 +840,14 @@ public final class Runner {
                  */
                 private void runPostRunUnderRunTenant() {
                     TenantContext previous = TenantContextHolder.getCurrentTenant();
-                    boolean sameAsRun = java.util.Objects.equals(previous, runTenantCtx);
+                    boolean isSameAsRun = java.util.Objects.equals(previous, runTenantCtx);
                     try {
-                        if (!sameAsRun) {
+                        if (!isSameAsRun) {
                             TenantContextHolder.setCurrentTenant(runTenantCtx);
                         }
                         session.postRun();
                     } finally {
-                        if (!sameAsRun) {
+                        if (!isSameAsRun) {
                             TenantContextHolder.setCurrentTenant(previous);
                         }
                     }
