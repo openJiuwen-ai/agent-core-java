@@ -70,7 +70,7 @@ public abstract class BaseModelClient implements Model.ModelClient {
 
     /**
      * Returns the client connection configuration, exposed so per-call timeout resolution can
-     * read the configured tiered values (FEAT-058).
+     * read the configured tiered values.
      *
      * @return client connection configuration
      */

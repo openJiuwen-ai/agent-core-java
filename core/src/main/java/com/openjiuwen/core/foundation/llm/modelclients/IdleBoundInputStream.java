@@ -19,7 +19,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Response body stream whose blocking reads are bounded by the FEAT-058 idle (peer silence)
+ * Response body stream whose blocking reads are bounded by the idle (peer silence)
  * window. Bytes delivered by the HTTP client are queued; each {@code read} waits at most
  * {@code idleSeconds} for the next chunk and raises {@link IdleTimeoutIOException} when the
  * peer stays silent beyond the window, so dead connections are detected inside the window

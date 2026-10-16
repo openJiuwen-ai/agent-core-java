@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * UT-M group for FEAT-058: tiered timeout behavior of the primary stack
+ * Tiered timeout behavior of the primary stack
  * ({@link OpenAIModelClient}) against a scriptable stub endpoint.
  *
  * @since 2026-10-09

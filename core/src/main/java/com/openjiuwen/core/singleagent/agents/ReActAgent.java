@@ -541,7 +541,7 @@ public class ReActAgent extends BaseAgent {
      * <p>No-op when no time-budgeted run-budget state is present, keeping the legacy path
      * byte-identical. The clamped value travels through {@code ModelInvokeOptions.timeout},
      * the single-call timeout channel. Baseline is the call's effective timeout — after
-     * FEAT-058 that is the resolved idle-window value rather than the legacy default.</p>
+     * the call is the resolved idle-window value rather than the legacy default.</p>
      *
      * @param ctx callback context carrying the run-budget state
      * @param builder options builder under construction

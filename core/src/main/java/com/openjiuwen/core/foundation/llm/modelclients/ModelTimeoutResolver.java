@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 
 /**
- * Resolves the three independent timeout layers of a model HTTP call (FEAT-058).
+ * Resolves the three independent timeout layers of a model HTTP call.
  *
  * <p>Three independent resolution chains, never mixed:</p>
  * <ul>

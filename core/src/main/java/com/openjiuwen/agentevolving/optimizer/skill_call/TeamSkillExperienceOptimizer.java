@@ -413,7 +413,7 @@ public class TeamSkillExperienceOptimizer extends BaseOptimizer {
                                     .model(model)
                                     .temperature(0.1f)
                                     // per-call timeout overrides only the idle (peer silence)
-                                    // layer, not a total duration cap (FEAT-058)
+                                    // layer, not a total duration cap
                                     .timeout((float) TEAM_RETRY_PARSE_TIMEOUT_SECS)
                                     .build()
                     )

@@ -25,7 +25,7 @@ import java.util.Optional;
 import javax.net.ssl.SSLSession;
 
 /**
- * Scriptable stub model endpoint for FEAT-058 timeout tiering tests. Supports delayed
+ * Scriptable stub model endpoint for timeout tiering tests. Supports delayed
  * response headers, per-segment gaps, silent (hung) connections, and slow blocking bodies,
  * so tests can drive the connect, header-wait, and stream-idle timing domains independently.
  *

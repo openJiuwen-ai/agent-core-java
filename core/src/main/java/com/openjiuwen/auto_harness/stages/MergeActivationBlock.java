@@ -239,7 +239,7 @@ public class MergeActivationBlock {
         }
         ModelInvokeOptions options = ModelInvokeOptions.builder()
                 .maxTokens(100)
-                // per-call timeout overrides only the idle (peer silence) layer, not a total cap (FEAT-058)
+                // per-call timeout overrides only the idle (peer silence) layer, not a total cap
                 .timeout((float) config.getModelTimeoutSecs())
                 .build();
         AssistantMessage response = config.getModel().invoke(prompt, options).toCompletableFuture().join();

@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Builds the FEAT-058 tiered timeout error surface ({@code MODEL_CALL_TIMEOUT}) with the
+ * Builds the tiered timeout error surface ({@code MODEL_CALL_TIMEOUT}) with the
  * three-segment phase taxonomy in both the rendered message and the programmatic details map.
  *
  * @since 2026-10-09

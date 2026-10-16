@@ -22,7 +22,7 @@ final class ModelHttpClients {
     private ModelHttpClients(ModelClientConfig clientConfig, String targetUrl) {
         this.clientConfig = clientConfig;
         this.targetUrl = targetUrl;
-        // Connect timeout is tiered independently (FEAT-058) so refused LLM hosts fail fast.
+        // Connect timeout is tiered independently so refused LLM hosts fail fast.
         this.builder = HttpClient.newBuilder()
                 .connectTimeout(connectTimeoutDuration(clientConfig));
         ModelTimeoutResolver.warnIfLegacyTimeoutExplicit(clientConfig);

@@ -14,7 +14,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * UT-C group for FEAT-058: timeout config assembly, defaults, validation, per-call override
+ * Timeout config assembly, defaults, validation, per-call override
  * isolation, and legacy timeout explicitness semantics.
  *
  * @since 2026-10-09
