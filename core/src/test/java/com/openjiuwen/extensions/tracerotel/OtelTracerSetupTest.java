@@ -5,6 +5,7 @@
 package com.openjiuwen.extensions.tracerotel;
 
 import com.openjiuwen.core.common.exception.BaseError;
+
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
@@ -246,6 +247,25 @@ class OtelTracerSetupTest {
         void testScheduleDelayMillisDefault() {
             OtelTracerConfig config = OtelTracerConfig.builder().build();
             assertThat(config.getScheduleDelayMillis()).isEqualTo(5000);
+        }
+    }
+
+    @Nested
+    @DisplayName("flush and shutdown lifecycle")
+    class TestFlushAndShutdown {
+
+        @Test
+        @DisplayName("console exporter: flush succeeds and shutdown is idempotent")
+        void testFlushAndShutdownConsoleExporter() {
+            Tracer tracer = OtelTracerSetup.initOtelTracer(
+                    OtelTracerConfig.builder().exporterType("console").build());
+            tracer.spanBuilder("flush_span").startSpan().end();
+
+            assertThat(OtelTracerSetup.forceFlushOtelTracer()).isTrue();
+            assertThat(OtelTracerSetup.shutdownOtelTracer()).isTrue();
+            // Provider 已置空：重复 shutdown 与后续 flush 都是无操作的成功
+            assertThat(OtelTracerSetup.shutdownOtelTracer()).isTrue();
+            assertThat(OtelTracerSetup.forceFlushOtelTracer()).isTrue();
         }
     }
 }
