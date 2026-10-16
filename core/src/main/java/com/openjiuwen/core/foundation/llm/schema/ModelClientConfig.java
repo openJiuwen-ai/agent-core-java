@@ -38,10 +38,8 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ModelClientConfig {
     /**
-     * Legacy timeout field default; explicitness checks compare against this value.
-     */
-    /**
-     * Default per-call timeout in seconds applied when the configuration does not declare one.
+     * Default per-call timeout in seconds applied when the configuration does not declare one;
+     * legacy-timeout explicitness checks also compare against this value.
      */
     public static final double DEFAULT_TIMEOUT_SECONDS = 60.0;
 
