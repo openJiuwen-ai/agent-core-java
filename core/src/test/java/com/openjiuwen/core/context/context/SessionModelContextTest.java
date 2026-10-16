@@ -11,9 +11,12 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -158,6 +161,42 @@ class SessionModelContextTest {
         assertThat(restored.getMessages(null, true)).extracting(BaseMessage::getContent).containsExactly("persisted");
         SessionModelContext.ReloaderTool tool = (SessionModelContext.ReloaderTool) restored.reloaderTool();
         assertThat(tool.reloadOriginalContextMessages("handle-2", "in_memory")).contains("stored");
+    }
+
+    @Test
+    void saveAndLoadStatePreservesUserMultimodalListContent() {
+        UserMessage multimodal = new UserMessage();
+        List<Map<String, Object>> parts = new ArrayList<>();
+        Map<String, Object> textPart = new LinkedHashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", "look at this");
+        Map<String, Object> imagePart = new LinkedHashMap<>();
+        imagePart.put("type", "image_url");
+        imagePart.put("image_url", new LinkedHashMap<>(Map.of("url", "data:image/png;base64,aaa")));
+        parts.add(textPart);
+        parts.add(imagePart);
+        multimodal.setContent(parts);
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext source = new SessionModelContext("ctx", "session", config);
+        source.addMessages(List.of(multimodal)).toCompletableFuture().join();
+
+        SessionModelContext restored = new SessionModelContext("ctx", "session", config);
+        restored.loadState(Map.of("ctx", source.saveState()));
+
+        List<BaseMessage> messages = restored.getMessages(null, true);
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).getContent()).isInstanceOf(List.class);
+        List<?> restoredParts = (List<?>) messages.get(0).getContent();
+        assertThat(restoredParts).hasSize(2);
+        assertThat(asMap(restoredParts.get(0)))
+                .containsEntry("type", "text")
+                .containsEntry("text", "look at this");
+        assertThat(asMap(restoredParts.get(1))).containsEntry("type", "image_url");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return (Map<String, Object>) value;
     }
 
     @Test

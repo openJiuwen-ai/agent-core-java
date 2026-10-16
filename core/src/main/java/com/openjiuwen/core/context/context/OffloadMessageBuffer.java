@@ -185,6 +185,12 @@ public class OffloadMessageBuffer {
             message = toolMessage;
         } else if ("system".equals(role)) {
             message = new SystemMessage(content == null ? "" : String.valueOf(content));
+        } else if (content instanceof List<?>) {
+            // Multimodal wire parts: keep the structured content on
+            // filesystem reload, mirroring the tool branch above.
+            UserMessage userMessage = new UserMessage();
+            userMessage.setContent(content);
+            message = userMessage;
         } else {
             message = new UserMessage(content == null ? "" : String.valueOf(content));
         }
