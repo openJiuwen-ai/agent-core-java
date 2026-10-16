@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -13,6 +14,8 @@ import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
@@ -22,6 +25,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -292,17 +296,11 @@ public class CurrentRoundCompressor extends ContextProcessor {
                 priorContextAndQuery);
         String processedMessages = formatMessages(messagesToCompress, "role:%s, content:%s");
         filledPrompt = filledPrompt.replace("{selected_messages}", processedMessages);
-        AssistantMessage response;
-        try {
-            if (model == null) {
-                return null;
-            }
-            response = model.invoke(List.of(new UserMessage(filledPrompt))).toCompletableFuture().join();
-            recordCompressionUsage(response);
-        } catch (RuntimeException ex) {
+        Optional<AssistantMessage> response = invokeCompressionModel(filledPrompt);
+        if (response.isEmpty()) {
             return null;
         }
-        String summary = response == null ? "" : response.getContentAsString();
+        String summary = response.get().getContentAsString();
         if (!summary.isEmpty()) {
             int compressedTokens = CompressorUtils.countMessagesTokens(
                     List.of(new UserMessage(summary)),
@@ -313,6 +311,26 @@ public class CurrentRoundCompressor extends ContextProcessor {
             }
         }
         return new UserMessage(wrapMemoryBlock(summary));
+    }
+
+    private Optional<AssistantMessage> invokeCompressionModel(String filledPrompt) {
+        if (model == null) {
+            return Optional.empty();
+        }
+        try {
+            AssistantMessage response = model.invoke(List.of(new UserMessage(filledPrompt)),
+                    ModelInvokeOptions.builder()
+                            .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null,
+                                    model.getModelClientConfig()))
+                            .build()).toCompletableFuture().join();
+            recordCompressionUsage(response);
+            return Optional.of(response);
+        } catch (BaseError | IllegalStateException
+                | IllegalArgumentException | NullPointerException
+                | java.util.concurrent.CompletionException exception) {
+            // 故障隔离：压缩失败仅本次不压缩，不阻断主对话回路
+            return Optional.empty();
+        }
     }
 
     BaseMessage mergeSummaryBlocks(SessionModelContext context, List<BaseMessage> oldCompressedMessages) {
@@ -334,7 +352,9 @@ public class CurrentRoundCompressor extends ContextProcessor {
             if (model == null) {
                 return null;
             }
-            response = model.invoke(List.of(new UserMessage(filledPrompt))).toCompletableFuture().join();
+            response = model.invoke(List.of(new UserMessage(filledPrompt)), ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             recordCompressionUsage(response);
         } catch (RuntimeException ex) {
             return null;

@@ -154,12 +154,13 @@ class RunBudgetTimeTest {
     }
 
     @Test
-    void modelCallTimeout_budgetAboveClientDefault_notClamped() {
-        // UT-T04 counterpart: a 120s budget leaves the client default untouched
-        // Given a 120s budget
+    void modelCallTimeout_budgetAboveIdleBaseline_notClamped() {
+        // UT-T04 counterpart（per-call 基线为空闲层默认 600s 的语义下）：
+        // 而是空闲层默认 600s——预算宽于基线时不收紧，options 携 600f 空闲窗
+        // Given a 900s budget
         agent = RunBudgetTestFixture.newAgent("time-t04b", 10);
         rail = RunBudgetTestFixture.registerBudgetRail(agent, RunBudgetConfig.builder()
-                .turnEnabled(false).totalBudgetSeconds(120).build());
+                .turnEnabled(false).totalBudgetSeconds(900).build());
         RunBudgetTestFixture.ScriptedModel model = RunBudgetTestFixture.scriptedModel(
                 List.of(), RunBudgetTestFixture.answer("ok"));
         agent.setLlm(model.model());
@@ -168,9 +169,9 @@ class RunBudgetTimeTest {
         RunBudgetTestFixture.runSync(agent, Map.of("query", "hi"),
                 RunBudgetTestFixture.newSession("t04b-s", agent));
 
-        // Then no timeout was written into the options
+        // Then the options carry the idle baseline without clamping
         assertThat(model.lastOptions()).isPresent();
-        assertThat(model.lastOptions().get().getTimeout()).isNull();
+        assertThat(model.lastOptions().get().getTimeout()).isEqualTo(600.0f);
     }
 
     @Test

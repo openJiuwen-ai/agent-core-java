@@ -18,7 +18,8 @@ DeepAgent 是 openjiuwen Java Harness 层的高阶智能体封装，在核心 `R
   - [3. Rail 使用](#3-rail-使用llm-调用前注入用户偏好)
   - [4. 权限中断](#4-权限中断禁止用户发起的文件删除)
   - [5. 运行预算](#5-运行预算run-budget)
-  - [6. 多租户隔离](#6-多租户隔离)
+  - [6. 模型调用超时分层](#6-模型调用超时分层连接--响应头等待--流式空闲)
+  - [7. 多租户隔离](#7-多租户隔离)
 - [Demo 命令速查](#demo-命令速查)
 - [多租户隔离](#多租户隔离)
 - [Stream 并发与线程池](#stream-并发与线程池)
@@ -430,7 +431,40 @@ DeepAgentConfig.builder()
 
 ---
 
-### 6. 多租户隔离
+### 6. 模型调用超时分层（连接 / 响应头等待 / 流式空闲）
+
+单次模型 HTTP 调用的超时按三个独立层级解析，各层解析链互不混用：
+
+| 层级 | 语义 | 配置项（`ModelClientConfig` 字段 / backend map 键） | 缺省 | 取值范围 |
+|------|------|------|------|------|
+| 连接 | 建立 TCP/TLS 连接 | `connectTimeoutSeconds` / `connect_timeout_seconds` | 10s（可被系统属性 `openjiuwen.llm.http.connect-timeout-seconds` 覆盖） | [5, 15]s |
+| 响应头等待 | 请求发出后等待响应头到达 | 沿用旧 `timeout` 字段（显式设置时作为本层取值） | 未显式设置时回落为流式空闲层的解析值 | 旧语义不变 |
+| 流式空闲 | 对端沉默（无任何数据段）超过窗口即掐断 | `streamIdleSeconds` / `stream_idle_seconds` | 600s | [300, 900]s |
+
+没有「全程总时长」上限：长生成只要持续有数据返回就不会被掐断，只有对端沉默才会触发流式空闲层。
+
+配置示例：
+
+```java
+ModelClientConfig clientConfig = ModelClientConfig.builder()
+        .clientProvider(ProviderType.OPENAI)
+        .apiKey(apiKey)
+        .apiBase(baseUrl)
+        .connectTimeoutSeconds(10.0)   // 连接层，可选，缺省 10s
+        .streamIdleSeconds(600.0)      // 流式空闲层，可选，缺省 600s
+        .build();
+```
+
+行为要点：
+
+- 越界配置在 setter / builder 处直接抛 `IllegalArgumentException`，不会静默截断。
+- 单次调用可用 `ModelInvokeOptions.timeout` 覆盖**流式空闲层**取值（只影响该次调用，不影响连接层与响应头等待层）。
+- 超时被掐断时抛出可辨识的错误面：错误码 `181008`（MODEL_CALL_TIMEOUT），并携带超时阶段 `TimeoutPhase`（`BEFORE_CONNECT` / `BEFORE_FIRST_SEGMENT` / `AFTER_FIRST_SEGMENT`），便于按层定位是连接不通、首段迟迟不到还是流中途沉默。
+- 与运行预算（见上节）组合时，预算钳制以该次调用的有效空闲超时为基线，只缩不放。
+
+---
+
+### 7. 多租户隔离
 
 DeepAgent 自 `0.1.7` 起支持多租户数据隔离。在 `DeepAgentConfig` 上设置 `enableTenantIsolation(true)` 即进入**严格模式**：每次调用必须携带有效 `TenantContext`，否则 `invoke` / `stream` 在绑定工作区之前直接抛 `IllegalStateException`（`Tenant isolation is enabled but no tenantId was provided`），不会静默回退到默认工作区。
 

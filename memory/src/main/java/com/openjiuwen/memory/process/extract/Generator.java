@@ -9,6 +9,8 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
@@ -39,7 +41,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/memory/process/extract/generation.py}.
  */
 public class Generator {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private static final Map<String, MemoryType> CATEGORY_TO_CLASS = Map.of(
             "user_profile", MemoryType.USER_PROFILE,
@@ -383,7 +384,11 @@ public class Generator {
                     "semantic_validation",
                     Map.of("obtained_mem", mem, "old_mem", oldMem)
             );
-            AssistantMessage response = baseChatModel.invoke(List.of(new UserMessage(promptContent)))
+            AssistantMessage response = baseChatModel.invoke(List.of(new UserMessage(promptContent)),
+                            ModelInvokeOptions.builder()
+                                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                                            null, baseChatModel.getModelClientConfig()))
+                                    .build())
                     .toCompletableFuture().join();
             String responseContent = response.getContentAsString().toUpperCase(Locale.ROOT);
             if (responseContent.contains("CORRECT") && !responseContent.contains("WRONG")) {

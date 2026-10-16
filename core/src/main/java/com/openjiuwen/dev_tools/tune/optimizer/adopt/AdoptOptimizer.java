@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
@@ -41,7 +42,6 @@ import java.util.stream.Collectors;
  * {@code openjiuwen/dev_tools/tune/optimizer/adopt/adopt_optimizer.py}.</p>
  */
 public class AdoptOptimizer extends BaseOptimizer {
-
     public static final int DEFAULT_BAD_CASES_SAMPLE_NUM = 5;
     public static final int DEFAULT_MODEL_RETRY_NUM = 5;
     public static final int DEFAULT_PARALLEL_NUM = 8;
@@ -311,6 +311,7 @@ public class AdoptOptimizer extends BaseOptimizer {
                 .model(modelName)
                 .temperature(0.3f)
                 .topP(0.7f)
+                .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
                 .build();
         return model.invoke(messages, options).toCompletableFuture().join().getContentAsString();
     }
@@ -381,6 +382,9 @@ public class AdoptOptimizer extends BaseOptimizer {
                     .model(resolved.getModel() == null ? defaultModelName : resolved.getModel())
                     .temperature(resolved.getTemperature() == null ? 0.3f : resolved.getTemperature())
                     .topP(resolved.getTopP() == null ? 0.7f : resolved.getTopP())
+                    .timeout(resolved.getTimeout() == null
+                            ? ModelTimeoutResolver.resolvePerCallIdleTimeout(null, delegate.getModelClientConfig())
+                            : resolved.getTimeout())
                     .build();
         }
     }

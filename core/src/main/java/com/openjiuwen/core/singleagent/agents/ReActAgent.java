@@ -15,6 +15,7 @@ import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -484,12 +485,14 @@ public class ReActAgent extends BaseAgent {
         // Use the resolved model's name (may differ from config when a dynamic
         // model was selected via ctx.dynamicModelId) so the provider receives
         // the correct model name.
+        Float perCallIdleTimeout = resolvePerCallIdleTimeout(model);
         ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder = ModelInvokeOptions.builder()
                 .model(resolveModelName(model))
                 .tools(tools)
                 .requestHeaders(requestHeaders)
-                .extraFields(extraFields);
-        clampModelCallTimeoutToRemainingBudget(ctx, optionsBuilder);
+                .extraFields(extraFields)
+                .timeout(perCallIdleTimeout);
+        clampModelCallTimeoutToRemainingBudget(ctx, optionsBuilder, perCallIdleTimeout);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
             optionsBuilder.retryListener(event -> session.writeStream(new OutputSchema(
@@ -537,13 +540,15 @@ public class ReActAgent extends BaseAgent {
      *
      * <p>No-op when no time-budgeted run-budget state is present, keeping the legacy path
      * byte-identical. The clamped value travels through {@code ModelInvokeOptions.timeout},
-     * the single-call timeout channel.</p>
+     * the single-call timeout channel. Baseline is the call's effective timeout — after
+     * the call is the resolved idle-window value rather than the legacy default.</p>
      *
      * @param ctx callback context carrying the run-budget state
      * @param builder options builder under construction
      */
     private void clampModelCallTimeoutToRemainingBudget(AgentCallbackContext ctx,
-                                                        ModelInvokeOptions.ModelInvokeOptionsBuilder builder) {
+                                                        ModelInvokeOptions.ModelInvokeOptionsBuilder builder,
+                                                        Float effectiveTimeout) {
         Optional<RunBudgetState> budgetState = RunBudgetState.from(ctx.getExtra());
         if (budgetState.isEmpty() || !budgetState.get().isTimeEnabled()) {
             return;
@@ -552,11 +557,19 @@ public class ReActAgent extends BaseAgent {
         if (remaining <= 0) {
             return;
         }
-        double configuredTimeout = config.getModelClientConfig() != null
-                ? config.getModelClientConfig().getTimeout() : ModelClientConfig.DEFAULT_TIMEOUT_SECONDS;
-        if (remaining < configuredTimeout) {
+        double baseline = effectiveTimeout != null
+                ? effectiveTimeout.doubleValue() : ModelClientConfig.DEFAULT_TIMEOUT_SECONDS;
+        if (remaining < baseline) {
             builder.timeout((float) remaining);
         }
+    }
+
+    private Float resolvePerCallIdleTimeout(Model model) {
+        ModelClientConfig clientConfig = model == null
+                ? config.getModelClientConfig()
+                : model.getModelClientConfig();
+        return ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                config.getModelStreamIdleSeconds(), clientConfig);
     }
 
     public static void renderSystemMessages(List<SystemMessage> systemMessages, Object inputs,

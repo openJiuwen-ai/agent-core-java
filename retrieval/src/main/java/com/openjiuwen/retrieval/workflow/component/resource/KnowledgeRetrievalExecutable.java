@@ -9,8 +9,10 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
@@ -49,7 +51,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/workflow/components/resource/knowledge_retrieval_comp.py}.</p>
  */
 public class KnowledgeRetrievalExecutable extends ComponentExecutable<Object, Object> {
-
     private final KnowledgeRetrievalCompConfig config;
     private List<KnowledgeBase> knowledgeBases = new ArrayList<>();
     private BaseModelClient llmClient;
@@ -355,7 +356,6 @@ public class KnowledgeRetrievalExecutable extends ComponentExecutable<Object, Ob
      * {@link BaseModelClient} contract used by {@code AgenticRetriever}.
      */
     private static final class ModelBackedModelClient extends BaseModelClient {
-
         private final Model model;
 
         private ModelBackedModelClient(Model model) {
@@ -381,7 +381,9 @@ public class KnowledgeRetrievalExecutable extends ComponentExecutable<Object, Ob
                 Float timeout,
                 Map<String, Object> kwargs
         ) {
-            return model.invoke(normalizeMessages(messages)).toCompletableFuture().join();
+            return model.invoke(normalizeMessages(messages), ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
         }
 
         @Override
@@ -397,7 +399,9 @@ public class KnowledgeRetrievalExecutable extends ComponentExecutable<Object, Ob
                 Float timeout,
                 Map<String, Object> kwargs
         ) {
-            return model.stream(normalizeMessages(messages));
+            return model.stream(normalizeMessages(messages), ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                    .build());
         }
 
         @Override

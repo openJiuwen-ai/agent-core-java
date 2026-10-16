@@ -415,6 +415,9 @@ public class OpenAIModelClient extends BaseModelClient
         } catch (IOException exception) {
             Loggers.LLM.warning("KV cache {0} action failed: {1}", action, exception.toString());
             return false;
+        } catch (InterruptedException exception) {
+            Loggers.LLM.warning("KV cache {0} action interrupted: {1}", action, exception.toString());
+            return false;
         } catch (java.util.concurrent.CompletionException exception) {
             Loggers.LLM.warning("KV cache {0} action failed: {1}", action, exception.toString());
             return false;
@@ -486,7 +489,12 @@ public class OpenAIModelClient extends BaseModelClient
             recordTracerData(tracerRecordData, "llm_params", params);
             Loggers.LLM.info("Before create openai client, model client config params ready. {}",
                     Map.of(
-                            "timeout", timeout != null ? timeout : modelClientConfig.getTimeout(),
+                            "connect_timeout_seconds",
+                            ModelTimeoutResolver.resolveConnectTimeoutSeconds(modelClientConfig),
+                            "header_wait_seconds",
+                            ModelTimeoutResolver.resolveHeaderWaitSeconds(modelClientConfig),
+                            "stream_idle_seconds",
+                            ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig),
                             "max_retries", modelClientConfig.getMaxRetries()
                     ));
             Map<String, Object> responseData = postJson(
@@ -509,7 +517,8 @@ public class OpenAIModelClient extends BaseModelClient
         } catch (BaseError exception) {
             Loggers.LLM.error("OpenAI API async invoke error. {}", exception.getMessage());
             throw exception;
-        } catch (Exception exception) {
+        } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
+                | ClassCastException exception) {
             String detail = safeExceptionMessage(exception, sensitiveValues);
             Loggers.LLM.error("OpenAI API async invoke error. {}", detail);
             throw clientInternalException(exception, false, "prepare_request", sensitiveValues);
@@ -559,7 +568,8 @@ public class OpenAIModelClient extends BaseModelClient
         } catch (BaseError exception) {
             Loggers.LLM.error("OpenAI API async stream error. {}", exception.getMessage());
             throw exception;
-        } catch (Exception exception) {
+        } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
+                | ClassCastException exception) {
             String detail = safeExceptionMessage(exception, sensitiveValues);
             Loggers.LLM.error("OpenAI API async stream error. {}", detail);
             throw clientInternalException(exception, true, "prepare_request", sensitiveValues);
@@ -715,7 +725,6 @@ public class OpenAIModelClient extends BaseModelClient
 
     /** Resolved, vendor-agnostic task-flow configuration for one video generation call. */
     private static final class VideoTaskConfig {
-
         private final String createPath;
         private final String pollPathTemplate;
         private final String bodyStyle;
@@ -791,7 +800,6 @@ public class OpenAIModelClient extends BaseModelClient
         }
 
         private static final class Builder {
-
             private String createPath = VIDEOS_PATH;
             private String pollPathTemplate;
             private String bodyStyle = VIDEO_BODY_PROMPT;
@@ -1308,6 +1316,12 @@ public class OpenAIModelClient extends BaseModelClient
         return effectiveAuthorization;
     }
 
+    private Duration timeoutDuration(Float timeout) {
+        double seconds = timeout != null ? timeout.doubleValue() : modelClientConfig.getTimeout();
+        long millis = Math.max(1L, Math.round(seconds * 1000.0D));
+        return Duration.ofMillis(millis);
+    }
+
     private <T> HttpResponse<T> sendGenerationRequest(String path, Float timeout, String authorization,
             Map<String, String> requestHeaders, HttpResponse.BodyHandler<T> bodyHandler)
             throws IOException, InterruptedException {
@@ -1433,7 +1447,7 @@ public class OpenAIModelClient extends BaseModelClient
             String authorization,
             Map<String, String> requestHeaders,
             Collection<String> sensitiveValues,
-            ModelRetryListener retryListener) throws JsonProcessingException {
+            ModelRetryListener retryListener) throws IOException, InterruptedException {
         return postJson(CHAT_COMPLETIONS_PATH, params, timeout, authorization, requestHeaders,
                 sensitiveValues, retryListener);
     }
@@ -1445,28 +1459,28 @@ public class OpenAIModelClient extends BaseModelClient
             String authorization,
             Map<String, String> requestHeaders,
             Collection<String> sensitiveValues,
-            ModelRetryListener retryListener) throws JsonProcessingException {
-        PreparedRequest preparedRequest = prepareRequest(
-                path, params, timeout, authorization, requestHeaders);
-        HttpResponse<String> response;
+            ModelRetryListener retryListener) throws IOException, InterruptedException {
+        PreparedRequest preparedRequest = prepareRequest(path, params, authorization, requestHeaders);
+        double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
+        HttpResponse<InputStream> response;
         try {
             circuitBreaker.beforeCall();
             response = retryingHttpClient.send(retryCount ->
-                    sendStringAttempt(preparedRequest, retryCount), retryListener);
+                    sendStreamAttempt(preparedRequest, retryCount, idleSeconds), retryListener);
             circuitBreaker.onSuccess();
         } catch (IOException exception) {
             circuitBreaker.onFailure(exception);
-            throw transportException(exception, false, sensitiveValues);
+            throw classifySendException(exception, false, sensitiveValues);
         } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
             circuitBreaker.onFailure(exception);
             throw transportException(exception, false, sensitiveValues);
         }
-        ensureSuccess(response.statusCode(), response.body(), false, sensitiveValues);
+        String body = readBodyWithIdleTimeout(response.body(), idleSeconds, false);
+        ensureSuccess(response.statusCode(), body, false, sensitiveValues);
         try {
-            return parseJsonObject(response.body());
+            return parseJsonObject(body);
         } catch (JsonProcessingException exception) {
-            throw responseParseException(response.body(), exception, false, "parse_json", sensitiveValues);
+            throw responseParseException(body, exception, false, "parse_json", sensitiveValues);
         }
     }
 
@@ -1477,27 +1491,27 @@ public class OpenAIModelClient extends BaseModelClient
             String authorization,
             Map<String, String> requestHeaders,
             Collection<String> sensitiveValues,
-            ModelRetryListener retryListener) throws Exception {
+            ModelRetryListener retryListener) throws IOException, InterruptedException {
         PreparedRequest preparedRequest = prepareRequest(
-                CHAT_COMPLETIONS_PATH, params, timeout, authorization, requestHeaders);
+                CHAT_COMPLETIONS_PATH, params, authorization, requestHeaders);
+        double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
         HttpResponse<InputStream> response;
         try {
             circuitBreaker.beforeCall();
             response = retryingHttpClient.send(retryCount ->
-                    sendStreamAttempt(preparedRequest, retryCount), retryListener);
+                    sendStreamAttempt(preparedRequest, retryCount, idleSeconds), retryListener);
             circuitBreaker.onSuccess();
         } catch (IOException exception) {
             circuitBreaker.onFailure(exception);
-            throw transportException(exception, true, sensitiveValues);
+            throw classifySendException(exception, true, sensitiveValues);
         } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
             circuitBreaker.onFailure(exception);
             throw transportException(exception, true, sensitiveValues);
         }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String body;
             try {
-                body = readBody(response.body());
+                body = readBodyWithIdleTimeout(response.body(), idleSeconds, true);
             } catch (IOException exception) {
                 throw transportException(exception, true, sensitiveValues);
             }
@@ -1505,7 +1519,7 @@ public class OpenAIModelClient extends BaseModelClient
         }
         Loggers.LLM.info("OpenAI API stream response received. status={}", response.statusCode());
         return loggingFirstChunk(
-                new SseChunkIterator(response.body(), outputParser, sensitiveValues));
+                new SseChunkIterator(response.body(), outputParser, sensitiveValues, idleSeconds));
     }
 
     private Iterator<AssistantMessageChunk> loggingFirstChunk(Iterator<AssistantMessageChunk> delegate) {
@@ -1548,53 +1562,15 @@ public class OpenAIModelClient extends BaseModelClient
         }
     }
 
-    private HttpResponse<String> sendStringAttempt(
-            PreparedRequest preparedRequest,
-            int retryCount) throws IOException, InterruptedException {
-        HttpResponse<String> response;
-        try {
-            response = httpClient.send(
-                    buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-            );
-        } catch (IOException exception) {
-            String fallbackApiBase = localFixtureFallbackApiBase(exception);
-            if (fallbackApiBase == null) {
-                throw exception;
-            }
-            response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                    .withSsl()
-                    .withProxy()
-                    .build()
-                    .send(
-                            buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-                    );
-        }
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String fallbackApiBase = localFixtureFallbackApiBase(response.statusCode());
-            if (fallbackApiBase != null) {
-                response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                        .withSsl()
-                        .withProxy()
-                        .build()
-                        .send(
-                                buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-                        );
-            }
-        }
-        return response;
-    }
-
     private HttpResponse<InputStream> sendStreamAttempt(
             PreparedRequest preparedRequest,
-            int retryCount) throws IOException, InterruptedException {
+            int retryCount,
+            double idleSeconds) throws IOException, InterruptedException {
         HttpResponse<InputStream> response;
         try {
             response = httpClient.send(
                     buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
-                    HttpResponse.BodyHandlers.ofInputStream()
+                    IdleBoundInputStream.bodyHandler(idleSeconds)
             );
         } catch (IOException exception) {
             String fallbackApiBase = localFixtureFallbackApiBase(exception);
@@ -1607,20 +1583,21 @@ public class OpenAIModelClient extends BaseModelClient
                     .build()
                     .send(
                             buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                            HttpResponse.BodyHandlers.ofInputStream()
+                            IdleBoundInputStream.bodyHandler(idleSeconds)
                     );
         }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String fallbackApiBase = localFixtureFallbackApiBase(response.statusCode());
             if (fallbackApiBase != null) {
-                readBody(response.body());
+                readBodyWithIdleTimeout(response.body(),
+                        ModelTimeoutResolver.resolveStreamIdleSeconds(modelClientConfig), true);
                 response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
                         .withSsl()
                         .withProxy()
                         .build()
                         .send(
                                 buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                                HttpResponse.BodyHandlers.ofInputStream()
+                                IdleBoundInputStream.bodyHandler(idleSeconds)
                         );
             }
         }
@@ -1639,14 +1616,14 @@ public class OpenAIModelClient extends BaseModelClient
     private PreparedRequest prepareRequest(
             String path,
             Map<String, Object> params,
-            Float timeout,
             String authorization,
             Map<String, String> requestHeaders) throws JsonProcessingException {
         String bodyJson = OBJECT_MAPPER.writeValueAsString(requestBodyParams(params));
         return new PreparedRequest(
                 path,
                 bodyJson,
-                timeoutDuration(timeout),
+                ModelTimeoutResolver.toDuration(
+                        ModelTimeoutResolver.resolveHeaderWaitSeconds(modelClientConfig)),
                 resolveAuthorization(authorization),
                 new LinkedHashMap<>(requestHeaders));
     }
@@ -1964,7 +1941,7 @@ public class OpenAIModelClient extends BaseModelClient
             if (tracerRecordData instanceof Function<?, ?> function) {
                 ((Function<Map<String, Object>, Object>) function).apply(payload);
             }
-        } catch (Exception exception) {
+        } catch (ClassCastException | IllegalStateException | IllegalArgumentException exception) {
             Loggers.LLM.warning("Failed to record LLM tracer data. {}", exception.getMessage());
         }
     }
@@ -2109,17 +2086,21 @@ public class OpenAIModelClient extends BaseModelClient
         private final Collection<String> sensitiveValues;
         private final StringBuilder accumulatedContent = new StringBuilder();
         private final Map<Integer, ToolCallState> toolCallStates = new LinkedHashMap<>();
+        private final double idleSeconds;
         private AssistantMessageChunk nextChunk;
         private String pendingToolCallFinishReason = "null";
+        private boolean isFirstSegmentReceived;
         private boolean closed;
 
         private SseChunkIterator(
                 InputStream inputStream,
                 BaseOutputParser outputParser,
-                Collection<String> sensitiveValues) {
+                Collection<String> sensitiveValues,
+                double idleSeconds) {
             this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
             this.outputParser = outputParser;
             this.sensitiveValues = sensitiveValues;
+            this.idleSeconds = idleSeconds;
         }
 
         @Override
@@ -2146,6 +2127,7 @@ public class OpenAIModelClient extends BaseModelClient
 
         private AssistantMessageChunk readNextChunk() {
             String currentEvent = "";
+            boolean shouldKeepOpen = false;
             try {
                 String rawLine;
                 while ((rawLine = reader.readLine()) != null) {
@@ -2155,6 +2137,7 @@ public class OpenAIModelClient extends BaseModelClient
                     }
                     String data = line.substring("data:".length()).strip();
                     currentEvent = data;
+                    isFirstSegmentReceived = true;
                     if ("[DONE]".equals(data)) {
                         close();
                         return finalToolCallChunk();
@@ -2167,15 +2150,35 @@ public class OpenAIModelClient extends BaseModelClient
                     if (adaptedChunk == null) {
                         continue;
                     }
-                    return applyStreamingParser(adaptedChunk);
+                    AssistantMessageChunk parsedChunk = applyStreamingParser(adaptedChunk);
+                    shouldKeepOpen = true;
+                    return parsedChunk;
                 }
                 close();
                 return finalToolCallChunk();
-            } catch (Exception exception) {
+            } catch (IOException | IllegalStateException | IllegalArgumentException | ClassCastException
+                    | IndexOutOfBoundsException exception) {
                 close();
+                if (exception instanceof IOException ioException) {
+                    throwIfIdleTimeout(ioException);
+                }
                 String detail = errorDetail(exception);
                 Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
                 throw streamException(currentEvent, exception, sensitiveValues);
+            } finally {
+                if (!shouldKeepOpen) {
+                    close();
+                }
+            }
+        }
+
+        private void throwIfIdleTimeout(IOException exception) {
+            if (exception instanceof IdleBoundInputStream.IdleTimeoutIOException idleTimeout) {
+                throw ModelTimeoutErrorFactory.idleTimeoutError(
+                        isFirstSegmentReceived
+                                ? TimeoutPhase.AFTER_FIRST_SEGMENT
+                                : TimeoutPhase.BEFORE_FIRST_SEGMENT,
+                        idleTimeout.idleSeconds(), true, exception);
             }
         }
 
@@ -2255,6 +2258,10 @@ public class OpenAIModelClient extends BaseModelClient
                 return;
             }
             closed = true;
+            closeReaderQuietly();
+        }
+
+        private void closeReaderQuietly() {
             try {
                 reader.close();
             } catch (IOException exception) {
@@ -2373,9 +2380,18 @@ public class OpenAIModelClient extends BaseModelClient
         });
     }
 
+    private BaseError classifySendException(
+            IOException exception,
+            boolean isStreaming,
+            Collection<String> sensitiveValues) {
+        Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
+                exception, isStreaming, modelClientConfig);
+        return timeoutError.orElseGet(() -> transportException(exception, isStreaming, sensitiveValues));
+    }
+
     private BaseError transportException(
             Exception exception,
-            boolean streaming,
+            boolean isStreaming,
             Collection<String> sensitiveValues) {
         return modelCallError(
                 "transport failure at send_request: " + safeExceptionMessage(exception, sensitiveValues),
@@ -2385,7 +2401,7 @@ public class OpenAIModelClient extends BaseModelClient
     private BaseError responseParseException(
             String body,
             Exception exception,
-            boolean streaming,
+            boolean isStreaming,
             String phase,
             Collection<String> sensitiveValues) {
         ErrorResponseBodySanitizer.SanitizedBody sanitized =
@@ -2417,7 +2433,7 @@ public class OpenAIModelClient extends BaseModelClient
 
     private BaseError clientInternalException(
             Exception exception,
-            boolean streaming,
+            boolean isStreaming,
             String phase,
             Collection<String> sensitiveValues) {
         return modelCallError(
@@ -2433,7 +2449,7 @@ public class OpenAIModelClient extends BaseModelClient
     private void ensureSuccess(
             int statusCode,
             String body,
-            boolean streaming,
+            boolean isStreaming,
             Collection<String> sensitiveValues) {
         if (statusCode >= 200 && statusCode < 300) {
             return;
@@ -2452,13 +2468,9 @@ public class OpenAIModelClient extends BaseModelClient
                 Map.of("error_msg", errorMessage));
     }
 
-    private static String readBody(InputStream inputStream) throws IOException {
-        if (inputStream == null) {
-            return "";
-        }
-        try (inputStream) {
-            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-        }
+    private static String readBodyWithIdleTimeout(InputStream inputStream, double idleSeconds,
+            boolean isStreaming) throws IOException, InterruptedException {
+        return IdleGuardedBodyReader.readFully(inputStream, idleSeconds, isStreaming);
     }
 
     HttpClient httpClientForTesting() {
@@ -2467,16 +2479,9 @@ public class OpenAIModelClient extends BaseModelClient
 
     private HttpClient createHttpClient(ModelClientConfig clientConfig) {
         return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
-                .connectTimeout(timeoutDuration(null))
                 .withSsl()
                 .withExplicitPortProxy()
                 .build();
-    }
-
-    private Duration timeoutDuration(Float timeout) {
-        double seconds = timeout != null ? timeout.doubleValue() : modelClientConfig.getTimeout();
-        long millis = Math.max(1L, Math.round(seconds * 1000.0D));
-        return Duration.ofMillis(millis);
     }
 
     private static Map<String, String> extractExtraHeaders(Object extraHeaders) {

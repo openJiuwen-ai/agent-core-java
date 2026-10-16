@@ -37,7 +37,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
  * {@code openjiuwen/core/foundation/llm/model_clients/dashscope_model_client.py}.</p>
  */
 class DashScopeModelClientTest {
-
     @Test
     void generateImageBuildsDashScopeMessageAndExtractsImages() throws Exception {
         CapturingTransport transport = new CapturingTransport(Map.of(
@@ -245,12 +244,13 @@ class DashScopeModelClientTest {
                 .apiBase("https://dashscope.example.test")
                 .verifySsl(false)
                 .httpVersion(ModelHttpVersion.HTTP_1_1)
+                .connectTimeoutSeconds(5.0D)
                 .build();
 
-        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(clientConfig, Duration.ofSeconds(4));
+        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(clientConfig);
 
         assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_1_1);
-        assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(4));
+        assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(5));
     }
 
     private static DashScopeModelClient client(CapturingTransport transport) {

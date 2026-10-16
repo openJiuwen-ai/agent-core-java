@@ -1,12 +1,14 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -34,7 +36,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/retrieval/indexing/processor/parser/captioner.py}.
  */
 public class ImageCaptioner {
-
     public static final String IMAGE_CAPTION_PROMPT = "You are an assistant specialized in document and image analysis. "
             + "Your task is to provide a detailed, qualitative description of the provided image "
             + "so that it can be embedded and used for semantic retrieval. "
@@ -217,12 +218,16 @@ public class ImageCaptioner {
 
     private CompletionStage<AssistantMessage> invokeLlm(List<Map<String, Object>> content) {
         if (model != null) {
-            return model.invoke(List.of(new BaseMessage("user", content)));
+            return model.invoke(List.of(new BaseMessage("user", content)), ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                    .build());
         }
         return CompletableFuture.supplyAsync(() -> {
             try {
                 return baseModelClient.invoke(List.of(Map.of("role", "user", "content", content)),
-                        null, null, null, null, null, null, null, null, null);
+                        null, null, null, null, null, null, null,
+                        ModelTimeoutResolver.resolvePerCallIdleTimeout(null, baseModelClient.getModelClientConfig()),
+                        null);
             } catch (Exception exception) {
                 throw new IllegalStateException(exception);
             }

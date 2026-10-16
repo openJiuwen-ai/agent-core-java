@@ -17,6 +17,8 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.http.HttpResponse;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -32,7 +34,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Mirrors Python's {@code tests/unit_tests/core/foundation/llm/test_model_client_tracer.py}.</p>
  */
 class ModelClientTracerMissingTest {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
@@ -444,8 +445,8 @@ class ModelClientTracerMissingTest {
         }
 
         @Override
-        protected HttpStreamResult postStream(Map<String, Object> payload, Float timeout) {
-            return new HttpStreamResult(200, nextStreamLines, String.join("\n", nextStreamLines));
+        protected HttpResponse<InputStream> postStream(Map<String, Object> payload, double idleSeconds) {
+            return TieredTimeoutStubServer.fakeStreamingResponse(200, nextStreamLines);
         }
     }
 

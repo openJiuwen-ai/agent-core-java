@@ -20,7 +20,6 @@ import java.util.concurrent.CompletableFuture;
  * {@code openjiuwen/core/common/clients/llm_client.py}.</p>
  */
 public final class LlmClientFactory {
-
     static {
         ConnectorPoolManager.registerProvider("httpx", config -> CompletableFuture.completedFuture(
                 new HttpXConnectorPool(toHttpxConfig(config, true))));
@@ -151,7 +150,22 @@ public final class LlmClientFactory {
         }
         config.setApiKey(stringValue(first(values, "api_key", "apiKey")));
         config.setApiBase(stringValue(first(values, "api_base", "apiBase", "base_url", "baseUrl")));
-        config.setTimeout(doubleValue(first(values, "timeout"), config.getTimeout()));
+        Object legacyTimeout = first(values, "timeout");
+        if (legacyTimeout != null) {
+            config.setTimeout(doubleValue(legacyTimeout, config.getTimeout()));
+        }
+        Object connectTimeoutSeconds = first(values, "connect_timeout_seconds", "connectTimeoutSeconds");
+        if (connectTimeoutSeconds != null) {
+            config.setConnectTimeoutSeconds(
+                    ModelClientConfig.validateConnectTimeoutSeconds(
+                            doubleValue(connectTimeoutSeconds, 10.0D)));
+        }
+        Object streamIdleSeconds = first(values, "stream_idle_seconds", "streamIdleSeconds");
+        if (streamIdleSeconds != null) {
+            config.setStreamIdleSeconds(
+                    ModelClientConfig.validateStreamIdleSeconds(
+                            doubleValue(streamIdleSeconds, 600.0D)));
+        }
         config.setMaxRetries(intValue(first(values, "max_retries", "maxRetries"), config.getMaxRetries()));
         config.setVerifySsl(booleanValue(first(values, "verify_ssl", "verifySsl"), config.isVerifySsl()));
         config.setSslCert(stringValue(first(values, "ssl_cert", "sslCert")));

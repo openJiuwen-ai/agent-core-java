@@ -92,6 +92,16 @@ public class AgentCallbackContext {
     }
 
     /**
+     * Peeks the pending force-finish request without consuming it and without raising the
+     * consumed signal. For observers (telemetry) that must not alter engine semantics.
+     *
+     * @return the pending request, or null when none is pending
+     */
+    public ForceFinishRequest peekForceFinishRequest() {
+        return forceFinishRequest;
+    }
+
+    /**
      * Return and clear whether a force-finish request was consumed by a nested rail executor.
      *
      * @return {@code true} when a request was consumed since the previous call

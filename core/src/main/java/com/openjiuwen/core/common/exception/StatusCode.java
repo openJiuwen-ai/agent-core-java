@@ -14,7 +14,6 @@ package com.openjiuwen.core.common.exception;
  * {@code openjiuwen/core/common/exception/codes.py}.</p>
  */
 public enum StatusCode {
-
     // ===== Generic =====
     SUCCESS(0, "success"),
     ERROR(-1, "error"),
@@ -441,6 +440,7 @@ public enum StatusCode {
     MODEL_CLIENT_CONFIG_INVALID(181005, "model client_config is invalid, reason: {error_msg}"),
     MODEL_RESPONSE_INVALID(181006, "model response is invalid, reason: {error_msg}"),
     MODEL_RESPONSE_TYPE_ERROR(181007, "model response type error, reason: {error_msg}"),
+    MODEL_CALL_TIMEOUT(181008, "model call timeout at {phase}, effective timeout {timeout}s, reason: {error_msg}"),
 
     // Tool Definition and Execution 182000 - 182999
     TOOL_CARD_INVALID(182000, "card is invalid, card={card}, error=''{reason}''"),

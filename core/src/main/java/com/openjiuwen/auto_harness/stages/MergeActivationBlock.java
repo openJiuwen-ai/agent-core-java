@@ -50,7 +50,6 @@ import java.util.regex.Pattern;
  * {@code openjiuwen/auto_harness/stages/merge.py}.</p>
  */
 public class MergeActivationBlock {
-
     public static final String NAME = "merge_ext";
 
     private static final Logger LOGGER = Logger.getLogger(MergeActivationBlock.class.getName());
@@ -240,6 +239,7 @@ public class MergeActivationBlock {
         }
         ModelInvokeOptions options = ModelInvokeOptions.builder()
                 .maxTokens(100)
+                // per-call timeout overrides only the idle (peer silence) layer, not a total cap
                 .timeout((float) config.getModelTimeoutSecs())
                 .build();
         AssistantMessage response = config.getModel().invoke(prompt, options).toCompletableFuture().join();

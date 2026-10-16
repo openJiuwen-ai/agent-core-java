@@ -16,6 +16,8 @@ import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.schema.OffloadMessage;
 import com.openjiuwen.core.context.schema.OffloadMessages;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -474,7 +476,9 @@ public class MessageSummaryOffloader extends MessageOffloader {
 
     private AssistantMessage invokeModel(List<BaseMessage> messages) {
         try {
-            AssistantMessage response = getModel().invoke(messages).toCompletableFuture().join();
+            AssistantMessage response = getModel().invoke(messages, ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, getModel().getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             recordCompressionUsage(response);
             return response;
         } catch (CompletionException exc) {

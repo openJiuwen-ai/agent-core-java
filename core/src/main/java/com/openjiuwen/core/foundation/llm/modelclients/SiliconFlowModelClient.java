@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.llm.modelclients;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -24,7 +25,10 @@ import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
@@ -33,7 +37,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -41,7 +44,10 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
@@ -52,7 +58,6 @@ import java.util.function.Consumer;
  * {@code openjiuwen/core/foundation/llm/model_clients/siliconflow_model_client.py}.</p>
  */
 public class SiliconFlowModelClient extends BaseModelClient {
-
     public static final String __client_name__ = ProviderType.SILICON_FLOW.getValue();
     public static final String CLIENT_NAME = __client_name__;
 
@@ -145,15 +150,20 @@ public class SiliconFlowModelClient extends BaseModelClient {
             AssistantMessage assistantMessage = parseResponse(data, outputParser);
             callTracer(tracerRecordData, singlePayload("llm_response", assistantMessage));
             return assistantMessage;
-        } catch (Exception exception) {
+        } catch (BaseError exception) {
+            throw exception;
+        } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
+                | ClassCastException exception) {
             Loggers.LLM.error("SiliconFlow API async invoke error. {}", exception.getMessage());
-            throw ErrorHelper.buildError(
+            Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
+                    exception, false, modelClientConfig);
+            throw timeoutError.orElseGet(() -> ErrorHelper.buildError(
                     StatusCode.MODEL_CALL_FAILED,
                     null,
                     null,
                     exception,
                     Map.of("error_msg", "siliconFlow API async invoke error: " + exception.getMessage())
-            );
+            ));
         }
     }
 
@@ -184,25 +194,25 @@ public class SiliconFlowModelClient extends BaseModelClient {
 
         try {
             callTracer(tracerRecordData, singlePayload("llm_params", params));
+            Loggers.LLM.info("LLM request params ready. {}", requestLogMetadata(params, true));
             Iterator<AssistantMessageChunk> iterator = outputParser != null
                     ? streamWithParser(params, outputParser, timeout)
                     : streamResponse(params, timeout);
-            List<AssistantMessageChunk> chunks = iteratorToList(iterator);
-            AssistantMessageChunk finalMessage = null;
-            for (AssistantMessageChunk chunk : chunks) {
-                finalMessage = finalMessage == null ? chunk : (AssistantMessageChunk) finalMessage.merge(chunk);
-            }
-            callTracer(tracerRecordData, singlePayload("llm_response", finalMessage));
-            return chunks.iterator();
-        } catch (Exception exception) {
+            return new TracingCollectingIterator(iterator, tracerRecordData);
+        } catch (BaseError exception) {
+            throw exception;
+        } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
+                | ClassCastException exception) {
             Loggers.LLM.error("SiliconFlow API async stream error. {}", exception.getMessage());
-            throw ErrorHelper.buildError(
+            Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
+                    exception, true, modelClientConfig);
+            throw timeoutError.orElseGet(() -> ErrorHelper.buildError(
                     StatusCode.MODEL_CALL_FAILED,
                     null,
                     null,
                     exception,
                     Map.of("error_msg", "siliconFlow API async stream error: " + exception.getMessage())
-            );
+            ));
         }
     }
 
@@ -247,40 +257,8 @@ public class SiliconFlowModelClient extends BaseModelClient {
     protected Iterator<AssistantMessageChunk> streamWithParser(
             Map<String, Object> params,
             BaseOutputParser outputParser,
-            Float timeout) throws Exception {
-        List<AssistantMessageChunk> parsedChunks = new ArrayList<>();
-        StringBuilder accumulatedContent = new StringBuilder();
-        Iterator<AssistantMessageChunk> iterator = streamResponse(params, timeout);
-        while (iterator.hasNext()) {
-            AssistantMessageChunk parsedChunk = iterator.next();
-            if (isPythonTruthy(parsedChunk.getContent())) {
-                accumulatedContent.append(parsedChunk.getContent());
-            }
-
-            Object parserContent = null;
-            if (!accumulatedContent.isEmpty()) {
-                try {
-                    Object parsedResult = outputParser.<CompletableFuture<Object>>parse(
-                            accumulatedContent.toString()).join();
-                    if (parsedResult != null) {
-                        parserContent = parsedResult;
-                        accumulatedContent.setLength(0);
-                    }
-                } catch (RuntimeException exception) {
-                    Loggers.LLM.debug("Stream parser attempt error. {}", exception.getMessage());
-                }
-            }
-
-            parsedChunks.add(AssistantMessageChunk.builder()
-                    .content(parsedChunk.getContent())
-                    .reasoningContent(parsedChunk.getReasoningContent())
-                    .toolCalls(parsedChunk.getToolCalls())
-                    .usageMetadata(parsedChunk.getUsageMetadata())
-                    .finishReason(parsedChunk.getFinishReason())
-                    .parserContent(parserContent)
-                    .build());
-        }
-        return parsedChunks.iterator();
+            Float timeout) throws IOException, InterruptedException {
+        return new ParserApplyingIterator(streamResponse(params, timeout), outputParser);
     }
 
     protected AssistantMessage parseResponse(Map<String, Object> response, BaseOutputParser parser) {
@@ -304,23 +282,14 @@ public class SiliconFlowModelClient extends BaseModelClient {
     }
 
     protected Iterator<AssistantMessageChunk> streamResponse(Map<String, Object> params, Float timeout)
-            throws Exception {
-        HttpStreamResult result = postStream(params, timeout);
-        if (result.statusCode() >= 400) {
-            throw new IOException("API returned error " + result.statusCode() + ": " + result.body());
+            throws IOException, InterruptedException {
+        double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
+        HttpResponse<InputStream> response = postStream(params, idleSeconds);
+        if (response.statusCode() >= 400) {
+            String body = IdleGuardedBodyReader.readFully(response.body(), idleSeconds, true);
+            throw new IOException("API returned error " + response.statusCode() + ": " + body);
         }
-
-        List<AssistantMessageChunk> chunks = new ArrayList<>();
-        for (String line : result.lines()) {
-            if (line == null || line.strip().isEmpty()) {
-                continue;
-            }
-            AssistantMessageChunk chunk = parseStreamChunk(line.strip());
-            if (chunk != null) {
-                chunks.add(chunk);
-            }
-        }
-        return chunks.iterator();
+        return new SiliconFlowSseIterator(response.body(), idleSeconds);
     }
 
     protected AssistantMessageChunk parseStreamChunk(String line) {
@@ -359,25 +328,50 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     .build();
         } catch (JsonProcessingException exception) {
             return null;
-        } catch (Exception exception) {
+        } catch (ClassCastException | IllegalStateException | IndexOutOfBoundsException exception) {
             Loggers.LLM.warning("Error parsing stream chunk. {}", exception.getMessage());
             return null;
         }
     }
 
-    protected HttpResult postJson(Map<String, Object> payload, Float timeout) throws Exception {
+    /**
+     * Sends a non-streaming POST to the chat completions endpoint with idle-bounded body read.
+     *
+     * @param payload request payload
+     * @param timeout per-call idle override in seconds, null for the configured default
+     * @return HTTP result envelope
+     * @throws IOException on transport failure
+     * @throws InterruptedException when interrupted while sending
+     */
+    protected HttpResult postJson(Map<String, Object> payload, Float timeout)
+            throws IOException, InterruptedException {
         validateApiBaseUrl();
         String apiUrl = resolveApiUrl();
-        HttpRequest request = requestBuilder(apiUrl, payload, timeout).build();
-        HttpResponse<String> response = createHttpClient(apiUrl)
-                .send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        return new HttpResult(response.statusCode(), response.body());
+        HttpRequest request = requestBuilder(apiUrl, payload).build();
+        double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
+        HttpResponse<InputStream> response = createHttpClient(apiUrl)
+                .send(request, IdleBoundInputStream.bodyHandler(idleSeconds));
+        String body = IdleGuardedBodyReader.readFully(response.body(), idleSeconds, false);
+        return new HttpResult(response.statusCode(), body);
     }
 
-    protected HttpStreamResult postStream(Map<String, Object> payload, Float timeout) throws Exception {
-        HttpResult result = postJson(payload, timeout);
-        List<String> lines = result.body() == null ? List.of() : result.body().lines().toList();
-        return new HttpStreamResult(result.statusCode(), lines, result.body());
+    /**
+     * Sends a streaming request and returns the raw response with the body still open. The
+     * request-level timeout only covers the response-header wait; segment idleness is guarded
+     * by the consuming iterator.
+     *
+     * @param payload request payload
+     * @param idleSeconds idle-layer timeout in seconds for the body stream
+     * @return the streaming HTTP response
+     * @throws IOException on transport failures
+     * @throws InterruptedException when interrupted while sending
+     */
+    protected HttpResponse<InputStream> postStream(Map<String, Object> payload,
+            double idleSeconds) throws IOException, InterruptedException {
+        validateApiBaseUrl();
+        String apiUrl = resolveApiUrl();
+        HttpRequest request = requestBuilder(apiUrl, payload).build();
+        return createHttpClient(apiUrl).send(request, IdleBoundInputStream.bodyHandler(idleSeconds));
     }
 
     protected void validateApiBaseUrl() {
@@ -442,11 +436,12 @@ public class SiliconFlowModelClient extends BaseModelClient {
         return messages;
     }
 
-    private HttpRequest.Builder requestBuilder(String apiUrl, Map<String, Object> payload, Float timeout)
+    private HttpRequest.Builder requestBuilder(String apiUrl, Map<String, Object> payload)
             throws JsonProcessingException {
         return HttpRequest.newBuilder()
                 .uri(URI.create(apiUrl))
-                .timeout(timeoutDuration(timeout))
+                .timeout(ModelTimeoutResolver.toDuration(
+                        ModelTimeoutResolver.resolveHeaderWaitSeconds(modelClientConfig)))
                 .header("Content-Type", CONTENT_TYPE)
                 .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
                 .POST(HttpRequest.BodyPublishers.ofString(OBJECT_MAPPER.writeValueAsString(payload),
@@ -455,16 +450,9 @@ public class SiliconFlowModelClient extends BaseModelClient {
 
     HttpClient createHttpClient(String apiUrl) {
         return ModelHttpClients.builder(modelClientConfig, apiUrl)
-                .connectTimeout(timeoutDuration(null))
                 .withSsl()
                 .withProxy()
                 .build();
-    }
-
-    private Duration timeoutDuration(Float overrideTimeout) {
-        double seconds = overrideTimeout != null ? overrideTimeout.doubleValue() : modelClientConfig.getTimeout();
-        long millis = Math.max(1L, Math.round(seconds * 1000.0D));
-        return Duration.ofMillis(millis);
     }
 
     private Map<String, Object> requestLogMetadata(Map<String, Object> params, boolean stream) {
@@ -555,7 +543,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
     }
 
     @SuppressWarnings("unchecked")
-    private void callTracer(Object tracer, Map<String, Object> payload) throws Exception {
+    private void callTracer(Object tracer, Map<String, Object> payload) {
         if (tracer == null) {
             return;
         }
@@ -578,23 +566,26 @@ public class SiliconFlowModelClient extends BaseModelClient {
         }
     }
 
-    private Object invokeTracerMethod(Object tracer, String methodName, Map<String, Object> payload) throws Exception {
+    private Object invokeTracerMethod(Object tracer, String methodName, Map<String, Object> payload) {
         try {
             Method method = tracer.getClass().getMethod(methodName, Map.class);
             return method.invoke(tracer, payload);
         } catch (NoSuchMethodException ignored) {
             return TracerMethodMissing.INSTANCE;
         } catch (IllegalAccessException exception) {
-            throw exception;
+            throw new IllegalStateException(exception);
         } catch (InvocationTargetException exception) {
             Throwable cause = exception.getCause();
-            if (cause instanceof Exception innerException) {
-                throw innerException;
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
             }
             if (cause instanceof Error error) {
                 throw error;
             }
-            throw exception;
+            if (cause == null) {
+                throw new IllegalStateException(exception);
+            }
+            throw new IllegalStateException(cause);
         }
     }
 
@@ -602,14 +593,6 @@ public class SiliconFlowModelClient extends BaseModelClient {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(key, value);
         return payload;
-    }
-
-    private static List<AssistantMessageChunk> iteratorToList(Iterator<AssistantMessageChunk> iterator) {
-        List<AssistantMessageChunk> result = new ArrayList<>();
-        while (iterator.hasNext()) {
-            result.add(iterator.next());
-        }
-        return result;
     }
 
     private static List<?> asList(Object value) {
@@ -695,14 +678,236 @@ public class SiliconFlowModelClient extends BaseModelClient {
     }
 
     /**
-     * Mirrors Python's streaming {@code aiohttp.ClientResponse.content} boundary in
-     * {@code openjiuwen/core/foundation/llm/model_clients/siliconflow_model_client.py}.
+     * Incremental SSE chunk iterator over an idle-bounded body stream, replacing the former
+     * whole-body buffered stream consumption. Chunks are delivered as they arrive; peer
+     * silence beyond the idle window raises a tiered timeout error instead of hanging
+     * forever.
      *
-     * @param statusCode HTTP status code
-     * @param lines response body lines
-     * @param body complete response body text
+     * @since 2026-10-09
      */
-    protected record HttpStreamResult(int statusCode, List<String> lines, String body) {
+    private final class SiliconFlowSseIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+        private final BufferedReader reader;
+        private final double idleSeconds;
+        private AssistantMessageChunk nextChunk;
+        private boolean isFirstSegmentReceived;
+        private boolean isDone;
+        private boolean isClosed;
+
+        SiliconFlowSseIterator(InputStream inputStream, double idleSeconds) {
+            this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+            this.idleSeconds = idleSeconds;
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (nextChunk != null) {
+                return true;
+            }
+            if (isDone) {
+                return false;
+            }
+            nextChunk = readNextChunk().orElse(null);
+            return nextChunk != null;
+        }
+
+        @Override
+        public AssistantMessageChunk next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            AssistantMessageChunk current = nextChunk;
+            nextChunk = null;
+            return current;
+        }
+
+        @Override
+        public void close() {
+            if (isClosed) {
+                return;
+            }
+            isClosed = true;
+            isDone = true;
+            closeReaderQuietly();
+        }
+
+        private Optional<AssistantMessageChunk> readNextChunk() {
+            boolean shouldKeepOpen = false;
+            try {
+                String rawLine;
+                while ((rawLine = reader.readLine()) != null) {
+                    String line = rawLine.strip();
+                    if (line.isEmpty() || !line.startsWith("data:")) {
+                        continue;
+                    }
+                    isFirstSegmentReceived = true;
+                    if ("[DONE]".equals(line.substring("data:".length()).strip())) {
+                        break;
+                    }
+                    AssistantMessageChunk chunk = parseStreamChunk(line);
+                    if (chunk != null) {
+                        shouldKeepOpen = true;
+                        return Optional.of(chunk);
+                    }
+                }
+                finish();
+                return Optional.empty();
+            } catch (IOException exception) {
+                finish();
+                throwIfIdleTimeout(exception);
+                throw ErrorHelper.buildError(
+                        StatusCode.MODEL_CALL_FAILED,
+                        null,
+                        null,
+                        exception,
+                        Map.of("error_msg",
+                                "siliconFlow API stream read failure: " + exception.getMessage())
+                );
+            } finally {
+                if (!shouldKeepOpen) {
+                    close();
+                }
+            }
+        }
+
+        private void finish() {
+            isDone = true;
+            close();
+        }
+
+        private void throwIfIdleTimeout(IOException exception) {
+            if (exception instanceof IdleBoundInputStream.IdleTimeoutIOException idleTimeout) {
+                throw ModelTimeoutErrorFactory.idleTimeoutError(
+                        isFirstSegmentReceived
+                                ? TimeoutPhase.AFTER_FIRST_SEGMENT
+                                : TimeoutPhase.BEFORE_FIRST_SEGMENT,
+                        idleTimeout.idleSeconds(), true, exception);
+            }
+        }
+
+        private void closeReaderQuietly() {
+            try {
+                reader.close();
+            } catch (IOException exception) {
+                Loggers.LLM.debug("Failed to close SiliconFlow stream reader. {}",
+                        exception.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Lazily applies the output parser on top of the incremental SSE iterator, preserving
+     * streaming delivery instead of aggregating the whole response up front.
+     *
+     * @since 2026-10-09
+     */
+    private final class ParserApplyingIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+        private final Iterator<AssistantMessageChunk> delegate;
+        private final BaseOutputParser parser;
+        private final StringBuilder accumulatedContent = new StringBuilder();
+
+        ParserApplyingIterator(Iterator<AssistantMessageChunk> delegate, BaseOutputParser parser) {
+            this.delegate = delegate;
+            this.parser = parser;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return delegate.hasNext();
+        }
+
+        @Override
+        public AssistantMessageChunk next() {
+            AssistantMessageChunk chunkItem = delegate.next();
+            if (isPythonTruthy(chunkItem.getContent())) {
+                accumulatedContent.append(chunkItem.getContent());
+            }
+            Object parserContent = null;
+            if (!accumulatedContent.isEmpty()) {
+                try {
+                    Object parsedResult = parser.<CompletableFuture<Object>>parse(
+                            accumulatedContent.toString()).join();
+                    if (parsedResult != null) {
+                        parserContent = parsedResult;
+                        accumulatedContent.setLength(0);
+                    }
+                } catch (IllegalStateException | IllegalArgumentException | CompletionException exception) {
+                    Loggers.LLM.debug("Stream parser attempt error. {}", exception.getMessage());
+                }
+            }
+            return AssistantMessageChunk.builder()
+                    .content(chunkItem.getContent())
+                    .reasoningContent(chunkItem.getReasoningContent())
+                    .toolCalls(chunkItem.getToolCalls())
+                    .usageMetadata(chunkItem.getUsageMetadata())
+                    .finishReason(chunkItem.getFinishReason())
+                    .parserContent(parserContent)
+                    .build();
+        }
+
+        @Override
+        public void close() throws Exception {
+            if (delegate instanceof AutoCloseable closeable) {
+                closeable.close();
+            }
+        }
+    }
+
+    /**
+     * Lazily merges chunks for the tracer record while streaming them through; the merged
+     * llm_response record is emitted once iteration completes or the stream is closed,
+     * replacing the former collect-all-then-return buffering.
+     *
+     * @since 2026-10-09
+     */
+    private final class TracingCollectingIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+        private final Iterator<AssistantMessageChunk> delegate;
+        private final Object tracerRecordData;
+        private AssistantMessageChunk mergedMessage;
+        private boolean isResponseRecorded;
+
+        TracingCollectingIterator(Iterator<AssistantMessageChunk> delegate, Object tracerRecordData) {
+            this.delegate = delegate;
+            this.tracerRecordData = tracerRecordData;
+        }
+
+        @Override
+        public boolean hasNext() {
+            boolean hasNext = delegate.hasNext();
+            if (!hasNext) {
+                recordMergedResponse();
+            }
+            return hasNext;
+        }
+
+        @Override
+        public AssistantMessageChunk next() {
+            AssistantMessageChunk chunk = delegate.next();
+            if (mergedMessage == null) {
+                mergedMessage = chunk;
+                return chunk;
+            }
+            Object merged = mergedMessage.merge(chunk);
+            if (!(merged instanceof AssistantMessageChunk mergedChunk)) {
+                throw new IllegalStateException("merged stream chunk is not an AssistantMessageChunk");
+            }
+            mergedMessage = mergedChunk;
+            return chunk;
+        }
+
+        @Override
+        public void close() throws Exception {
+            recordMergedResponse();
+            if (delegate instanceof AutoCloseable closeable) {
+                closeable.close();
+            }
+        }
+
+        private void recordMergedResponse() {
+            if (!isResponseRecorded) {
+                isResponseRecorded = true;
+                callTracer(tracerRecordData, singlePayload("llm_response", mergedMessage));
+            }
+        }
     }
 
     /**
