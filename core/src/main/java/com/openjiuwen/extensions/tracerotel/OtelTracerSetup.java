@@ -125,7 +125,7 @@ public final class OtelTracerSetup {
     /**
      * Flush spans still buffered by the provider built in {@link #initOtelTracer(OtelTracerConfig)}.
      *
-     * <p>Waits until the flush finishes or {@link #FLUSH_TIMEOUT_SECONDS} elapses, so a caller
+     * <p>Waits until the flush finishes or the 30s flush timeout elapses, so a caller
      * (including the JVM shutdown hook) cannot block forever when the collector is unreachable.</p>
      *
      * <p>{@code BatchSpanProcessor} completes its flush result once the buffer is drained and does
@@ -182,8 +182,10 @@ public final class OtelTracerSetup {
      */
     private static void registerShutdownHook() {
         if (SHUTDOWN_HOOK_REGISTERED.compareAndSet(false, true)) {
-            Runtime.getRuntime().addShutdownHook(
-                    new Thread(OtelTracerSetup::shutdownOtelTracer, "otel-tracer-shutdown"));
+            Thread hook = new Thread(OtelTracerSetup::shutdownOtelTracer, "otel-tracer-shutdown");
+            hook.setUncaughtExceptionHandler(
+                    (thread, error) -> LOG.warn("otel: tracerotel shutdown hook failed - {}", error.getMessage()));
+            Runtime.getRuntime().addShutdownHook(hook);
         }
     }
 
@@ -213,7 +215,8 @@ public final class OtelTracerSetup {
      */
     private static String describeFailure(CompletableResultCode resultCode) {
         Throwable failure = resultCode.getFailureThrowable();
-        return failure == null ? "unknown" : failure.getMessage();
+        String message = failure == null ? null : failure.getMessage();
+        return message == null ? "unknown" : message;
     }
 
     /**
