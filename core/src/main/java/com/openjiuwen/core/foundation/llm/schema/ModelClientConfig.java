@@ -40,7 +40,10 @@ public class ModelClientConfig {
     /**
      * Legacy timeout field default; explicitness checks compare against this value.
      */
-    public static final double DEFAULT_LEGACY_TIMEOUT_SECONDS = 60.0D;
+    /**
+     * Default per-call timeout in seconds applied when the configuration does not declare one.
+     */
+    public static final double DEFAULT_TIMEOUT_SECONDS = 60.0;
 
     private static final Set<String> DEFERRED_PARITY_PROVIDERS = Set.of(
             "qwen",
@@ -212,7 +215,7 @@ public class ModelClientConfig {
 
     private static boolean isNonDefaultLegacyTimeout(double timeout) {
         return java.math.BigDecimal.valueOf(timeout)
-                .compareTo(java.math.BigDecimal.valueOf(DEFAULT_LEGACY_TIMEOUT_SECONDS)) != 0;
+                .compareTo(java.math.BigDecimal.valueOf(DEFAULT_TIMEOUT_SECONDS)) != 0;
     }
 
     public int getMaxRetries() {

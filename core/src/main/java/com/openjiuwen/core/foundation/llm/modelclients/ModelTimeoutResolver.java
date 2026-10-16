@@ -39,7 +39,7 @@ public final class ModelTimeoutResolver {
      * Legacy single timeout field default, kept as an alias of the config-class constant.
      */
     public static final double LEGACY_TIMEOUT_DEFAULT_SECONDS =
-            ModelClientConfig.DEFAULT_LEGACY_TIMEOUT_SECONDS;
+            ModelClientConfig.DEFAULT_TIMEOUT_SECONDS;
 
     private static final String CONNECT_TIMEOUT_SECONDS_PROPERTY =
             "openjiuwen.llm.http.connect-timeout-seconds";
