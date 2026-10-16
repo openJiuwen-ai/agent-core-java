@@ -40,8 +40,9 @@ public class AssistantMessageChunk extends AssistantMessage {
 
         Object combinedContent = MessageChunkMerge.mergeParserContent(getContent(), otherChunk.getContent());
         List<ToolCall> mergedToolCalls = mergeToolCalls(getToolCalls(), otherChunk.getToolCalls());
-        String mergedFinishReason = !"null".equals(otherChunk.getFinishReason())
-                ? otherChunk.getFinishReason()
+        String otherFinishReason = otherChunk.getFinishReason();
+        String mergedFinishReason = (otherFinishReason != null && !"null".equals(otherFinishReason))
+                ? otherFinishReason
                 : getFinishReason();
 
         return AssistantMessageChunk.builder()

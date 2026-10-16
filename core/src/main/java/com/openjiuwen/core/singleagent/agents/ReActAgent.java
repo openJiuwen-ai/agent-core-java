@@ -2408,6 +2408,7 @@ public class ReActAgent extends BaseAgent {
             aiMessage = AssistantMessage.builder()
                     .content(accumulatedChunk.getContent() == null ? "" : accumulatedChunk.getContent())
                     .toolCalls(accumulatedChunk.getToolCalls() == null ? List.of() : accumulatedChunk.getToolCalls())
+                    .finishReason(accumulatedChunk.getFinishReason())
                     .usageMetadata(accumulatedChunk.getUsageMetadata())
                     .reasoningContent(accumulatedChunk.getReasoningContent())
                     .promptTokenIds(accumulatedChunk.getPromptTokenIds())
