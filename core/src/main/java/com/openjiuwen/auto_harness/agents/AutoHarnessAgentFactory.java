@@ -35,6 +35,7 @@ import com.openjiuwen.harness.subagents.ExploreAgent;
 import com.openjiuwen.harness.tools.WebTools;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -60,6 +61,7 @@ public final class AutoHarnessAgentFactory {
     private static final Path PACKAGE_DIR = resolvePackageDir();
     private static final Path SKILLS_DIR = PACKAGE_DIR.resolve("skills");
     private static final Path PROMPTS_DIR = PACKAGE_DIR.resolve("prompts");
+    private static final String PROMPTS_RESOURCE_ROOT = "openjiuwen/auto_harness/prompts/";
 
     private AutoHarnessAgentFactory() {
     }
@@ -255,8 +257,12 @@ public final class AutoHarnessAgentFactory {
     }
 
     public static String loadPrompt(String filename) {
-        try {
-            return Files.readString(PROMPTS_DIR.resolve(filename), StandardCharsets.UTF_8);
+        ClassLoader classLoader = AutoHarnessAgentFactory.class.getClassLoader();
+        try (InputStream stream = classLoader.getResourceAsStream(PROMPTS_RESOURCE_ROOT + filename)) {
+            if (stream == null) {
+                return "";
+            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException ignored) {
             return "";
         }
