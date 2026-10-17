@@ -31,6 +31,12 @@ import java.util.function.Function;
 /**
  * Manager for function-style and rail-style agent callbacks.
  *
+ * <p>Agent-scoped callbacks execute from a per-instance table, so a fire on
+ * one agent never runs callbacks registered by sibling agents that share the
+ * same agentId (per-task agents built from one card); registrations are
+ * mirrored into the process-global callback framework for framework-level
+ * listing.</p>
+ *
  * <p>Mirrors Python's {@code AgentCallbackManager} in
  * {@code openjiuwen/core/single_agent/agent_callback_manager.py}.</p>
  */
@@ -38,6 +44,7 @@ public class AgentCallbackManager {
     private final String agentId;
     private final CallbackFramework globalCallbackFramework;
     private final CallbackFramework instanceCallbackFramework;
+    private final CallbackFramework localCallbackFramework = new InstanceCallbackFramework();
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> railCallbacks = new IdentityHashMap<>();
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> instanceRailCallbacks = new IdentityHashMap<>();
     private final Map<AgentRail, Map<String, ToolCard>> railTools = new IdentityHashMap<>();
@@ -60,12 +67,13 @@ public class AgentCallbackManager {
      * @param priority execution priority (higher value runs first)
      */
     public CompletionStage<AgentCallbackManager> registerCallback(AgentCallbackEvent event,
-                                                                  AgentCallback callback,
-                                                                  int priority) {
+                                                                   AgentCallback callback,
+                                                                   int priority) {
         if (event == null || callback == null) {
             return CompletableFuture.completedFuture(this);
         }
-        return globalCallbackFramework.register(getAgentEvent(event), callback, priority)
+        return localCallbackFramework.register(getAgentEvent(event), callback, priority)
+                .thenCompose(ignored -> globalCallbackFramework.register(getAgentEvent(event), callback, priority))
                 .thenApply(ignored -> this);
     }
 
@@ -83,11 +91,10 @@ public class AgentCallbackManager {
         railCallbacks.put(rail, callbacks);
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
-            chain = chain.thenCompose(ignored -> globalCallbackFramework.register(
-                    getAgentEvent(entry.getKey()),
-                    entry.getValue(),
-                    rail.getPriority()
-            ));
+            chain = chain.thenCompose(ignored -> localCallbackFramework.register(
+                            getAgentEvent(entry.getKey()), entry.getValue(), rail.getPriority())
+                    .thenCompose(v -> globalCallbackFramework.register(
+                            getAgentEvent(entry.getKey()), entry.getValue(), rail.getPriority())));
         }
         return chain.thenApply(ignored -> {
             registerRailTools(rail, agent);
@@ -169,12 +176,15 @@ public class AgentCallbackManager {
         for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
             // Per-callback isolation: one failing unregister (e.g. a broken
             // callback key) must not abort the remaining rails.
-            IsolatedActions.runIsolated(() -> globalCallbackFramework
-                    .unregister(getAgentEvent(entry.getKey()), entry.getValue())
-                    .toCompletableFuture().join())
-                    .ifPresent(error -> Loggers.AGENT.error(
-                            "[unregisterRail] rail '{}' callback unregister failed for '{}'; continue",
-                            railName(rail), entry.getKey(), error));
+            IsolatedActions.runIsolated(() -> {
+                localCallbackFramework.unregister(getAgentEvent(entry.getKey()), entry.getValue())
+                        .toCompletableFuture().join();
+                globalCallbackFramework.unregister(getAgentEvent(entry.getKey()), entry.getValue())
+                        .toCompletableFuture().join();
+                return null;
+            }).ifPresent(error -> Loggers.AGENT.error(
+                    "[unregisterRail] rail '{}' callback unregister failed for '{}'; continue",
+                    railName(rail), entry.getKey(), error));
         }
         unregisterRailTools(rail, agent);
         return CompletableFuture.completedFuture(null);
@@ -285,18 +295,24 @@ public class AgentCallbackManager {
         if (event == null || callback == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return globalCallbackFramework.unregister(getAgentEvent(event), callback);
+        return localCallbackFramework.unregister(getAgentEvent(event), callback)
+                .thenCompose(ignored -> globalCallbackFramework.unregister(getAgentEvent(event), callback));
     }
 
     public CompletionStage<Void> clear(AgentCallbackEvent event) {
-        if (event == null) {
-            CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-            for (AgentCallbackEvent callbackEvent : AgentCallbackEvent.values()) {
-                chain = chain.thenCompose(ignored -> globalCallbackFramework.unregisterEvent(getAgentEvent(callbackEvent)));
-            }
-            return chain;
+        if (event != null) {
+            return clearAgentEvent(event);
         }
-        return globalCallbackFramework.unregisterEvent(getAgentEvent(event));
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (AgentCallbackEvent callbackEvent : AgentCallbackEvent.values()) {
+            chain = chain.thenCompose(ignored -> clearAgentEvent(callbackEvent));
+        }
+        return chain;
+    }
+
+    private CompletionStage<Void> clearAgentEvent(AgentCallbackEvent event) {
+        return localCallbackFramework.unregisterEvent(getAgentEvent(event))
+                .thenCompose(ignored -> globalCallbackFramework.unregisterEvent(getAgentEvent(event)));
     }
 
     public CompletionStage<Void> clearInstance(AgentCallbackEvent event) {
@@ -315,7 +331,7 @@ public class AgentCallbackManager {
         if (event == null) {
             return false;
         }
-        return !globalCallbackFramework.listCallbacks(getAgentEvent(event)).toCompletableFuture().join().isEmpty();
+        return !localCallbackFramework.listCallbacks(getAgentEvent(event)).toCompletableFuture().join().isEmpty();
     }
 
     public boolean has_hooks(AgentCallbackEvent event) {
@@ -333,9 +349,48 @@ public class AgentCallbackManager {
         if (event == null) {
             return CompletableFuture.completedFuture(context);
         }
-        return globalCallbackFramework.trigger(getAgentEvent(event), context)
-                .thenCompose(ignored -> instanceCallbackFramework.trigger(getInstanceEvent(event), context))
+        try {
+            localCallbackFramework.trigger(getAgentEvent(event), context).toCompletableFuture().join();
+        } catch (CompletionException exception) {
+            throw rawCallbackFailure(exception);
+        }
+        return instanceCallbackFramework.trigger(getInstanceEvent(event), context)
                 .thenApply(ignored -> context);
+    }
+
+    /**
+     * Restores the raw callback failure (abort, interruption, fatal error) so
+     * callers observe the original exception instead of its completion
+     * wrapper.
+     *
+     * @param exception the completion wrapper thrown when joining the chain
+     * @return the unwrapped failure to rethrow, never {@code null}
+     */
+    private static RuntimeException rawCallbackFailure(CompletionException exception) {
+        Throwable cause = exception;
+        while ((cause instanceof CompletionException || cause instanceof ExecutionException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        if (cause instanceof AbortError abortError && abortError.getCause() != null) {
+            // The runner framework rethrows an abort's cause so interrupt
+            // requests keep their original exception type.
+            return runtimeFailure(abortError.getCause());
+        }
+        if (cause instanceof RuntimeException runtimeException) {
+            return runtimeException;
+        }
+        if (cause instanceof Error error) {
+            throw error;
+        }
+        return exception;
+    }
+
+    private static RuntimeException runtimeFailure(Throwable failure) {
+        if (failure instanceof RuntimeException runtimeException) {
+            return runtimeException;
+        }
+        return new RuntimeException(failure);
     }
 
     public String agentEventName(AgentCallbackEvent event) {
