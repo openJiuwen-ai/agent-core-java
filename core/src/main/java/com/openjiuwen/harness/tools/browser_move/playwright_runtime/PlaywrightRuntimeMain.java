@@ -39,8 +39,8 @@ public final class PlaywrightRuntimeMain {
             runInteractive(
                     new BrowserAgentRuntimeOperations(runtime),
                     settings,
-                    System.getenv("AGENT_QUERY"),
-                    System.getenv("AGENT_SESSION_ID"),
+                    BrowserMoveEnv.env("AGENT_QUERY"),
+                    BrowserMoveEnv.env("AGENT_SESSION_ID"),
                     System.in
             );
         } finally {
