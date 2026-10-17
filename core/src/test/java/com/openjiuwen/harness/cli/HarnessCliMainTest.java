@@ -11,6 +11,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's {@code openjiuwen.harness.cli.__main__} in
@@ -49,6 +52,45 @@ class HarnessCliMainTest {
         assertEquals(23, code);
         assertEquals("piped prompt", runner.prompt);
         assertEquals(CliRunner.OUTPUT_TEXT, runner.outputFormat);
+    }
+
+    @Test
+    void invalidOutputFormatIsRejectedBeforeTheRun() {
+        RecordingRunner runner = new RecordingRunner();
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> HarnessCliMain.run(
+                new String[]{"run", "hello", "--output-format", "xml"},
+                true,
+                () -> "ignored",
+                runner
+        ));
+
+        assertTrue(error.getMessage().contains("xml"));
+        assertTrue(error.getMessage().contains("text"));
+        assertNull(runner.prompt);
+    }
+
+    @Test
+    void outputFormatWithoutValueIsRejectedInsteadOfBecomingPromptText() {
+        RecordingRunner runner = new RecordingRunner();
+
+        assertThrows(IllegalArgumentException.class, () -> HarnessCliMain.run(
+                new String[]{"run", "hello", "-f"},
+                true,
+                () -> "ignored",
+                runner
+        ));
+
+        assertNull(runner.prompt);
+    }
+
+    @Test
+    void usageErrorsAreReportedWithClickExitCode() throws Exception {
+        int exitCode = HarnessCliMain.runSafely(new String[]{"bogus"});
+
+        assertEquals(2, exitCode);
+        assertEquals("Error: Unknown command: bogus", HarnessCliMain.usageErrorMessage(
+                new IllegalArgumentException("Unknown command: bogus")));
     }
 
     static final class RecordingRunner extends CliRunner {
