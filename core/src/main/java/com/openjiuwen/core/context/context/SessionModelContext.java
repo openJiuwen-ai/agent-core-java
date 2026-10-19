@@ -1078,7 +1078,9 @@ public class SessionModelContext implements ModelContext {
         } else if ("system".equals(role)) {
             message = new SystemMessage(stringValue(content, ""));
         } else {
-            message = new UserMessage(stringValue(content, ""));
+            UserMessage userMessage = new UserMessage();
+            userMessage.setContent(content == null ? "" : content);
+            message = userMessage;
         }
         if (map.get("name") instanceof String name) {
             message.setName(name);

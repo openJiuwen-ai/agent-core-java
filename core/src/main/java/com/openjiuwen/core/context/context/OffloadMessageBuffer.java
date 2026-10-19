@@ -186,7 +186,9 @@ public class OffloadMessageBuffer {
         } else if ("system".equals(role)) {
             message = new SystemMessage(content == null ? "" : String.valueOf(content));
         } else {
-            message = new UserMessage(content == null ? "" : String.valueOf(content));
+            UserMessage userMessage = new UserMessage();
+            userMessage.setContent(content == null ? "" : content);
+            message = userMessage;
         }
         if (map.get("name") instanceof String name) {
             message.setName(name);
