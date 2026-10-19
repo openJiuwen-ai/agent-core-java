@@ -23,6 +23,7 @@ import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.session.state.AgentStateCollection;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
@@ -259,6 +260,24 @@ public class InMemoryCheckpointer extends Checkpointer {
         return agentStores.containsKey(tid)
                 || agentTeamStores.containsKey(tid)
                 || workflowStores.containsKey(tid);
+    }
+
+    /**
+     * Scan in-memory agent stores for sessions whose last persisted step cursor
+     * is still RUNNING.
+     *
+     * @return one RUNNING cursor per session that has one, empty when none
+     */
+    @Override
+    public List<StepCursor> scanRunningSteps() {
+        List<StepCursor> running = new ArrayList<>();
+        for (Map.Entry<String, AgentStorage> entry : agentStores.entrySet()) {
+            StepCursor cursor = entry.getValue().lastCursor();
+            if (isRunningCursor(cursor)) {
+                running.add(cursor);
+            }
+        }
+        return running;
     }
 
     @Override
@@ -498,6 +517,16 @@ public class InMemoryCheckpointer extends Checkpointer {
 
         void clear(String entityId) {
             stateBlobs.remove(entityId);
+        }
+
+        StepCursor lastCursor() {
+            for (Map<String, Object> state : stateBlobs.values()) {
+                StepCursor cursor = StepCursor.fromState(state);
+                if (cursor != null) {
+                    return cursor;
+                }
+            }
+            return null;
         }
     }
 

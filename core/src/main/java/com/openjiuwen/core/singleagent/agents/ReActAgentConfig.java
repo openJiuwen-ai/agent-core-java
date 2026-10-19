@@ -11,6 +11,7 @@ import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -105,6 +106,14 @@ public class ReActAgentConfig {
 
     @JsonProperty("context_processors")
     private List<ContextEngine.ProcessorSpec> contextProcessors;
+
+    /**
+     * Step-level checkpoint policy: STEP_OFF disables per-step persistence,
+     * STEP_ALWAYS persists at every step boundary, STEP_AUTO decides from
+     * structural and dynamic signals (default).
+     */
+    @JsonProperty("step_checkpoint_policy")
+    private StepCheckpointPolicy stepCheckpointPolicy = StepCheckpointPolicy.STEP_AUTO;
 
     private Object workspace;
 
@@ -486,6 +495,26 @@ public class ReActAgentConfig {
         this.workspace = workspace;
     }
 
+    /**
+     * Get the agent-level step checkpoint policy default.
+     *
+     * @return configured policy, never null after construction
+     */
+    public StepCheckpointPolicy getStepCheckpointPolicy() {
+        return stepCheckpointPolicy;
+    }
+
+    /**
+     * Set the agent-level step checkpoint policy default.
+     *
+     * @param stepCheckpointPolicy policy value; null falls back to {@code STEP_AUTO}
+     */
+    public void setStepCheckpointPolicy(StepCheckpointPolicy stepCheckpointPolicy) {
+        this.stepCheckpointPolicy = stepCheckpointPolicy == null
+                ? StepCheckpointPolicy.STEP_AUTO
+                : stepCheckpointPolicy;
+    }
+
     private static ContextEngineConfig defaultContextEngineConfig() {
         ContextEngineConfig config = new ContextEngineConfig();
         config.setMaxContextMessageNum(200);
@@ -640,6 +669,17 @@ public class ReActAgentConfig {
 
         public Builder workspace(Object workspace) {
             config.setWorkspace(workspace);
+            return this;
+        }
+
+        /**
+         * Configure the agent-level step checkpoint policy.
+         *
+         * @param stepCheckpointPolicy policy value
+         * @return this builder
+         */
+        public Builder stepCheckpointPolicy(StepCheckpointPolicy stepCheckpointPolicy) {
+            config.setStepCheckpointPolicy(stepCheckpointPolicy);
             return this;
         }
 
