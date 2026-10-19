@@ -10,7 +10,6 @@ import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient;
 import com.openjiuwen.extensions.tracerotel.SemConv;
 
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.ContextKey;
 import io.opentelemetry.context.Scope;
 
 import org.slf4j.Logger;
@@ -31,12 +30,6 @@ public class SandboxGatewayClientMixin {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxGatewayClientMixin.class);
     private static final String TEMPLATE_SESSION_PLACEHOLDER = "{session_id}";
-
-    // Context keys for OTel propagation
-    private static final ContextKey<String> CTX_SANDBOX_ID =
-            ContextKey.named(SemConv.OJ_SANDBOX_ID);
-    private static final ContextKey<String> CTX_SANDBOX_ERROR_MESSAGE =
-            ContextKey.named(SemConv.OJ_SANDBOX_ERROR_MESSAGE);
 
     protected SandboxGatewayConfig config;
     protected String isolationKeyTemplate;
@@ -84,13 +77,13 @@ public class SandboxGatewayClientMixin {
 
         String sandboxId = client.getSandboxId();
         if (sandboxId != null && !sandboxId.isBlank()) {
-            ctx = ctx.with(CTX_SANDBOX_ID, sandboxId);
+            ctx = ctx.with(SemConv.CTX_SANDBOX_ID, sandboxId);
         }
 
         Context finalCtx = ctx;
         try (Scope scope = finalCtx.makeCurrent()) {
             return client.invoke(opType, method, params).exceptionally(error -> {
-                Context errorCtx = finalCtx.with(CTX_SANDBOX_ERROR_MESSAGE, error.getMessage());
+                Context errorCtx = finalCtx.with(SemConv.CTX_SANDBOX_ERROR_MESSAGE, error.getMessage());
                 try (Scope errorScope = errorCtx.makeCurrent()) {
                     // Propagate the exception
                     if (error instanceof CompletionException) {
@@ -112,13 +105,13 @@ public class SandboxGatewayClientMixin {
 
         String sandboxId = client.getSandboxId();
         if (sandboxId != null && !sandboxId.isBlank()) {
-            ctx = ctx.with(CTX_SANDBOX_ID, sandboxId);
+            ctx = ctx.with(SemConv.CTX_SANDBOX_ID, sandboxId);
         }
 
         Context finalCtx = ctx;
         try (Scope scope = finalCtx.makeCurrent()) {
             return client.invokeStream(opType, method, params).exceptionally(error -> {
-                Context errorCtx = finalCtx.with(CTX_SANDBOX_ERROR_MESSAGE, error.getMessage());
+                Context errorCtx = finalCtx.with(SemConv.CTX_SANDBOX_ERROR_MESSAGE, error.getMessage());
                 try (Scope errorScope = errorCtx.makeCurrent()) {
                     // Propagate the exception
                     if (error instanceof CompletionException) {
