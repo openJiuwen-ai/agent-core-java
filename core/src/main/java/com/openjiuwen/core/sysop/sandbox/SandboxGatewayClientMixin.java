@@ -7,10 +7,19 @@ package com.openjiuwen.core.sysop.sandbox;
 import com.openjiuwen.core.common.logging.LoggingUtils;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient;
+import com.openjiuwen.extensions.tracerotel.SemConv;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Flow;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.ContextKey;
+import io.opentelemetry.context.Scope;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Flow;
 
 /**
  * Mixin providing gateway client management and invoke/invokeStream for sandbox operations.
@@ -20,7 +29,14 @@ import java.util.Map;
  */
 public class SandboxGatewayClientMixin {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(SandboxGatewayClientMixin.class);
     private static final String TEMPLATE_SESSION_PLACEHOLDER = "{session_id}";
+
+    // Context keys for OTel propagation
+    private static final ContextKey<String> CTX_SANDBOX_ID =
+            ContextKey.named(SemConv.OJ_SANDBOX_ID);
+    private static final ContextKey<String> CTX_SANDBOX_ERROR_MESSAGE =
+            ContextKey.named(SemConv.OJ_SANDBOX_ERROR_MESSAGE);
 
     protected SandboxGatewayConfig config;
     protected String isolationKeyTemplate;
@@ -60,16 +76,58 @@ public class SandboxGatewayClientMixin {
 
     /**
      * Invoke a provider method through the gateway full-chain routing.
+     * Injects sandbox id into OTel Context for observability.
      */
     public CompletableFuture<Object> invoke(String method, Map<String, Object> params) {
-        return getGatewayClient().invoke(opType, method, params);
+        SandboxGatewayClient client = getGatewayClient();
+        Context ctx = Context.current();
+
+        String sandboxId = client.getSandboxId();
+        if (sandboxId != null && !sandboxId.isBlank()) {
+            ctx = ctx.with(CTX_SANDBOX_ID, sandboxId);
+        }
+
+        Context finalCtx = ctx;
+        try (Scope scope = finalCtx.makeCurrent()) {
+            return client.invoke(opType, method, params).exceptionally(error -> {
+                Context errorCtx = finalCtx.with(CTX_SANDBOX_ERROR_MESSAGE, error.getMessage());
+                try (Scope errorScope = errorCtx.makeCurrent()) {
+                    // Propagate the exception
+                    if (error instanceof CompletionException) {
+                        throw (CompletionException) error;
+                    }
+                    throw new CompletionException("Sandbox invoke failed", error);
+                }
+            });
+        }
     }
 
     /**
      * Invoke a streaming provider method through the gateway full-chain routing.
+     * Injects sandbox id into OTel Context for observability.
      */
     public CompletableFuture<Flow.Publisher<?>> invokeStream(String method, Map<String, Object> params) {
-        return getGatewayClient().invokeStream(opType, method, params);
+        SandboxGatewayClient client = getGatewayClient();
+        Context ctx = Context.current();
+
+        String sandboxId = client.getSandboxId();
+        if (sandboxId != null && !sandboxId.isBlank()) {
+            ctx = ctx.with(CTX_SANDBOX_ID, sandboxId);
+        }
+
+        Context finalCtx = ctx;
+        try (Scope scope = finalCtx.makeCurrent()) {
+            return client.invokeStream(opType, method, params).exceptionally(error -> {
+                Context errorCtx = finalCtx.with(CTX_SANDBOX_ERROR_MESSAGE, error.getMessage());
+                try (Scope errorScope = errorCtx.makeCurrent()) {
+                    // Propagate the exception
+                    if (error instanceof CompletionException) {
+                        throw (CompletionException) error;
+                    }
+                    throw new CompletionException("Sandbox invokeStream failed", error);
+                }
+            });
+        }
     }
 
     protected SandboxGatewayClient createGatewayClient(String isolationKey) {

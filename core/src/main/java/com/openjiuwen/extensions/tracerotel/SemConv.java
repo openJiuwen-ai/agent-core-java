@@ -141,6 +141,14 @@ public final class SemConv {
     /** openjiuwen.agent.error_message. */
     public static final String OJ_AGENT_ERROR_MESSAGE = "openjiuwen.agent.error_message";
 
+    // ===== openjiuwen.sandbox.* — Sandbox-level attributes =====
+
+    /** openjiuwen.sandbox.id — Sandbox instance identifier. */
+    public static final String OJ_SANDBOX_ID = "openjiuwen.sandbox.id";
+
+    /** openjiuwen.sandbox.error_message — Sandbox operation error message. */
+    public static final String OJ_SANDBOX_ERROR_MESSAGE = "openjiuwen.sandbox.error_message";
+
     // ===== Trace ID bridge — links OTel trace to tracer UUID =====
 
     /** openjiuwen.trace.id. */
