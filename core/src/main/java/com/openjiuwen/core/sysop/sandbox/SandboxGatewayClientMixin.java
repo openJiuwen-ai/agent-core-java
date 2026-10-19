@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Flow;
@@ -75,9 +76,14 @@ public class SandboxGatewayClientMixin {
         SandboxGatewayClient client = getGatewayClient();
         Context ctx = Context.current();
 
-        String sandboxId = client.getSandboxId();
-        if (sandboxId != null && !sandboxId.isBlank()) {
-            ctx = ctx.with(SemConv.CTX_SANDBOX_ID, sandboxId);
+        try {
+            String sandboxId = client.getSandboxId();
+            if (sandboxId != null && !sandboxId.isBlank()) {
+                ctx = ctx.with(SemConv.CTX_SANDBOX_ID, sandboxId);
+            }
+        } catch (NullPointerException | CompletionException | CancellationException e) {
+            // Gracefully handle sandbox ID retrieval failures (e.g., incomplete config in tests)
+            LOGGER.debug("Failed to retrieve sandbox ID for observability context", e);
         }
 
         Context finalCtx = ctx;
@@ -103,9 +109,14 @@ public class SandboxGatewayClientMixin {
         SandboxGatewayClient client = getGatewayClient();
         Context ctx = Context.current();
 
-        String sandboxId = client.getSandboxId();
-        if (sandboxId != null && !sandboxId.isBlank()) {
-            ctx = ctx.with(SemConv.CTX_SANDBOX_ID, sandboxId);
+        try {
+            String sandboxId = client.getSandboxId();
+            if (sandboxId != null && !sandboxId.isBlank()) {
+                ctx = ctx.with(SemConv.CTX_SANDBOX_ID, sandboxId);
+            }
+        } catch (NullPointerException | CompletionException | CancellationException e) {
+            // Gracefully handle sandbox ID retrieval failures (e.g., incomplete config in tests)
+            LOGGER.debug("Failed to retrieve sandbox ID for observability context", e);
         }
 
         Context finalCtx = ctx;
