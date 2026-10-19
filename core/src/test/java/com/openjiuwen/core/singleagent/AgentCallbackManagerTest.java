@@ -12,9 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.callback.AbortError;
-import com.openjiuwen.core.runner.callback.HookType;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -35,6 +33,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Focused tests for agent callback registration and event-name scoping.
@@ -222,6 +221,67 @@ class AgentCallbackManagerTest {
     }
 
     @Test
+    void railsAreIsolatedWhenAgentIdsMatch() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager first = new AgentCallbackManager("same-id", global);
+        AgentCallbackManager second = new AgentCallbackManager("same-id", global);
+        List<String> calls = new ArrayList<>();
+
+        first.registerRail(afterModelCallRail("first", calls), new Object()).toCompletableFuture().join();
+        second.registerRail(afterModelCallRail("second", calls), new Object()).toCompletableFuture().join();
+        first.execute(AgentCallbackEvent.AFTER_MODEL_CALL, new AgentCallbackContext()).toCompletableFuture().join();
+
+        assertEquals(List.of("first"), calls);
+    }
+
+    @Test
+    void functionCallbacksAreIsolatedWhenAgentIdsMatch() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager first = new AgentCallbackManager("same-id", global);
+        AgentCallbackManager second = new AgentCallbackManager("same-id", global);
+        AtomicInteger firstCalls = new AtomicInteger();
+        AtomicInteger secondCalls = new AtomicInteger();
+
+        first.registerCallback(AgentCallbackEvent.AFTER_MODEL_CALL, context -> {
+            firstCalls.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
+        }, 100).toCompletableFuture().join();
+        second.registerCallback(AgentCallbackEvent.AFTER_MODEL_CALL, context -> {
+            secondCalls.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
+        }, 100).toCompletableFuture().join();
+
+        first.execute(AgentCallbackEvent.AFTER_MODEL_CALL, new AgentCallbackContext()).toCompletableFuture().join();
+
+        assertEquals(1, firstCalls.get());
+        assertEquals(0, secondCalls.get());
+    }
+
+    @Test
+    void singleFireLatencyDoesNotGrowWithConcurrentAgents() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        long callbackSleepMillis = 60L;
+        int concurrentAgents = 4;
+        List<AgentCallbackManager> managers = new ArrayList<>();
+        for (int i = 0; i < concurrentAgents; i++) {
+            AgentCallbackManager manager = new AgentCallbackManager("shared-agent-id", global);
+            manager.registerCallback(AgentCallbackEvent.AFTER_MODEL_CALL, context -> {
+                sleepQuietly(callbackSleepMillis);
+                return CompletableFuture.completedFuture(null);
+            }, 100).toCompletableFuture().join();
+            managers.add(manager);
+        }
+
+        long startNanos = System.nanoTime();
+        managers.get(0).execute(AgentCallbackEvent.AFTER_MODEL_CALL, new AgentCallbackContext())
+                .toCompletableFuture().join();
+        long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000L;
+
+        assertTrue(elapsedMillis < callbackSleepMillis * 2,
+                "one fire ran every agent's callback serially: " + elapsedMillis + "ms");
+    }
+
+    @Test
     void unregisterAndClearInstanceDoNotAffectGlobalCallbacks() {
         InMemoryCallbackFramework global = new InMemoryCallbackFramework();
         AgentCallbackManager manager = new AgentCallbackManager("agent-clear-instance", global);
@@ -391,18 +451,38 @@ class AgentCallbackManagerTest {
     }
 
     @Test
-    void nullGlobalCallbackReturnTriggersRunnerErrorHook() {
-        AgentCallbackManager manager = new AgentCallbackManager("agent-null-global-callback");
+    void executeRethrowsAbortCauseAsOriginalException() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager manager = new AgentCallbackManager("agent-abort-cause", global);
+        IllegalStateException expected = new IllegalStateException("underlying interrupt");
+
+        manager.registerCallback(AgentCallbackEvent.BEFORE_TOOL_CALL, context -> {
+            throw new AbortError("confirm", expected);
+        }, 100).toCompletableFuture().join();
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> manager.execute(AgentCallbackEvent.BEFORE_TOOL_CALL, new AgentCallbackContext())
+                        .toCompletableFuture().join());
+
+        assertSame(expected, error);
+    }
+
+    @Test
+    void nullCallbackReturnIsToleratedAndFollowingCallbacksRun() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-null-callback-return");
         AgentCallbackEvent event = AgentCallbackEvent.BEFORE_MODEL_CALL;
-        int[] errorHookCalls = {0};
+        List<String> calls = new ArrayList<>();
         try {
-            Runner.getCallbackFramework().addHook(manager.getAgentEvent(event), HookType.ERROR,
-                    kwargs -> errorHookCalls[0]++);
             manager.registerCallback(event, context -> null, 100).toCompletableFuture().join();
+            manager.registerCallback(event, context -> {
+                calls.add("following");
+                return CompletableFuture.completedFuture(null);
+            }, 90).toCompletableFuture().join();
 
-            manager.execute(event, new AgentCallbackContext()).toCompletableFuture().join();
+            assertDoesNotThrow(() -> manager.execute(event, new AgentCallbackContext())
+                    .toCompletableFuture().join());
 
-            assertEquals(1, errorHookCalls[0]);
+            assertEquals(List.of("following"), calls);
         } finally {
             manager.clear(event).toCompletableFuture().join();
         }
@@ -610,5 +690,23 @@ class AgentCallbackManagerTest {
                 return;
             }
         };
+    }
+
+    private static AgentRail afterModelCallRail(String marker, List<String> calls) {
+        return new AgentRail() {
+            @Override
+            public void afterModelCall(AgentCallbackContext context) {
+                calls.add(marker);
+                return;
+            }
+        };
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException interrupted) {
+            throw new IllegalStateException("callback sleep interrupted", interrupted);
+        }
     }
 }
