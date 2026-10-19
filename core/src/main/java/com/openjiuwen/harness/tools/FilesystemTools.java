@@ -48,7 +48,11 @@ public final class FilesystemTools {
         Path root = Path.of(workspaceRoot == null || workspaceRoot.isBlank() ? "." : workspaceRoot)
                 .toAbsolutePath()
                 .normalize();
-        Path resolved = root.resolve(requestedPath == null ? "" : requestedPath).normalize();
+        Path requested = Path.of(requestedPath == null ? "" : requestedPath);
+        if (requested.isAbsolute()) {
+            return requested.normalize();
+        }
+        Path resolved = root.resolve(requested).normalize();
         if (!resolved.startsWith(root)) {
             throw new IllegalArgumentException("path escapes workspace root");
         }
@@ -241,9 +245,9 @@ public final class FilesystemTools {
 
         @Override
         protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) throws IOException {
-            Path path = resolveWorkspacePath(workspaceRoot, requiredString(inputs, "path"));
+            Path path = resolveWorkspacePath(workspaceRoot, requiredString(inputs, "file_path"));
             String content = Files.readString(path, StandardCharsets.UTF_8);
-            return ToolOutput.success(Map.of("path", path.toString(), "content", content));
+            return ToolOutput.success(Map.of("file_path", path.toString(), "content", content));
         }
     }
 
@@ -260,11 +264,12 @@ public final class FilesystemTools {
 
         @Override
         protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) throws IOException {
-            Path path = resolveWorkspacePath(workspaceRoot, requiredString(inputs, "path"));
+            Path path = resolveWorkspacePath(workspaceRoot, requiredString(inputs, "file_path"));
             Files.createDirectories(path.getParent());
             String content = stringValue(inputs == null ? null : inputs.get("content"));
             Files.writeString(path, content, StandardCharsets.UTF_8);
-            return ToolOutput.success(Map.of("path", path.toString(), "bytes", content.getBytes(StandardCharsets.UTF_8).length));
+            return ToolOutput.success(Map.of("file_path", path.toString(),
+                    "bytes_written", content.getBytes(StandardCharsets.UTF_8).length));
         }
     }
 
@@ -282,16 +287,16 @@ public final class FilesystemTools {
 
         @Override
         protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) throws IOException {
-            Path path = resolveWorkspacePath(workspaceRoot, requiredString(inputs, "path"));
-            String oldText = requiredString(inputs, "old_text");
-            String newText = stringValue(inputs == null ? null : inputs.get("new_text"));
+            Path path = resolveWorkspacePath(workspaceRoot, requiredString(inputs, "file_path"));
+            String oldText = requiredString(inputs, "old_string");
+            String newText = stringValue(inputs == null ? null : inputs.get("new_string"));
             String content = Files.readString(path, StandardCharsets.UTF_8);
             if (!content.contains(oldText)) {
-                return ToolOutput.failure("old_text not found");
+                return ToolOutput.failure("old_string not found");
             }
             String updated = content.replace(oldText, newText);
             Files.writeString(path, updated, StandardCharsets.UTF_8);
-            return ToolOutput.success(Map.of("path", path.toString(), "replacements", 1));
+            return ToolOutput.success(Map.of("file_path", path.toString(), "replacements", 1));
         }
     }
 
