@@ -22,6 +22,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.result.ReadFileData;
 import com.openjiuwen.core.sysop.result.ReadFileResult;
 import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.harness.tools.ToolOutput;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -660,6 +661,47 @@ class AbilityManagerTest {
                 "Map 结果应为 Java Map.toString：" + mapContent);
 
         assertEquals("plain text", AbilityManager.buildToolMessageContent("plain text"));
+    }
+
+    @Test
+    void buildToolMessageContentSummarizesMultimodalPayloadWithoutBase64() {
+        String payload = "data:image/png;base64," + "A".repeat(200_000);
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("type", "image");
+        item.put("source_path", "/tmp/a.png");
+        item.put("data_url", payload);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("multimodal", List.of(item));
+        data.put("path", "/tmp/a.png");
+
+        String content = AbilityManager.buildToolMessageContent(ToolOutput.success(data));
+
+        assertFalse(content.contains("A".repeat(100)), "base64 payload must not leak into text context");
+        assertTrue(content.length() < 2000, "summary must stay compact, was " + content.length());
+        assertTrue(content.contains("multimodal items: 1"), content);
+        assertTrue(content.contains("type=image source_path=/tmp/a.png"), content);
+        assertTrue(content.contains("chars omitted"), content);
+        assertTrue(content.contains("other data fields: {path=/tmp/a.png}"), content);
+    }
+
+    @Test
+    void buildToolMessageContentMarksNonDataUrlAndKeepsLegacyFallback() {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("type", "image");
+        item.put("data_url", "https://files.example/b.png");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("multimodal", List.of(item));
+
+        String content = AbilityManager.buildToolMessageContent(Map.of("success", true, "data", data));
+        assertTrue(content.contains("not attached as media"), content);
+        assertTrue(content.contains("multimodal items: 1"), content);
+
+        String failed = AbilityManager.buildToolMessageContent(ToolOutput.of(false, data, null));
+        assertTrue(failed.contains("success=false"), failed);
+
+        assertEquals("ToolOutput(success=true, data={value=42}, error=null)",
+                AbilityManager.buildToolMessageContent(ToolOutput.success(Map.of("value", 42))));
+        assertEquals("{value=42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
     }
 
     private static ToolCard tool(String id, String name) {
