@@ -6,6 +6,9 @@ package com.openjiuwen.core.session.checkpointer.step;
 
 import com.openjiuwen.core.foundation.store.BaseKVStore;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +25,8 @@ import java.util.Map;
  * @since 0.1.17
  */
 public class KvStepJournal implements StepJournal {
+    private static final Logger log = LoggerFactory.getLogger(KvStepJournal.class);
+
     /** KV key prefix shared by all journal records. */
     public static final String KEY_PREFIX = "stepjournal";
 
@@ -56,8 +61,9 @@ public class KvStepJournal implements StepJournal {
         try {
             StepRecord sanitized = sanitize(record);
             kvStore.set(recordKey(sanitized.getSessionId(), sanitized.getSeq()), sanitized.toMap()).join();
-        } catch (RuntimeException ignored) {
-            // Audit must not break the execution path.
+        } catch (RuntimeException e) {
+            log.warn("Step journal append failed for session {} seq {}, ignored to keep execution path intact",
+                    record.getSessionId(), record.getSeq(), e);
         }
     }
 
@@ -69,7 +75,8 @@ public class KvStepJournal implements StepJournal {
         Map<String, Object> entries;
         try {
             entries = kvStore.getByPrefix(recordPrefix(sessionId)).join();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            log.warn("Step journal replay failed for session {}, returning empty journal", sessionId, e);
             return List.of();
         }
         List<StepRecord> records = new ArrayList<>();
@@ -95,7 +102,8 @@ public class KvStepJournal implements StepJournal {
         Map<String, Object> entries;
         try {
             entries = kvStore.getByPrefix(allRecordsPrefix()).join();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            log.warn("Step journal purge scan failed, returning zero purged", e);
             return 0;
         }
         int removed = 0;
@@ -112,7 +120,8 @@ public class KvStepJournal implements StepJournal {
         try {
             kvStore.batchDelete(expired, null).join();
             removed = expired.size();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            log.warn("Step journal batch delete failed for {} record(s), reporting zero purged", expired.size(), e);
             removed = 0;
         }
         return removed;
