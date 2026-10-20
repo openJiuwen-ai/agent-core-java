@@ -72,7 +72,9 @@ class LLMCallOperatorTest {
         operator.setParameter("user_prompt", userMessages);
 
         assertEquals("True", operator.getSystemPrompt().getContent());
-        assertEquals(userMessages, operator.getUserPrompt().getContent());
+        assertEquals(1, operator.getUserPrompt().toMessages().size());
+        assertEquals("user", operator.getUserPrompt().toMessages().get(0).getRole());
+        assertEquals("hello", operator.getUserPrompt().toMessages().get(0).getContent());
         assertEquals(List.of(
                 "system_prompt=True",
                 "user_prompt=" + userMessages

@@ -44,6 +44,7 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
     private String mainWorkflowId;
     private int workflowNestingDepth;
     private StreamWriterManager streamWriterManager;
+    private boolean isInvokeStreamBridgeEnabled;
     private ActorManager actorManager;
     private CompiledGraph.GraphCheckpointer checkpointer;
     private Vertex.VertexTraceSink tracer = new Vertex.VertexTraceSink() {
@@ -256,10 +257,20 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
     }
 
     private boolean isInvokeStreamBridgeEnabled() {
-        return streamWriterManager != null
-                && streamWriterManager.getEnabledModes().size() == 1
-                && streamWriterManager.getEnabledModes().contains(
-                com.openjiuwen.core.session.stream.StreamMode.OUTPUT);
+        if (parent instanceof WorkflowRuntimeSession runtimeParent) {
+            return runtimeParent.isInvokeStreamBridgeEnabled();
+        }
+        return isInvokeStreamBridgeEnabled;
+    }
+
+    /**
+     * Enable parent delivery only when no stream iterator forwards the workflow output.
+     *
+     * @param isEnabled whether invoke owns parent delivery
+     * @since 0.1.17
+     */
+    public void setInvokeStreamBridgeEnabled(boolean isEnabled) {
+        isInvokeStreamBridgeEnabled = isEnabled;
     }
 
     private StreamWriterManager parentStreamWriterManager() {

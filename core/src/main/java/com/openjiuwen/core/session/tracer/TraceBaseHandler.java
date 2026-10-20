@@ -20,7 +20,7 @@ import java.util.Set;
  */
 public abstract class TraceBaseHandler {
 
-    protected final StreamWriter<TraceSchema> streamWriter;
+    protected volatile StreamWriter<TraceSchema> streamWriter;
     protected final SpanManager spanManager;
 
     protected TraceBaseHandler(StreamWriterManager streamWriterManager, SpanManager spanManager) {
@@ -32,13 +32,18 @@ public abstract class TraceBaseHandler {
         emitStreamWriterInternal(data);
     }
 
+    void updateStreamWriterManager(StreamWriterManager manager) {
+        streamWriter = manager == null ? null : manager.getTraceWriter();
+    }
+
     protected abstract Map<String, Object> formatData(Span span);
 
     protected void emitStreamWriterInternal(Object data) {
-        if (streamWriter == null) {
+        StreamWriter<TraceSchema> writer = streamWriter;
+        if (writer == null) {
             return;
         }
-        streamWriter.write(data);
+        writer.write(data);
     }
 
     protected void sendData(Span span) {

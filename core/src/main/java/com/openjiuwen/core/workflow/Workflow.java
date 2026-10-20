@@ -527,6 +527,7 @@ public class Workflow {
                 ? streamModes
                 : List.of(StreamMode.OUTPUT);
         WorkflowRuntimeSession workflowSession = createWorkflowSession(session, effectiveStreamModes);
+        workflowSession.setInvokeStreamBridgeEnabled(true);
         long executeTimeoutMs = resolveTimeoutMillis(workflowSession, SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
 
         try {
@@ -696,6 +697,7 @@ public class Workflow {
         final Object executionInputs = validatedInputs;
         final ModelContext executionContext = context;
         WorkflowRuntimeSession workflowSession = createWorkflowSession(session, streamModes);
+        workflowSession.setInvokeStreamBridgeEnabled(false);
         long firstFrameTimeoutMs = resolveTimeoutMillis(
                 workflowSession, SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT);
         long frameTimeoutMs = resolveTimeoutMillis(
@@ -883,7 +885,7 @@ public class Workflow {
                             "timeout", formatTimeoutSeconds(configuredTimeoutMs),
                             "reason", "");
                 }
-                if (deadlineReached) {
+                if (deadlineReached || (executeTimeoutMs > 0 && configuredTimeoutMs >= executeTimeoutMs)) {
                     executionTimedOut.set(true);
                     return buildWorkflowExecutionTimeout(executeTimeoutText);
                 }

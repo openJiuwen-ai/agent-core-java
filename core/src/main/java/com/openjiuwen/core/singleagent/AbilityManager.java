@@ -1306,6 +1306,9 @@ public class AbilityManager {
      * @since 0.1.17
      */
     public static String buildToolMessageContent(Object result) {
+        if (result instanceof com.openjiuwen.core.foundation.tool.ModelTextResult textResult) {
+            return textResult.modelText();
+        }
         Object data = attribute(result, "data");
         Object error = attribute(result, "error");
         Object success = attribute(result, "success");

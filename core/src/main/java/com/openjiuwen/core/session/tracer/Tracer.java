@@ -85,6 +85,7 @@ public class Tracer implements Vertex.VertexTraceSink {
      */
     public void updateStreamWriterManager(StreamWriterManager streamWriterManager) {
         this.streamWriterManager = streamWriterManager;
+        handlers.values().forEach(handler -> handler.updateStreamWriterManager(streamWriterManager));
     }
 
     /**

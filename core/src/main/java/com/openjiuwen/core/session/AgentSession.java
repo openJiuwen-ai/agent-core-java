@@ -14,6 +14,8 @@ import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.interaction.SimpleAgentInteraction;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
+import com.openjiuwen.core.session.stream.TraceSchema;
+import com.openjiuwen.core.session.stream.CustomSchema;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -165,6 +167,15 @@ public class AgentSession implements AgentSessionApi {
 
     @Override
     public void writeStream(Object data) {
+        if (data instanceof TraceSchema trace && !(data instanceof OutputSchema)) {
+            triggerWriteStream(trace);
+            inner.streamWriterManager().getTraceWriter().write(trace);
+            return;
+        }
+        if (data instanceof CustomSchema custom) {
+            writeCustomStream(custom);
+            return;
+        }
         OutputSchema streamData = normalizeOutput(tagStreamPayload(data));
         triggerWriteStream(streamData);
         inner.streamWriterManager().getOutputWriter().write(streamData);

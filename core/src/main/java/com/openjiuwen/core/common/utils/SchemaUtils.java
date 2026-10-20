@@ -11,7 +11,11 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.exception.ValidationError;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Mirrors Python's {@code SchemaUtils} in
@@ -118,6 +122,8 @@ public final class SchemaUtils {
             Map<String, Object> properties = getMapOrEmpty(schema, "properties");
             List<String> required = getListOrEmpty(schema, "required");
 
+            validateExtraFields(data, schema, properties);
+
             // Check required fields
             for (String field : required) {
                 if (!data.containsKey(field)) {
@@ -146,6 +152,20 @@ public final class SchemaUtils {
             throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID,
                     null, null, e,
                     Map.of("reason", e.getMessage(), "data", String.valueOf(data)));
+        }
+    }
+
+    private static void validateExtraFields(Map<String, Object> data, Map<String, Object> schema,
+                                            Map<String, Object> properties) {
+        // Python SchemaUtils uses Pydantic's extra="forbid" default for declared properties.
+        if (!schema.containsKey("properties")
+                || !Boolean.FALSE.equals(schema.getOrDefault("additionalProperties", false))) {
+            return;
+        }
+        for (String field : data.keySet()) {
+            if (!properties.containsKey(field)) {
+                throw new IllegalArgumentException("Extra field is not permitted: " + field);
+            }
         }
     }
 

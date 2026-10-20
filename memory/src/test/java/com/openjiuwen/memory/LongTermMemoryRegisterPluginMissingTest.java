@@ -87,6 +87,17 @@ class LongTermMemoryRegisterPluginMissingTest {
         );
     }
 
+    @Test
+    void registerStoreAllowsDeferredEmbeddingConfiguration() {
+        LongTermMemory memory = new LongTermMemory();
+        memory.registerStore(new InMemoryKVStore(), new RecordingVectorStore(), dbStore(), null).join();
+
+        assertThat(memory.getMemoryIndex()).isInstanceOf(SimpleMemoryIndex.class);
+        assertThat(memory.getMemoryIndex().search("user", "scope", "query", List.of(), 1).join()).isEmpty();
+        ((SimpleMemoryIndex) memory.getMemoryIndex()).setEmbeddingModel(new TestEmbedding());
+        assertThat(memory.getMemoryIndex().search("user", "scope", "query", List.of(), 1).join()).isEmpty();
+    }
+
     private static DefaultDbStore<JdbcDataSource> dbStore() {
         JdbcDataSource dataSource = new JdbcDataSource();
         String dbName = "long_term_memory_register_plugin_" + UUID.randomUUID().toString().replace("-", "");

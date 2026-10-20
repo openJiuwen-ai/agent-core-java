@@ -78,11 +78,22 @@ class PromptTemplateTest {
 
     @Test
     void rejectsNonMessageListItems() {
-        PromptTemplate template = PromptTemplate.builder().content(List.of("bad")).build();
-
-        BaseError error = assertThrows(BaseError.class, template::toMessages);
+        BaseError error = assertThrows(BaseError.class,
+                () -> PromptTemplate.builder().content(List.of("bad")).build());
 
         assertEquals(StatusCode.PROMPT_TEMPLATE_INVALID, error.getStatus());
+    }
+
+    @Test
+    void messageMappingsAreNormalizedLikePydanticWithoutAcceptingInvalidLists() {
+        Map<String, Object> mapped = Map.of("role", "user", "content", "hello {{name}}",
+                "metadata", Map.of("source", "mapping"));
+        PromptTemplate template = PromptTemplate.builder().content(List.of(mapped)).build();
+        BaseMessage message = template.format(Map.of("name", "Ada")).toMessages().get(0);
+        assertEquals("user", message.getRole());
+        assertEquals("hello Ada", message.getContent());
+        assertEquals(Map.of("source", "mapping"), message.getMetadata());
+        assertThrows(BaseError.class, () -> PromptTemplate.builder().content(List.of(Map.of("bad", 1))).build());
     }
 
     @Test

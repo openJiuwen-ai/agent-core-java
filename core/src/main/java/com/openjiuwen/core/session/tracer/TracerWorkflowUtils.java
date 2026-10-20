@@ -9,7 +9,9 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.config.SessionConfigAccess;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.state.SessionStateAccess;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.WorkflowConfig;
 
@@ -46,13 +48,25 @@ public final class TracerWorkflowUtils {
                         "parent_node_id", "",
                         "session_id", sessionId(session),
                         "metadata", workflowMetadata(session),
-                        "inputs", inputs,
+                        "inputs", traceInputs(inputs),
                         "need_send", true
                 ));
     }
 
     public static void traceComponentBegin(BaseSession session) {
         traceComponentBegin(session, null);
+    }
+
+    private static Object traceInputs(Object inputs) {
+        if (inputs instanceof InteractiveInput interactive) {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("user_inputs", interactive.getUserInputs());
+            if (interactive.getRawInputs() != null) {
+                values.put("raw_inputs", interactive.getRawInputs());
+            }
+            return values;
+        }
+        return inputs;
     }
 
     public static void traceComponentBegin(BaseSession session, java.util.List<String> sourceIds) {
@@ -305,6 +319,13 @@ public final class TracerWorkflowUtils {
     }
 
     private static Object copyMappingChunk(Object chunk) {
+        if (chunk instanceof OutputSchema output) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            copy.put("type", output.getType());
+            copy.put("index", output.getIndex());
+            copy.put("payload", output.getPayload());
+            return copy;
+        }
         if (chunk instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {

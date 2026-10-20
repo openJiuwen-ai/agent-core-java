@@ -170,27 +170,6 @@ public class LongTermMemory {
                     "error_msg", "kv store is required, cannot be None"
             );
         }
-        if (vectorStore != null && !(vectorStore instanceof BaseVectorStore)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR,
-                    "store_type", "vector store",
-                    "error_msg", "vector store must be instance of BaseVectorStore"
-            );
-        }
-        if (dbStore != null && !(dbStore instanceof BaseDbStore<?>)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR,
-                    "store_type", "db store",
-                    "error_msg", "db store must be instance of BaseDbStore"
-            );
-        }
-        if (messageStore != null && !(messageStore instanceof BaseMessageStore)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR,
-                    "store_type", "message store",
-                    "error_msg", "message store must be instance of BaseMessageStore"
-            );
-        }
 
         this.kvStore = kvStore;
         this.vectorStore = vectorStore;
@@ -198,16 +177,8 @@ public class LongTermMemory {
         this.baseEmbed = embeddingModel;
         this.messageStore = messageStore;
 
-        if (this.vectorStore != null && this.kvStore != null) {
-            registerPlugin(
-                    "semantic_index",
-                    SimpleMemoryIndex.class,
-                    Map.of(
-                            "kv_store", this.kvStore,
-                            "vector_store", this.vectorStore,
-                            "embedding_model", this.baseEmbed
-                    )
-            ).join();
+        if (this.vectorStore != null) {
+            registerSemanticIndex();
         }
 
         if (this.dbStore != null) {
@@ -219,6 +190,22 @@ public class LongTermMemory {
 
         setConfig(new MemoryEngineConfig());
 
+        migrateRegisteredStores();
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private void registerSemanticIndex() {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("kv_store", kvStore);
+        params.put("vector_store", vectorStore);
+        // Embedding may be supplied later by the global or scope configuration.
+        if (baseEmbed != null) {
+            params.put("embedding_model", baseEmbed);
+        }
+        registerPlugin("semantic_index", SimpleMemoryIndex.class, params).join();
+    }
+
+    private void migrateRegisteredStores() {
         runMigration(store -> RunMigrations.runKvMigrations((BaseKVStore) store), this.kvStore, "kv store").join();
         if (this.vectorStore != null) {
             runMigration(
@@ -238,7 +225,6 @@ public class LongTermMemory {
                     "message store"
             ).join();
         }
-        return CompletableFuture.completedFuture(null);
     }
 
     public CompletableFuture<Void> registerStore(BaseKVStore kvStore,
