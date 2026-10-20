@@ -7,6 +7,8 @@ package com.openjiuwen.core.foundation.llm.modelclients;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 
 import java.net.http.HttpConnectTimeoutException;
@@ -78,6 +80,8 @@ final class ModelTimeoutErrorFactory {
         details.put("timeout_seconds", timeoutSeconds);
         details.put("layer", layer);
         details.put("stream", isStreaming);
+        details.put(ModelCallClassification.DETAIL_CATEGORY, ModelErrorCategory.TEMPORARY);
+        details.put(ModelCallClassification.DETAIL_RETRYABLE, Boolean.TRUE);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("phase", phase.name());
         params.put("timeout", String.valueOf(timeoutSeconds));

@@ -15,6 +15,7 @@ import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -55,6 +56,7 @@ import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentTerminationReason;
+import com.openjiuwen.core.singleagent.rail.ClassifiedModelFailureRail;
 import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
@@ -145,6 +147,7 @@ public class ReActAgent extends BaseAgent {
         this.hitlHandler = new ToolInterruptHandler(this);
         getAbilityManager().setContextEngine(contextEngine);
         initMemoryScope();
+        registerInstanceRail(new ClassifiedModelFailureRail()).toCompletableFuture().join();
     }
 
     private void initMemoryScope() {
@@ -2317,7 +2320,10 @@ public class ReActAgent extends BaseAgent {
             } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
                     | IllegalStateException | NullPointerException | ClassCastException
                     | UnsupportedOperationException | UncheckedIOException exception) {
-                if (!streamAttempt.hasReceivedChunks() && hasIoCause(exception) && attempt < maxRetries) {
+                boolean isClassified = exception instanceof BaseError
+                        && ModelCallClassification.of(exception).isPresent();
+                if (!isClassified && !streamAttempt.hasReceivedChunks() && hasIoCause(exception)
+                        && attempt < maxRetries) {
                     Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
                             + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
                             + exception.getMessage());

@@ -159,24 +159,6 @@ final class IdleBoundInputStream extends InputStream {
         chunks.offer(failure);
     }
 
-    /**
-     * Raised when the peer stays silent beyond the idle window during a body read.
-     */
-    static final class IdleTimeoutIOException extends IOException {
-        private static final long serialVersionUID = 1L;
-
-        private final transient double idleSeconds;
-
-        IdleTimeoutIOException(double idleSeconds) {
-            super("model response idle timeout after " + idleSeconds + "s of peer silence");
-            this.idleSeconds = idleSeconds;
-        }
-
-        double idleSeconds() {
-            return idleSeconds;
-        }
-    }
-
     private static final class QueueingBodySubscriber implements HttpResponse.BodySubscriber<InputStream> {
         private final IdleBoundInputStream stream;
         private final CompletableFuture<InputStream> body;

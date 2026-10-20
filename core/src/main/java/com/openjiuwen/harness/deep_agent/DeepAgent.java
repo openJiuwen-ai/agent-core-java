@@ -419,7 +419,7 @@ public class DeepAgent implements AutoCloseable {
                     .clientProvider(provider)
                     .apiKey(apiKey)
                     .apiBase(apiBase)
-                    .maxRetries(intOrDefault(firstPresent(backendMap, new String[] {"max_retries", "maxRetries"}), 3))
+                    .maxRetries(intOrDefault(firstPresent(backendMap, new String[] {"max_retries", "maxRetries"}), 2))
                     .verifySsl(booleanOrDefault(
                             firstPresent(backendMap, new String[] {"verify_ssl", "verifySsl"}),
                             true))
@@ -430,6 +430,7 @@ public class DeepAgent implements AutoCloseable {
                 clientConfigBuilder.timeout(doubleOrDefault(legacyTimeout, 60.0));
             }
             applyTieredTimeoutKeys(clientConfigBuilder, backendMap);
+            applyRetrySwitchKeys(clientConfigBuilder, backendMap);
             ModelClientConfig clientConfig = clientConfigBuilder.build();
             runtimeConfig.setModelClientConfig(clientConfig);
             runtimeConfig.setModelProvider(provider);
@@ -453,6 +454,20 @@ public class DeepAgent implements AutoCloseable {
             clientConfigBuilder.streamIdleSeconds(
                     ModelClientConfig.validateStreamIdleSeconds(
                             doubleOrDefault(streamIdleSeconds, 600.0)));
+        }
+    }
+
+    private static void applyRetrySwitchKeys(ModelClientConfig.ModelClientConfigBuilder clientConfigBuilder,
+            Map<?, ?> backendMap) {
+        Object retryOnRateLimit = firstPresent(backendMap,
+                new String[] {"retry_on_rate_limit", "retryOnRateLimit"});
+        if (retryOnRateLimit != null) {
+            clientConfigBuilder.retryOnRateLimit(booleanOrDefault(retryOnRateLimit, true));
+        }
+        Object retryOnTemporary = firstPresent(backendMap,
+                new String[] {"retry_on_temporary", "retryOnTemporary"});
+        if (retryOnTemporary != null) {
+            clientConfigBuilder.retryOnTemporary(booleanOrDefault(retryOnTemporary, true));
         }
     }
 

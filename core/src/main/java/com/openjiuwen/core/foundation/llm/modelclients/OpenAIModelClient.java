@@ -11,6 +11,17 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
+import com.openjiuwen.core.foundation.llm.classification.ErrorBodyParser;
+import com.openjiuwen.core.foundation.llm.classification.FirstSegmentRetryIterator;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetryPolicy;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorClassifiers;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorFacts;
+import com.openjiuwen.core.foundation.llm.classification.RetryAfterParser;
+import com.openjiuwen.core.foundation.llm.classification.RetryContext;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
@@ -35,8 +46,10 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
 import java.net.ConnectException;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -54,8 +67,10 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -109,9 +124,9 @@ public class OpenAIModelClient extends BaseModelClient
     private static final String REQUEST_HEADERS_KWARG = "__openjiuwen_request_headers";
 
     private final HttpClient httpClient;
-    private final OpenAIRetryingHttpClient retryingHttpClient;
+    private final ModelCallRetrier retrier;
     private final Map<String, String> baseHeaders;
-    private final ModelCircuitBreaker circuitBreaker = new ModelCircuitBreaker();
+    private final ModelCircuitBreaker circuitBreaker;
 
     static {
         registerClientClass(OpenAIModelClient.class);
@@ -124,10 +139,21 @@ public class OpenAIModelClient extends BaseModelClient
      * @param modelClientConfig model client connection configuration
      */
     public OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+        this(modelConfig, modelClientConfig, new ModelCallRetrier());
+    }
+
+    OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            ModelCallRetrier retrier) {
+        this(modelConfig, modelClientConfig, retrier, new ModelCircuitBreaker());
+    }
+
+    OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            ModelCallRetrier retrier, ModelCircuitBreaker circuitBreaker) {
         super(modelConfig, modelClientConfig);
         this.httpClient = createHttpClient(modelClientConfig);
-        this.retryingHttpClient = new OpenAIRetryingHttpClient(modelClientConfig.getMaxRetries());
+        this.retrier = retrier;
         this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
+        this.circuitBreaker = circuitBreaker;
     }
 
     /**
@@ -517,6 +543,8 @@ public class OpenAIModelClient extends BaseModelClient
         } catch (BaseError exception) {
             Loggers.LLM.error("OpenAI API async invoke error. {}", exception.getMessage());
             throw exception;
+        } catch (CancellationException cancellation) {
+            throw cancellation;
         } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
                 | ClassCastException exception) {
             String detail = safeExceptionMessage(exception, sensitiveValues);
@@ -568,6 +596,8 @@ public class OpenAIModelClient extends BaseModelClient
         } catch (BaseError exception) {
             Loggers.LLM.error("OpenAI API async stream error. {}", exception.getMessage());
             throw exception;
+        } catch (CancellationException cancellation) {
+            throw cancellation;
         } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
                 | ClassCastException exception) {
             String detail = safeExceptionMessage(exception, sensitiveValues);
@@ -1283,7 +1313,7 @@ public class OpenAIModelClient extends BaseModelClient
             Map<String, String> requestHeaders, Collection<String> sensitiveValues) throws Exception {
         HttpResponse<String> response = sendGenerationRequest(path, timeout, authorization, requestHeaders,
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        ensureSuccess(response.statusCode(), response.body(), false, sensitiveValues);
+        ensureSuccess(response, response.body(), false, sensitiveValues);
         return parseJsonObject(response.body());
     }
 
@@ -1291,7 +1321,7 @@ public class OpenAIModelClient extends BaseModelClient
             Map<String, String> requestHeaders, Collection<String> sensitiveValues) throws Exception {
         HttpResponse<byte[]> response = sendGenerationRequest(path, timeout, authorization, requestHeaders,
                 HttpResponse.BodyHandlers.ofByteArray());
-        ensureSuccess(response.statusCode(), "binary content of " + path, false, sensitiveValues);
+        ensureSuccess(response, "binary content of " + path, false, sensitiveValues);
         return response.body();
     }
 
@@ -1462,26 +1492,36 @@ public class OpenAIModelClient extends BaseModelClient
             ModelRetryListener retryListener) throws IOException, InterruptedException {
         PreparedRequest preparedRequest = prepareRequest(path, params, authorization, requestHeaders);
         double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
-        HttpResponse<InputStream> response;
+        RetryContext retryContext = new RetryContext(ModelCallRetryPolicy.from(modelClientConfig));
         try {
             circuitBreaker.beforeCall();
-            response = retryingHttpClient.send(retryCount ->
-                    sendStreamAttempt(preparedRequest, retryCount, idleSeconds), retryListener);
-            circuitBreaker.onSuccess();
-        } catch (IOException exception) {
-            circuitBreaker.onFailure(exception);
-            throw classifySendException(exception, false, sensitiveValues);
-        } catch (InterruptedException exception) {
-            circuitBreaker.onFailure(exception);
-            throw transportException(exception, false, sensitiveValues);
+        } catch (IOException openFailure) {
+            throw classifySendException(openFailure, false, sensitiveValues);
         }
-        String body = readBodyWithIdleTimeout(response.body(), idleSeconds, false);
-        ensureSuccess(response.statusCode(), body, false, sensitiveValues);
+        Map<String, Object> responseData;
         try {
-            return parseJsonObject(body);
-        } catch (JsonProcessingException exception) {
-            throw responseParseException(body, exception, false, "parse_json", sensitiveValues);
+            responseData = retrier.execute(retryContext, () -> {
+                HttpResponse<InputStream> response =
+                        sendStreamAttempt(preparedRequest, retryContext.consumedRetries(), idleSeconds);
+                String body = readBodyWithIdleTimeout(response.body(), idleSeconds, false);
+                ensureSuccess(response, body, false, sensitiveValues);
+                ensureNoEmbeddedError(body, false, sensitiveValues);
+                try {
+                    return parseJsonObject(body);
+                } catch (JsonProcessingException exception) {
+                    throw responseParseException(body, exception, false, "parse_json", sensitiveValues);
+                }
+            }, retryListener);
+        } catch (BaseError failure) {
+            circuitBreaker.onFailure(failure);
+            throw failure;
+        } catch (IOException failure) {
+            BaseError classified = classifySendException(failure, false, sensitiveValues);
+            circuitBreaker.onFailure(classified);
+            throw classified;
         }
+        circuitBreaker.onSuccess();
+        return responseData;
     }
 
     private Iterator<AssistantMessageChunk> streamChunks(
@@ -1495,35 +1535,76 @@ public class OpenAIModelClient extends BaseModelClient
         PreparedRequest preparedRequest = prepareRequest(
                 CHAT_COMPLETIONS_PATH, params, authorization, requestHeaders);
         double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
-        HttpResponse<InputStream> response;
+        RetryContext retryContext = new RetryContext(ModelCallRetryPolicy.from(modelClientConfig));
         try {
             circuitBreaker.beforeCall();
-            response = retryingHttpClient.send(retryCount ->
-                    sendStreamAttempt(preparedRequest, retryCount, idleSeconds), retryListener);
-            circuitBreaker.onSuccess();
-        } catch (IOException exception) {
-            circuitBreaker.onFailure(exception);
-            throw classifySendException(exception, true, sensitiveValues);
-        } catch (InterruptedException exception) {
-            circuitBreaker.onFailure(exception);
-            throw transportException(exception, true, sensitiveValues);
+        } catch (IOException openFailure) {
+            throw classifySendException(openFailure, true, sensitiveValues);
         }
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String body;
-            try {
-                body = readBodyWithIdleTimeout(response.body(), idleSeconds, true);
-            } catch (IOException exception) {
-                throw transportException(exception, true, sensitiveValues);
+        ModelCallRetrier.StreamAttempt<AssistantMessageChunk> streamAttempt = () -> {
+            HttpResponse<InputStream> response =
+                    sendStreamAttempt(preparedRequest, retryContext.consumedRetries(), idleSeconds);
+            Loggers.LLM.info("OpenAI API stream response received. status={}", response.statusCode());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                String body = readBodyWithIdleTimeout(response.body(), idleSeconds, true);
+                ensureSuccess(response, body, true, sensitiveValues);
             }
-            ensureSuccess(response.statusCode(), body, true, sensitiveValues);
+            return new RetriableStreamHandle(
+                    new SseChunkIterator(response.body(), outputParser, sensitiveValues, idleSeconds),
+                    circuitBreaker);
+        };
+        Iterator<AssistantMessageChunk> chunks;
+        try {
+            chunks = new FirstSegmentRetryIterator<>(retryContext, streamAttempt,
+                    retrier.openStream(retryContext, streamAttempt, retryListener), retrier, retryListener);
+        } catch (BaseError failure) {
+            circuitBreaker.onFailure(failure);
+            throw failure;
+        } catch (IOException failure) {
+            BaseError classified = classifySendException(failure, true, sensitiveValues);
+            circuitBreaker.onFailure(classified);
+            throw classified;
         }
-        Loggers.LLM.info("OpenAI API stream response received. status={}", response.statusCode());
-        return loggingFirstChunk(
-                new SseChunkIterator(response.body(), outputParser, sensitiveValues, idleSeconds));
+        circuitBreaker.onSuccess();
+        return loggingFirstChunk(chunks);
     }
 
     private Iterator<AssistantMessageChunk> loggingFirstChunk(Iterator<AssistantMessageChunk> delegate) {
         return new LoggingFirstChunkIterator(delegate);
+    }
+
+    private static final class RetriableStreamHandle
+            implements ModelCallRetrier.StreamHandle<AssistantMessageChunk> {
+        private final Iterator<AssistantMessageChunk> iterator;
+        private final ModelCircuitBreaker circuitBreaker;
+
+        private RetriableStreamHandle(Iterator<AssistantMessageChunk> iterator,
+                ModelCircuitBreaker circuitBreaker) {
+            this.iterator = iterator;
+            this.circuitBreaker = circuitBreaker;
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> iterator() {
+            return iterator;
+        }
+
+        @Override
+        public void onWindowFailure(BaseError failure) {
+            circuitBreaker.onFailure(failure);
+        }
+
+        @Override
+        public void closeQuietly() {
+            if (iterator instanceof Closeable closeable) {
+                try {
+                    closeable.close();
+                } catch (IOException | IllegalStateException | IllegalArgumentException closeFailure) {
+                    Loggers.LLM.debug("Failed to close abandoned stream attempt. {}",
+                            closeFailure.getMessage());
+                }
+            }
+        }
     }
 
     private static final class LoggingFirstChunkIterator
@@ -2092,6 +2173,8 @@ public class OpenAIModelClient extends BaseModelClient
         private boolean isFirstSegmentReceived;
         private boolean closed;
 
+        private boolean effectiveFirstSegmentReceived;
+
         private SseChunkIterator(
                 InputStream inputStream,
                 BaseOutputParser outputParser,
@@ -2126,7 +2209,6 @@ public class OpenAIModelClient extends BaseModelClient
         }
 
         private AssistantMessageChunk readNextChunk() {
-            String currentEvent = "";
             boolean shouldKeepOpen = false;
             try {
                 String rawLine;
@@ -2136,8 +2218,10 @@ public class OpenAIModelClient extends BaseModelClient
                         continue;
                     }
                     String data = line.substring("data:".length()).strip();
-                    currentEvent = data;
                     isFirstSegmentReceived = true;
+                    if (!data.contains("choices") && ErrorBodyParser.hasErrorObject(data)) {
+                        throw errorFrameException(data);
+                    }
                     if ("[DONE]".equals(data)) {
                         close();
                         return finalToolCallChunk();
@@ -2152,6 +2236,7 @@ public class OpenAIModelClient extends BaseModelClient
                     }
                     AssistantMessageChunk parsedChunk = applyStreamingParser(adaptedChunk);
                     shouldKeepOpen = true;
+                    effectiveFirstSegmentReceived = true;
                     return parsedChunk;
                 }
                 close();
@@ -2162,9 +2247,14 @@ public class OpenAIModelClient extends BaseModelClient
                 if (exception instanceof IOException ioException) {
                     throwIfIdleTimeout(ioException);
                 }
+                if (exception instanceof InterruptedIOException
+                        && !(exception instanceof SocketTimeoutException)) {
+                    // SocketTimeoutException is a read timeout, not a cancellation.
+                    throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
+                }
                 String detail = errorDetail(exception);
                 Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
-                throw streamException(currentEvent, exception, sensitiveValues);
+                throw classifiedStreamFailure(exception);
             } finally {
                 if (!shouldKeepOpen) {
                     close();
@@ -2173,13 +2263,45 @@ public class OpenAIModelClient extends BaseModelClient
         }
 
         private void throwIfIdleTimeout(IOException exception) {
-            if (exception instanceof IdleBoundInputStream.IdleTimeoutIOException idleTimeout) {
+            if (exception instanceof IdleTimeoutIOException idleTimeout) {
                 throw ModelTimeoutErrorFactory.idleTimeoutError(
                         isFirstSegmentReceived
                                 ? TimeoutPhase.AFTER_FIRST_SEGMENT
                                 : TimeoutPhase.BEFORE_FIRST_SEGMENT,
                         idleTimeout.idleSeconds(), true, exception);
             }
+        }
+
+        private BaseError classifiedStreamFailure(Exception exception) {
+            ModelErrorFacts facts = ModelErrorFacts.Builder.create()
+                    .throwable(exception)
+                    .stream(true)
+                    .firstSegmentReceived(effectiveFirstSegmentReceived)
+                    .build();
+            ModelCallClassification classification =
+                    ModelErrorClassifiers.defaultClassifier().classify(facts);
+            return ClassifiedModelErrors.toError(classification, facts,
+                    "stream failure at read_chunk: " + safeExceptionMessage(exception, sensitiveValues),
+                    exception);
+        }
+
+        private BaseError errorFrameException(String data) {
+            ErrorResponseBodySanitizer.SanitizedBody sanitized =
+                    ErrorResponseBodySanitizer.sanitize(data, sensitiveValues);
+            ModelErrorFacts.Builder factsBuilder = ModelErrorFacts.Builder.create()
+                    .errorBody(sanitized.body())
+                    .stream(true)
+                    .firstSegmentReceived(effectiveFirstSegmentReceived);
+            Optional<ErrorBodyParser.ParsedError> parsed = ErrorBodyParser.parse(sanitized.body());
+            if (parsed.isPresent()) {
+                ErrorBodyParser.ParsedError error = parsed.get();
+                factsBuilder.errorCode(error.code()).errorType(error.type()).errorMessage(error.message());
+            }
+            ModelErrorFacts facts = factsBuilder.build();
+            ModelCallClassification classification =
+                    ModelErrorClassifiers.defaultClassifier().classify(facts);
+            return ClassifiedModelErrors.toError(classification, facts,
+                    "stream error frame: " + sanitized.body(), null);
         }
 
         private AssistantMessageChunk adaptToolCallChunk(AssistantMessageChunk chunk) {
@@ -2384,16 +2506,18 @@ public class OpenAIModelClient extends BaseModelClient
             IOException exception,
             boolean isStreaming,
             Collection<String> sensitiveValues) {
+        ModelErrorFacts facts = ModelErrorFacts.ofThrowable(exception, isStreaming);
+        ModelCallClassification classification =
+                ModelErrorClassifiers.defaultClassifier().classify(facts);
+        if (classification.category() == ModelErrorCategory.USER_CANCELLED) {
+            throw ClassifiedModelErrors.toCancellation("model call cancelled");
+        }
         Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
                 exception, isStreaming, modelClientConfig);
-        return timeoutError.orElseGet(() -> transportException(exception, isStreaming, sensitiveValues));
-    }
-
-    private BaseError transportException(
-            Exception exception,
-            boolean isStreaming,
-            Collection<String> sensitiveValues) {
-        return modelCallError(
+        if (timeoutError.isPresent()) {
+            return timeoutError.get();
+        }
+        return ClassifiedModelErrors.toError(classification, facts,
                 "transport failure at send_request: " + safeExceptionMessage(exception, sensitiveValues),
                 exception);
     }
@@ -2422,15 +2546,6 @@ public class OpenAIModelClient extends BaseModelClient
         }
     }
 
-    private BaseError streamException(
-            String event,
-            Exception exception,
-            Collection<String> sensitiveValues) {
-        return modelCallError(
-                "stream failure at read_chunk: " + safeExceptionMessage(exception, sensitiveValues),
-                exception);
-    }
-
     private BaseError clientInternalException(
             Exception exception,
             boolean isStreaming,
@@ -2447,16 +2562,54 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     private void ensureSuccess(
-            int statusCode,
+            HttpResponse<?> response,
             String body,
             boolean isStreaming,
             Collection<String> sensitiveValues) {
+        int statusCode = response.statusCode();
         if (statusCode >= 200 && statusCode < 300) {
             return;
         }
+        OptionalDouble retryAfter = RetryAfterParser.parseSeconds(response.headers());
+        throw classifiedBodyError(statusCode, body, isStreaming, sensitiveValues,
+                retryAfter.isPresent() ? retryAfter.getAsDouble() : null);
+    }
+
+    private void ensureNoEmbeddedError(
+            String body,
+            boolean isStreaming,
+            Collection<String> sensitiveValues) {
+        if (!ErrorBodyParser.hasErrorObject(body)) {
+            return;
+        }
+        throw classifiedBodyError(null, body, isStreaming, sensitiveValues, null);
+    }
+
+    private BaseError classifiedBodyError(
+            Integer statusCode,
+            String body,
+            boolean isStreaming,
+            Collection<String> sensitiveValues,
+            Double retryAfterSeconds) {
         ErrorResponseBodySanitizer.SanitizedBody sanitized =
                 ErrorResponseBodySanitizer.sanitize(body, sensitiveValues);
-        throw modelCallError("HTTP " + statusCode + ": " + sanitized.body(), null);
+        ModelErrorFacts.Builder factsBuilder = ModelErrorFacts.Builder.create()
+                .httpStatus(statusCode)
+                .errorBody(sanitized.body())
+                .stream(isStreaming)
+                .retryAfterSeconds(retryAfterSeconds);
+        Optional<ErrorBodyParser.ParsedError> parsed = ErrorBodyParser.parse(sanitized.body());
+        if (parsed.isPresent()) {
+            ErrorBodyParser.ParsedError error = parsed.get();
+            factsBuilder.errorCode(error.code()).errorType(error.type()).errorMessage(error.message());
+        }
+        ModelErrorFacts facts = factsBuilder.build();
+        ModelCallClassification classification =
+                ModelErrorClassifiers.defaultClassifier().classify(facts);
+        String message = statusCode == null
+                ? "embedded error in success response: " + sanitized.body()
+                : "HTTP " + statusCode + ": " + sanitized.body();
+        return ClassifiedModelErrors.toError(classification, facts, message, null);
     }
 
     private BaseError modelCallError(String errorMessage, Throwable cause) {

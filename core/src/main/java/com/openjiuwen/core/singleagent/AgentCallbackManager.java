@@ -117,6 +117,27 @@ public class AgentCallbackManager {
         return rail != null && railCallbacks.containsKey(rail);
     }
 
+    /**
+     * Whether any rail of the given type is registered, globally or per-instance.
+     *
+     * @param railType rail class to look up, must not be null
+     * @return {@code true} when at least one rail assignable to the type is registered
+     * @since 2026-10-19
+     */
+    public boolean isRailTypeRegistered(Class<? extends AgentRail> railType) {
+        for (AgentRail rail : railCallbacks.keySet()) {
+            if (railType.isInstance(rail)) {
+                return true;
+            }
+        }
+        for (AgentRail rail : instanceRailCallbacks.keySet()) {
+            if (railType.isInstance(rail)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public CompletionStage<AgentCallbackManager> registerInstanceRail(AgentRail rail, Object agent) {
         if (rail == null) {
             return CompletableFuture.completedFuture(this);
