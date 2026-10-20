@@ -330,6 +330,61 @@ class StepCheckpointTest {
     }
 
     @Test
+    void lastBoundaryFlagMirrorsOverrideVerdict() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-flag-override", "agent-flag", state);
+        checkpointer.preAgentExecute(session, null);
+
+        StepCheckpointTrigger trigger = new StepCheckpointTrigger(
+                checkpointer, null, StepCheckpointPolicy.STEP_OFF);
+        trigger.stepCompleted(session, StepCheckpointPolicy.STEP_ALWAYS, null,
+                new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, 1L));
+
+        assertTrue(trigger.isLastBoundaryPersisted());
+        assertNotNull(StepCursor.fromState(state.getState()));
+
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, 2L));
+        assertFalse(trigger.isLastBoundaryPersisted());
+    }
+
+    @Test
+    void lastBoundaryFlagSeesCompletedStepsSignal() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-flag-steps", "agent-flag", state);
+        checkpointer.preAgentExecute(session, null);
+
+        StepAutoThresholds thresholds = new StepAutoThresholds(
+                StepAutoThresholds.DEFAULT_TOOL_COUNT, 3, StepAutoThresholds.DEFAULT_STEP_DURATION_MILLIS);
+        StepCheckpointTrigger trigger = new StepCheckpointTrigger(
+                checkpointer, null, StepCheckpointPolicy.STEP_AUTO, new PolicyEvaluator(thresholds));
+        StepSignalContext noStepsYet = new StepSignalContext("", false, false, 0, 0, 0L);
+        for (long boundary = 1L; boundary <= 3L; boundary++) {
+            trigger.stepCompleted(session, null, noStepsYet,
+                    new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, boundary));
+            assertFalse(trigger.isLastBoundaryPersisted());
+        }
+
+        trigger.stepCompleted(session, null, noStepsYet,
+                new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, 4L));
+        assertTrue(trigger.isLastBoundaryPersisted());
+    }
+
+    @Test
+    void lastBoundaryFlagFalseWithoutCheckpointer() {
+        StepCheckpointTrigger trigger = new StepCheckpointTrigger(
+                null, null, StepCheckpointPolicy.STEP_ALWAYS);
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-flag-nullcp", "agent-flag", state);
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, 1L));
+
+        assertFalse(trigger.isLastBoundaryPersisted());
+    }
+
+    @Test
     void triggerRecordsAuditEvenWhenPolicyOff() {
         KvStepJournal journal = new KvStepJournal(new InMemoryKVStore());
         InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();

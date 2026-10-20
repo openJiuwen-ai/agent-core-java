@@ -37,7 +37,7 @@ public class StepCheckpointTrigger {
     private final PolicyEvaluator evaluator;
     private final StepCheckpointPolicy agentDefault;
     private final AtomicLong seqCounter = new AtomicLong();
-    private StepSignalContext lastSignals;
+    private volatile boolean isLastBoundaryPersisted;
 
     /**
      * Create a trigger.
@@ -83,10 +83,10 @@ public class StepCheckpointTrigger {
         }
         long seq = seqCounter.incrementAndGet();
         long now = System.currentTimeMillis();
-        lastSignals = signals;
         StepCheckpointPolicy policy = evaluator.resolve(agentDefault, invokeOverride);
-        if (checkpointer != null
-                && evaluator.shouldPersist(agentDefault, invokeOverride, signalsWithDurations(signals, seq))) {
+        isLastBoundaryPersisted = checkpointer != null
+                && evaluator.shouldPersist(agentDefault, invokeOverride, signalsWithDurations(signals, seq));
+        if (isLastBoundaryPersisted) {
             try {
                 checkpointer.stepCompleted(session, new StepCursor(seq, boundary.stepType(), boundary.stepName(),
                         boundary.status(), now));
@@ -110,13 +110,12 @@ public class StepCheckpointTrigger {
      * Whether the last evaluated boundary persisted the state snapshot. Used
      * by tests and by agents that want to skip their own redundant saves.
      *
-     * @return true when the most recent {@link #stepCompleted} call flushed
+     * @return the exact persistence verdict of the most recent
+     *         {@link #stepCompleted} call; false before any boundary or when
+     *         the trigger runs without a checkpointer
      */
     public boolean isLastBoundaryPersisted() {
-        if (lastSignals == null) {
-            return false;
-        }
-        return evaluator.shouldPersist(agentDefault, null, lastSignals);
+        return isLastBoundaryPersisted;
     }
 
     /**
