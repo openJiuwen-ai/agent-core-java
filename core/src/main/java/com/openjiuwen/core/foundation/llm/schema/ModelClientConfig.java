@@ -85,10 +85,10 @@ public class ModelClientConfig {
     private int maxRetries = 2;
 
     @JsonProperty("retry_on_rate_limit")
-    private boolean retryOnRateLimit = true;
+    private boolean isRetryOnRateLimit = true;
 
     @JsonProperty("retry_on_temporary")
-    private boolean retryOnTemporary = true;
+    private boolean isRetryOnTemporary = true;
 
     @JsonProperty("verify_ssl")
     private boolean verifySsl = true;
@@ -365,8 +365,8 @@ public class ModelClientConfig {
         private Double streamIdleSeconds;
         private boolean isTimeoutExplicit;
         private int maxRetries = 2;
-        private boolean retryOnRateLimit = true;
-        private boolean retryOnTemporary = true;
+        private boolean isRetryOnRateLimit = true;
+        private boolean isRetryOnTemporary = true;
         private boolean verifySsl = true;
         private String sslCert;
         private Map<String, Object> customHeaders = new LinkedHashMap<>();
@@ -450,8 +450,8 @@ public class ModelClientConfig {
          * @return this builder
          * @since 2026-10-19
          */
-        public ModelClientConfigBuilder retryOnRateLimit(boolean retryOnRateLimit) {
-            this.retryOnRateLimit = retryOnRateLimit;
+        public ModelClientConfigBuilder retryOnRateLimit(boolean isRetryOnRateLimit) {
+            this.isRetryOnRateLimit = isRetryOnRateLimit;
             return this;
         }
 
@@ -462,8 +462,8 @@ public class ModelClientConfig {
          * @return this builder
          * @since 2026-10-19
          */
-        public ModelClientConfigBuilder retryOnTemporary(boolean retryOnTemporary) {
-            this.retryOnTemporary = retryOnTemporary;
+        public ModelClientConfigBuilder retryOnTemporary(boolean isRetryOnTemporary) {
+            this.isRetryOnTemporary = isRetryOnTemporary;
             return this;
         }
 
@@ -519,8 +519,8 @@ public class ModelClientConfig {
                     : validateStreamIdleSeconds(streamIdleSeconds);
             config.isTimeoutExplicit = isTimeoutExplicit;
             config.maxRetries = validateMaxRetries(maxRetries);
-            config.retryOnRateLimit = retryOnRateLimit;
-            config.retryOnTemporary = retryOnTemporary;
+            config.isRetryOnRateLimit = isRetryOnRateLimit;
+            config.isRetryOnTemporary = isRetryOnTemporary;
             config.verifySsl = verifySsl;
             config.sslCert = sslCert;
             config.customHeaders = customHeaders == null ? null : new LinkedHashMap<>(customHeaders);
@@ -616,8 +616,8 @@ public class ModelClientConfig {
          * @since 2026-10-19
          */
         @Override
-        public Builder retryOnRateLimit(boolean retryOnRateLimit) {
-            super.retryOnRateLimit(retryOnRateLimit);
+        public Builder retryOnRateLimit(boolean isRetryOnRateLimit) {
+            super.retryOnRateLimit(isRetryOnRateLimit);
             return this;
         }
 
@@ -629,8 +629,8 @@ public class ModelClientConfig {
          * @since 2026-10-19
          */
         @Override
-        public Builder retryOnTemporary(boolean retryOnTemporary) {
-            super.retryOnTemporary(retryOnTemporary);
+        public Builder retryOnTemporary(boolean isRetryOnTemporary) {
+            super.retryOnTemporary(isRetryOnTemporary);
             return this;
         }
 

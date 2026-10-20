@@ -10,6 +10,8 @@ import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
 import com.openjiuwen.core.foundation.llm.ModelRetryListener;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -34,8 +36,8 @@ import java.util.function.DoubleSupplier;
  * @since 2026-10-19
  */
 public final class ModelCallRetrier {
-    private static final double BACKOFF_BASE_SECONDS = 0.5D;
-    private static final double BACKOFF_CAP_BASE_SECONDS = 8.0D;
+    private static final long BACKOFF_BASE_NANOS = 500_000_000L;
+    private static final long BACKOFF_CAP_BASE_NANOS = 8_000_000_000L;
     private static final int BACKOFF_CAP_RETRY_NUMBER = 5;
     private static final double BACKOFF_JITTER_RATIO = 0.25D;
     private static final double NANOS_PER_SECOND = 1_000_000_000.0D;
@@ -142,7 +144,7 @@ public final class ModelCallRetrier {
     static boolean isAfterFirstSegment(BaseError failure) {
         if (failure.getDetails() instanceof Map<?, ?> details) {
             Object flag = details.get(ModelCallClassification.DETAIL_FIRST_SEGMENT);
-            return flag instanceof Boolean received && received;
+            return flag instanceof Boolean isReceived && isReceived;
         }
         return false;
     }
@@ -163,13 +165,25 @@ public final class ModelCallRetrier {
 
     private Duration delayFor(int retryNumber, ModelCallClassification classification) {
         if (classification.suggestedDelaySeconds() != null) {
-            return Duration.ofNanos(Math.round(classification.suggestedDelaySeconds() * NANOS_PER_SECOND));
+            return Duration.ofNanos(toNanos(classification.suggestedDelaySeconds()));
         }
-        double baseSeconds = retryNumber >= BACKOFF_CAP_RETRY_NUMBER
-            ? BACKOFF_CAP_BASE_SECONDS
-            : BACKOFF_BASE_SECONDS * Math.pow(2.0D, retryNumber - 1.0D);
-        double delaySeconds = baseSeconds * (1.0D - BACKOFF_JITTER_RATIO * random.getAsDouble());
-        return Duration.ofNanos(Math.round(delaySeconds * NANOS_PER_SECOND));
+        long baseNanos = retryNumber >= BACKOFF_CAP_RETRY_NUMBER
+            ? BACKOFF_CAP_BASE_NANOS
+            : BACKOFF_BASE_NANOS << (retryNumber - 1);
+        BigDecimal jitter = BigDecimal.valueOf(BACKOFF_JITTER_RATIO)
+            .multiply(BigDecimal.valueOf(random.getAsDouble()));
+        long delayNanos = BigDecimal.valueOf(baseNanos)
+            .multiply(BigDecimal.ONE.subtract(jitter))
+            .setScale(0, RoundingMode.HALF_UP)
+            .longValueExact();
+        return Duration.ofNanos(delayNanos);
+    }
+
+    private static long toNanos(double seconds) {
+        return BigDecimal.valueOf(seconds)
+            .multiply(BigDecimal.valueOf(NANOS_PER_SECOND))
+            .setScale(0, RoundingMode.HALF_UP)
+            .longValueExact();
     }
 
     private static ModelCallClassification classify(Throwable failure) {
@@ -232,7 +246,7 @@ public final class ModelCallRetrier {
      * @param <T> result type
      */
     @FunctionalInterface
-    public interface CallAttempt<T> {
+    public interface CallAttempt<T extends Object> {
         /**
          * Performs the call once.
          *
@@ -249,7 +263,7 @@ public final class ModelCallRetrier {
      * @param <T> chunk type
      */
     @FunctionalInterface
-    public interface StreamAttempt<T> {
+    public interface StreamAttempt<T extends Object> {
         /**
          * Opens the stream once.
          *
@@ -266,7 +280,7 @@ public final class ModelCallRetrier {
      *
      * @param <T> chunk type
      */
-    public interface StreamHandle<T> {
+    public interface StreamHandle<T extends Object> {
         /**
          * The chunk iterator of this attempt.
          *

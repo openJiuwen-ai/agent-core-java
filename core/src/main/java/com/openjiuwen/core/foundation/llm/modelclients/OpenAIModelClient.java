@@ -126,11 +126,12 @@ public class OpenAIModelClient extends BaseModelClient
     private final HttpClient httpClient;
     private final ModelCallRetrier retrier;
     private final Map<String, String> baseHeaders;
-    private final ModelCircuitBreaker circuitBreaker;
 
     static {
         registerClientClass(OpenAIModelClient.class);
     }
+
+    private final ModelCircuitBreaker circuitBreaker;
 
     /**
      * Initialize OpenAI model client.
@@ -140,20 +141,6 @@ public class OpenAIModelClient extends BaseModelClient
      */
     public OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this(modelConfig, modelClientConfig, new ModelCallRetrier());
-    }
-
-    OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
-            ModelCallRetrier retrier) {
-        this(modelConfig, modelClientConfig, retrier, new ModelCircuitBreaker());
-    }
-
-    OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
-            ModelCallRetrier retrier, ModelCircuitBreaker circuitBreaker) {
-        super(modelConfig, modelClientConfig);
-        this.httpClient = createHttpClient(modelClientConfig);
-        this.retrier = retrier;
-        this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
-        this.circuitBreaker = circuitBreaker;
     }
 
     /**
@@ -169,6 +156,20 @@ public class OpenAIModelClient extends BaseModelClient
                 (ModelRequestConfig) kwargs.get("model_config"),
                 (ModelClientConfig) kwargs.get("model_client_config")
         );
+    }
+
+    OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            ModelCallRetrier retrier) {
+        this(modelConfig, modelClientConfig, retrier, new ModelCircuitBreaker());
+    }
+
+    OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            ModelCallRetrier retrier, ModelCircuitBreaker circuitBreaker) {
+        super(modelConfig, modelClientConfig);
+        this.httpClient = createHttpClient(modelClientConfig);
+        this.retrier = retrier;
+        this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
+        this.circuitBreaker = circuitBreaker;
     }
 
     @Override
@@ -2173,7 +2174,7 @@ public class OpenAIModelClient extends BaseModelClient
         private boolean isFirstSegmentReceived;
         private boolean closed;
 
-        private boolean effectiveFirstSegmentReceived;
+        private boolean isEffectiveFirstSegmentReceived;
 
         private SseChunkIterator(
                 InputStream inputStream,
@@ -2236,7 +2237,7 @@ public class OpenAIModelClient extends BaseModelClient
                     }
                     AssistantMessageChunk parsedChunk = applyStreamingParser(adaptedChunk);
                     shouldKeepOpen = true;
-                    effectiveFirstSegmentReceived = true;
+                    isEffectiveFirstSegmentReceived = true;
                     return parsedChunk;
                 }
                 close();
@@ -2276,7 +2277,7 @@ public class OpenAIModelClient extends BaseModelClient
             ModelErrorFacts facts = ModelErrorFacts.Builder.create()
                     .throwable(exception)
                     .stream(true)
-                    .firstSegmentReceived(effectiveFirstSegmentReceived)
+                    .firstSegmentReceived(isEffectiveFirstSegmentReceived)
                     .build();
             ModelCallClassification classification =
                     ModelErrorClassifiers.defaultClassifier().classify(facts);
@@ -2291,7 +2292,7 @@ public class OpenAIModelClient extends BaseModelClient
             ModelErrorFacts.Builder factsBuilder = ModelErrorFacts.Builder.create()
                     .errorBody(sanitized.body())
                     .stream(true)
-                    .firstSegmentReceived(effectiveFirstSegmentReceived);
+                    .firstSegmentReceived(isEffectiveFirstSegmentReceived);
             Optional<ErrorBodyParser.ParsedError> parsed = ErrorBodyParser.parse(sanitized.body());
             if (parsed.isPresent()) {
                 ErrorBodyParser.ParsedError error = parsed.get();

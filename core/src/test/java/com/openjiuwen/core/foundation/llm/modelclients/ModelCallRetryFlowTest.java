@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.modelclients;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.fail;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -96,12 +97,12 @@ class ModelCallRetryFlowTest {
             assertThatThrownBy(iterator::next)
                 .isInstanceOf(BaseError.class)
                 .satisfies(error -> {
-                    BaseError typed = (BaseError) error;
-                    if (typed.getDetails() instanceof Map<?, ?> details) {
+                    if (error instanceof BaseError typed
+                        && typed.getDetails() instanceof Map<?, ?> details) {
                         assertThat(details.get(ModelCallClassification.DETAIL_FIRST_SEGMENT))
                             .isEqualTo(Boolean.TRUE);
                     } else {
-                        throw new IllegalStateException("details map expected");
+                        fail("classified BaseError with details expected");
                     }
                 });
         }
@@ -130,7 +131,10 @@ class ModelCallRetryFlowTest {
                 "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
                 .isInstanceOf(BaseError.class)
                 .satisfies(error -> {
-                    BaseError typed = (BaseError) error;
+                    if (!(error instanceof BaseError typed)) {
+                        fail("BaseError expected but got " + error.getClass().getName());
+                        return;
+                    }
                     assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_AUTH_FAILED);
                     assertThat(typed.getMessage()).contains("[REDACTED]");
                     assertThat(typed.getMessage()).doesNotContain("sk-live-secret-123");
@@ -227,8 +231,14 @@ class ModelCallRetryFlowTest {
         private void handle(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
             requests.add(exchange.getRequestMethod());
             Map<String, Object> response = responses.size() > 1 ? responses.poll() : responses.peek();
-            int status = (Integer) response.get("status");
-            byte[] bytes = ((String) response.get("body")).getBytes(StandardCharsets.UTF_8);
+            Object statusValue = response.get("status");
+            Object bodyValue = response.get("body");
+            if (!(statusValue instanceof Integer status) || !(bodyValue instanceof String bodyText)) {
+                exchange.sendResponseHeaders(500, -1);
+                exchange.close();
+                return;
+            }
+            byte[] bytes = bodyText.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
             exchange.sendResponseHeaders(status, bytes.length);
             exchange.getResponseBody().write(bytes);

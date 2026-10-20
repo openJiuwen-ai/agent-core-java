@@ -28,7 +28,7 @@ import java.util.Optional;
  * @param <T> chunk type
  * @since 2026-10-19
  */
-public final class FirstSegmentRetryIterator<T> implements Iterator<T>, Closeable {
+public final class FirstSegmentRetryIterator<T extends Object> implements Iterator<T>, Closeable {
     private final RetryContext context;
     private final ModelCallRetrier.StreamAttempt<T> attempt;
     private final ModelCallRetrier retrier;

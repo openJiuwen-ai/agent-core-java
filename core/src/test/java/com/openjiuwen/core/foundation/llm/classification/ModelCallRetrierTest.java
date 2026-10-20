@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.classification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.fail;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -67,8 +68,7 @@ class ModelCallRetrierTest {
             throw classifiedHttp(429, "{\"error\":{}}");
         }, null))
             .isInstanceOf(BaseError.class)
-            .satisfies(error -> assertThat(((BaseError) error).getStatus())
-                .isEqualTo(StatusCode.MODEL_CALL_RATE_LIMITED));
+            .satisfies(error -> assertStatus(error, StatusCode.MODEL_CALL_RATE_LIMITED));
         assertThat(calls).hasValue(3);
     }
 
@@ -80,8 +80,7 @@ class ModelCallRetrierTest {
             throw classifiedHttp(402, "{\"error\":{}}");
         }, null))
             .isInstanceOf(BaseError.class)
-            .satisfies(error -> assertThat(((BaseError) error).getStatus())
-                .isEqualTo(StatusCode.MODEL_CALL_QUOTA_EXCEEDED));
+            .satisfies(error -> assertStatus(error, StatusCode.MODEL_CALL_QUOTA_EXCEEDED));
         assertThat(calls).hasValue(1);
     }
 
@@ -114,8 +113,7 @@ class ModelCallRetrierTest {
             throw classifiedHttp(400, "{\"error\":{\"code\":\"prompt_too_long\"}}");
         }, null))
             .isInstanceOf(BaseError.class)
-            .satisfies(error -> assertThat(((BaseError) error).getStatus())
-                .isEqualTo(StatusCode.MODEL_CONTEXT_LENGTH_EXCEEDED));
+            .satisfies(error -> assertStatus(error, StatusCode.MODEL_CONTEXT_LENGTH_EXCEEDED));
         assertThat(calls).hasValue(1);
     }
 
@@ -179,6 +177,14 @@ class ModelCallRetrierTest {
         }, null);
         assertThat(result).isEqualTo("ok");
         assertThat(slept).containsExactly(Duration.ofMillis(1500L));
+    }
+
+    private static void assertStatus(Object error, StatusCode expected) {
+        if (error instanceof BaseError typed) {
+            assertThat(typed.getStatus()).isEqualTo(expected);
+            return;
+        }
+        fail("BaseError expected but got " + error.getClass().getName());
     }
 
     private static RetryContext context(int maxRetries) {

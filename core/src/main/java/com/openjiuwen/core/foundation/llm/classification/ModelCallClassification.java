@@ -51,7 +51,7 @@ public final class ModelCallClassification {
     public static final String DETAIL_SUGGESTED_DELAY = "suggested_delay_seconds";
 
     private final ModelErrorCategory category;
-    private final boolean retryable;
+    private final boolean isRetryable;
     private final Double suggestedDelaySeconds;
 
     /**
@@ -63,7 +63,7 @@ public final class ModelCallClassification {
      */
     public ModelCallClassification(ModelErrorCategory category, boolean isRetryable, Double delaySeconds) {
         this.category = category;
-        this.retryable = isRetryable;
+        this.isRetryable = isRetryable;
         this.suggestedDelaySeconds = delaySeconds;
     }
 
@@ -111,7 +111,7 @@ public final class ModelCallClassification {
             return Optional.empty();
         }
         Object rawRetryable = map.get(DETAIL_RETRYABLE);
-        boolean isRetryable = rawRetryable instanceof Boolean flag && flag;
+        boolean isRetryable = rawRetryable instanceof Boolean isRetryableFlag && isRetryableFlag;
         Object rawDelay = map.get(DETAIL_SUGGESTED_DELAY);
         Double delaySeconds = rawDelay instanceof Number number ? number.doubleValue() : null;
         return Optional.of(new ModelCallClassification(category, isRetryable, delaySeconds));
@@ -133,7 +133,7 @@ public final class ModelCallClassification {
      * @return true when retrying can help
      */
     public boolean isRetryable() {
-        return retryable;
+        return isRetryable;
     }
 
     /**

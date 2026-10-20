@@ -18,8 +18,8 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
  */
 public final class ModelCallRetryPolicy {
     private final int maxRetries;
-    private final boolean retryOnRateLimit;
-    private final boolean retryOnTemporary;
+    private final boolean isRetryOnRateLimit;
+    private final boolean isRetryOnTemporary;
 
     /**
      * Creates a policy.
@@ -30,8 +30,8 @@ public final class ModelCallRetryPolicy {
      */
     public ModelCallRetryPolicy(int maxRetries, boolean isRetryOnRateLimit, boolean isRetryOnTemporary) {
         this.maxRetries = ModelClientConfig.validateMaxRetries(maxRetries);
-        this.retryOnRateLimit = isRetryOnRateLimit;
-        this.retryOnTemporary = isRetryOnTemporary;
+        this.isRetryOnRateLimit = isRetryOnRateLimit;
+        this.isRetryOnTemporary = isRetryOnTemporary;
     }
 
     /**
@@ -54,8 +54,8 @@ public final class ModelCallRetryPolicy {
      */
     public boolean allows(ModelErrorCategory category) {
         return switch (category) {
-            case RATE_LIMITED -> retryOnRateLimit;
-            case TEMPORARY -> retryOnTemporary;
+            case RATE_LIMITED -> isRetryOnRateLimit;
+            case TEMPORARY -> isRetryOnTemporary;
             case QUOTA_EXCEEDED, AUTH_FAILED, USER_CANCELLED, CONTEXT_LENGTH_EXCEEDED -> false;
             default -> false;
         };
@@ -76,7 +76,7 @@ public final class ModelCallRetryPolicy {
      * @return true when enabled
      */
     public boolean isRetryOnRateLimit() {
-        return retryOnRateLimit;
+        return isRetryOnRateLimit;
     }
 
     /**
@@ -85,6 +85,6 @@ public final class ModelCallRetryPolicy {
      * @return true when enabled
      */
     public boolean isRetryOnTemporary() {
-        return retryOnTemporary;
+        return isRetryOnTemporary;
     }
 }

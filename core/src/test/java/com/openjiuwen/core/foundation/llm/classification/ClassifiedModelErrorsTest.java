@@ -62,7 +62,7 @@ class ClassifiedModelErrorsTest {
         assertThat(error.getDetails()).isInstanceOf(java.io.Serializable.class);
     }
 
-    private static BaseError build(int status, boolean ignoredRetryable) {
+    private static BaseError build(int status, boolean isRetryableIgnored) {
         ModelErrorFacts facts = ModelErrorFacts.Builder.create()
             .httpStatus(status)
             .stream(false)

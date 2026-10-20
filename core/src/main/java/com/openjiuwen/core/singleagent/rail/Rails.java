@@ -49,7 +49,7 @@ public final class Rails {
         while (true) {
             RuntimeException exceptionToRaise = null;
             boolean cancelled = false;
-            boolean fromOperation = false;
+            boolean isFromOperation = false;
             try {
                 context.consumeRetryRequest();
                 context.setRetryAttempt(attempt);
@@ -61,7 +61,7 @@ public final class Rails {
                     ForceFinishRequest request = context.consumeForceFinish();
                     return request == null ? null : request.getResult();
                 }
-                fromOperation = true;
+                isFromOperation = true;
                 return operation.execute();
             } catch (CancellationException exception) {
                 clearModelRequestHeaders(context, before);
@@ -69,7 +69,7 @@ public final class Rails {
                 throw exception;
             } catch (RuntimeException exception) {
                 clearModelRequestHeaders(context, before);
-                if (fromOperation && (exception instanceof AgentInterrupt || exception instanceof AbortError)) {
+                if (isFromOperation && (exception instanceof AgentInterrupt || exception instanceof AbortError)) {
                     // Human-in-the-loop interruptions raised by the model call leg are control
                     // flow, not model call failures: pass through, never reaching classification
                     // or retry. Aborts thrown by before-event callbacks still take the

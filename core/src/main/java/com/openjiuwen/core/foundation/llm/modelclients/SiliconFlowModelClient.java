@@ -87,18 +87,18 @@ public class SiliconFlowModelClient extends BaseModelClient {
         this(modelConfig, modelClientConfig, new ModelCallRetrier());
     }
 
-    SiliconFlowModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
-            ModelCallRetrier retrier) {
-        super(modelConfig, modelClientConfig);
-        this.retrier = retrier;
-    }
-
     @SuppressWarnings("unchecked")
     public SiliconFlowModelClient(Map<String, Object> kwargs) {
         this(
                 (ModelRequestConfig) kwargs.get("model_config"),
                 (ModelClientConfig) kwargs.get("model_client_config")
         );
+    }
+
+    SiliconFlowModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            ModelCallRetrier retrier) {
+        super(modelConfig, modelClientConfig);
+        this.retrier = retrier;
     }
 
     @Override
@@ -780,7 +780,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         private final double idleSeconds;
         private AssistantMessageChunk nextChunk;
         private boolean isFirstSegmentReceived;
-        private boolean effectiveFirstSegmentReceived;
+        private boolean isEffectiveFirstSegmentReceived;
         private boolean isDone;
         private boolean isClosed;
 
@@ -841,7 +841,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     AssistantMessageChunk chunk = parseStreamChunk(line);
                     if (chunk != null) {
                         shouldKeepOpen = true;
-                        effectiveFirstSegmentReceived = true;
+                        isEffectiveFirstSegmentReceived = true;
                         return Optional.of(chunk);
                     }
                 }
@@ -882,7 +882,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
             ModelErrorFacts facts = ModelErrorFacts.Builder.create()
                     .throwable(exception)
                     .stream(true)
-                    .firstSegmentReceived(effectiveFirstSegmentReceived)
+                    .firstSegmentReceived(isEffectiveFirstSegmentReceived)
                     .build();
             ModelCallClassification classification =
                     ModelErrorClassifiers.defaultClassifier().classify(facts);
@@ -896,7 +896,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
             ModelErrorFacts.Builder factsBuilder = ModelErrorFacts.Builder.create()
                     .errorBody(sanitized.body())
                     .stream(true)
-                    .firstSegmentReceived(effectiveFirstSegmentReceived);
+                    .firstSegmentReceived(isEffectiveFirstSegmentReceived);
             Optional<ErrorBodyParser.ParsedError> parsed = ErrorBodyParser.parse(sanitized.body());
             if (parsed.isPresent()) {
                 ErrorBodyParser.ParsedError error = parsed.get();

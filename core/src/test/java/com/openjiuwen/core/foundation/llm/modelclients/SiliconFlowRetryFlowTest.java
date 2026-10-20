@@ -161,8 +161,14 @@ class SiliconFlowRetryFlowTest {
         private void handle(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
             requests.add(exchange.getRequestMethod());
             Map<String, Object> response = responses.size() > 1 ? responses.poll() : responses.peek();
-            int status = (Integer) response.get("status");
-            byte[] bytes = ((String) response.get("body")).getBytes(StandardCharsets.UTF_8);
+            Object statusValue = response.get("status");
+            Object bodyValue = response.get("body");
+            if (!(statusValue instanceof Integer status) || !(bodyValue instanceof String bodyText)) {
+                exchange.sendResponseHeaders(500, -1);
+                exchange.close();
+                return;
+            }
+            byte[] bytes = bodyText.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
             exchange.sendResponseHeaders(status, bytes.length);
             exchange.getResponseBody().write(bytes);

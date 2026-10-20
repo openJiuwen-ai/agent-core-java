@@ -21,8 +21,8 @@ public final class ModelErrorFacts {
     private final String errorType;
     private final String errorMessage;
     private final Throwable throwable;
-    private final boolean stream;
-    private final Boolean firstSegmentReceived;
+    private final boolean isStream;
+    private final Boolean isFirstSegmentReceived;
     private final Double retryAfterSeconds;
 
     private ModelErrorFacts(Builder builder) {
@@ -32,8 +32,8 @@ public final class ModelErrorFacts {
         this.errorType = builder.errorType;
         this.errorMessage = builder.errorMessage;
         this.throwable = builder.throwable;
-        this.stream = builder.stream;
-        this.firstSegmentReceived = builder.firstSegmentReceived;
+        this.isStream = builder.isStream;
+        this.isFirstSegmentReceived = builder.isFirstSegmentReceived;
         this.retryAfterSeconds = builder.retryAfterSeconds;
     }
 
@@ -41,11 +41,11 @@ public final class ModelErrorFacts {
      * Builds facts from a bare throwable (no HTTP context available).
      *
      * @param throwable failure thrown by the call, must not be null
-     * @param stream true for streaming calls
+     * @param isStream true for streaming calls
      * @return facts carrying only the throwable and the call shape
      */
-    public static ModelErrorFacts ofThrowable(Throwable throwable, boolean stream) {
-        return new Builder().throwable(throwable).stream(stream).build();
+    public static ModelErrorFacts ofThrowable(Throwable throwable, boolean isStream) {
+        return new Builder().throwable(throwable).stream(isStream).build();
     }
 
     /**
@@ -108,7 +108,7 @@ public final class ModelErrorFacts {
      * @return true for streaming calls
      */
     public boolean isStream() {
-        return stream;
+        return isStream;
     }
 
     /**
@@ -118,7 +118,7 @@ public final class ModelErrorFacts {
      * @return first effective segment flag or null
      */
     public Boolean firstSegmentReceived() {
-        return firstSegmentReceived;
+        return isFirstSegmentReceived;
     }
 
     /**
@@ -142,8 +142,8 @@ public final class ModelErrorFacts {
         private String errorType;
         private String errorMessage;
         private Throwable throwable;
-        private boolean stream;
-        private Boolean firstSegmentReceived;
+        private boolean isStream;
+        private Boolean isFirstSegmentReceived;
         private Double retryAfterSeconds;
 
         private Builder() {
@@ -231,18 +231,18 @@ public final class ModelErrorFacts {
          * @return this builder
          */
         public Builder stream(boolean isStream) {
-            this.stream = isStream;
+            this.isStream = isStream;
             return this;
         }
 
         /**
          * Sets the first effective segment flag.
          *
-         * @param received true when the first effective segment had arrived
+         * @param isReceived true when the first effective segment had arrived
          * @return this builder
          */
-        public Builder firstSegmentReceived(Boolean received) {
-            this.firstSegmentReceived = received;
+        public Builder firstSegmentReceived(Boolean isReceived) {
+            this.isFirstSegmentReceived = isReceived;
             return this;
         }
 
