@@ -11,10 +11,12 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -162,20 +164,73 @@ class SessionModelContextTest {
     }
 
     @Test
-    void getContextWindowRunsProcessorsAndKvCacheRelease() {
+    void saveAndLoadStatePreservesUserMultimodalListContent() {
+        UserMessage multimodal = new UserMessage();
+        List<Map<String, Object>> parts = new ArrayList<>();
+        Map<String, Object> textPart = new LinkedHashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", "look at this");
+        Map<String, Object> imagePart = new LinkedHashMap<>();
+        imagePart.put("type", "image_url");
+        imagePart.put("image_url", new LinkedHashMap<>(Map.of("url", "data:image/png;base64,aaa")));
+        parts.add(textPart);
+        parts.add(imagePart);
+        multimodal.setContent(parts);
         ContextEngineConfig config = new ContextEngineConfig();
-        config.setEnableKvCacheRelease(true);
+        SessionModelContext source = new SessionModelContext("ctx", "session", config);
+        source.addMessages(List.of(multimodal)).toCompletableFuture().join();
+
+        SessionModelContext restored = new SessionModelContext("ctx", "session", config);
+        restored.loadState(Map.of("ctx", source.saveState()));
+
+        List<BaseMessage> messages = restored.getMessages(null, true);
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).getContent()).isInstanceOf(List.class);
+        List<?> restoredParts = (List<?>) messages.get(0).getContent();
+        assertThat(restoredParts).hasSize(2);
+        assertThat(asMap(restoredParts.get(0)))
+                .containsEntry("type", "text")
+                .containsEntry("text", "look at this");
+        assertThat(asMap(restoredParts.get(1))).containsEntry("type", "image_url");
+    }
+
+    @Test
+    void saveAndLoadStatePreservesStructuredMapContent() {
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext source = new SessionModelContext("ctx", "session", config);
+        UserMessage structured = new UserMessage();
+        Map<String, Object> mapContent = new LinkedHashMap<>();
+        mapContent.put("type", "text");
+        mapContent.put("text", "structured map");
+        structured.setContent(mapContent);
+        source.addMessages(List.of(structured)).toCompletableFuture().join();
+
+        SessionModelContext restored = new SessionModelContext("ctx", "session", config);
+        restored.loadState(Map.of("ctx", source.saveState()));
+
+        List<BaseMessage> messages = restored.getMessages(null, true);
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).getContent()).isInstanceOf(Map.class);
+        assertThat(asMap(messages.get(0).getContent()))
+                .containsEntry("type", "text")
+                .containsEntry("text", "structured map");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    @Test
+    void getContextWindowRunsProcessors() {
         RecordingGetProcessor processor = new RecordingGetProcessor();
-        RecordingKvCacheManager kvCacheManager = new RecordingKvCacheManager();
-        SessionModelContext context = new SessionModelContext("ctx", "session", config, List.of(), List.of(processor),
-                null, null, null, null, kvCacheManager, null);
+        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(processor), null, null, null, null, null);
 
         ContextWindow window = context.getContextWindow(List.of(), List.of(), null, null,
                 Map.of("model", "m1")).toCompletableFuture().join();
 
         assertThat(window.getContextMessages()).extracting(BaseMessage::getContent).containsExactly("processed");
-        assertThat(kvCacheManager.releasedWindows).hasSize(1);
-        assertThat(kvCacheManager.models).containsExactly("m1");
     }
 
     /**
@@ -249,20 +304,4 @@ class SessionModelContextTest {
         }
     }
 
-    /**
-     * KV-cache release test double.
-     *
-     * <p>Mirrors Python's {@code KVCacheManager} collaborator in
-     * {@code openjiuwen/core/context_engine/context/context.py}.</p>
-     */
-    private static final class RecordingKvCacheManager implements SessionModelContext.KvCacheManagerPort {
-        private final List<ContextWindow> releasedWindows = new ArrayList<>();
-        private final List<Object> models = new ArrayList<>();
-
-        @Override
-        public void release(ContextWindow contextWindow, Object model) {
-            releasedWindows.add(contextWindow);
-            models.add(model);
-        }
-    }
 }

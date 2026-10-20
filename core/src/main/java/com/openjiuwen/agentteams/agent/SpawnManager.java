@@ -453,9 +453,16 @@ public class SpawnManager {
     /**
      * Shut down every registered handle within the configured timeout and clear internal state.
      *
+     * <p>In-flight or queued recovery tasks are cancelled first: a recovery that respawns a
+     * teammate while (or after) handles are being torn down would register a ghost handle nobody
+     * cleans up, and callers expect no recovery to still be running once this method returns
+     * ({@link com.openjiuwen.agentteams.agent.CoordinationManager#stop()} already pairs
+     * {@link #cancelRecoveryTasks()} with this call).</p>
+     *
      * @since 0.1.7
      */
     public void shutdownAllHandles() {
+        cancelRecoveryTasks();
         for (Map.Entry<String, SpawnHandle> entry : new LinkedHashMap<>(spawnedHandles).entrySet()) {
             try {
                 entry.getValue().shutdown(SHUTDOWN_TIMEOUT_MILLIS);

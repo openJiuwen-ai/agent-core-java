@@ -14,28 +14,37 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 
 final class InstanceCallbackFramework implements AgentCallbackManager.CallbackFramework {
     private static final Logger LOGGER = LoggerFactory.getLogger(InstanceCallbackFramework.class);
 
-    private final Map<String, List<Entry>> callbacks = new LinkedHashMap<>();
-    private long nextSequence;
+    private static final Comparator<Entry> ENTRY_ORDER =
+            Comparator.comparingInt(Entry::priority).reversed().thenComparingLong(Entry::sequence);
+
+    private final Map<String, List<Entry>> callbacks = new ConcurrentHashMap<>();
+    private final AtomicLong nextSequence = new AtomicLong();
 
     @Override
     public CompletionStage<Void> register(String event, AgentCallback callback, int priority) {
         if (event == null || callback == null) {
             return CompletableFuture.completedFuture(null);
         }
-        List<Entry> entries = callbacks.computeIfAbsent(event, ignored -> new ArrayList<>());
-        entries.add(new Entry(callback, priority, nextSequence++));
-        entries.sort(Comparator.comparingInt(Entry::priority).reversed().thenComparingLong(Entry::sequence));
+        // compute serializes remappings per event key, and every published
+        // list is an immutable snapshot, so trigger can iterate lock-free.
+        callbacks.compute(event, (key, existing) -> {
+            List<Entry> updated = new ArrayList<>(existing == null ? List.of() : existing);
+            updated.add(new Entry(callback, priority, nextSequence.getAndIncrement()));
+            updated.sort(ENTRY_ORDER);
+            return List.copyOf(updated);
+        });
         return CompletableFuture.completedFuture(null);
     }
 
@@ -44,14 +53,15 @@ final class InstanceCallbackFramework implements AgentCallbackManager.CallbackFr
         if (event == null || callback == null) {
             return CompletableFuture.completedFuture(null);
         }
-        List<Entry> entries = callbacks.get(event);
-        if (entries == null) {
-            return CompletableFuture.completedFuture(null);
-        }
-        entries.removeIf(entry -> entry.callback() == callback);
-        if (entries.isEmpty()) {
-            callbacks.remove(event);
-        }
+        callbacks.computeIfPresent(event, (key, entries) -> {
+            List<Entry> updated = new ArrayList<>();
+            for (Entry entry : entries) {
+                if (entry.callback() != callback) {
+                    updated.add(entry);
+                }
+            }
+            return updated.isEmpty() ? null : List.copyOf(updated);
+        });
         return CompletableFuture.completedFuture(null);
     }
 
@@ -79,7 +89,7 @@ final class InstanceCallbackFramework implements AgentCallbackManager.CallbackFr
             return CompletableFuture.completedFuture(null);
         }
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-        for (Entry entry : List.copyOf(entries)) {
+        for (Entry entry : entries) {
             chain = chain.thenCompose(ignored -> invokeCallback(entry, context));
         }
         return chain;

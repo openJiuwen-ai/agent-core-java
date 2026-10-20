@@ -14,7 +14,6 @@
 
 | 类型 | 说明 |
 | --- | --- |
-| [`InferenceAffinityModel`](llm/InferenceAffinityModel.md) | 统一 InferenceAffinity 会话调用入口，向 `InferenceAffinityModelClient` 透传 session 与缓存共享参数。 |
 | [`Model`](llm/Model.md) | 统一 LLM 调用入口，按 `clientProvider` 选择 `BaseModelClient` 并转发同步、流式与多模态方法。 |
 | [`ModelInvokeOptions`](llm/ModelInvokeOptions.md) | 描述单次 `Model.invoke` / `Model.stream` 的可选参数，包括正式的请求级 transport headers。 |
 

@@ -31,7 +31,6 @@ class LlmSchemaConfigTest {
     @Test
     void preservesProviderTypeValues() {
         assertEquals("OpenAI", ProviderType.OPEN_AI.getValue());
-        assertEquals("InferenceAffinity", ProviderType.INFERENCE_AFFINITY.getValue());
         assertEquals("IntelliRouter", ProviderType.INTELLI_ROUTER.getPythonMemberName());
         assertEquals("intelli_router", ProviderType.INTELLI_ROUTER.getValue());
     }

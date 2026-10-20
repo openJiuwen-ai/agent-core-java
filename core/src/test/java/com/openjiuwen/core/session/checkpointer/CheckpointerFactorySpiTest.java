@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -66,6 +67,28 @@ class CheckpointerFactorySpiTest {
         Checkpointer cp = CheckpointerFactory.create("redis_checkpointer_cluster", Map.of(
                 "connection", Map.of("url", "redis://127.0.0.1:6379")));
         assertInstanceOf(RedisCheckpointer.class, cp);
+    }
+
+    @Test
+    @DisplayName("SPI discovery does not depend on the thread context class loader")
+    void spiDiscoveryDoesNotDependOnThreadContextClassLoader() {
+        // Regression: RunnerImpl.start() runs on the ForkJoinPool common pool, whose
+        // worker threads carry the system class loader as TCCL. Inside a Spring Boot
+        // fat jar that loader cannot see nested-jar META-INF/services entries, so
+        // TCCL-based discovery found nothing and the redis provider was lost.
+        // The platform class loader simulates that blindness here: with the old
+        // ServiceLoader.load(Class) call this test finds zero providers (red).
+        ClassLoader originalTccl = Thread.currentThread().getContextClassLoader();
+        Thread.currentThread().setContextClassLoader(ClassLoader.getPlatformClassLoader());
+        try {
+            List<CheckpointerProvider> providers = CheckpointerFactory.discoverProviders();
+            assertTrue(providers.stream().anyMatch(provider -> "redis".equals(provider.typeName())),
+                    "redis provider must be discovered even when the TCCL cannot see the services file");
+            assertTrue(providers.stream().anyMatch(provider -> "in_memory".equals(provider.typeName())));
+            assertTrue(providers.stream().anyMatch(provider -> "persistence".equals(provider.typeName())));
+        } finally {
+            Thread.currentThread().setContextClassLoader(originalTccl);
+        }
     }
 
     // ========== Manual register() ==========

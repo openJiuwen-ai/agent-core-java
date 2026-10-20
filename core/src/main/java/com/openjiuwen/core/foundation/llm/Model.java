@@ -8,7 +8,6 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.clients.ClientRegistry;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
-import com.openjiuwen.core.context.context.KVCacheManager;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -21,7 +20,6 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelClients;
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.callback.CallbackDecorators;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.LLMCallEvents;
@@ -47,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Mirrors Python's {@code Model} in
  * {@code openjiuwen/core/foundation/llm/model.py}.</p>
  */
-public class Model implements KVCacheManager.ReleaseCapableModel {
+public class Model {
 
     /**
      * Invoke-only delegate used by existing Java callers.
@@ -95,16 +93,6 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
 
         default Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             throw new IllegalStateException("Model client lacks stream support");
-        }
-
-        default CompletionStage<Boolean> release(String sessionId, List<BaseMessage> messages,
-                                                 Integer messagesReleasedIndex, List<ToolInfo> tools,
-                                                 Integer toolsReleasedIndex) {
-            return CompletableFuture.completedFuture(false);
-        }
-
-        default boolean supportsKvCacheRelease() {
-            return false;
         }
 
         default CompletionStage<ImageGenerationResponse> generateImage(List<UserMessage> messages,
@@ -402,24 +390,6 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         return streamAsync(messages, ModelInvokeOptions.builder().build());
     }
 
-    @Override
-    public CompletionStage<Boolean> release(String sessionId, List<BaseMessage> messages,
-                                            Integer messagesReleasedIndex, List<ToolInfo> tools,
-                                            Integer toolsReleasedIndex) {
-        return client.release(sessionId, safeMessages(messages), messagesReleasedIndex, tools,
-                toolsReleasedIndex);
-    }
-
-    public CompletionStage<Boolean> release(String sessionId, List<BaseMessage> messages,
-                                            Integer messagesReleasedIndex, String model,
-                                            List<ToolInfo> tools, Integer toolsReleasedIndex) {
-        return release(sessionId, messages, messagesReleasedIndex, tools, toolsReleasedIndex);
-    }
-
-    public boolean supportsKvCacheRelease() {
-        return client.supportsKvCacheRelease();
-    }
-
     /**
      * Whether the underlying client supports Ascend KV cache affinity actions.
      *
@@ -552,21 +522,6 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
          */
         java.util.concurrent.CompletableFuture<Boolean> prefetchKvc(String sessionId, String parentSessionId,
                 Double timeout);
-    }
-
-    public Map<String, Object> buildKvCacheInvokeKwargs(Object session, boolean enableKvCacheRelease) {
-        if (!supportsKvCacheRelease()) {
-            return Map.of();
-        }
-        Map<String, Object> extra = new LinkedHashMap<>();
-        Object sessionId = getSessionId(session);
-        if (sessionId != null) {
-            extra.put("session_id", sessionId);
-        }
-        if (enableKvCacheRelease) {
-            extra.put("enable_cache_sharing", true);
-        }
-        return extra;
     }
 
     public CompletionStage<ImageGenerationResponse> generateImage(List<UserMessage> messages) {
@@ -980,10 +935,6 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
             }
         }
 
-        @Override
-        public boolean supportsKvCacheRelease() {
-            return delegate.supportsKvCacheRelease();
-        }
     }
 
     /**

@@ -6,6 +6,7 @@ package com.openjiuwen.core.operator.legacy.llm_call;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -29,7 +30,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/operator/legacy/llm_call/base.py}.</p>
  */
 public class LLMCall {
-
     public static final String DEFAULT_USER_PROMPT = "{{query}}";
 
     private final Model llm;
@@ -162,6 +162,7 @@ public class LLMCall {
         return ModelInvokeOptions.builder()
                 .model(modelName)
                 .tools(tools == null ? null : List.copyOf(tools))
+                .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, llm.getModelClientConfig()))
                 .build();
     }
 
@@ -221,7 +222,6 @@ public class LLMCall {
     }
 
     private static final class LegacyStream implements Iterator<AssistantMessageChunk>, AutoCloseable {
-
         private final Iterator<AssistantMessageChunk> delegate;
         private final String llmCallId;
         private final Map<String, Object> inputs;

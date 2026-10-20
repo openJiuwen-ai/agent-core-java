@@ -18,6 +18,7 @@ import com.openjiuwen.core.controller.schema.Intent;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
@@ -40,7 +41,6 @@ import java.util.Map;
  * {@code openjiuwen/core/controller/modules/intent_recognizer.py}.
  */
 public class IntentRecognizer {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MAX_MESSAGE_LEN = 50;
 
@@ -183,6 +183,8 @@ public class IntentRecognizer {
                     messages,
                     ModelInvokeOptions.builder()
                             .tools(toolkits.getOpenaiToolSchemas(config.getIntentTypeList()))
+                            .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                                    null, model.getModelClientConfig()))
                             .build()
             ).toCompletableFuture().join();
         } catch (Exception e) {
@@ -219,6 +221,8 @@ public class IntentRecognizer {
                         messages,
                         ModelInvokeOptions.builder()
                                 .tools(toolkits.getOpenaiToolSchemas(null))
+                                .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                                        null, model.getModelClientConfig()))
                                 .build()
                 ).toCompletableFuture().join();
             } catch (Exception e) {

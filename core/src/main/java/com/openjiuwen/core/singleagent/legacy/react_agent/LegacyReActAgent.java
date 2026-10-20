@@ -14,6 +14,7 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
@@ -149,6 +150,7 @@ public class LegacyReActAgent extends BaseAgent {
             ModelInvokeOptions options = ModelInvokeOptions.builder()
                     .tools(tools)
                     .model(modelName(config))
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, getLlm().getModelClientConfig()))
                     .build();
             return getLlm().invoke(messages, options).thenApply(output -> {
                 MessageUtils.addAiMessage(output, contextPort, sessionPort).toCompletableFuture().join();

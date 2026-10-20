@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.UnknownHostException;
+import java.net.http.HttpConnectTimeoutException;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -127,7 +128,8 @@ public final class ModelCircuitBreaker {
         Throwable cursor = error;
         while (cursor != null) {
             if (cursor instanceof ConnectException || cursor instanceof UnknownHostException
-                    || cursor instanceof NoRouteToHostException) {
+                    || cursor instanceof NoRouteToHostException
+                    || cursor instanceof HttpConnectTimeoutException) {
                 return true;
             }
             String message = cursor.getMessage();

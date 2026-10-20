@@ -30,6 +30,8 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
@@ -57,7 +59,6 @@ import java.util.logging.Logger;
  * {@code openjiuwen/core/application/workflow_agent/workflow_event_handler.py}.</p>
  */
 public class WorkflowEventHandler extends EventHandler {
-
     private static final Logger LOGGER = Logger.getLogger(WorkflowEventHandler.class.getName());
     private static final String WORKFLOW_CONTROLLER_STATE = "workflow_controller";
     private static final String INTERRUPTED_TASKS = "interrupted_tasks";
@@ -1002,7 +1003,9 @@ public class WorkflowEventHandler extends EventHandler {
                     .toCompletableFuture()
                     .join();
             if (modelObject instanceof Model model) {
-                AssistantMessage message = model.invoke(messages).toCompletableFuture().join();
+                AssistantMessage message = model.invoke(messages, ModelInvokeOptions.builder()
+                        .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                        .build()).toCompletableFuture().join();
                 return message == null ? "" : message.getContentAsString().strip();
             }
             try {

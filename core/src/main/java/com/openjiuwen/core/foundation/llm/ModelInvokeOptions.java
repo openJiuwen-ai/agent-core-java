@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.llm;
@@ -22,7 +22,6 @@ import java.util.Map;
 @Value
 @Builder(toBuilder = true)
 public class ModelInvokeOptions {
-
     List<?> tools;
 
     Float temperature;
@@ -37,6 +36,12 @@ public class ModelInvokeOptions {
 
     BaseOutputParser outputParser;
 
+    /**
+     * Per-call idle (peer silence) timeout override in seconds: covers the
+     * stream segment gap and blocking body read idle window for this call only; never a total
+     * call duration cap, and never widens the response-header wait window. Null inherits the
+     * client configuration.
+     */
     Float timeout;
 
     ModelRetryListener retryListener;

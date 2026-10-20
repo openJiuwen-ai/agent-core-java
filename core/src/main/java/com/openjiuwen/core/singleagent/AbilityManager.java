@@ -34,6 +34,8 @@ import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.Rails;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.runbudget.RunBudgetContext;
+import com.openjiuwen.core.singleagent.runbudget.RunBudgetState;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
@@ -51,6 +53,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -69,6 +72,9 @@ import java.util.concurrent.TimeoutException;
 public class AbilityManager {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> FILE_PATH_TOOL_NAMES = Set.of("read_file", "write_file", "edit_file");
+
+    /** Per-field truncation limit of the structured summary for multimodal tool results. */
+    private static final int MAX_SUMMARY_FIELD_CHARS = 500;
     private static final double DEFAULT_TOOL_CALL_TIMEOUT_SECONDS = envDouble(
             "DEFAULT_TOOL_CALL_TIMEOUT", 300.0D);
     private static final double MAX_TOOL_CALL_TIMEOUT_HARD_LIMIT = envDouble(
@@ -712,6 +718,11 @@ public class AbilityManager {
         if (previousSession == null && effectiveSession != null) {
             SessionContextHolder.setCurrentSession(effectiveSession);
         }
+        // Expose the remaining time budget to the per-tool timeout resolver on this lane thread.
+        Optional<RunBudgetState> budgetState = RunBudgetState.from(toolCtx.getExtra());
+        boolean isBudgetAttached = budgetState.isPresent() && budgetState.get().isTimeEnabled();
+        Optional<RunBudgetState> displacedBudget = isBudgetAttached
+                ? RunBudgetContext.attach(budgetState.get()) : Optional.empty();
         try {
             ExecutionResult result = executeOne(toolCall, resolver, effectiveSession, tag);
             if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
@@ -723,6 +734,9 @@ public class AbilityManager {
             }
             return result;
         } finally {
+            if (isBudgetAttached) {
+                RunBudgetContext.detach(displacedBudget);
+            }
             SessionContextHolder.restoreCurrentSession(previousSession);
         }
     }
@@ -1015,6 +1029,12 @@ public class AbilityManager {
         if (callTimeout == null) {
             callTimeout = MAX_TOOL_CALL_TIMEOUT_HARD_LIMIT;
         }
+        // Clamp the tool wait to the remaining time budget when a budget is attached.
+        OptionalDouble remainingBudget = RunBudgetContext.currentRemainingSeconds();
+        if (remainingBudget.isPresent() && remainingBudget.getAsDouble() > 0
+                && remainingBudget.getAsDouble() < callTimeout) {
+            callTimeout = remainingBudget.getAsDouble();
+        }
         try {
             Object result = invokeWithTimeout(tool, inputs, session, callTimeout);
             logSuccessfulToolResult(toolCall.getName(), result);
@@ -1269,6 +1289,22 @@ public class AbilityManager {
         return text.isEmpty() ? "?" : text;
     }
 
+    /**
+     * Build the ToolMessage text content of one tool result.
+     *
+     * <p>Failure surfaces the error text; {@code data.content} is used when
+     * present. A result whose {@code data} carries a {@code multimodal} list
+     * but no text content is summarized structurally (success flag, item
+     * count, per-item type and source path, other fields truncated) instead
+     * of stringifying the whole envelope: the media itself is attached once
+     * by the multimodal UserMessage channel, so dumping encoded base64 into
+     * the text context would send the same payload twice. Every other result
+     * keeps the legacy {@code String.valueOf} fallback unchanged.</p>
+     *
+     * @param result tool result envelope; may be {@code null}
+     * @return tool message text, never {@code null}
+     * @since 0.1.17
+     */
     public static String buildToolMessageContent(Object result) {
         Object data = attribute(result, "data");
         Object error = attribute(result, "error");
@@ -1293,7 +1329,68 @@ public class AbilityManager {
         if (result == null) {
             return "";
         }
+        if (data instanceof Map<?, ?> multimodalData && multimodalData.containsKey("multimodal")) {
+            return summarizeMultimodalToolData(success, multimodalData);
+        }
         return String.valueOf(result);
+    }
+
+    private static String summarizeMultimodalToolData(Object success, Map<?, ?> dataMap) {
+        Object items = dataMap.get("multimodal");
+        int count = items instanceof List<?> list ? list.size() : 0;
+        List<String> lines = new ArrayList<>();
+        lines.add("Tool returned no text content (success=" + success + "); multimodal items: " + count
+                + ". Media payloads are attached as separate image/video parts;"
+                + " encoded data is omitted here.");
+        if (items instanceof List<?> list) {
+            for (int index = 0; index < list.size(); index++) {
+                lines.add((index + 1) + ". " + describeMultimodalItem(list.get(index)));
+            }
+        }
+        Map<String, Object> otherFields = new LinkedHashMap<>();
+        dataMap.forEach((key, value) -> {
+            if (!"multimodal".equals(String.valueOf(key))) {
+                otherFields.put(String.valueOf(key), truncateSummaryField(value));
+            }
+        });
+        if (!otherFields.isEmpty()) {
+            lines.add("other data fields: " + otherFields);
+        }
+        return String.join("\n", lines);
+    }
+
+    private static String describeMultimodalItem(Object item) {
+        if (!(item instanceof Map<?, ?> itemMap)) {
+            return "item is not a map (" + (item == null ? "null" : item.getClass().getSimpleName()) + ")";
+        }
+        Object rawType = itemMap.get("type");
+        StringBuilder description = new StringBuilder("type=").append(rawType == null ? "unknown" : rawType);
+        Object sourcePath = itemMap.get("source_path");
+        if (sourcePath != null) {
+            description.append(" source_path=").append(sourcePath);
+        }
+        return description.append(" data_url=").append(describeDataUrl(itemMap.get("data_url"))).toString();
+    }
+
+    private static String describeDataUrl(Object dataUrl) {
+        if (dataUrl == null) {
+            return "missing";
+        }
+        String text = String.valueOf(dataUrl);
+        if (text.startsWith("data:")) {
+            int comma = text.indexOf(',');
+            String header = comma > 0 ? text.substring(0, Math.min(comma, 64)) : "data:";
+            return header + ",<base64 " + text.length() + " chars omitted>";
+        }
+        return "<non-data URL of " + text.length() + " chars, not attached as media>";
+    }
+
+    private static String truncateSummaryField(Object value) {
+        String text = String.valueOf(value);
+        if (text.length() <= MAX_SUMMARY_FIELD_CHARS) {
+            return text;
+        }
+        return text.substring(0, MAX_SUMMARY_FIELD_CHARS) + "...<" + text.length() + " chars truncated>";
     }
 
     public static List<ToolCall> normalizeToolCalls(Object toolCall) {
@@ -1748,7 +1845,11 @@ public class AbilityManager {
         }
         // When shouldFailTaskOnToolError is enabled, force-finish the task
         // so the agent loop does not continue after a tool execution failure.
-        if (toolCtx != null && isFailTaskOnToolError(toolCtx) && toolCall != null) {
+        // A pending rail-staged force-finish (e.g. a run-budget termination staged in
+        // before/after-tool hooks) wins, mirroring the agent-level guard that yields
+        // to any existing force-finish request.
+        if (toolCtx != null && !toolCtx.hasForceFinishRequest() && isFailTaskOnToolError(toolCtx)
+                && toolCall != null) {
             String errorMsg = error.getMessage();
             Map<String, Object> outcome = new LinkedHashMap<>();
             outcome.put("tool_name", toolCall.getName());

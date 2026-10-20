@@ -1,4 +1,4 @@
-# com.openjiuwen.core.context_engine.context.KVCacheManager
+# com.openjiuwen.core.context.context.KVCacheManager
 
 ## class KVCacheManager
 
@@ -6,31 +6,20 @@
 public class KVCacheManager
 ```
 
-`KVCacheManager` 用于记录上一次发送给推理端的 `ContextWindow`，在后续窗口发生变化时计算需要释放的 KV Cache 起点。
-
-## 构造方法
-
-### `public KVCacheManager(String sessionId)`
-
-创建绑定到某个会话 ID 的 KV Cache 管理器。
+`KVCacheManager` 用于对比前后两次发送给推理端的 `ContextWindow`，计算 KV Cache 需要失效的半开区间（消息列表与工具列表的首个差异下标）。当前窗口差异失效统一由 ascend-affinity 的 `agent_hint` 管理协议（`KVCacheModelCallHook.handleContextWindowChange`）消费。
 
 ## 主要方法
 
-### `public void release(ContextWindow contextWindow)`
+### `public static Optional<ReleaseDecision> firstChangedDecision(ContextWindow previousWindow, ContextWindow nextWindow)`
 
-仅基于窗口内容做差异检查；首次调用只缓存窗口，不触发释放。
-
-### `public void release(ContextWindow contextWindow, Object model)`
-
-在窗口和工具发生差异时，尝试调用 `InferenceAffinityModel.release(...)` 释放旧缓存。
+对比前一个 LLM 绑定窗口与下一个窗口，返回变更决策；无前序窗口时返回 empty。
 
 **说明**
 
-- 仅当 `model instanceof InferenceAffinityModel` 时才会执行真实释放；否则只记录日志并更新 `lastContextWindow`。
-- 比较逻辑会分别检查消息列表和工具列表的首个差异索引。
-- 失败不会中断主流程，而是记录 warning 日志。
+- 追加式变化视为无变化；追加工具会使旧消息后缀（紧跟 system 提示之后）一并失效。
+- 返回的 `ReleaseDecision(shouldRelease, messagesReleasedIndex, toolsReleasedIndex)` 中的下标为半开区间起点，由 `KVCacheModelCallHook` 转换为 `agent_hint` 管理动作。
+- 该方法为纯函数，不修改任何状态。
 
 ## 说明
 
-- `KVCacheManagerTest` 验证了首次调用、相同窗口、消息变更、工具变更以及连续多次调用场景。
-- 当前 Java 版本重点实现了差异检测逻辑；实际释放能力仍依赖推理模型实现。
+- `ReleaseDecision` 为记录类型，携带 `shouldRelease` 与消息/工具两个差异起点。

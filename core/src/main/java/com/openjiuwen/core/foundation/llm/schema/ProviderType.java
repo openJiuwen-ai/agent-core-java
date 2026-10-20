@@ -21,7 +21,6 @@ public enum ProviderType {
     SILICON_FLOW("SiliconFlow", "SiliconFlow"),
     DASH_SCOPE("DashScope", "DashScope"),
     DEEP_SEEK("DeepSeek", "DeepSeek"),
-    INFERENCE_AFFINITY("InferenceAffinity", "InferenceAffinity"),
     ASCEND_AFFINITY("AscendAffinity", "AscendAffinity"),
     INTELLI_ROUTER("IntelliRouter", "intelli_router");
 

@@ -9,6 +9,8 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
@@ -33,7 +35,6 @@ import java.util.regex.Pattern;
   * Python file: {@code openjiuwen/core/workflow/components/llm/intent_detection_comp.py}.
  */
 public class IntentDetectionExecutable extends ComponentExecutable {
-
     private static final String CLASS_KEY = "class";
     private static final String REASON_KEY = "reason";
     private static final String CLASSIFICATION_ID = "classificationId";
@@ -196,7 +197,9 @@ public class IntentDetectionExecutable extends ComponentExecutable {
                 .format(currentInputs).toMessages();
 
         try {
-            AssistantMessage llmOutput = llm.invoke(llmInputs).toCompletableFuture().join();
+            AssistantMessage llmOutput = llm.invoke(llmInputs, ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, llm.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             return llmOutput.getContent() != null ? llmOutput.getContent().toString() : "";
         } catch (Exception e) {
             Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;

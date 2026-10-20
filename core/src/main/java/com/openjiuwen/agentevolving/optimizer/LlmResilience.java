@@ -30,7 +30,6 @@ import java.util.function.Predicate;
  * {@code openjiuwen/agent_evolving/optimizer/llm_resilience.py}.</p>
  */
 public final class LlmResilience {
-
     private LlmResilience() {
     }
 
@@ -309,6 +308,7 @@ public final class LlmResilience {
         ModelInvokeOptions options = ModelInvokeOptions.builder()
                 .model(model)
                 .temperature(temperature)
+                // per-call timeout overrides only the idle (peer silence) layer, not a total cap
                 .timeout((float) timeoutSecs)
                 .extraFields(extraFields != null ? new LinkedHashMap<>(extraFields) : new LinkedHashMap<>())
                 .build();

@@ -372,7 +372,6 @@ class FullCompactProcessorMissingTest {
                 session,
                 null,
                 null,
-                null,
                 null);
     }
 

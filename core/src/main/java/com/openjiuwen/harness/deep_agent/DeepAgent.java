@@ -425,23 +425,45 @@ public class DeepAgent implements AutoCloseable {
             if (provider == null || apiKey == null || apiBase == null) {
                 return;
             }
-            ModelClientConfig clientConfig = ModelClientConfig.builder()
+            ModelClientConfig.ModelClientConfigBuilder clientConfigBuilder = ModelClientConfig.builder()
                     .clientId(string(firstPresent(backendMap, new String[] {"client_id", "clientId"})))
                     .clientProvider(provider)
                     .apiKey(apiKey)
                     .apiBase(apiBase)
-                    .timeout(doubleOrDefault(firstPresent(backendMap, new String[] {"timeout"}), 60.0))
                     .maxRetries(intOrDefault(firstPresent(backendMap, new String[] {"max_retries", "maxRetries"}), 3))
                     .verifySsl(booleanOrDefault(
                             firstPresent(backendMap, new String[] {"verify_ssl", "verifySsl"}),
                             true))
                     .sslCert(string(firstPresent(backendMap, new String[] {"ssl_cert", "sslCert"})))
-                    .headers(headers(firstPresent(backendMap, new String[] {"headers"})))
-                    .build();
+                    .headers(headers(firstPresent(backendMap, new String[] {"headers"})));
+            Object legacyTimeout = firstPresent(backendMap, new String[] {"timeout"});
+            if (legacyTimeout != null) {
+                clientConfigBuilder.timeout(doubleOrDefault(legacyTimeout, 60.0));
+            }
+            applyTieredTimeoutKeys(clientConfigBuilder, backendMap);
+            ModelClientConfig clientConfig = clientConfigBuilder.build();
             runtimeConfig.setModelClientConfig(clientConfig);
             runtimeConfig.setModelProvider(provider);
             runtimeConfig.setApiKey(apiKey);
             runtimeConfig.setApiBase(apiBase);
+        }
+    }
+
+    private static void applyTieredTimeoutKeys(ModelClientConfig.ModelClientConfigBuilder clientConfigBuilder,
+            Map<?, ?> backendMap) {
+        Object connectTimeoutSeconds = firstPresent(backendMap,
+                new String[] {"connect_timeout_seconds", "connectTimeoutSeconds"});
+        if (connectTimeoutSeconds != null) {
+            clientConfigBuilder.connectTimeoutSeconds(
+                    ModelClientConfig.validateConnectTimeoutSeconds(
+                            doubleOrDefault(connectTimeoutSeconds, 10.0)));
+        }
+        Object streamIdleSeconds = firstPresent(backendMap,
+                new String[] {"stream_idle_seconds", "streamIdleSeconds"});
+        if (streamIdleSeconds != null) {
+            clientConfigBuilder.streamIdleSeconds(
+                    ModelClientConfig.validateStreamIdleSeconds(
+                            doubleOrDefault(streamIdleSeconds, 600.0)));
         }
     }
 
@@ -881,35 +903,57 @@ public class DeepAgent implements AutoCloseable {
      * rails, external MCP sync, permission rail, task-loop runtime.
      */
     private void runInitializationSequence() {
+        registerConfiguredTools();
+        // Register config.mcps before rails (Python _register_pending_mcps).
+        registerPendingMcps();
+        initWorkspace();
+        registerConfiguredRails();
+        // Sync MCP servers already registered externally (e.g. ResourceMgr.addMcpServer).
+        syncMcpServersFromResourceMgr();
+        registerPermissionRailIfNeeded();
+        if (config.isEnableTaskLoop()) {
+            ensureTaskLoopRuntime();
+        }
+    }
+
+    private void registerConfiguredTools() {
         if (config.getTools() != null) {
             for (Object tool : config.getTools()) {
                 registerConfiguredTool(tool);
             }
         }
-        // Register config.mcps before rails (Python _register_pending_mcps).
-        registerPendingMcps();
-        initWorkspace();
+    }
+
+    private void registerConfiguredRails() {
         if (config.getRails() != null) {
             for (Object rail : config.getRails()) {
                 setupSingleRail(rail);
             }
         }
-        // Sync MCP servers already registered externally (e.g. ResourceMgr.addMcpServer).
-        syncMcpServersFromResourceMgr();
-        if (config.getPermissions() != null && Boolean.TRUE.equals(config.getPermissions().get("enabled"))) {
-            PermissionInterruptRail rail = PermissionFactory.buildPermissionInterruptRail(
-                    config.getPermissions(),
-                    config.getPermissionHost(),
-                    workspaceRootPath()
-            );
-            rail.init(this);
-            registeredRails.add(rail);
-            if (agent != null && railsBoundToAgent.add(rail)) {
-                agent.registerRail(rail).toCompletableFuture().join();
-            }
+    }
+
+    private void registerPermissionRailIfNeeded() {
+        if (config.getPermissions() == null) {
+            return;
         }
-        if (config.isEnableTaskLoop()) {
-            ensureTaskLoopRuntime();
+        Object enabledFlag = config.getPermissions().get("enabled");
+        // Consistent with PermissionEngine.boolOrDefault(config.get("enabled"), true):
+        // when "enabled" is missing (null), default to true; only explicit false disables.
+        if (enabledFlag instanceof Boolean isDisabled && !isDisabled) {
+            return;
+        }
+        PermissionInterruptRail rail = PermissionFactory.buildPermissionInterruptRail(
+                config.getPermissions(),
+                config.getPermissionHost(),
+                workspaceRootPath()
+        );
+        if (rail == null) {
+            return;
+        }
+        rail.init(this);
+        registeredRails.add(rail);
+        if (agent != null && railsBoundToAgent.add(rail)) {
+            agent.registerRail(rail).toCompletableFuture().join();
         }
     }
 

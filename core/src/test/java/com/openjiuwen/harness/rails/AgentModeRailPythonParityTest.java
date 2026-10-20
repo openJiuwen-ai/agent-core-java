@@ -10,7 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -20,6 +23,7 @@ import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.schema.DeepAgentState;
 import com.openjiuwen.harness.schema.PlanModeState;
+import com.openjiuwen.harness.tools.subagent.TaskTool;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -63,6 +67,8 @@ class AgentModeRailPythonParityTest {
                 this::beforeModelCallInAutoModeRemovesModeSection);
         add(tests, "test_after_tool_call_register_unregister_task_tool_and_respect_skip",
                 this::afterToolCallRegisterUnregisterTaskToolAndRespectSkip);
+        add(tests, "test_plan_mode_placeholder_then_real_task_tool_no_conflict",
+                this::planModePlaceholderThenRealTaskToolDoesNotConflict);
         return tests;
     }
 
@@ -222,6 +228,31 @@ class AgentModeRailPythonParityTest {
         skipped.rail.afterToolCall(skipped.context);
 
         assertFalse(skipped.rail.ownsTaskTool());
+    }
+
+    private void planModePlaceholderThenRealTaskToolDoesNotConflict() {
+        Harness enter = makeHarness("enter_plan_mode", "plan", Map.of(), true);
+        try {
+            enter.rail.afterToolCall(enter.context);
+            assertTrue(enter.rail.ownsTaskTool());
+
+            // A schema-carrying real TaskTool registered after the plan-mode placeholder must
+            // reuse the existing global entry, not fail with a duplicate-definition conflict
+            // (the registry only reuses entries whose declared surfaces match exactly).
+            TaskTool realTaskTool = new TaskTool(null, enter.agent);
+            Result<ToolCard> result =
+                    Runner.resourceMgr().addTool(realTaskTool, "task_tool", "parity-probe-owner");
+            assertTrue(result.isOk());
+
+            // The probe's claim is released while the agent's own claim still holds the entry,
+            // so the entry must NOT be removed yet (removal happens only when no owner remains).
+            boolean isEntryRemoved = Runner.resourceMgr().removeToolOwnedBy("task_tool", "parity-probe-owner");
+            assertFalse(isEntryRemoved);
+        } finally {
+            Harness exit = new Harness(enter.rail, enter.agent, enter.builder,
+                    ctx(enter.agent, "exit_plan_mode", "plan", Map.of()));
+            exit.rail.afterToolCall(exit.context);
+        }
     }
 
     private static Harness makeHarness(String toolName, String mode) {

@@ -12,6 +12,8 @@ import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
@@ -545,7 +547,9 @@ public class FullCompactProcessor extends ContextProcessor {
                 new SystemMessage(BASE_COMPACT_PROMPT),
                 new UserMessage(serializeMessages(messages)));
         try {
-            AssistantMessage response = model.invoke(promptMessages).toCompletableFuture().join();
+            AssistantMessage response = model.invoke(promptMessages, ModelInvokeOptions.builder()
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
+                    .build()).toCompletableFuture().join();
             recordCompressionUsage(response);
             String content = response == null ? "" : response.getContentAsString().strip();
             if (content.isBlank()) {

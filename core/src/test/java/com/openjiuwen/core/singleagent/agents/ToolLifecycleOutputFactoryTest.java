@@ -50,7 +50,7 @@ class ToolLifecycleOutputFactoryTest {
 
         OutputSchema output = ToolLifecycleOutputFactory.buildToolResultOutput(toolCall, result, 4);
 
-        assertThat(output.getType()).isEqualTo("tool_result");
+        assertThat(output.getType()).isEqualTo("tool_output");
         assertThat(output.getIndex()).isEqualTo(4);
         assertThat(payload(output))
                 .containsEntry("tool_call_id", "call-1")

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.foundation.llm.multimodal.MaterialAccessConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -95,6 +96,13 @@ public class ReActAgentConfig {
     @JsonProperty("model_client_config")
     private ModelClientConfig modelClientConfig;
 
+    /**
+     * Per-call idle (peer silence) timeout declaration in seconds for this agent's model
+     * calls; null means undeclared and the model client configuration applies.
+     */
+    @JsonProperty("model_stream_idle_seconds")
+    private Double modelStreamIdleSeconds;
+
     @JsonProperty("model_config_obj")
     private ModelRequestConfig modelConfigObj;
 
@@ -116,6 +124,9 @@ public class ReActAgentConfig {
     private StepCheckpointPolicy stepCheckpointPolicy = StepCheckpointPolicy.STEP_AUTO;
 
     private Object workspace;
+
+    @JsonProperty("material_access")
+    private MaterialAccessConfig materialAccess;
 
     public ReActAgentConfig configureModel(String modelName) {
         this.modelName = normalizeString(modelName);
@@ -157,23 +168,19 @@ public class ReActAgentConfig {
 
     public ReActAgentConfig configureContextEngine(Integer maxContextMessageNum,
                                                    Integer defaultWindowRoundNum,
-                                                   boolean enableReload,
-                                                   boolean enableKvCacheRelease) {
+                                                   boolean isReloadEnabled) {
         ContextEngineConfig config = new ContextEngineConfig();
         config.setMaxContextMessageNum(maxContextMessageNum);
         config.setDefaultWindowRoundNum(defaultWindowRoundNum);
-        config.setEnableReload(enableReload);
-        config.setEnableKvCacheRelease(enableKvCacheRelease);
+        config.setEnableReload(isReloadEnabled);
         this.contextEngineConfig = config;
         return this;
     }
 
     public ReActAgentConfig configure_context_engine(Integer maxContextMessageNum,
                                                      Integer defaultWindowRoundNum,
-                                                     boolean enableReload,
-                                                     boolean enableKvCacheRelease) {
-        return configureContextEngine(maxContextMessageNum, defaultWindowRoundNum, enableReload,
-                enableKvCacheRelease);
+                                                     boolean isReloadEnabled) {
+        return configureContextEngine(maxContextMessageNum, defaultWindowRoundNum, isReloadEnabled);
     }
 
     public ReActAgentConfig configureMemScope(String memScopeId) {
@@ -263,6 +270,18 @@ public class ReActAgentConfig {
 
     public ReActAgentConfig configure_context_processors(List<ContextEngine.ProcessorSpec> processors) {
         return configureContextProcessors(processors);
+    }
+
+    /**
+     * Configure multimodal material access (allowed roots, asset root and budgets).
+     *
+     * @param materialAccess material access configuration; {@code null} keeps framework defaults
+     * @return this configuration for chaining
+     * @since 0.1.17
+     */
+    public ReActAgentConfig configureMaterialAccess(MaterialAccessConfig materialAccess) {
+        setMaterialAccess(materialAccess);
+        return this;
     }
 
     public String getMemScopeId() {
@@ -407,6 +426,35 @@ public class ReActAgentConfig {
         return llmReturnTokenIds;
     }
 
+    /**
+     * Returns the per-call idle timeout declaration, or null when undeclared.
+     *
+     * @return idle timeout in seconds, nullable
+     */
+    public Double getModelStreamIdleSeconds() {
+        return modelStreamIdleSeconds;
+    }
+
+    /**
+     * Sets the per-call idle (peer silence) timeout declaration; null means undeclared.
+     *
+     * @param modelStreamIdleSeconds idle timeout in seconds, nullable
+     */
+    public void setModelStreamIdleSeconds(Double modelStreamIdleSeconds) {
+        this.modelStreamIdleSeconds = modelStreamIdleSeconds;
+    }
+
+    /**
+     * Chain-style setter for the per-call idle timeout declaration.
+     *
+     * @param modelStreamIdleSeconds idle timeout in seconds, nullable
+     * @return this config
+     */
+    public ReActAgentConfig configureModelStreamIdleSeconds(Double modelStreamIdleSeconds) {
+        this.modelStreamIdleSeconds = modelStreamIdleSeconds;
+        return this;
+    }
+
     public void setLlmReturnTokenIds(boolean llmReturnTokenIds) {
         this.llmReturnTokenIds = llmReturnTokenIds;
     }
@@ -513,6 +561,26 @@ public class ReActAgentConfig {
         this.stepCheckpointPolicy = stepCheckpointPolicy == null
                 ? StepCheckpointPolicy.STEP_AUTO
                 : stepCheckpointPolicy;
+    }
+    
+    /**
+     * Return the multimodal material access configuration.
+     *
+     * @return configured material access; {@code null} keeps framework defaults
+     * @since 0.1.17
+     */
+    public MaterialAccessConfig getMaterialAccess() {
+        return materialAccess;
+    }
+
+    /**
+     * Set the multimodal material access configuration.
+     *
+     * @param materialAccess material access configuration; {@code null} keeps framework defaults
+     * @since 0.1.17
+     */
+    public void setMaterialAccess(MaterialAccessConfig materialAccess) {
+        this.materialAccess = materialAccess;
     }
 
     private static ContextEngineConfig defaultContextEngineConfig() {
@@ -680,6 +748,18 @@ public class ReActAgentConfig {
          */
         public Builder stepCheckpointPolicy(StepCheckpointPolicy stepCheckpointPolicy) {
             config.setStepCheckpointPolicy(stepCheckpointPolicy);
+            return this;
+        }
+        
+        /**
+         * Configure multimodal material access on the builder.
+         *
+         * @param materialAccess material access configuration; may be {@code null}
+         * @return this builder
+         * @since 0.1.17
+         */
+        public Builder materialAccess(MaterialAccessConfig materialAccess) {
+            config.setMaterialAccess(materialAccess);
             return this;
         }
 

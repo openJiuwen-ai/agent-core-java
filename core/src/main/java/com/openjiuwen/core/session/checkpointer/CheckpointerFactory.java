@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,7 +14,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Registry for checkpointer providers and default instances.
  *
  * <p>Built-in types are discovered via {@link ServiceLoader} from
- * {@code META-INF/services/com.openjiuwen.core.session.checkpointer.CheckpointerProvider}.
+ * {@code META-INF/services/com.openjiuwen.core.session.checkpointer.CheckpointerProvider},
+ * using this class's own class loader (see {@link #discoverProviders()}).
  * Each provider is registered under {@link CheckpointerProvider#typeName()} and
  * {@link CheckpointerProvider#aliases()}. Service adapters can also register
  * additional types via {@link #register(String, CheckpointerProvider)}
@@ -29,12 +32,35 @@ public final class CheckpointerFactory {
     private static volatile Checkpointer defaultCheckpointer;
 
     static {
-        for (CheckpointerProvider provider : ServiceLoader.load(CheckpointerProvider.class)) {
+        for (CheckpointerProvider provider : discoverProviders()) {
             registerProviderNames(provider);
         }
         // Ensure critical builtins exist even if META-INF is incomplete on the classpath.
         REGISTRY.putIfAbsent("in_memory", new InMemoryCheckpointerProvider());
         REGISTRY.putIfAbsent("persistence", new PersistenceCheckpointerProvider());
+    }
+
+    /**
+     * Discover checkpointer providers via {@link ServiceLoader} using this class's own
+     * class loader.
+     *
+     * <p>Passing the class loader explicitly decouples discovery from the calling thread:
+     * {@code ServiceLoader.load(Class)} falls back to the thread context class loader,
+     * which is not guaranteed to see this archive. {@code ForkJoinPool} common pool
+     * workers (for example the thread running {@code RunnerImpl.start()}) use the system
+     * class loader, which cannot read {@code META-INF/services} entries of nested jars
+     * inside a Spring Boot fat jar — discovery came back empty there and the redis
+     * provider was silently lost. Package-private for regression tests.</p>
+     *
+     * @return discovered providers (possibly empty, never null)
+     */
+    static List<CheckpointerProvider> discoverProviders() {
+        List<CheckpointerProvider> providers = new ArrayList<>();
+        for (CheckpointerProvider provider
+                : ServiceLoader.load(CheckpointerProvider.class, CheckpointerFactory.class.getClassLoader())) {
+            providers.add(provider);
+        }
+        return providers;
     }
 
     private static void registerProviderNames(CheckpointerProvider provider) {

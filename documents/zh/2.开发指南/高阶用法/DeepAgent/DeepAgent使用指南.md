@@ -17,6 +17,9 @@ DeepAgent 是 openjiuwen Java Harness 层的高阶智能体封装，在核心 `R
   - [2. Tool 注册与使用](#2-tool-注册与使用星期--日期java-tool)
   - [3. Rail 使用](#3-rail-使用llm-调用前注入用户偏好)
   - [4. 权限中断](#4-权限中断禁止用户发起的文件删除)
+  - [5. 运行预算](#5-运行预算run-budget)
+  - [6. 模型调用超时分层](#6-模型调用超时分层连接--响应头等待--流式空闲)
+  - [7. 多租户隔离](#7-多租户隔离)
 - [Demo 命令速查](#demo-命令速查)
 - [多租户隔离](#多租户隔离)
 - [Stream 并发与线程池](#stream-并发与线程池)
@@ -61,8 +64,6 @@ Map<String, Object> result = (Map<String, Object>) agent.run(Map.of(
 Runner.stop();
 ```
 
-LLM 配置参见 Demo 工程 `src/main/resources/apiconfig.json`（DashScope 兼容 OpenAI API）。
-
 ---
 
 ## 执行模式
@@ -82,13 +83,9 @@ LLM 配置参见 Demo 工程 `src/main/resources/apiconfig.json`（DashScope 兼
 - **Plan 模式**：`AgentMode.PLAN` + `ensurePlanFile()`
 - **harness_config.yaml**：`DeepAgentsFactory.createDeepAgent(path)`
 
-详见 Demo 工程 `DeepAgentDemoMain` 各 demo 名称（`mvn exec:java -Dexec.args=list`）。
-
 ---
 
 ## 扩展能力示例
-
-以下四节与 `DeepAgentExample` 中 `extended` 预设一一对应，可直接运行验证。
 
 ### 1. Skill 注册与使用（日期 → 星期，Python 脚本）
 
@@ -102,13 +99,6 @@ workspace/skills/date_to_weekday/
 └── scripts/
     └── date_to_weekday.py   # 输入 YYYY-MM-DD，输出英文/中文星期
 ```
-
-Demo 工程在运行时通过 `SkillResourceSupport.materializeDateToWeekdaySkill(workspace)` 将 classpath 资源复制到上述路径；源码位于：
-
-- `DeepAgentExample/skills/date_to_weekday/`（便于编辑）
-- `DeepAgentExample/src/main/resources/skills/date_to_weekday/`（打包进 jar）
-
-`SKILL.md` 建议至少包含 front matter 中的 `description:`（`SkillManager` 会解析该字段）：
 
 ```yaml
 ---
@@ -179,8 +169,6 @@ agent.run(Map.of(
 // 期望输出含 Wednesday 或 星期三
 ```
 
-**Demo**：`mvn exec:java -Dexec.args=skill`（源码 `SkillUsageDemo.java`）
-
 ---
 
 ### 2. Tool 注册与使用（星期 → 日期，Java Tool）
@@ -227,8 +215,6 @@ public final class WeekdayToDateTool extends Tool {
 }
 ```
 
-完整实现见 Demo 工程：`com.example.deepagent.tools.WeekdayToDateTool`。
-
 #### 注册与调用
 
 ```java
@@ -255,9 +241,6 @@ agent.run(Map.of(
 - `ToolCard` 定义 `id`、`name`、`description`、`inputParams`（JSON Schema）；
 - `registerHarnessTool()` 同时写入 `Runner.resourceMgr()` 与内层 `AbilityManager`；
 - 简单函数式工具仍可用 `LocalFunction`（它本身也 extends `Tool`）；
-- 卸载：`unregisterHarnessTool(tool)`。
-
-**Demo**：`mvn exec:java -Dexec.args=custom-tool`（源码 `CustomToolDemo.java`）
 
 ---
 
@@ -319,8 +302,6 @@ Rail 常见钩子：
 | `afterModelCall` | 记录 token、审计 |
 | `beforeToolCall` | 权限检查、参数改写、拦截 |
 | `afterToolCall` | 结果清洗 |
-
-**Demo**：`mvn exec:java -Dexec.args=user-preference-rail`
 
 ---
 
@@ -408,31 +389,82 @@ assert Files.exists(workspace.resolve("notes/keep-me.txt"));
 | `PermissionInterruptRail` | 工具名 | 全局禁止 `write_file` |
 | `DeleteCommandGuardRail` | 工具参数 / 命令内容 | 禁止 `rm`、`del`、删除类中文指令 |
 
-**Demo**：`mvn exec:java -Dexec.args=permission-delete`
-
 ---
 
-## Demo 命令速查
+### 5. 运行预算（Run Budget）
 
-```powershell
-cd D:\cursor\DeepAgentExample
+运行预算给主循环加两道闸：**轮次维**（保障轮次内自由运行，之后按检查点评估进展，停滞则注入提示，触及绝对上限即终止）与**时间维**（墙钟预算，到期后不再派发新的模型/工具调用，临近截止时注入一次收尾提示）。两维独立开关，默认全部关闭（不配置即零行为变化）。任务被预算终止时返回可辨识的终止面（`result_type=error` + `turn_budget`/`time_budget` 载荷），与模型/工具异常区分开。
 
-# 四个扩展能力一次验证
-mvn -q exec:java "-Dexec.args=extended"
+挂载方式与自定义 Rail 相同——创建时写入 `DeepAgentConfig.rails`（初始化时注册到内层 ReActAgent）：
 
-# 单项
-mvn -q exec:java "-Dexec.args=skill"
-mvn -q exec:java "-Dexec.args=custom-tool"
-mvn -q exec:java "-Dexec.args=user-preference-rail"
-mvn -q exec:java "-Dexec.args=permission-delete"
-
-# 全部 demo 列表
-mvn -q exec:java "-Dexec.args=list"
+```java
+DeepAgentConfig.builder()
+        .enableTaskLoop(true)
+        .rails(List.of(new RunBudgetRail(RunBudgetConfig.builder()
+                .turnEnabled(true)              // 轮次维
+                .suggestedRounds(30)            // 保障轮次
+                .hardLimit(60)                  // 绝对上限（缺省取 max(保障*2, 200)）
+                .totalBudgetSeconds(600)        // 时间维：总预算秒数（缺省关闭）
+                .nearDeadlineThresholdSeconds(60) // 临期提示阈值（缺省取 min(60, 总预算)）
+                .build())))
+        .build();
 ```
 
+运行中重新配置：经 `reactAgent()` 拿到内层 ReActAgent 后注册新 rail（配置不可变，换配置即换 rail）：
+
+```java
+((ReActAgent) agent.reactAgent())
+        .registerRail(new RunBudgetRail(newConfig)).toCompletableFuture().join();
+```
+
+行为要点：
+
+| 配置 | 维度 | 作用 |
+|------|------|------|
+| `suggestedRounds` | 轮次 | 保障轮次，期内不干预 |
+| `firstCheckpoint` 等 | 轮次 | 检查点节奏（下限 max(10, 保障轮次)） |
+| `hardLimit` | 轮次 | 绝对上限；触顶后先给一轮收尾（安全阀），仍不收敛则终止 |
+| `totalBudgetSeconds` | 时间 | 墙钟总预算；到期即终止，不再派发新动作 |
+| `nearDeadlineThresholdSeconds` | 时间 | 剩余低于阈值时注入一次「尽快收尾」提示 |
+
+时间维生效时，单次模型调用的超时与流式重试等待会被钳制到剩余预算内（只缩不放），避免长尾调用烧穿预算。
+
 ---
 
-## 多租户隔离
+### 6. 模型调用超时分层（连接 / 响应头等待 / 流式空闲）
+
+单次模型 HTTP 调用的超时按三个独立层级解析，各层解析链互不混用：
+
+| 层级 | 语义 | 配置项（`ModelClientConfig` 字段 / backend map 键） | 缺省 | 取值范围 |
+|------|------|------|------|------|
+| 连接 | 建立 TCP/TLS 连接 | `connectTimeoutSeconds` / `connect_timeout_seconds` | 10s（可被系统属性 `openjiuwen.llm.http.connect-timeout-seconds` 覆盖） | [5, 15]s |
+| 响应头等待 | 请求发出后等待响应头到达 | 沿用旧 `timeout` 字段（显式设置时作为本层取值） | 未显式设置时回落为流式空闲层的解析值 | 旧语义不变 |
+| 流式空闲 | 对端沉默（无任何数据段）超过窗口即掐断 | `streamIdleSeconds` / `stream_idle_seconds` | 600s | [300, 900]s |
+
+没有「全程总时长」上限：长生成只要持续有数据返回就不会被掐断，只有对端沉默才会触发流式空闲层。
+
+配置示例：
+
+```java
+ModelClientConfig clientConfig = ModelClientConfig.builder()
+        .clientProvider(ProviderType.OPENAI)
+        .apiKey(apiKey)
+        .apiBase(baseUrl)
+        .connectTimeoutSeconds(10.0)   // 连接层，可选，缺省 10s
+        .streamIdleSeconds(600.0)      // 流式空闲层，可选，缺省 600s
+        .build();
+```
+
+行为要点：
+
+- 越界配置在 setter / builder 处直接抛 `IllegalArgumentException`，不会静默截断。
+- 单次调用可用 `ModelInvokeOptions.timeout` 覆盖**流式空闲层**取值（只影响该次调用，不影响连接层与响应头等待层）。
+- 超时被掐断时抛出可辨识的错误面：错误码 `181008`（MODEL_CALL_TIMEOUT），并携带超时阶段 `TimeoutPhase`（`BEFORE_CONNECT` / `BEFORE_FIRST_SEGMENT` / `AFTER_FIRST_SEGMENT`），便于按层定位是连接不通、首段迟迟不到还是流中途沉默。
+- 与运行预算（见上节）组合时，预算钳制以该次调用的有效空闲超时为基线，只缩不放。
+
+---
+
+### 7. 多租户隔离
 
 DeepAgent 自 `0.1.7` 起支持多租户数据隔离。在 `DeepAgentConfig` 上设置 `enableTenantIsolation(true)` 即进入**严格模式**：每次调用必须携带有效 `TenantContext`，否则 `invoke` / `stream` 在绑定工作区之前直接抛 `IllegalStateException`（`Tenant isolation is enabled but no tenantId was provided`），不会静默回退到默认工作区。
 
@@ -458,47 +490,3 @@ agent.invoke(inputs, session);
 - DeepAgent 实现 `AutoCloseable`，`close()` 会停止 `TmpFileCleaner`，适合 try-with-resources 管理生命周期。
 
 完整的隔离资源清单、目录结构、KV 前缀、安全防护与清理接口，见 [多租户数据隔离](../多租户数据隔离.md)。
-
----
-
-## Stream 并发与线程池
-
-DeepAgent 的 `stream()`（含开启 task loop 时的 `streamTaskLoop`）将每条 stream 会话提交到统一模块池 **`deep-agent-stream`**（`OpenJiuwenExecutors.newBoundedModulePool`），限制**同时进行中的 stream 会话数**，与 `invoke()` 路径分离。
-
-| 项 | 说明 |
-| --- | --- |
-| 默认 max | `max(40, CPU 核数 × 8)`（I/O 型 workload，随 CPU 缩放） |
-| 默认 queue | `128` |
-| 覆盖方式 | `-Dopenjiuwen.executor.deep-agent-stream.max-size=N` 或环境变量 `OPENJIUWEN_EXECUTOR_DEEP_AGENT_STREAM_MAX_SIZE` |
-| 读取顺序 | **JVM 系统属性优先**，环境变量兜底；池创建时读取，不支持热更新 |
-
-饱和时模块池使用 `AbortPolicy`（`RejectedExecutionException`），不会无限排队。调大 stream 槽位后，仍需关注 LLM HTTP 并发（`openjiuwen.llm.http.max-requests-per-host` 等，**仅 `-D` 系统属性**）与厂商 API 配额。
-
-完整命名规则、模块默认表与其它模块池说明见 **[执行器 Runner — 运行时线程池配置](../执行器Runner.md#运行时线程池配置)**。
-
----
-
-## 注意事项
-
-1. **`invoke()` vs `run()`**：单轮推理请用 `run()`；仅开 task loop 时 `invoke()` 才驱动多轮循环。
-2. **Skill 目录**：`skillDirectories` 指向包含各 skill 子目录的**父路径**（如 `workspace/skills`）；skill 名称默认取**目录名**；`SkillManager` 当前主要解析 front matter 中的 `description:`。
-3. **Skill 与执行分离**：Skill 只提供元数据与 `SKILL.md`；执行脚本需显式注册 `bash` / `executeCmd` 等工具（Demo 用 `DemoToolFactory.bashTool`）。无需也不应编写 Java `ScriptRunner`。
-4. **自定义 Tool**：派生 `Tool` 并实现 `invoke()` / `stream()`；`LocalFunction` 适用于简单函数包装。
-5. **权限配置**：`permissions.enabled=true` 时 `ensureInitialized()` 自动挂载 `PermissionInterruptRail`；可与自定义 Guard Rail 叠加。
-6. **LLM 配置**：编辑 `apiconfig.json`，或通过环境变量 `API_KEY`、`API_BASE` 等覆盖。
-7. **Todo 存储配置**：默认使用本地文件（`todoStorageType="file"`）；生产环境可配置 `todoStorageType="kv"` + `kvStoreConfig` 切换到 Redis 存储，Todo 与 Checkpointer 共享同一套 KV 连接配置。详见 [多租户数据隔离](../多租户数据隔离.md) 的「Todo 存储可替换」章节。
-
----
-
-## 相关源码
-
-| 模块 | 路径 |
-|------|------|
-| DeepAgent | `com.openjiuwen.harness.deep_agent.DeepAgent` |
-| Tool 基类 | `com.openjiuwen.core.foundation.tool.Tool` |
-| SkillUseRail | `com.openjiuwen.harness.rails.SkillUseRail` |
-| Agent Skills 文档 | `documents/zh/2.开发指南/高阶用法/Agent Skills.md` |
-| PermissionFactory | `com.openjiuwen.harness.security.PermissionFactory` |
-| Demo · WeekdayToDateTool | `DeepAgentExample/.../tools/WeekdayToDateTool.java` |
-| Demo · Skill 资源 | `DeepAgentExample/skills/date_to_weekday/` |
-| Demo 示例入口 | `DeepAgentExample/src/main/java/com/example/deepagent/` |

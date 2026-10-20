@@ -156,21 +156,46 @@ public final class FileGuardChecker {
 
     private boolean matchesPrefix(FileGuardPathRule rule, String pathPosix, Path path) {
         String prefix = stripTrailingSlash(rule.getPath().replace("\\", "/"));
+        // On Windows, a posix rule path like "/work/protected" (no drive letter)
+        // must still match a resolved path like "C:/work/protected/secret.txt".
+        // Strategy: strip any drive-letter prefix from the path before comparing,
+        // and ensure the rule itself is treated as drive-relative when it has no
+        // drive letter.
+        String pathForCompare = pathPosix;
+        String prefixForCompare = prefix;
         if (IS_WINDOWS) {
-            String lowerPrefix = prefix.toLowerCase(Locale.ROOT);
-            String lowerPath = pathPosix.toLowerCase(Locale.ROOT);
-            return lowerPath.equals(lowerPrefix) || lowerPath.startsWith(lowerPrefix + "/");
+            pathForCompare = stripDriveLetter(pathPosix);
+            prefixForCompare = stripDriveLetter(prefix);
         }
-        boolean isPathMatches = pathPosix.equals(prefix) || pathPosix.startsWith(prefix + "/");
+        boolean isPathMatches = pathForCompare.equals(prefixForCompare)
+                || pathForCompare.startsWith(prefixForCompare + "/");
         if (!isPathMatches) {
             return false;
         }
         if (path == null) {
             return true;
         }
+        // When the rule path has no drive letter but the resolved path does,
+        // containsPath would fail because Path.of(prefix).toAbsolutePath() on
+        // Windows resolves to the current drive. Skip containsPath in that case
+        // and rely on the lexical comparison above.
+        if (!hasDriveLetter(prefix) && hasDriveLetter(pathPosix)) {
+            return true;
+        }
         return PermissionPatterns.containsPath(prefix, path.toString())
                 || pathPosix.equals(prefix)
                 || pathPosix.startsWith(prefix + "/");
+    }
+
+    private static boolean hasDriveLetter(String posixPath) {
+        return posixPath.length() >= 2 && posixPath.charAt(1) == ':';
+    }
+
+    private static String stripDriveLetter(String posixPath) {
+        if (posixPath.length() >= 2 && posixPath.charAt(1) == ':') {
+            return posixPath.substring(2);
+        }
+        return posixPath;
     }
 
     /**

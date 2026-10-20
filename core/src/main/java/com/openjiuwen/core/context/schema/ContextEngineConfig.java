@@ -26,8 +26,6 @@ public class ContextEngineConfig {
     @JsonProperty("default_window_round_num")
     private Integer defaultWindowRoundNum;
 
-    @JsonProperty("enable_kv_cache_release")
-    private boolean enableKvCacheRelease;
 
     @JsonProperty("enable_reload")
     private boolean enableReload;
@@ -54,15 +52,15 @@ public class ContextEngineConfig {
     }
 
     public ContextEngineConfig(Integer maxContextMessageNum, Integer defaultWindowMessageNum,
-                               Integer defaultWindowRoundNum, boolean enableKvCacheRelease, boolean enableReload,
+                               Integer defaultWindowRoundNum, boolean isReloadEnabled,
                                boolean enableTiktokenCounter, Integer contextWindowTokens, String modelName,
                                Map<String, Integer> modelContextWindowTokens) {
-        this(maxContextMessageNum, defaultWindowMessageNum, defaultWindowRoundNum, enableKvCacheRelease, enableReload,
+        this(maxContextMessageNum, defaultWindowMessageNum, defaultWindowRoundNum, isReloadEnabled,
                 enableTiktokenCounter, contextWindowTokens, modelName, modelContextWindowTokens, false, 3.0);
     }
 
     public ContextEngineConfig(Integer maxContextMessageNum, Integer defaultWindowMessageNum,
-                               Integer defaultWindowRoundNum, boolean enableKvCacheRelease, boolean enableReload,
+                               Integer defaultWindowRoundNum, boolean isReloadEnabled,
                                boolean enableTiktokenCounter, Integer contextWindowTokens, String modelName,
                                Map<String, Integer> modelContextWindowTokens,
                                boolean enableOpenrouterModelContextWindowTokens,
@@ -77,8 +75,7 @@ public class ContextEngineConfig {
         this.maxContextMessageNum = maxContextMessageNum;
         this.defaultWindowMessageNum = defaultWindowMessageNum;
         this.defaultWindowRoundNum = defaultWindowRoundNum;
-        this.enableKvCacheRelease = enableKvCacheRelease;
-        this.enableReload = enableReload;
+        this.enableReload = isReloadEnabled;
         this.enableTiktokenCounter = enableTiktokenCounter;
         this.contextWindowTokens = contextWindowTokens;
         this.modelName = modelName;
@@ -134,14 +131,6 @@ public class ContextEngineConfig {
     public void setDefaultWindowRoundNum(Integer defaultWindowRoundNum) {
         validatePositive(defaultWindowRoundNum, "default_window_round_num");
         this.defaultWindowRoundNum = defaultWindowRoundNum;
-    }
-
-    public boolean isEnableKvCacheRelease() {
-        return enableKvCacheRelease;
-    }
-
-    public void setEnableKvCacheRelease(boolean enableKvCacheRelease) {
-        this.enableKvCacheRelease = enableKvCacheRelease;
     }
 
     public boolean isEnableReload() {
@@ -220,8 +209,7 @@ public class ContextEngineConfig {
         if (!(other instanceof ContextEngineConfig that)) {
             return false;
         }
-        return enableKvCacheRelease == that.enableKvCacheRelease
-                && enableReload == that.enableReload
+        return enableReload == that.enableReload
                 && enableTiktokenCounter == that.enableTiktokenCounter
                 && enableOpenrouterModelContextWindowTokens == that.enableOpenrouterModelContextWindowTokens
                 && Double.compare(openrouterRequestTimeout, that.openrouterRequestTimeout) == 0
@@ -239,7 +227,6 @@ public class ContextEngineConfig {
                 maxContextMessageNum,
                 defaultWindowMessageNum,
                 defaultWindowRoundNum,
-                enableKvCacheRelease,
                 enableReload,
                 enableTiktokenCounter,
                 contextWindowTokens,
@@ -254,7 +241,6 @@ public class ContextEngineConfig {
         private Integer maxContextMessageNum;
         private Integer defaultWindowMessageNum;
         private Integer defaultWindowRoundNum;
-        private boolean enableKvCacheRelease;
         private boolean enableReload;
         private boolean enableTiktokenCounter;
         private Integer contextWindowTokens;
@@ -278,11 +264,6 @@ public class ContextEngineConfig {
 
         public Builder defaultWindowRoundNum(Integer defaultWindowRoundNum) {
             this.defaultWindowRoundNum = defaultWindowRoundNum;
-            return this;
-        }
-
-        public Builder enableKvCacheRelease(boolean enableKvCacheRelease) {
-            this.enableKvCacheRelease = enableKvCacheRelease;
             return this;
         }
 
@@ -330,7 +311,7 @@ public class ContextEngineConfig {
 
         public ContextEngineConfig build() {
             return new ContextEngineConfig(maxContextMessageNum, defaultWindowMessageNum, defaultWindowRoundNum,
-                    enableKvCacheRelease, enableReload, enableTiktokenCounter, contextWindowTokens, modelName,
+                    enableReload, enableTiktokenCounter, contextWindowTokens, modelName,
                     modelContextWindowTokens, enableOpenrouterModelContextWindowTokens, openrouterRequestTimeout);
         }
     }

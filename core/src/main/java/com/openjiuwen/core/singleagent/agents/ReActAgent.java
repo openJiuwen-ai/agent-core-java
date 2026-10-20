@@ -15,9 +15,18 @@ import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
+import com.openjiuwen.core.foundation.llm.multimodal.ContentBlock;
+import com.openjiuwen.core.foundation.llm.multimodal.DefaultMultimodalContentNormalizer;
+import com.openjiuwen.core.foundation.llm.multimodal.ImageMaterialProvider;
+import com.openjiuwen.core.foundation.llm.multimodal.MaterialAccessConfig;
+import com.openjiuwen.core.foundation.llm.multimodal.MaterialAccessContext;
+import com.openjiuwen.core.foundation.llm.multimodal.MultimodalContentNormalizer;
+import com.openjiuwen.core.foundation.llm.multimodal.MultimodalContentResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolCallArgumentUtils;
@@ -68,11 +77,15 @@ import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.Rails;
+import com.openjiuwen.core.singleagent.runbudget.RunBudgetState;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
+import com.openjiuwen.harness.tools.multimodal.FileSystemImageAssetStore;
+import com.openjiuwen.harness.tools.multimodal.LocalImageMaterialProvider;
+import com.openjiuwen.harness.tools.multimodal.MaterialAccessContexts;
 import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.io.UncheckedIOException;
@@ -122,6 +135,9 @@ public class ReActAgent extends BaseAgent {
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
+
+    /** Stateless normalizer shared by all structured multimodal entry inputs. */
+    private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
     private static final String EXTERNAL_TOOL_RESULT_ID_ERROR =
             "External tool results must contain exactly all pending tool_call_id values";
     private static final String EXTERNAL_TOOL_RESULTS_REQUIRED_ERROR =
@@ -135,9 +151,9 @@ public class ReActAgent extends BaseAgent {
     private volatile ContextEngine contextEngine;
     private ContextEngineConfig appliedContextEngineConfig;
     private volatile Model llm;
+    private volatile ImageMaterialProvider materialProvider;
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
-    private boolean kvReleaseWarningLogged;
     private final com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook kvCacheModelCallHook =
             new com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook();
 
@@ -193,7 +209,6 @@ public class ReActAgent extends BaseAgent {
             synchronized (llmLock) {
                 llm = null;
             }
-            kvReleaseWarningLogged = false;
             kvCacheModelCallHook.resetWarnings();
         }
         refreshContextEngineIfNeeded();
@@ -405,7 +420,7 @@ public class ReActAgent extends BaseAgent {
         ModelCallInputs modelInputs = ModelCallInputs.class.cast(ctx.getInputs());
         Map<String, String> requestHeaders = modelInputs.consumeRequestHeaders();
         Model model = getLlm(ctx);
-        ContextWindow contextWindow = prepareModelContextWindow(ctx, model, modelInputs);
+        ContextWindow contextWindow = prepareModelContextWindow(modelInputs);
         List<BaseMessage> messages = contextWindow.getMessages();
         List<ToolInfo> tools = contextWindow.getTools();
         modelInputs.setMessages(new ArrayList<>(messages));
@@ -439,7 +454,7 @@ public class ReActAgent extends BaseAgent {
             systemMessages.add(new SystemMessage(systemPrompt));
         }
         ContextWindow window = context.getContextWindow(systemMessages, toolInfoList(previous.getTools()),
-                null, null, Map.of("defer_finalization", true))
+                null, null, Map.of())
                 .toCompletableFuture().join();
         List<BaseMessage> messages = window.getMessages();
         previous.setMessages(new ArrayList<>(messages));
@@ -447,29 +462,10 @@ public class ReActAgent extends BaseAgent {
         previous.setModelContext(context);
     }
 
-    private ContextWindow prepareModelContextWindow(AgentCallbackContext ctx, Model model, ModelCallInputs inputs) {
-        boolean isKvReleaseEnabled = config.getContextEngineConfig().isEnableKvCacheRelease();
-        boolean canReleaseKvCache = model.supportsKvCacheRelease();
-
-        if (isKvReleaseEnabled && !canReleaseKvCache && !kvReleaseWarningLogged) {
-            LOGGER.warning("ContextEngineConfig.enable_kv_cache_release is True, "
-                    + "but the current LLM does not support KV cache release; "
-                    + "KV cache release will not take effect.");
-            kvReleaseWarningLogged = true;
-        }
-        Object releaseModel = null;
-        if (isKvReleaseEnabled && canReleaseKvCache) {
-            releaseModel = model;
-        }
-
+    private ContextWindow prepareModelContextWindow(ModelCallInputs inputs) {
         ContextWindow window = new ContextWindow();
         applyModelRequestMessages(window, inputs);
         window.setTools(toolInfoList(inputs.getTools()));
-        ModelContext context = inputs.getModelContext();
-        if (context == null) {
-            context = ctx.getContext();
-        }
-        context.finalizeContextWindow(window, releaseModel);
         return window;
     }
 
@@ -502,10 +498,6 @@ public class ReActAgent extends BaseAgent {
         lastAffinityWindows.put(affinitySessionId, contextWindow);
 
         Map<String, Object> extraFields = new LinkedHashMap<>();
-        extraFields.putAll(model.buildKvCacheInvokeKwargs(
-                ctx.getSession(),
-                config.getContextEngineConfig().isEnableKvCacheRelease()
-        ));
         extraFields.putAll(kvCacheModelCallHook.buildInvokeKwargs(kvCapabilities, model, ctx.getSession(),
                 kvLineage));
         extraFields.put("__openjiuwen_kvc_model", model);
@@ -525,11 +517,14 @@ public class ReActAgent extends BaseAgent {
         // Use the resolved model's name (may differ from config when a dynamic
         // model was selected via ctx.dynamicModelId) so the provider receives
         // the correct model name.
+        Float perCallIdleTimeout = resolvePerCallIdleTimeout(model);
         ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder = ModelInvokeOptions.builder()
                 .model(resolveModelName(model))
                 .tools(tools)
                 .requestHeaders(requestHeaders)
-                .extraFields(extraFields);
+                .extraFields(extraFields)
+                .timeout(perCallIdleTimeout);
+        clampModelCallTimeoutToRemainingBudget(ctx, optionsBuilder, perCallIdleTimeout);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
             optionsBuilder.retryListener(event -> session.writeStream(new OutputSchema(
@@ -570,6 +565,43 @@ public class ReActAgent extends BaseAgent {
         logModelResponse(call.ctx(), aiMessage);
         logModelCallCompleted(call.ctx(), false, modelStartNanos, aiMessage, null);
         return aiMessage;
+    }
+
+    /**
+     * Clamp the per-call model timeout to the remaining time budget.
+     *
+     * <p>No-op when no time-budgeted run-budget state is present, keeping the legacy path
+     * byte-identical. The clamped value travels through {@code ModelInvokeOptions.timeout},
+     * the single-call timeout channel. Baseline is the call's effective timeout — after
+     * the call is the resolved idle-window value rather than the legacy default.</p>
+     *
+     * @param ctx callback context carrying the run-budget state
+     * @param builder options builder under construction
+     */
+    private void clampModelCallTimeoutToRemainingBudget(AgentCallbackContext ctx,
+                                                        ModelInvokeOptions.ModelInvokeOptionsBuilder builder,
+                                                        Float effectiveTimeout) {
+        Optional<RunBudgetState> budgetState = RunBudgetState.from(ctx.getExtra());
+        if (budgetState.isEmpty() || !budgetState.get().isTimeEnabled()) {
+            return;
+        }
+        double remaining = budgetState.get().remainingSeconds();
+        if (remaining <= 0) {
+            return;
+        }
+        double baseline = effectiveTimeout != null
+                ? effectiveTimeout.doubleValue() : ModelClientConfig.DEFAULT_TIMEOUT_SECONDS;
+        if (remaining < baseline) {
+            builder.timeout((float) remaining);
+        }
+    }
+
+    private Float resolvePerCallIdleTimeout(Model model) {
+        ModelClientConfig clientConfig = model == null
+                ? config.getModelClientConfig()
+                : model.getModelClientConfig();
+        return ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                config.getModelStreamIdleSeconds(), clientConfig);
     }
 
     public static void renderSystemMessages(List<SystemMessage> systemMessages, Object inputs,
@@ -1430,6 +1462,114 @@ public class ReActAgent extends BaseAgent {
         return String.valueOf(userInput);
     }
 
+    /**
+     * Normalize one user input into ordered multimodal content blocks.
+     *
+     * <p>Companion of {@link #extractUserText(Object)}: the text extractor
+     * keeps its original semantics for {@code _original_query} and other text
+     * usages, while this method exposes the normalized block view required by
+     * the multimodal contract. Both coexist.</p>
+     *
+     * @param userInput string, content block list, structured message map or
+     *                  {@link BaseMessage}; may be {@code null}
+     * @return immutable ordered blocks, never {@code null}
+     * @throws com.openjiuwen.core.common.exception.BaseError with
+     *         {@code details.reason=CONTENT_INVALID} when the structure
+     *         violates the content block contract
+     * @since 0.1.17
+     */
+    public List<ContentBlock> extractUserContentBlocks(Object userInput) {
+        return MULTIMODAL_NORMALIZER.normalize(userInput);
+    }
+
+    /**
+     * Inject the image material provider used to resolve structured entry input.
+     *
+     * <p>Material resolution is an injected capability, not a static utility:
+     * the contract lives on the message side while this default implementation
+     * lives in the image domain of the harness.</p>
+     *
+     * @param materialProvider provider instance; {@code null} restores the
+     *                         framework default built per request
+     * @since 0.1.17
+     */
+    public void setMaterialProvider(ImageMaterialProvider materialProvider) {
+        this.materialProvider = materialProvider;
+    }
+
+    /**
+     * Return the injected image material provider.
+     *
+     * @return injected provider, or {@code null} when the default applies
+     * @since 0.1.17
+     */
+    public ImageMaterialProvider getMaterialProvider() {
+        return materialProvider;
+    }
+
+    private boolean isMultimodalContentInput(Object inputs, Object userInput) {
+        return inputs instanceof List
+                || inputs instanceof BaseMessage
+                || MultimodalContentNormalizer.isMultimodalContent(userInput);
+    }
+
+    private String extractOriginalQueryText(Object inputs, Object userInput) {
+        if (!isMultimodalContentInput(inputs, userInput)) {
+            return extractUserText(userInput);
+        }
+        StringBuilder text = new StringBuilder();
+        for (ContentBlock block : MULTIMODAL_NORMALIZER.normalize(userInput)) {
+            if (block instanceof ContentBlock.Text textBlock) {
+                if (text.length() > 0) {
+                    text.append('\n');
+                }
+                text.append(textBlock.text());
+            }
+        }
+        return text.toString();
+    }
+
+    private UserMessage buildEntryUserMessage(Object inputs, Object userInput) {
+        if (!isMultimodalContentInput(inputs, userInput)) {
+            return new UserMessage(extractUserText(userInput));
+        }
+        MaterialAccessConfig materialAccess = config.getMaterialAccess();
+        MaterialAccessContext access = MaterialAccessContexts.fromConfig(materialAccess);
+        List<ContentBlock> blocks = MULTIMODAL_NORMALIZER.normalize(userInput);
+        Loggers.AGENT.debug("structured multimodal input accepted, blocks={}", blocks.size());
+        String imageDetail = materialAccess == null ? null : materialAccess.getImageDetail();
+        MultimodalContentResolver resolver =
+                new MultimodalContentResolver(resolveMaterialProvider(access), imageDetail);
+        MultimodalContentResolver.ResolutionResult result = resolver.resolve(blocks, access);
+        UserMessage message = new UserMessage();
+        message.setContent(result.contentParts());
+        attachEntryMultimodalMetadata(message, result);
+        return message;
+    }
+
+    private void attachEntryMultimodalMetadata(UserMessage message,
+                                               MultimodalContentResolver.ResolutionResult result) {
+        if (result.itemErrors().isEmpty() && result.provenance().isEmpty()) {
+            return;
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (!result.itemErrors().isEmpty()) {
+            metadata.put("multimodal_item_errors", result.itemErrors());
+        }
+        if (!result.provenance().isEmpty()) {
+            metadata.put("multimodal_provenance", result.provenance());
+        }
+        message.setMetadata(metadata);
+    }
+
+    private ImageMaterialProvider resolveMaterialProvider(MaterialAccessContext access) {
+        ImageMaterialProvider injected = materialProvider;
+        if (injected != null) {
+            return injected;
+        }
+        return new LocalImageMaterialProvider(new FileSystemImageAssetStore(Path.of(access.assetRoot())));
+    }
+
     public InteractiveInput buildInteractiveInput(Object userQuery, List<String> componentIds) {
         if (userQuery instanceof InteractiveInput interactiveInput) {
             Set<String> providedIds = new HashSet<>(interactiveInput.getUserInputs().keySet());
@@ -1527,8 +1667,30 @@ public class ReActAgent extends BaseAgent {
         return invoke(inputs, apiSession);
     }
 
+    /**
+     * Run one agent invocation.
+     *
+     * <p>Accepted input shapes: a {@code Map} carrying {@code query} (the
+     * query value may itself be a string, a multimodal content block list, a
+     * structured message with {@code content}, or a {@link BaseMessage}), a
+     * plain string, a multimodal content block list, or a {@link BaseMessage}
+     * instance. Structured shapes share one dispatch point with the streaming
+     * entry because {@code stream} delegates here.</p>
+     *
+     * @param inputs agent input; see the accepted shapes above
+     * @param session target session; {@code null} creates a temporary one
+     * @param kwargs extra invoke options such as {@code _streaming}
+     * @return invocation result map, never {@code null}
+     * @throws IllegalArgumentException when the input shape is not accepted
+     * @throws com.openjiuwen.core.common.exception.BaseError with
+     *         {@code details.reason} such as {@code CONTENT_INVALID} or
+     *         {@code SOURCE_UNRESOLVED} when structured input violates the
+     *         multimodal contract; parsing never falls back to stringifying
+     * @since 0.1.17
+     */
     public Object invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
-        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
+        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String)
+                && !(inputs instanceof List) && !(inputs instanceof BaseMessage))) {
             throw new IllegalArgumentException("Input must be Map with 'query' or String");
         }
         Object query;
@@ -1752,7 +1914,7 @@ public class ReActAgent extends BaseAgent {
             } else if (externalResume) {
                 ctx.getExtra().put("_original_query", externalPending.getOriginalQuery());
             } else {
-                ctx.getExtra().put("_original_query", extractUserText(userInput));
+                ctx.getExtra().put("_original_query", extractOriginalQueryText(inputs, userInput));
             }
 
             ModelContext context = initContext(session);
@@ -1779,7 +1941,7 @@ public class ReActAgent extends BaseAgent {
                     startIteration = popInt(ctx.getExtra(), InterruptConstants.RESUME_START_ITERATION_KEY, 0);
                 } else if (interruptionState instanceof InterruptionState workflowState) {
                     ctx.enterIteration(workflowState.getIteration());
-                    context.addMessages(new UserMessage(extractUserText(userInput))).toCompletableFuture().join();
+                    context.addMessages(buildEntryUserMessage(inputs, userInput)).toCompletableFuture().join();
                     Object resumeResult = handleResume(interruptionState, userInput, ctx, context, session,
                             invokeInputs);
                     if (resumeResult == null) {
@@ -1787,7 +1949,7 @@ public class ReActAgent extends BaseAgent {
                     }
                 }
             } else {
-                context.addMessages(new UserMessage(extractUserText(userInput))).toCompletableFuture().join();
+                context.addMessages(buildEntryUserMessage(inputs, userInput)).toCompletableFuture().join();
             }
 
             if (invokeInputs.getResult() == null) {
@@ -2286,7 +2448,6 @@ public class ReActAgent extends BaseAgent {
             appliedContextEngineConfig = configSnapshot;
             contextEngine = refreshedContextEngine;
             getAbilityManager().setContextEngine(refreshedContextEngine);
-            kvReleaseWarningLogged = false;
             return contextEngine;
         }
     }
@@ -2303,7 +2464,6 @@ public class ReActAgent extends BaseAgent {
                 .maxContextMessageNum(source.getMaxContextMessageNum())
                 .defaultWindowMessageNum(source.getDefaultWindowMessageNum())
                 .defaultWindowRoundNum(source.getDefaultWindowRoundNum())
-                .enableKvCacheRelease(source.isEnableKvCacheRelease())
                 .enableReload(source.isEnableReload())
                 .enableTiktokenCounter(source.isTiktokenCounterEnabled())
                 .contextWindowTokens(source.getContextWindowTokens())
@@ -2334,10 +2494,6 @@ public class ReActAgent extends BaseAgent {
 
     public SystemPromptBuilder getSystemPromptBuilder() {
         return systemPromptBuilder;
-    }
-
-    public boolean isKvReleaseWarningLogged() {
-        return kvReleaseWarningLogged;
     }
 
     public static String summarizeToolCall(Object toolCall) {
@@ -2438,7 +2594,7 @@ public class ReActAgent extends BaseAgent {
                     Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
                             + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
                             + exception.getMessage());
-                    if (delayStreamRetry(retryDelayMs)) {
+                    if (delayStreamRetry(clampStreamRetryDelayMs(call.ctx(), retryDelayMs))) {
                         continue;
                     }
                 }
@@ -2448,7 +2604,7 @@ public class ReActAgent extends BaseAgent {
                 throw exception;
             }
 
-            if (attempt < maxRetries && !delayStreamRetry(retryDelayMs)) {
+            if (attempt < maxRetries && !delayStreamRetry(clampStreamRetryDelayMs(call.ctx(), retryDelayMs))) {
                 break;
             }
         }
@@ -2525,6 +2681,7 @@ public class ReActAgent extends BaseAgent {
             aiMessage = AssistantMessage.builder()
                     .content(accumulatedChunk.getContent() == null ? "" : accumulatedChunk.getContent())
                     .toolCalls(accumulatedChunk.getToolCalls() == null ? List.of() : accumulatedChunk.getToolCalls())
+                    .finishReason(accumulatedChunk.getFinishReason())
                     .usageMetadata(accumulatedChunk.getUsageMetadata())
                     .reasoningContent(accumulatedChunk.getReasoningContent())
                     .promptTokenIds(accumulatedChunk.getPromptTokenIds())
@@ -2538,6 +2695,17 @@ public class ReActAgent extends BaseAgent {
         }
         logModelResponse(ctx, aiMessage);
         logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
+        // In streaming mode, tool_calls are accumulated but not yet written
+        // to the stream as an llm_output chunk (content chunks were written
+        // incrementally above). Emit the accumulated tool_calls here so the
+        // stream contains a llm_output chunk with tool_calls, matching the
+        // non-streaming path (writeNonStreamAsStreamChunks).
+        if (ctx.getSession() != null && aiMessage.getToolCalls() != null
+                && !aiMessage.getToolCalls().isEmpty()) {
+            Map<String, Object> toolPayload = new LinkedHashMap<>();
+            toolPayload.put("tool_calls", aiMessage.getToolCalls());
+            ctx.getSession().writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx), toolPayload));
+        }
         if (ctx.getSession() != null && aiMessage.getUsageMetadata() != null) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
@@ -2585,6 +2753,25 @@ public class ReActAgent extends BaseAgent {
         }
         LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(retryDelayMs));
         return !Thread.currentThread().isInterrupted();
+    }
+
+    /**
+     * Clamp the stream-retry wait to the remaining time budget.
+     *
+     * <p>Returns the original delay unchanged when no time-budgeted run-budget state is
+     * present; an exhausted budget yields zero so the retry no longer sleeps and the next
+     * checkpoint terminates the run.</p>
+     *
+     * @param ctx callback context carrying the run-budget state
+     * @param retryDelayMs configured retry delay in milliseconds
+     * @return the clamped delay in milliseconds
+     */
+    private static long clampStreamRetryDelayMs(AgentCallbackContext ctx, long retryDelayMs) {
+        Optional<RunBudgetState> budgetState = RunBudgetState.from(ctx.getExtra());
+        if (budgetState.isEmpty() || !budgetState.get().isTimeEnabled()) {
+            return retryDelayMs;
+        }
+        return Math.min(retryDelayMs, Math.max(0L, budgetState.get().remainingMillis()));
     }
 
     /**

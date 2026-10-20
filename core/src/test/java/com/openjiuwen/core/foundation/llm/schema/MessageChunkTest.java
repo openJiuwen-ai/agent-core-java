@@ -135,6 +135,24 @@ class MessageChunkTest {
     }
 
     @Test
+    void mergeKeepsFinishReasonWhenRightChunkCarriesJavaNull() {
+        AssistantMessageChunk left = AssistantMessageChunk.builder()
+                .role("assistant")
+                .content("partial")
+                .finishReason("tool_calls")
+                .build();
+        AssistantMessageChunk right = AssistantMessageChunk.builder()
+                .role("assistant")
+                .content("")
+                .finishReason(null)
+                .build();
+
+        AssistantMessageChunk merged = left.merge(right);
+
+        assertEquals("tool_calls", merged.getFinishReason());
+    }
+
+    @Test
     void assistantChunkMergeConcatenatesListsAndStreamingFields() {
         AssistantMessageChunk left = AssistantMessageChunk.builder()
                 .role("assistant")

@@ -73,7 +73,7 @@ class NewReActAgentMockTest {
                 .configureModel("gpt-4")
                 .configureModelProvider("openai", "test_key", "https://api.test.com")
                 .configurePromptTemplate(List.of(Map.of("role", "system", "content", "You are an assistant.")))
-                .configureContextEngine(100, 20, true, false)
+                .configureContextEngine(100, 20, true)
                 .configureMaxIterations(10);
 
         assertThat(config.getModelName()).isEqualTo("gpt-4");
@@ -505,7 +505,7 @@ class NewReActAgentMockTest {
         ReActAgent agent = new ReActAgent(agentCard("test_agent", "test_agent", "Test agent"));
         Object oldContextEngine = agent.getContextEngine();
 
-        agent.configure(new ReActAgentConfig().configureContextEngine(null, 20, false, false));
+        agent.configure(new ReActAgentConfig().configureContextEngine(null, 20, false));
 
         assertThat(agent.getContextEngine()).isNotSameAs(oldContextEngine);
         assertThat(reactConfig(agent).getContextEngineConfig().getDefaultWindowRoundNum()).isEqualTo(20);

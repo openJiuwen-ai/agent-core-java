@@ -16,6 +16,7 @@ import com.openjiuwen.harness.schema.AgentMode;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -331,7 +332,18 @@ public class AgentModeRail extends DeepAgentRail {
 
     private static final class PlanModeTaskTool extends Tool {
         private PlanModeTaskTool() {
-            super(new ToolCard("task_tool", "task_tool", "Run a subagent task."));
+            super(new ToolCard("task_tool", "task_tool", "Run a subagent task.", emptySchemaShell()));
+        }
+
+        // The declared surface must match the canonical TaskTool card, schema shell included:
+        // the global resource registry reuses an existing entry only when declarations match, so
+        // a bare placeholder registered first would fail a later schema-carrying TaskTool
+        // registration with an order-dependent duplicate-definition conflict.
+        private static Map<String, Object> emptySchemaShell() {
+            Map<String, Object> schema = new LinkedHashMap<>();
+            schema.put("type", "object");
+            schema.put("properties", new LinkedHashMap<String, Object>());
+            return schema;
         }
     }
 }

@@ -22,6 +22,7 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -73,7 +74,6 @@ import java.util.regex.Pattern;
  * {@code openjiuwen/core/application/llm_agent/llm_controller.py}.</p>
  */
 public class LlmEventHandler extends EventHandler {
-
     private static final String INTERACTION = "__interaction__";
     private static final String LLM_OUTPUT = "llm_output";
     private static final String STATE_KEY = "llm_controller";
@@ -695,7 +695,7 @@ public class LlmEventHandler extends EventHandler {
                     .tools(contextWindow.getTools())
                     .temperature((float) modelInfo.getTemperature())
                     .topP((float) modelInfo.getTopP())
-                    .timeout((float) modelInfo.getTimeout())
+                    .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
                     .extraFields(new LinkedHashMap<>(modelInfo.getExtraFields()))
                     .build();
             AssistantMessage llmOutput = model.invoke(contextWindow.getMessages(), options)

@@ -71,8 +71,8 @@ class ReActAgentTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"append", "delete", "replace", "edit"})
-    void processedWindowEditsAreFinalizedAgainstTheCurrentModel(String operation) {
-        RecordingModelClient selectedClient = new RecordingModelClient(true);
+    void processedWindowEditsReachTheSelectedModel(String operation) {
+        RecordingModelClient selectedClient = new RecordingModelClient();
         Model selectedModel = new Model(selectedClient);
         ReActAgent agent = new ReActAgent(new AgentCard("processed-rail", "test", "test")) {
             @Override
@@ -83,24 +83,21 @@ class ReActAgentTest {
                 return super.getLlm(context);
             }
         };
-        RecordingModelClient oldClient = new RecordingModelClient(true);
-        configureKvAgent(agent, "InferenceAffinity", true, new Model(oldClient));
-        List<ContextWindow> releases = new ArrayList<>();
-        List<Object> releaseModels = new ArrayList<>();
+        RecordingModelClient oldClient = new RecordingModelClient();
+        ReActAgentConfig agentConfig = new ReActAgentConfig();
+        agentConfig.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+        agent.configure(agentConfig);
+        agent.setLlm(new Model(oldClient));
         AtomicInteger preparations = new AtomicInteger();
-        SessionModelContext modelContext = processedContext(preparations, (window, model) -> {
-            releases.add(window);
-            releaseModels.add(model);
-        });
-        AgentRail rail = processedRequestRail(operation, releases);
+        SessionModelContext modelContext = processedContext(preparations);
+        AgentRail rail = processedRequestRail(operation);
         agent.registerRail(rail).toCompletableFuture().join();
         try {
             AgentCallbackContext context = new AgentCallbackContext(agent);
             context.setSession(new MemorySession("processed-rail"));
             context.setContext(modelContext);
             agent.callModel(context, modelContext, List.of());
-            assertProcessedRequest(operation, selectedClient, modelContext, releases);
-            assertEquals(List.of(selectedModel), releaseModels);
+            assertProcessedRequest(operation, selectedClient, modelContext);
             assertEquals(0, oldClient.invokeCount());
             assertEquals(1, preparations.get());
         } finally {
@@ -108,8 +105,7 @@ class ReActAgentTest {
         }
     }
 
-    private static SessionModelContext processedContext(AtomicInteger preparations,
-                                                        SessionModelContext.KvCacheManagerPort release) {
+    private static SessionModelContext processedContext(AtomicInteger preparations) {
         SessionModelContext.ContextProcessorPort processor = new SessionModelContext.ContextProcessorPort() {
             @Override
             public String processorType() {
@@ -130,17 +126,15 @@ class ReActAgentTest {
                 return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(null, null, window));
             }
         };
-        ContextEngineConfig config = new ContextEngineConfig();
-        config.setEnableKvCacheRelease(true);
-        return new SessionModelContext("ctx", "processed-rail", config, List.of(new UserMessage("raw history")),
-                List.of(processor), messages -> messages.size(), null, null, null, release, null);
+        return new SessionModelContext("ctx", "processed-rail", new ContextEngineConfig(),
+                List.of(new UserMessage("raw history")), List.of(processor), messages -> messages.size(),
+                null, null, null, null);
     }
 
-    private static AgentRail processedRequestRail(String operation, List<ContextWindow> releases) {
+    private static AgentRail processedRequestRail(String operation) {
         return new AgentRail() {
             @Override
             public void beforeModelCall(AgentCallbackContext context) {
-                assertTrue(releases.isEmpty());
                 ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
                 assertEquals(List.of("System", "summary", "tail"), inputs.getMessages().stream()
                         .map(BaseMessage.class::cast).map(BaseMessage::getContentAsString).toList());
@@ -157,7 +151,7 @@ class ReActAgentTest {
     }
 
     private static void assertProcessedRequest(String operation, RecordingModelClient client,
-            SessionModelContext context, List<ContextWindow> releases) {
+            SessionModelContext context) {
         List<String> expected = switch (operation) {
             case "append" -> List.of("System", "summary", "tail", "directive");
             case "delete" -> List.of("System", "summary");
@@ -168,17 +162,12 @@ class ReActAgentTest {
         assertEquals(expected, client.lastMessages.stream().map(BaseMessage::getContentAsString).toList());
         assertEquals(List.of("raw history"), context.getMessages().stream()
                 .map(BaseMessage::getContentAsString).toList());
-        assertEquals(1, releases.size());
-        ContextWindow finalWindow = releases.get(0);
-        assertEquals(client.lastMessages, finalWindow.getMessages());
-        assertEquals(expected.size(), finalWindow.getStatistic().getTotalMessages());
-        assertEquals(expected.size(), finalWindow.getStatistic().getTotalTokens());
     }
 
     @Test
     void beforeModelRailKeepsCustomSystemMessageTypes() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        RecordingModelClient client = new RecordingModelClient();
+        ReActAgent agent = configuredAgent("openai", new Model(client));
         BaseMessage directive = new BaseMessage("system", "typed directive");
         AgentRail rail = new AgentRail() {
             @Override
@@ -201,7 +190,7 @@ class ReActAgentTest {
     @Test
     void beforeModelRailPreservesSystemDirectiveWhileStreaming() {
         StreamingRecordingModelClient client = new StreamingRecordingModelClient();
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        ReActAgent agent = configuredAgent("openai", new Model(client));
         AgentRail rail = new AgentRail() {
             @Override
             public void beforeModelCall(AgentCallbackContext context) {
@@ -225,8 +214,8 @@ class ReActAgentTest {
 
     @Test
     void beforeModelRailUsesFinalRequestWithoutRebuildingOrReordering() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        RecordingModelClient client = new RecordingModelClient();
+        ReActAgent agent = configuredAgent("openai", new Model(client));
         AgentRail rail = new AgentRail() {
             @Override
             public void beforeModelCall(AgentCallbackContext context) {
@@ -249,7 +238,7 @@ class ReActAgentTest {
     @Test
     void beforeModelRailKeepsRequestUserMessageWhileStreaming() {
         StreamingRecordingModelClient client = new StreamingRecordingModelClient();
-        ReActAgent agent = configuredKvAgent("openai", false, new Model(client));
+        ReActAgent agent = configuredAgent("openai", new Model(client));
         UserMessage digest = new UserMessage("stream digest");
         AgentRail rail = new AgentRail() {
             @Override
@@ -410,7 +399,7 @@ class ReActAgentTest {
         ContextEngine initialEngine = agent.getContextEngine();
         ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
 
-        mutableConfig.configureContextEngine(2, 1, false, false);
+        mutableConfig.configureContextEngine(2, 1, false);
 
         assertTrue(agent.getContextEngine() != initialEngine);
         ModelContext context = agent.getContextEngine().createContext("mutable-config", new MemorySession("mutable"));
@@ -449,7 +438,7 @@ class ReActAgentTest {
         ReActAgent agent = agentWithFakeModel(new AssistantMessage("done"));
         ContextEngine initialEngine = agent.getContextEngine();
         ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
-        mutableConfig.configureContextEngine(2, 1, false, false);
+        mutableConfig.configureContextEngine(2, 1, false);
         MemorySession session = new MemorySession("mutable-invoke");
 
         agent.invoke(Map.of("query", "first"), session);
@@ -469,7 +458,7 @@ class ReActAgentTest {
         ReActAgent agent = new ReActAgent(new AgentCard("same-1", "same", "desc"));
         ContextEngine initialEngine = agent.getContextEngine();
         ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
-        mutableConfig.configureContextEngine(10, 2, true, false);
+        mutableConfig.configureContextEngine(10, 2, true);
 
         agent.configure(mutableConfig);
 
@@ -508,68 +497,8 @@ class ReActAgentTest {
     }
 
     @Test
-    void kvReleaseWarningOnceWhenOpenAiNotSupportedAndEnabled() {
-        assertKvReleaseWarningOnceWhenNotSupportedAndEnabled("OpenAI");
-    }
-
-    @Test
-    void kvReleaseWarningOnceWhenSiliconFlowNotSupportedAndEnabled() {
-        assertKvReleaseWarningOnceWhenNotSupportedAndEnabled("SiliconFlow");
-    }
-
-    @Test
-    void kvReleaseWarningAgainAfterSwitchProvider() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        Model model = new Model(client);
-        ReActAgent agent = configuredKvAgent("OpenAI", true, model);
-        MemorySession session = new MemorySession("sess-1");
-
-        callModelForKvTest(agent, new RecordingModelContext("sess-1"), session);
-        assertTrue(agent.isKvReleaseWarningLogged());
-
-        configureKvAgent(agent, "SiliconFlow", true, model);
-        assertFalse(agent.isKvReleaseWarningLogged());
-
-        callModelForKvTest(agent, new RecordingModelContext("sess-1"), session);
-        assertTrue(agent.isKvReleaseWarningLogged());
-    }
-
-    @Test
-    void kvReleaseNoWarningWhenReleaseDisabled() {
-        RecordingModelClient client = new RecordingModelClient(false);
-        ReActAgent agent = configuredKvAgent("OpenAI", false, new Model(client));
-        RecordingModelContext context = new RecordingModelContext("sess-1");
-        UserMessage message = new UserMessage("question");
-        message.getMetadata().put("trace", new Object());
-        context.addMessages(message).toCompletableFuture().join();
-
-        callModelForKvTest(agent, context, new MemorySession("sess-1"));
-
-        assertFalse(agent.isKvReleaseWarningLogged());
-        assertFalse(context.lastKwargs().containsKey("model"));
-        assertTrue(client.lastOptions().getExtraFields().isEmpty());
-        assertTrue(client.lastOptions().getRequestHeaders().isEmpty());
-    }
-
-    @Test
-    void kvReleaseModelPassedWhenModelSupportsReleaseAndEnabled() {
-        RecordingModelClient client = new RecordingModelClient(true);
-        Model model = new Model(client);
-        ReActAgent agent = configuredKvAgent("InferenceAffinity", true, model);
-        RecordingModelContext context = new RecordingModelContext("sess-1");
-
-        callModelForKvTest(agent, context, new MemorySession("sess-1"));
-
-        assertSame(model, context.lastKwargs().get("model"));
-        assertEquals("sess-1", client.lastOptions().getExtraFields().get("session_id"));
-        assertEquals(Boolean.TRUE, client.lastOptions().getExtraFields().get("enable_cache_sharing"));
-        assertTrue(client.lastOptions().getRequestHeaders().isEmpty());
-        assertFalse(agent.isKvReleaseWarningLogged());
-    }
-
-    @Test
     void invokeForwardsRequestHeadersAndCopiesProviderMap() {
-        RecordingModelClient client = new RecordingModelClient(false);
+        RecordingModelClient client = new RecordingModelClient();
         ReActAgent agent = configuredAgent("headers-invoke-agent", new Model(client));
         Map<String, String> providedHeaders = new LinkedHashMap<>();
         providedHeaders.put("Authorization", "Bearer invoke-token");
@@ -591,7 +520,7 @@ class ReActAgentTest {
 
     @Test
     void modelCallConsumesHeadersAndDoesNotExposeThemOutsideInvokeOptions() {
-        RecordingModelClient client = new RecordingModelClient(false);
+        RecordingModelClient client = new RecordingModelClient();
         ReActAgent agent = configuredAgent("headers-consume-agent", new Model(client));
         AtomicReference<Map<String, String>> headersAfterCall = new AtomicReference<>();
         AtomicReference<Map<String, Object>> extraAfterCall = new AtomicReference<>();
@@ -695,7 +624,7 @@ class ReActAgentTest {
                 lifecycleCalls.incrementAndGet();
             }
         };
-        RecordingModelClient client = new RecordingModelClient(false);
+        RecordingModelClient client = new RecordingModelClient();
         ReActAgent agent = configuredAgent("headers-preparation-failure-agent", new Model(client));
         AtomicInteger providerCalls = new AtomicInteger();
         ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(context -> {
@@ -720,7 +649,7 @@ class ReActAgentTest {
 
     @Test
     void beforeModelAbortClearsHeadersBeforeExceptionAfterAndRetry() {
-        RecordingModelClient client = new RecordingModelClient(false);
+        RecordingModelClient client = new RecordingModelClient();
         ReActAgent agent = configuredAgent("headers-before-abort-agent", new Model(client));
         AtomicInteger providerCalls = new AtomicInteger();
         AtomicBoolean abortFirstAttempt = new AtomicBoolean(true);
@@ -787,7 +716,7 @@ class ReActAgentTest {
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})
     void typePollutedProviderMapAbortsThroughActualCallbackChainBeforeModelInvocation() {
-        RecordingModelClient client = new RecordingModelClient(false);
+        RecordingModelClient client = new RecordingModelClient();
         ReActAgent agent = configuredAgent("headers-type-pollution-agent", new Model(client));
         CompletionStage<Map<String, String>> pollutedHeaders = (CompletionStage) CompletableFuture.completedFuture(
                 Map.of(7, "must-not-reach-model"));
@@ -891,46 +820,6 @@ class ReActAgentTest {
         return Map.of("data", data);
     }
 
-    private static ReActAgent configuredKvAgent(String provider, boolean enableKvRelease, Model model) {
-        ReActAgent agent = new ReActAgent(new AgentCard("test", "test", "desc"));
-        configureKvAgent(agent, provider, enableKvRelease, model);
-        return agent;
-    }
-
-    private static void assertKvReleaseWarningOnceWhenNotSupportedAndEnabled(String provider) {
-        RecordingModelClient client = new RecordingModelClient(false);
-        Model model = new Model(client);
-        ReActAgent agent = configuredKvAgent(provider, true, model);
-        MemorySession session = new MemorySession("sess-1");
-        RecordingModelContext context = new RecordingModelContext("sess-1");
-
-        callModelForKvTest(agent, context, session);
-        assertTrue(agent.isKvReleaseWarningLogged());
-        assertFalse(context.lastKwargs().containsKey("model"));
-
-        callModelForKvTest(agent, context, session);
-        assertTrue(agent.isKvReleaseWarningLogged());
-        assertFalse(context.lastKwargs().containsKey("model"));
-        assertEquals(2, client.invokeCount());
-    }
-
-    private static void configureKvAgent(ReActAgent agent, String provider, boolean enableKvRelease, Model model) {
-        ReActAgentConfig config = new ReActAgentConfig();
-        config.configureModelClient(provider, "test-key", apiBase(provider), "test-model", false);
-        config.configureContextEngine(100, null, false, enableKvRelease);
-        config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
-        agent.configure(config);
-        agent.setLlm(model);
-    }
-
-    private static String apiBase(String provider) {
-        return switch (provider) {
-            case "SiliconFlow" -> "https://api.siliconflow.cn/v1";
-            case "InferenceAffinity" -> "http://test:8111";
-            default -> "https://api.openai.com/v1";
-        };
-    }
-
     private static Object callModelForKvTest(ReActAgent agent, RecordingModelContext context, AgentSessionApi session) {
         AgentCallbackContext ctx = new AgentCallbackContext(agent);
         ctx.setSession(session);
@@ -939,13 +828,11 @@ class ReActAgentTest {
     }
 
     private static final class RecordingModelClient implements Model.ModelClient {
-        private final boolean supportsKvCacheRelease;
         private int invokeCount;
         private ModelInvokeOptions lastOptions;
         private List<BaseMessage> lastMessages = List.of();
 
-        private RecordingModelClient(boolean supportsKvCacheRelease) {
-            this.supportsKvCacheRelease = supportsKvCacheRelease;
+        private RecordingModelClient() {
         }
 
         @Override
@@ -954,11 +841,6 @@ class ReActAgentTest {
             lastOptions = options;
             lastMessages = new ArrayList<>(messages);
             return CompletableFuture.completedFuture(new AssistantMessage("ok"));
-        }
-
-        @Override
-        public boolean supportsKvCacheRelease() {
-            return supportsKvCacheRelease;
         }
 
         private int invokeCount() {
@@ -1108,14 +990,6 @@ class ReActAgentTest {
                     tools == null ? List.of() : tools,
                     new ContextStats());
             return CompletableFuture.completedFuture(window);
-        }
-
-        @Override
-        public void finalizeContextWindow(ContextWindow window, Object model) {
-            ModelContext.super.finalizeContextWindow(window, model);
-            if (model != null) {
-                lastKwargs.put("model", model);
-            }
         }
 
         @Override

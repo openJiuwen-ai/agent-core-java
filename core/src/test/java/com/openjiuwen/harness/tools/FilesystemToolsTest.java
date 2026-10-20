@@ -39,11 +39,12 @@ class FilesystemToolsTest {
         FilesystemTools.WriteFileTool writeTool = new FilesystemTools.WriteFileTool(tempDir.toString());
         FilesystemTools.ReadFileTool readTool = new FilesystemTools.ReadFileTool(tempDir.toString());
 
-        ToolOutput write = output(writeTool.invoke(Map.of("path", "test.txt", "content", "first\nsecond"), Map.of()));
-        ToolOutput read = output(readTool.invoke(Map.of("path", "test.txt"), Map.of()));
+        ToolOutput write = output(writeTool.invoke(
+                Map.of("file_path", "test.txt", "content", "first\nsecond"), Map.of()));
+        ToolOutput read = output(readTool.invoke(Map.of("file_path", "test.txt"), Map.of()));
 
         assertThat(write.isSuccess()).isTrue();
-        assertThat(data(write).get("bytes")).isEqualTo(12);
+        assertThat(data(write).get("bytes_written")).isEqualTo(12);
         assertThat(read.isSuccess()).isTrue();
         assertThat(data(read).get("content")).isEqualTo("first\nsecond");
     }
@@ -52,7 +53,7 @@ class FilesystemToolsTest {
     void readFileRejectsEscapingWorkspace() {
         FilesystemTools.ReadFileTool readTool = new FilesystemTools.ReadFileTool(tempDir.toString());
 
-        assertThatThrownBy(() -> readTool.invoke(Map.of("path", "../outside.txt"), Map.of()))
+        assertThatThrownBy(() -> readTool.invoke(Map.of("file_path", "../outside.txt"), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("escapes workspace root");
     }
@@ -62,7 +63,7 @@ class FilesystemToolsTest {
         Files.writeString(tempDir.resolve("max.txt"), "alpha\nbeta\ngamma", StandardCharsets.UTF_8);
 
         ToolOutput read = output(new FilesystemTools.ReadFileTool(tempDir.toString())
-                .invoke(Map.of("path", "max.txt"), Map.of()));
+                .invoke(Map.of("file_path", "max.txt"), Map.of()));
 
         assertThat(data(read).get("content")).isEqualTo("alpha\nbeta\ngamma");
     }
@@ -70,7 +71,7 @@ class FilesystemToolsTest {
     @Test
     void writeCreatesParentDirectories() throws Exception {
         ToolOutput write = output(new FilesystemTools.WriteFileTool(tempDir.toString())
-                .invoke(Map.of("path", "sub/dir/new.txt", "content", "created"), Map.of()));
+                .invoke(Map.of("file_path", "sub/dir/new.txt", "content", "created"), Map.of()));
 
         assertThat(write.isSuccess()).isTrue();
         assertThat(Files.readString(tempDir.resolve("sub/dir/new.txt"))).isEqualTo("created");
@@ -81,7 +82,7 @@ class FilesystemToolsTest {
         Files.writeString(tempDir.resolve("rewrite.txt"), "old", StandardCharsets.UTF_8);
 
         output(new FilesystemTools.WriteFileTool(tempDir.toString())
-                .invoke(Map.of("path", "rewrite.txt", "content", "new"), Map.of()));
+                .invoke(Map.of("file_path", "rewrite.txt", "content", "new"), Map.of()));
 
         assertThat(Files.readString(tempDir.resolve("rewrite.txt"))).isEqualTo("new");
     }
@@ -89,9 +90,10 @@ class FilesystemToolsTest {
     @Test
     void writeReturnsByteCount() throws Exception {
         ToolOutput write = output(new FilesystemTools.WriteFileTool(tempDir.toString())
-                .invoke(Map.of("path", "unicode.txt", "content", "第一行"), Map.of()));
+                .invoke(Map.of("file_path", "unicode.txt", "content", "第一行"), Map.of()));
 
-        assertThat((Integer) data(write).get("bytes")).isGreaterThan(0);
+        assertThat(data(write).get("bytes_written"))
+                .isEqualTo("第一行".getBytes(StandardCharsets.UTF_8).length);
     }
 
     @Test
@@ -99,7 +101,7 @@ class FilesystemToolsTest {
         Files.writeString(tempDir.resolve("edit.txt"), "Hello Google DeepMind", StandardCharsets.UTF_8);
 
         ToolOutput edit = output(new FilesystemTools.EditFileTool(tempDir.toString())
-                .invoke(Map.of("path", "edit.txt", "old_text", "Hello", "new_text", "Hell0"), Map.of()));
+                .invoke(Map.of("file_path", "edit.txt", "old_string", "Hello", "new_string", "Hell0"), Map.of()));
 
         assertThat(edit.isSuccess()).isTrue();
         assertThat(data(edit).get("replacements")).isEqualTo(1);
@@ -111,18 +113,20 @@ class FilesystemToolsTest {
         Files.writeString(tempDir.resolve("edit.txt"), "content", StandardCharsets.UTF_8);
 
         ToolOutput edit = output(new FilesystemTools.EditFileTool(tempDir.toString())
-                .invoke(Map.of("path", "edit.txt", "old_text", "missing", "new_text", "x"), Map.of()));
+                .invoke(Map.of("file_path", "edit.txt", "old_string", "missing", "new_string", "x"), Map.of()));
 
         assertThat(edit.isSuccess()).isFalse();
-        assertThat(edit.getError()).contains("old_text not found");
+        assertThat(edit.getError()).contains("old_string not found");
     }
 
     @Test
     void editFileRejectsPathEscape() {
         FilesystemTools.EditFileTool editTool = new FilesystemTools.EditFileTool(tempDir.toString());
 
-        assertThatThrownBy(() -> editTool.invoke(Map.of("path", "../edit.txt", "old_text", "x", "new_text", "y"),
-                Map.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> editTool.invoke(
+                        Map.of("file_path", "../edit.txt", "old_string", "x", "new_string", "y"),
+                        Map.of()))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -355,11 +359,84 @@ class FilesystemToolsTest {
     }
 
     @Test
+    void readFileAcceptsPythonContractParamNames() throws Exception {
+        output(new FilesystemTools.WriteFileTool(tempDir.toString())
+                .invoke(Map.of("file_path", "contract.txt", "content", "hello"), Map.of()));
+
+        ToolOutput read = output(new FilesystemTools.ReadFileTool(tempDir.toString())
+                .invoke(Map.of("file_path", "contract.txt"), Map.of()));
+
+        assertThat(read.isSuccess()).isTrue();
+        assertThat(data(read).get("file_path")).isNotNull();
+        assertThat(data(read).get("content")).isEqualTo("hello");
+    }
+
+    @Test
+    void absolutePathOutsideWorkspaceFollowsPythonContract() throws Exception {
+        Path outsideDir = Files.createTempDirectory("fs-outside");
+        Path outsideFile = outsideDir.resolve("script.yaml");
+        Files.writeString(outsideFile, "fixed_script: true", StandardCharsets.UTF_8);
+        try {
+            ToolOutput read = output(new FilesystemTools.ReadFileTool(tempDir.toString())
+                    .invoke(Map.of("file_path", outsideFile.toString()), Map.of()));
+
+            assertThat(read.isSuccess()).isTrue();
+            assertThat(data(read).get("content")).isEqualTo("fixed_script: true");
+        } finally {
+            Files.deleteIfExists(outsideFile);
+            Files.deleteIfExists(outsideDir);
+        }
+    }
+
+    @Test
+    void writeWithAbsolutePathOutsideWorkspaceFollowsPythonContract() throws Exception {
+        Path outsideDir = Files.createTempDirectory("fs-outside-write");
+        Path outsideFile = outsideDir.resolve("generated.md");
+        try {
+            ToolOutput write = output(new FilesystemTools.WriteFileTool(tempDir.toString())
+                    .invoke(Map.of("file_path", outsideFile.toString(), "content", "外部写入"), Map.of()));
+
+            assertThat(write.isSuccess()).isTrue();
+            assertThat(Files.readString(outsideFile, StandardCharsets.UTF_8)).isEqualTo("外部写入");
+        } finally {
+            Files.deleteIfExists(outsideFile);
+            Files.deleteIfExists(outsideDir);
+        }
+    }
+
+    @Test
+    void writeFileAcceptsPythonContractParamNames() throws Exception {
+        ToolOutput write = output(new FilesystemTools.WriteFileTool(tempDir.toString())
+                .invoke(Map.of("file_path", "sub/contract.txt", "content", "契约写入"), Map.of()));
+
+        assertThat(write.isSuccess()).isTrue();
+        assertThat(data(write).get("file_path")).isNotNull();
+        assertThat(data(write).get("bytes_written")).isNotNull();
+        assertThat(Files.readString(tempDir.resolve("sub/contract.txt"), StandardCharsets.UTF_8))
+                .isEqualTo("契约写入");
+    }
+
+    @Test
+    void editFileAcceptsPythonContractParamNames() throws Exception {
+        output(new FilesystemTools.WriteFileTool(tempDir.toString())
+                .invoke(Map.of("file_path", "contract.txt", "content", "Hello"), Map.of()));
+
+        ToolOutput edit = output(new FilesystemTools.EditFileTool(tempDir.toString())
+                .invoke(Map.of("file_path", "contract.txt", "old_string", "Hello", "new_string", "Hell0"),
+                        Map.of()));
+
+        assertThat(edit.isSuccess()).isTrue();
+        assertThat(data(edit).get("replacements")).isEqualTo(1);
+        assertThat(Files.readString(tempDir.resolve("contract.txt"), StandardCharsets.UTF_8))
+                .isEqualTo("Hell0");
+    }
+
+    @Test
     void streamReadToolReturnsOneToolOutput() throws Exception {
         Files.writeString(tempDir.resolve("stream.txt"), "streamed", StandardCharsets.UTF_8);
 
         Iterator<Object> iterator = new FilesystemTools.ReadFileTool(tempDir.toString())
-                .stream(Map.of("path", "stream.txt"), Map.of());
+                .stream(Map.of("file_path", "stream.txt"), Map.of());
         List<Object> chunks = new ArrayList<>();
         iterator.forEachRemaining(chunks::add);
 
@@ -368,30 +445,30 @@ class FilesystemToolsTest {
     }
 
     @Test
-    void readToolRequiresPath() {
+    void readToolRequiresFilePath() {
         FilesystemTools.ReadFileTool readTool = new FilesystemTools.ReadFileTool(tempDir.toString());
 
         assertThatThrownBy(() -> readTool.invoke(Map.of(), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("path is required");
+                .hasMessageContaining("file_path is required");
     }
 
     @Test
-    void writeToolRequiresPath() {
+    void writeToolRequiresFilePath() {
         FilesystemTools.WriteFileTool writeTool = new FilesystemTools.WriteFileTool(tempDir.toString());
 
         assertThatThrownBy(() -> writeTool.invoke(Map.of("content", "x"), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("path is required");
+                .hasMessageContaining("file_path is required");
     }
 
     @Test
-    void editToolRequiresOldText() {
+    void editToolRequiresOldString() {
         FilesystemTools.EditFileTool editTool = new FilesystemTools.EditFileTool(tempDir.toString());
 
-        assertThatThrownBy(() -> editTool.invoke(Map.of("path", "a.txt", "new_text", "x"), Map.of()))
+        assertThatThrownBy(() -> editTool.invoke(Map.of("file_path", "a.txt", "new_string", "x"), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("old_text is required");
+                .hasMessageContaining("old_string is required");
     }
 
     private void seedWorkspaceFiles() throws Exception {

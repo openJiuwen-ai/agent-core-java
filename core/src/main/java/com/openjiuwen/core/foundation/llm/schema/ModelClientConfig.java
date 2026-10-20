@@ -1,18 +1,22 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.clients.ClientRegistry;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -32,7 +36,12 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ModelClientConfig {
+public class ModelClientConfig {
+    /**
+     * Default per-call timeout in seconds applied when the configuration does not declare one;
+     * legacy-timeout explicitness checks also compare against this value.
+     */
+    public static final double DEFAULT_TIMEOUT_SECONDS = 60.0;
 
     private static final Set<String> DEFERRED_PARITY_PROVIDERS = Set.of(
             "qwen",
@@ -40,6 +49,11 @@ public class ModelClientConfig {
             "openai1111",
             "OpenAI1111"
     );
+
+    private static final double CONNECT_MIN_SECONDS = 5.0D;
+    private static final double CONNECT_MAX_SECONDS = 15.0D;
+    private static final double IDLE_MIN_SECONDS = 300.0D;
+    private static final double IDLE_MAX_SECONDS = 900.0D;
 
     @JsonProperty("client_id")
     private String clientId = UUID.randomUUID().toString();
@@ -54,6 +68,17 @@ public class ModelClientConfig {
     private String apiBase;
 
     private double timeout = 60.0;
+
+    @JsonProperty("connect_timeout_seconds")
+    private Double connectTimeoutSeconds;
+
+    @JsonProperty("stream_idle_seconds")
+    private Double streamIdleSeconds;
+
+    @JsonIgnore
+    @Setter(AccessLevel.NONE)
+    @EqualsAndHashCode.Exclude
+    private boolean isTimeoutExplicit;
 
     @JsonProperty("max_retries")
     private int maxRetries = 3;
@@ -80,6 +105,7 @@ public class ModelClientConfig {
         this.apiKey = apiKey;
         this.apiBase = apiBase;
         this.timeout = validatePositiveTimeout(timeout);
+        this.isTimeoutExplicit = isNonDefaultLegacyTimeout(timeout);
         this.maxRetries = maxRetries;
         this.verifySsl = verifySsl;
         this.sslCert = sslCert;
@@ -109,6 +135,31 @@ public class ModelClientConfig {
 
     public void setTimeout(double timeout) {
         this.timeout = validatePositiveTimeout(timeout);
+        if (isNonDefaultLegacyTimeout(timeout)) {
+            this.isTimeoutExplicit = true;
+        }
+    }
+
+    /**
+     * Sets the connect-stage timeout; null means not configured.
+     *
+     * @param connectTimeoutSeconds connect timeout in seconds, must be within [5, 15] when set
+     */
+    public void setConnectTimeoutSeconds(Double connectTimeoutSeconds) {
+        this.connectTimeoutSeconds = connectTimeoutSeconds == null
+                ? null
+                : validateConnectTimeoutSeconds(connectTimeoutSeconds);
+    }
+
+    /**
+     * Sets the peer-silence idle timeout; null means not configured.
+     *
+     * @param streamIdleSeconds idle timeout in seconds, must be within [300, 900] when set
+     */
+    public void setStreamIdleSeconds(Double streamIdleSeconds) {
+        this.streamIdleSeconds = streamIdleSeconds == null
+                ? null
+                : validateStreamIdleSeconds(streamIdleSeconds);
     }
 
     public String getClientId() {
@@ -129,6 +180,40 @@ public class ModelClientConfig {
 
     public double getTimeout() {
         return timeout;
+    }
+
+    /**
+     * Returns the configured connect timeout, or null when not declared.
+     *
+     * @return connect timeout in seconds, nullable
+     */
+    public Double getConnectTimeoutSeconds() {
+        return connectTimeoutSeconds;
+    }
+
+    /**
+     * Returns the configured stream idle timeout, or null when not declared.
+     *
+     * @return stream idle timeout in seconds, nullable
+     */
+    public Double getStreamIdleSeconds() {
+        return streamIdleSeconds;
+    }
+
+    /**
+     * Whether the legacy timeout field was explicitly set to a non-default value.
+     * Explicitness is a construction-time fact and is not serialized.
+     *
+     * @return true when legacy timeout was explicitly configured
+     */
+    @JsonIgnore
+    public boolean isTimeoutExplicit() {
+        return isTimeoutExplicit;
+    }
+
+    private static boolean isNonDefaultLegacyTimeout(double timeout) {
+        return java.math.BigDecimal.valueOf(timeout)
+                .compareTo(java.math.BigDecimal.valueOf(DEFAULT_TIMEOUT_SECONDS)) != 0;
     }
 
     public int getMaxRetries() {
@@ -235,6 +320,9 @@ public class ModelClientConfig {
         private String apiKey;
         private String apiBase;
         private double timeout = 60.0;
+        private Double connectTimeoutSeconds;
+        private Double streamIdleSeconds;
+        private boolean isTimeoutExplicit;
         private int maxRetries = 3;
         private boolean verifySsl = true;
         private String sslCert;
@@ -272,6 +360,31 @@ public class ModelClientConfig {
 
         public ModelClientConfigBuilder timeout(double timeout) {
             this.timeout = timeout;
+            if (isNonDefaultLegacyTimeout(timeout)) {
+                this.isTimeoutExplicit = true;
+            }
+            return this;
+        }
+
+        /**
+         * Sets the connect-stage timeout; null means not configured.
+         *
+         * @param connectTimeoutSeconds connect timeout in seconds
+         * @return this builder
+         */
+        public ModelClientConfigBuilder connectTimeoutSeconds(Double connectTimeoutSeconds) {
+            this.connectTimeoutSeconds = connectTimeoutSeconds;
+            return this;
+        }
+
+        /**
+         * Sets the peer-silence idle timeout; null means not configured.
+         *
+         * @param streamIdleSeconds idle timeout in seconds
+         * @return this builder
+         */
+        public ModelClientConfigBuilder streamIdleSeconds(Double streamIdleSeconds) {
+            this.streamIdleSeconds = streamIdleSeconds;
             return this;
         }
 
@@ -324,6 +437,13 @@ public class ModelClientConfig {
             config.apiKey = apiKey;
             config.apiBase = apiBase;
             config.timeout = validatePositiveTimeout(timeout);
+            config.connectTimeoutSeconds = connectTimeoutSeconds == null
+                    ? null
+                    : validateConnectTimeoutSeconds(connectTimeoutSeconds);
+            config.streamIdleSeconds = streamIdleSeconds == null
+                    ? null
+                    : validateStreamIdleSeconds(streamIdleSeconds);
+            config.isTimeoutExplicit = isTimeoutExplicit;
             config.maxRetries = maxRetries;
             config.verifySsl = verifySsl;
             config.sslCert = sslCert;
@@ -372,6 +492,30 @@ public class ModelClientConfig {
         @Override
         public Builder timeout(double timeout) {
             super.timeout(timeout);
+            return this;
+        }
+
+        /**
+         * Sets the connect-stage timeout; null means not configured.
+         *
+         * @param connectTimeoutSeconds connect timeout in seconds
+         * @return this builder
+         */
+        @Override
+        public Builder connectTimeoutSeconds(Double connectTimeoutSeconds) {
+            super.connectTimeoutSeconds(connectTimeoutSeconds);
+            return this;
+        }
+
+        /**
+         * Sets the peer-silence idle timeout; null means not configured.
+         *
+         * @param streamIdleSeconds idle timeout in seconds
+         * @return this builder
+         */
+        @Override
+        public Builder streamIdleSeconds(Double streamIdleSeconds) {
+            super.streamIdleSeconds(streamIdleSeconds);
             return this;
         }
 
@@ -426,6 +570,36 @@ public class ModelClientConfig {
                             + ", input_type=float]");
         }
         return timeout;
+    }
+
+    /**
+     * Validates a configured connect timeout value.
+     *
+     * @param seconds candidate value
+     * @return the same value when valid
+     * @throws IllegalArgumentException when the value is NaN or outside [5, 15]
+     */
+    public static double validateConnectTimeoutSeconds(double seconds) {
+        if (Double.isNaN(seconds) || seconds < CONNECT_MIN_SECONDS || seconds > CONNECT_MAX_SECONDS) {
+            throw new IllegalArgumentException(
+                    "connectTimeoutSeconds must be within [5, 15] seconds, got: " + seconds);
+        }
+        return seconds;
+    }
+
+    /**
+     * Validates a configured stream idle timeout value.
+     *
+     * @param seconds candidate value
+     * @return the same value when valid
+     * @throws IllegalArgumentException when the value is NaN or outside [300, 900]
+     */
+    public static double validateStreamIdleSeconds(double seconds) {
+        if (Double.isNaN(seconds) || seconds < IDLE_MIN_SECONDS || seconds > IDLE_MAX_SECONDS) {
+            throw new IllegalArgumentException(
+                    "streamIdleSeconds must be within [300, 900] seconds, got: " + seconds);
+        }
+        return seconds;
     }
 
     @Override

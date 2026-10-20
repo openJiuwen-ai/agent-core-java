@@ -9,6 +9,8 @@ import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -28,7 +30,6 @@ import java.util.concurrent.CompletableFuture;
  * Detects redundant and conflicting memories and returns add/delete actions.
  */
 public class MemUpdateChecker {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final java.util.concurrent.Executor IO_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("mem-update-checker-io", true);
@@ -123,7 +124,10 @@ public class MemUpdateChecker {
 
         for (int attempt = 0; attempt < retries; attempt++) {
             try {
-                AssistantMessage response = baseChatModel.invoke(messages).toCompletableFuture().join();
+                AssistantMessage response = baseChatModel.invoke(messages, ModelInvokeOptions.builder()
+                        .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                                null, baseChatModel.getModelClientConfig()))
+                        .build()).toCompletableFuture().join();
                 Object parsedResult = parser.parse(response.getContentAsString()).join();
                 List<?> parsedItems = normalizeParsedResult(parsedResult);
                 if (parsedItems == null) {

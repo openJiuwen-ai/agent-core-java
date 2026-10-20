@@ -25,6 +25,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.operator.Operator;
@@ -52,7 +53,6 @@ import java.util.regex.Pattern;
  * {@code openjiuwen/agent_evolving/optimizer/skill_call/team_skill_experience_optimizer.py}.</p>
  */
 public class TeamSkillExperienceOptimizer extends BaseOptimizer {
-
     public static final LlmResilience.LLMInvokePolicy TEAM_SKILL_RECORD_LLM_POLICY =
             new LlmResilience.LLMInvokePolicy(120, 420, 3, 1.0, true);
     static final int PATCH_RETRY_SKILL_CONTENT_CHARS = 3000;
@@ -412,6 +412,8 @@ public class TeamSkillExperienceOptimizer extends BaseOptimizer {
                             ModelInvokeOptions.builder()
                                     .model(model)
                                     .temperature(0.1f)
+                                    // per-call timeout overrides only the idle (peer silence)
+                                    // layer, not a total duration cap
                                     .timeout((float) TEAM_RETRY_PARSE_TIMEOUT_SECS)
                                     .build()
                     )
@@ -726,7 +728,11 @@ public class TeamSkillExperienceOptimizer extends BaseOptimizer {
             if (policy == null) {
                 AssistantMessage response = llm.invoke(
                                 List.of(new UserMessage(prompt)),
-                                ModelInvokeOptions.builder().model(model).build()
+                                ModelInvokeOptions.builder()
+                                        .model(model)
+                                        .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(
+                                                null, llm.getModelClientConfig()))
+                                        .build()
                         )
                         .toCompletableFuture()
                         .get();

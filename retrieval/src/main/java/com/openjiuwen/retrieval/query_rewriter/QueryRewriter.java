@@ -16,6 +16,7 @@ import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -40,7 +41,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * Query Rewriter (QR): rewrites short user query into a standalone query suitable for retrieval.
  */
 public class QueryRewriter {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
     private static final String PROMPT_RESOURCE_DIR = "/com/openjiuwen/retrieval/query_rewriter/prompts/";
@@ -420,6 +420,7 @@ public class QueryRewriter {
         if (llm.getModelConfig() != null) {
             builder.temperature((float) llm.getModelConfig().getTemperature());
         }
+        builder.timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, llm.getModelClientConfig()));
         return builder.build();
     }
 

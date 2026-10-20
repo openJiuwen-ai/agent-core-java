@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
@@ -28,7 +29,6 @@ import java.util.Objects;
  * {@code openjiuwen/dev_tools/tune/optimizer/adopt/adopt_optimizer.py}.</p>
  */
 public class PartialOptimizer extends InstructionOptimizer {
-
     private final Model model;
     private final String modelName;
 
@@ -86,6 +86,7 @@ public class PartialOptimizer extends InstructionOptimizer {
     private String invokeModel(List<BaseMessage> messages) {
         ModelInvokeOptions options = ModelInvokeOptions.builder()
                 .model(modelName)
+                .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
                 .build();
         return model.invoke(messages, options).toCompletableFuture().join().getContentAsString();
     }

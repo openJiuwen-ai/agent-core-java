@@ -12,6 +12,7 @@ import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -312,6 +313,7 @@ public class DialogueCompressor extends ContextProcessor {
                     ModelInvokeOptions.builder()
                             .outputParser(new JsonOutputParser())
                             .extraFields(compressionCacheKwargs(context.sessionId()))
+                            .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
                             .build())
                     .toCompletableFuture().join();
             recordCompressionUsage(response);
