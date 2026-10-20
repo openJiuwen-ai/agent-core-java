@@ -25,10 +25,10 @@ import java.util.Map;
  * @since 0.1.17
  */
 public class KvStepJournal implements StepJournal {
-    private static final Logger log = LoggerFactory.getLogger(KvStepJournal.class);
-
     /** KV key prefix shared by all journal records. */
     public static final String KEY_PREFIX = "stepjournal";
+
+    private static final Logger log = LoggerFactory.getLogger(KvStepJournal.class);
 
     private final BaseKVStore kvStore;
     private final StepPayloadSanitizer sanitizer;
