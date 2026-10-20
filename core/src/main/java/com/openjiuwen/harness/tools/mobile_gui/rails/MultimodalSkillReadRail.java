@@ -42,6 +42,9 @@ public class MultimodalSkillReadRail extends DeepAgentRail {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     public static final String MULTIMODAL_SKILL_USER_MESSAGE_NAME = "multimodal_skill";
+
+    /** Default Chat Completions {@code image_url.detail} hint; explicit and configurable. */
+    public static final String DEFAULT_IMAGE_DETAIL = "low";
     public static final String SKILL_TOOL_MARKDOWN_IMAGES_HINT =
             "Embedded figures in this skill are markdown links (paths/URLs) only; pixel data is not "
                     + "attached. Call read_file on the image path under skills/<skill-name>/... when you need "
@@ -132,6 +135,23 @@ public class MultimodalSkillReadRail extends DeepAgentRail {
     }
 
     public static List<Map<String, Object>> parseMarkdownToBlocks(String markdownText, Path baseDir) {
+        return parseMarkdownToBlocks(markdownText, baseDir, DEFAULT_IMAGE_DETAIL);
+    }
+
+    /**
+     * Parse markdown into text and image blocks with a configurable wire
+     * {@code detail} hint for embedded images.
+     *
+     * @param markdownText markdown body; {@code null} is treated as empty
+     * @param baseDir directory local image links resolve against; may be {@code null}
+     * @param imageDetail Chat Completions {@code image_url.detail} value such as
+     *                    {@code low}, {@code high} or {@code auto}; {@code null}
+     *                    or blank omits the field entirely
+     * @return ordered text and image blocks, never {@code null}
+     * @since 0.1.17
+     */
+    public static List<Map<String, Object>> parseMarkdownToBlocks(String markdownText, Path baseDir,
+                                                                  String imageDetail) {
         String text = markdownText == null ? "" : markdownText;
         List<Map<String, Object>> blocks = new ArrayList<>();
         Matcher matcher = IMAGE_MARKDOWN.matcher(text);
@@ -147,7 +167,7 @@ public class MultimodalSkillReadRail extends DeepAgentRail {
             String caption = altText.isEmpty() ? fileNameOrDefault(imageUrl) : altText;
             String resolvedUrl = resolveMarkdownImageUrl(imageUrl, baseDir);
             blocks.add(textBlock(REFERENCE_IMAGE_NOTE.formatted(caption)));
-            blocks.add(imageBlock(resolvedUrl));
+            blocks.add(imageBlock(resolvedUrl, imageDetail));
             lastIdx = matcher.end();
         }
 
@@ -342,10 +362,12 @@ public class MultimodalSkillReadRail extends DeepAgentRail {
         return block;
     }
 
-    private static Map<String, Object> imageBlock(String imageUrl) {
+    private static Map<String, Object> imageBlock(String imageUrl, String imageDetail) {
         Map<String, Object> imageUrlMap = new LinkedHashMap<>();
         imageUrlMap.put("url", imageUrl);
-        imageUrlMap.put("detail", "low");
+        if (imageDetail != null && !imageDetail.isBlank()) {
+            imageUrlMap.put("detail", imageDetail);
+        }
         Map<String, Object> block = new LinkedHashMap<>();
         block.put("type", "image_url");
         block.put("image_url", imageUrlMap);
