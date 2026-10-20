@@ -187,6 +187,8 @@ offload:{tenant}:{session}:{context}:{handle}
 
 `enable_reload=true` 时，框架为每个上下文自动注册工具 `reload_original_context_messages`，同时在系统消息追加取回提示词（模型看到 `[[OFFLOAD: ...]]` 标记时会自行决定是否调用）。
 
+**业务提示词无需重复编写 OFFLOAD/reload 引导**：框架自动追加的提示词已包含标记语义、工具调用方式与"不要猜测缺失内容"的约束，业务 system prompt 只需描述业务角色即可。若希望模型取回更激进（如默认取回原文），可在业务提示词中补充一句引导——这是可选项，不是必需。
+
 **参数**：
 
 | 参数 | 必填 | 说明 |
