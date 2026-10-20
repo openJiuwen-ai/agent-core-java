@@ -42,7 +42,7 @@ import java.util.Map;
  * {@link OffloadService} MEMORY backend.
  */
 class MessageOffloaderOffloadV2Test {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
     private static final String DONE_FLAG = MessageOffloader.OFFLOAD_DONE_METADATA_KEY + "=true";
 
     @Test

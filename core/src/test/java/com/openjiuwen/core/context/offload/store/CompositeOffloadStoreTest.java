@@ -34,7 +34,7 @@ import java.util.List;
  * validation (架构文档 §2.3, AC-2-06/07/08).
  */
 class CompositeOffloadStoreTest {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
     private static final String HANDLE = "handle-1";
 
     private static OffloadPayload payload() {

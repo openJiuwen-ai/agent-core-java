@@ -39,7 +39,7 @@ import java.util.List;
  * OFFLOAD_REDIS_DOWN translation (架构文档 §2.3, AC-2-06).
  */
 class RedisOffloadStoreTest {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
     private static final String HANDLE = "handle-1";
     private static final String EXPECTED_KEY = NS.toRedisKey(HANDLE);
 

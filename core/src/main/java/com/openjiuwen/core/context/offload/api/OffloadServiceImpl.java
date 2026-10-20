@@ -72,7 +72,7 @@ public class OffloadServiceImpl implements OffloadService {
     public Optional<OffloadRef> save(OffloadRequest request) {
         Objects.requireNonNull(request, "request must not be null");
         OffloadNamespace ns = request.getNamespace() == null
-                ? OffloadNamespace.of("", "", "", "")
+                ? OffloadNamespace.of("", "", "")
                 : request.getNamespace();
         String algorithmId = request.getAlgorithmId();
         long startedAt = System.currentTimeMillis();

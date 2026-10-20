@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
  * derivation and concurrent thread safety (架构文档 §2.3).
  */
 class MemoryOffloadStoreTest {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
     private static final String HANDLE = "handle-1";
 
     private static OffloadPayload payload(String text) {
@@ -79,7 +79,7 @@ class MemoryOffloadStoreTest {
         OffloadPayload payload = payload("x");
         store.save(NS, HANDLE, payload, null);
 
-        OffloadNamespace otherSession = OffloadNamespace.of("t1", "u1", "s2", "c1");
+        OffloadNamespace otherSession = OffloadNamespace.of("t1", "s2", "c1");
         assertFalse(store.exists(otherSession, HANDLE), "another session must not see this entry");
         OffloadException ex = assertThrows(OffloadException.class, () -> store.load(otherSession, HANDLE));
         assertEquals(OffloadErrorCode.OFFLOAD_MISSING, ex.code());
@@ -99,7 +99,7 @@ class MemoryOffloadStoreTest {
                 try {
                     start.await();
                     for (int i = 0; i < writesPerWriter; i++) {
-                        OffloadNamespace ns = OffloadNamespace.of("t", "u", "s" + writerIndex, "c");
+                        OffloadNamespace ns = OffloadNamespace.of("t", "s" + writerIndex, "c");
                         String handle = "h" + i;
                         store.save(ns, handle, payload("w" + writerIndex + "-" + i), null);
                         store.load(ns, handle);

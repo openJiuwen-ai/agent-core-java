@@ -32,7 +32,7 @@ import java.util.List;
  * (架构文档 §2.2 — in_memory 镜像、v2 优先/legacy 兜底、store 链单源).
  */
 class OffloadMessageBufferAdapterTest {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
 
     @Test
     void offloadInMemoryMirrorsIntoLegacyBufferAndLegacyServesReload() {

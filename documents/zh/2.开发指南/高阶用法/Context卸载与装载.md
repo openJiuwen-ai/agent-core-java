@@ -151,21 +151,21 @@ agentConfig.setContextProcessors(List.of(
 ### 输出路径（FILESYSTEM）
 
 ```text
-{workspace_root}/context/{tenant}/{user}/{session}_context/offload/{handle}.json
+{workspace_root}/context/{tenant}/{session}_context/offload/{handle}.json
 ```
 
 - `handle`：32 位 UUID hex，namespace 内唯一，不复用；
-- namespace 段（tenant/user/session）写入前会 sanitize：仅保留 `[A-Za-z0-9._-]`，其余字符替换为 `_`，空段与 `.`/`..` 变为 `_`（防路径穿越）；
-- 默认装配（`ReActAgent`）下 tenant/user 为空串，实际路径形如 `{workspace_root}/context/_/_/{sessionId}_context/offload/{handle}.json`；
+- namespace 为三级结构 **tenant / session / context**（与平台多租户模型对齐，无独立 user 层）；namespace 段（tenant/session）写入前会 sanitize：仅保留 `[A-Za-z0-9._-]`，其余字符替换为 `_`，空段与 `.`/`..` 变为 `_`（防路径穿越）；
+- 默认装配（`ReActAgent`）下 tenant 为空串，实际路径形如 `{workspace_root}/context/_/{sessionId}_context/offload/{handle}.json`；
 - 典型场景会同时出现 `{handle}.json.tmp.<uuid>` 中间文件（写完即原子 rename，失败自动清理）与 `{handle}.json.lock`（仅 `enable_file_lock=true` 时，发布后删除）。
 
 ### Redis Key
 
 ```text
-offload:{tenant}:{user}:{session}:{context}:{handle}
+offload:{tenant}:{session}:{context}:{handle}
 ```
 
-例如：`offload:_:_:offload_demo_1729400000000:default:a1b2c3d4e5f6789012345678abcdef01`。段同样经过 sanitize；写入即 `SETEX`，TTL 与 `ttl_seconds` 一致，到期 Redis 自动删除。
+例如：`offload:_:offload_demo_1729400000000:default:a1b2c3d4e5f6789012345678abcdef01`。段同样经过 sanitize；写入即 `SETEX`，TTL 与 `ttl_seconds` 一致，到期 Redis 自动删除。
 
 ### Payload JSON（schema_version=2）
 
@@ -173,7 +173,7 @@ offload:{tenant}:{user}:{session}:{context}:{handle}
 {
   "schema_version": 2,
   "offload_handle": "a1b2c3d4e5f6789012345678abcdef01",
-  "namespace": {"tenant_id": "_", "user_id": "_", "session_id": "s1", "context_id": "c1"},
+  "namespace": {"tenant_id": "_", "session_id": "s1", "context_id": "c1"},
   "created_at": 1760900000000,
   "expires_at": 1760986400000,
   "content_sha256": "<messages 紧凑 JSON 的 sha256>",

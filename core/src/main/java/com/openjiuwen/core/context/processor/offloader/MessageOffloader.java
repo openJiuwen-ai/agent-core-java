@@ -304,7 +304,7 @@ public class MessageOffloader extends ContextProcessor {
                 return supplied;
             }
         }
-        return OffloadNamespace.of("", "", context == null ? "" : context.sessionId(), "");
+        return OffloadNamespace.of("", context == null ? "" : context.sessionId(), "");
     }
 
     private static long estimateTokens(BaseMessage message, SessionModelContext context) {

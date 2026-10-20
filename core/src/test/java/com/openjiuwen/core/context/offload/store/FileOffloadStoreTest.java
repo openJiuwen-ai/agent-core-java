@@ -35,7 +35,7 @@ import java.util.stream.Stream;
  * (架构文档 §2.3, AC-2-01/04/05).
  */
 class FileOffloadStoreTest {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
     private static final String HANDLE = "handle-1";
 
     @TempDir
@@ -174,10 +174,10 @@ class FileOffloadStoreTest {
 
     @Test
     void namespaceIsSanitizedInFilePath() {
-        // "u../x" normalizes to "u.._x" (illegal "/" stripped); every path
+        // "s../x" normalizes to "s.._x" (illegal "/" stripped); every path
         // segment below the workspace root must be a safe directory name
         // with no traversal component.
-        OffloadNamespace evil = OffloadNamespace.of("t..1", "u../x", "s1", "c1");
+        OffloadNamespace evil = OffloadNamespace.of("t..1", "s../x", "c1");
         String path = FileOffloadStore.resolveFilePath(tempDir, evil, HANDLE);
         Path relative = tempDir.toAbsolutePath().normalize().relativize(Path.of(path));
         for (Path segment : relative) {

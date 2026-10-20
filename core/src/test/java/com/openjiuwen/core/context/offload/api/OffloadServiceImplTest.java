@@ -40,8 +40,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * serialization and error taxonomy (架构文档 §2.3, AC-2-02..10).
  */
 class OffloadServiceImplTest {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
-    private static final OffloadNamespace FOREIGN_NS = OffloadNamespace.of("t1", "u1", "s2", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
+    private static final OffloadNamespace FOREIGN_NS = OffloadNamespace.of("t1", "s2", "c1");
     private static final String ALGORITHM_ID = "MessageOffloader";
 
     private final OffloadCatalogImpl catalog = new OffloadCatalogImpl();

@@ -11,8 +11,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.regex.Pattern;
 
 /**
- * Four-level ownership identity of an offload entry
- * (tenant/user/session/context).
+ * Three-level ownership identity of an offload entry (tenant/session/context).
  *
  * <p>Namespace segments are sanitized to {@code [A-Za-z0-9._-]} before they
  * reach storage keys or filesystem paths to prevent path traversal
@@ -23,7 +22,6 @@ import java.util.regex.Pattern;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record OffloadNamespace(
         @JsonProperty("tenant_id") String tenantId,
-        @JsonProperty("user_id") String userId,
         @JsonProperty("session_id") String sessionId,
         @JsonProperty("context_id") String contextId) {
 
@@ -37,40 +35,38 @@ public record OffloadNamespace(
      * Factory normalizing {@code null}/blank segments to empty strings.
      *
      * @param tenantId  tenant identifier
-     * @param userId    user identifier
      * @param sessionId session identifier
      * @param contextId context identifier
      * @return a new {@link OffloadNamespace} with normalized segments
      */
-    public static OffloadNamespace of(String tenantId, String userId, String sessionId, String contextId) {
+    public static OffloadNamespace of(String tenantId, String sessionId, String contextId) {
         return new OffloadNamespace(
                 normalize(tenantId),
-                normalize(userId),
                 normalize(sessionId),
                 normalize(contextId));
     }
 
     /**
-     * Redis storage key: {@code offload:{tenant}:{user}:{session}:{context}:{handle}}.
+     * Redis storage key: {@code offload:{tenant}:{session}:{context}:{handle}}.
      *
      * @param handle the entry handle appended as the final key segment
      * @return the fully-qualified Redis key string
      */
     public String toRedisKey(String handle) {
         OffloadNamespace safe = sanitized();
-        return "offload:" + safe.tenantId + ":" + safe.userId + ":" + safe.sessionId + ":"
+        return "offload:" + safe.tenantId + ":" + safe.sessionId + ":"
                 + safe.contextId + ":" + handle;
     }
 
     /**
-     * Filesystem directory name: {@code {tenant}/{user}/{session}_context}
-     * (files live under {@code .../offload/{algorithmId}_{handle}.json}).
+     * Filesystem directory name: {@code {tenant}/{session}_context}
+     * (files live under {@code .../offload/{handle}.json}).
      *
      * @return the sanitized filesystem directory path
      */
     public String toFsDirName() {
         OffloadNamespace safe = sanitized();
-        return safe.tenantId + "/" + safe.userId + "/" + safe.sessionId + "_context";
+        return safe.tenantId + "/" + safe.sessionId + "_context";
     }
 
     /**
@@ -78,13 +74,12 @@ public record OffloadNamespace(
      * {@code null} references as a non-match.
      *
      * @param other the namespace to compare against, may be {@code null}
-     * @return {@code true} when all four segments are equal; {@code null}
+     * @return {@code true} when all three segments are equal; {@code null}
      * never matches.
      */
     public boolean matches(OffloadNamespace other) {
         return other != null
                 && stringEquals(tenantId, other.tenantId)
-                && stringEquals(userId, other.userId)
                 && stringEquals(sessionId, other.sessionId)
                 && stringEquals(contextId, other.contextId);
     }
@@ -99,7 +94,6 @@ public record OffloadNamespace(
     public OffloadNamespace sanitized() {
         return new OffloadNamespace(
                 sanitizeSegment(tenantId),
-                sanitizeSegment(userId),
                 sanitizeSegment(sessionId),
                 sanitizeSegment(contextId));
     }

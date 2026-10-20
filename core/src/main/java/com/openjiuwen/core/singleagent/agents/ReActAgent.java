@@ -1533,7 +1533,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             OffloadCatalog catalog = new OffloadCatalogImpl();
             OffloadService service = new OffloadServiceImpl(catalog, compositeStore,
                     new SessionOffloadGate(), offloadConfig);
-            Supplier<OffloadNamespace> namespaceSupplier = () -> OffloadNamespace.of("", "",
+            Supplier<OffloadNamespace> namespaceSupplier = () -> OffloadNamespace.of("",
                     session == null ? smc.sessionId() : session.getSessionId(), smc.contextId());
             smc.bindOffloadService(service, namespaceSupplier);
             for (MessageOffloader offloader : findOffloaders(smc)) {
@@ -2344,7 +2344,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             return;
         }
         try {
-            OffloadNamespace namespace = OffloadNamespace.of("", "", sessionId,
+            OffloadNamespace namespace = OffloadNamespace.of("", sessionId,
                     contextId == null ? "" : contextId);
             service.deleteNamespace(namespace);
             if (contextId == null) {
@@ -2352,7 +2352,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 // namespaces created per contextId by the binding supplier.
                 for (ModelContext context : contextEngine.getContexts(sessionId)) {
                     if (context instanceof SessionModelContext smc && smc.getOffloadService() == service) {
-                        service.deleteNamespace(OffloadNamespace.of("", "", sessionId, smc.contextId()));
+                        service.deleteNamespace(OffloadNamespace.of("", sessionId, smc.contextId()));
                     }
                 }
             }

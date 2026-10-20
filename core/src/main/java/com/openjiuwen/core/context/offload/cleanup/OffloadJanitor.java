@@ -280,8 +280,8 @@ public class OffloadJanitor implements AutoCloseable {
         }
         Set<String> knownHandles = catalog.snapshot().keySet();
         int removed = 0;
-        // Depth: tenant(1) / user(2) / {session}_context(3) / offload(4) / payload(5).
-        try (Stream<Path> files = Files.walk(offloadRoot, 5)) {
+        // Depth: tenant(1) / {session}_context(2) / offload(3) / payload(4).
+        try (Stream<Path> files = Files.walk(offloadRoot, 4)) {
             List<Path> candidates = files
                     .filter(path -> !Files.isDirectory(path))
                     .filter(path -> {

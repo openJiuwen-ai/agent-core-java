@@ -27,8 +27,8 @@ import java.util.Optional;
  * Janitor scan inputs (架构文档 §2.3).
  */
 class OffloadCatalogImplTest {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
-    private static final OffloadNamespace OTHER_NS = OffloadNamespace.of("t1", "u1", "s2", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
+    private static final OffloadNamespace OTHER_NS = OffloadNamespace.of("t1", "s2", "c1");
     private static final String HANDLE = "handle-1";
     private static final String SHA = "deadbeef";
 
@@ -319,7 +319,7 @@ class OffloadCatalogImplTest {
         catalog.reserve(pendingRecord(HANDLE, NS));
         catalog.commit(HANDLE, OffloadBackend.MEMORY, "k", 1L, null);
         // of() normalization (trim, null→"") makes equivalent spellings match
-        assertTrue(catalog.find(OffloadNamespace.of(" t1 ", " u1 ", " s1 ", " c1 "), HANDLE).isPresent(),
+        assertTrue(catalog.find(OffloadNamespace.of(" t1 ", " s1 ", " c1 "), HANDLE).isPresent(),
                 "namespace normalization must apply in find");
     }
 }

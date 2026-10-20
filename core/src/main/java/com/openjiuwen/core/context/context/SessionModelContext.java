@@ -488,7 +488,7 @@ public class SessionModelContext implements ModelContext {
                 return supplied;
             }
         }
-        return OffloadNamespace.of("", "", sessionId(), contextId());
+        return OffloadNamespace.of("", sessionId(), contextId());
     }
 
     public void offloadMessages(String offloadHandle, List<BaseMessage> messages) {
@@ -1568,7 +1568,7 @@ public class SessionModelContext implements ModelContext {
                     return supplied;
                 }
             }
-            return OffloadNamespace.of("", "", "", "");
+            return OffloadNamespace.of("", "", "");
         }
 
         /**

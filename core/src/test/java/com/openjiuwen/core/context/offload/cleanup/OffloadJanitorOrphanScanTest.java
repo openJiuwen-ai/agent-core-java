@@ -38,7 +38,7 @@ import java.util.List;
  * AC-C6-03): stuck-PENDING reaping and catalog-less filesystem leftovers.
  */
 class OffloadJanitorOrphanScanTest {
-    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "u1", "s1", "c1");
+    private static final OffloadNamespace NS = OffloadNamespace.of("t1", "s1", "c1");
 
     @TempDir
     Path tempDir;

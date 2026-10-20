@@ -48,7 +48,7 @@ public class OffloadMessageBufferAdapter {
     public OffloadMessageBufferAdapter(OffloadService offloadService, OffloadNamespace namespace,
                                        OffloadMessageBuffer legacyBuffer) {
         this.offloadService = Objects.requireNonNull(offloadService, "offloadService must not be null");
-        this.namespace = namespace == null ? OffloadNamespace.of("", "", "", "") : namespace;
+        this.namespace = namespace == null ? OffloadNamespace.of("", "", "") : namespace;
         this.legacyBuffer = legacyBuffer == null ? new OffloadMessageBuffer() : legacyBuffer;
     }
 
