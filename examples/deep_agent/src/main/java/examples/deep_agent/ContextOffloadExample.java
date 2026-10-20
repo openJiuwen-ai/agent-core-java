@@ -65,8 +65,10 @@ import java.util.stream.Stream;
  *       消息进入上下文时被 MessageOffloader 自动卸载到 FILE 后端，inline 内容
  *       被替换为 {@code [[OFFLOAD: handle=..., type=filesystem, path=...]]} 标记。</li>
  *   <li><b>真实触发装载（第一轮内闭环）</b>：{@code enable_reload=true} 使框架自动注册
- *       内置 {@code reload_original_context_messages} 工具；第一轮 ReAct 循环内 LLM 从
- *       marker 中提取 {@code offload_handle}/{@code offload_type} 主动调用该工具 ——
+ *       内置 {@code reload_original_context_messages} 工具，并在系统消息自动追加
+ *       取回提示词（SessionModelContext#RELOADER_SYSTEM_PROMPT）——业务提示词无需
+ *       重复编写 OFFLOAD/reload 引导。第一轮 ReAct 循环内 LLM 从 marker 中提取
+ *       {@code offload_handle}/{@code offload_type} 主动调用该工具 ——
  *       框架走五步装载校验（namespace → 状态门 → 定向后端 → sha256 → touch）把原文
  *       回注上下文，LLM 基于原文作答（后续轮次 prompt tokens 显著跳升即为装载证据）。
  *       reload 非消费式：装载成功后落盘文件保留。</li>
@@ -127,11 +129,12 @@ public final class ContextOffloadExample {
     /** 单条消息卸载阈值（字符）。演示用调小值：工具输出数千字符远超该值即被卸载。 */
     private static final int LARGE_MESSAGE_THRESHOLD = 200;
 
+    /** 业务角色提示词。注意：OFFLOAD/reload 的引导不需要写在这里——
+     *  {@code enable_reload=true} 时框架会自动注册 reload 工具并在系统消息
+     *  追加取回提示词（SessionModelContext#RELOADER_SYSTEM_PROMPT），模型看到
+     *  [[OFFLOAD: ...]] 标记后会自行决定是否取回原文。 */
     private static final String SYSTEM_PROMPT = "你是一个报告助手。生成报告必须调用 "
-            + REPORT_TOOL + " 工具，并基于工具返回的内容回答。"
-            + "如果上下文中出现 [[OFFLOAD: ...]] 标记，说明对应内容被卸载到了外部存储；"
-            + "需要原文时请调用 reload_original_context_messages 工具"
-            + "（offload_handle 与 offload_type 参数从标记中提取），取回原文后再回答。";
+            + REPORT_TOOL + " 工具，并基于工具返回的内容回答。";
 
     private ContextOffloadExample() {
     }
@@ -292,10 +295,10 @@ public final class ContextOffloadExample {
             //     查不到 → reload 返回 OFFLOAD_MISSING（落盘文件仍保留）。LLM 随即基于
             //     第一轮已装载进上下文的原文作答，验证装载结果的知识留存。
             AgentSessionApi session2 = AgentSession.createAgentSession(sessionId, null, deepAgent.getCard());
-            String prompt2 = "上下文中有一段报告内容被 [[OFFLOAD: ...]] 标记卸载了。"
-                    + "请调用 reload_original_context_messages 工具"
-                    + "（offload_handle 与 offload_type 参数从标记中提取）取回报告原文，"
-                    + "然后复述 REPORT_BEGIN 之后的头两行内容。";
+            // 纯业务提问，不含任何框架术语（OFFLOAD / reload 工具名等）：
+            // enable_reload=true 时框架已自动注册 reload 工具并追加取回提示词，
+            // 模型看到 [[OFFLOAD: ...]] 标记后会自行决定取回原文，无需业务侧引导。
+            String prompt2 = "请复述报告中「REPORT_BEGIN」之后的头两行内容。";
             System.out.println("[9] Runner.runAgentStreaming（第二轮：跨调用 catalog 生命周期演示）");
             System.out.println("[9] 提示词: " + prompt2);
             Map<String, Object> inputs2 = new LinkedHashMap<>();
