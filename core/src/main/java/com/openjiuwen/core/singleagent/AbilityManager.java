@@ -21,6 +21,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.operator.toolgroup.ToolAvailabilityChecker;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSession;
@@ -89,6 +90,7 @@ public class AbilityManager {
     private final Map<String, Map<String, Tool>> sessionTools = new ConcurrentHashMap<>();
     private Object contextEngine;
     private String ownerId;
+    private volatile ToolAvailabilityChecker toolAvailabilityChecker;
 
     public AbilityManager() {
         this(null);
@@ -112,6 +114,10 @@ public class AbilityManager {
 
     public void setContextEngine(Object contextEngine) {
         this.contextEngine = contextEngine;
+    }
+
+    public void setToolAvailabilityChecker(ToolAvailabilityChecker checker) {
+        this.toolAvailabilityChecker = checker;
     }
 
     public void setMcpToolAllowlist(McpServerConfig mcpServer, Collection<String> toolNames) {
@@ -499,15 +505,20 @@ public class AbilityManager {
         if (toolCalls.isEmpty()) {
             return List.of();
         }
+        Object effectiveSession = session != null
+                ? session
+                : ctx != null && ctx.getSession() != null ? ctx.getSession() : SessionContextHolder.getCurrentSession();
         if (toolCalls.size() == 1
                 && resolver == null
                 && isExternalTool(toolCalls.get(0).getName())
                 && (ctx == null || ctx.getAgent() == null)) {
+            ToolCall externalToolCall = toolCalls.get(0);
+            if (!isToolAvailableForExecution(externalToolCall.getName(), effectiveSession)) {
+                logToolRejected(externalToolCall, effectiveSession);
+                return List.of(toolNotActiveResult(externalToolCall));
+            }
             return List.of();
         }
-        Object effectiveSession = session != null
-                ? session
-                : ctx != null && ctx.getSession() != null ? ctx.getSession() : SessionContextHolder.getCurrentSession();
         int maxParallel = resolveMaxParallelToolCalls(ctx);
         if (ctx == null || ctx.getAgent() == null) {
             return executeUnrailed(toolCalls, shouldParallelToolCalls, resolver, effectiveSession, tag, maxParallel);
@@ -836,6 +847,42 @@ public class AbilityManager {
         }
     }
 
+    public boolean isToolAvailableForExecution(String toolName, Object session) {
+        ToolAvailabilityChecker checker = toolAvailabilityChecker;
+        if (checker == null) {
+            return true;
+        }
+        return checker.isAvailable(toolName, session instanceof AgentSessionApi api ? api : null);
+    }
+
+    private static ExecutionResult toolNotActiveResult(ToolCall toolCall) {
+        ToolMessage toolMessage = new ToolMessage(
+                "Tool '" + toolCall.getName() + "' is not active. "
+                        + "Activate its tool group before calling it.",
+                toolCall.getId(),
+                toolCall.getName());
+        return new ExecutionResult(null, toolMessage);
+    }
+
+    private static void logToolRejected(ToolCall toolCall, Object session) {
+        AgentSessionApi agentSession = session instanceof AgentSessionApi api ? api : null;
+        Object activeGroupState = agentSession == null
+                ? null
+                : agentSession.getState(BaseAgent.ACTIVE_TOOL_GROUP_NAMES_STATE_KEY);
+        String activeGroups = activeGroupState instanceof Collection<?> groups ? groups.toString() : "[]";
+        String tenantId = agentSession != null && agentSession.getTenantContext() != null
+                ? agentSession.getTenantContext().safeTenantId()
+                : null;
+        Loggers.AGENT.warning(
+                "event=TOOL_REJECTED_NOT_ACTIVE tool_name={} session_id={} user_id={} "
+                        + "active_toolgroups={} result=unavailable",
+                toolCall.getName(),
+                agentSession == null ? "" : agentSession.getSessionId(),
+                tenantId == null ? "" : tenantId,
+                activeGroups
+        );
+    }
+
     private ExecutionResult executeOne(ToolCall toolCall, ToolResolver resolver, Object session, Object tag) {
         if (toolCall == null) {
             return new ExecutionResult(null, null);
@@ -843,6 +890,10 @@ public class AbilityManager {
         if (toolCall.getName() == null || toolCall.getName().isBlank()) {
             throw AbilityExecutionError.of(toolCall,
                     "Ability execution error: Malformed tool call; tool name must not be null, empty, or blank");
+        }
+        if (!isToolAvailableForExecution(toolCall.getName(), session)) {
+            logToolRejected(toolCall, session);
+            return toolNotActiveResult(toolCall);
         }
         Optional<Tool> sessionTool = resolveSessionTool(toolCall.getName(), session);
         if (sessionTool.isPresent()) {
@@ -1200,10 +1251,9 @@ public class AbilityManager {
         }
         Map<String, Object> properties = toolCard.getProperties();
         Object resilience = properties.get("resilience");
-        if (!(resilience instanceof Map)) {
+        if (!(resilience instanceof Map<?, ?> resilienceMap)) {
             return DEFAULT_TOOL_CALL_TIMEOUT_SECONDS;
         }
-        Map<?, ?> resilienceMap = (Map<?, ?>) resilience;
         if (!resilienceMap.containsKey("timeout_s")) {
             return DEFAULT_TOOL_CALL_TIMEOUT_SECONDS;
         }

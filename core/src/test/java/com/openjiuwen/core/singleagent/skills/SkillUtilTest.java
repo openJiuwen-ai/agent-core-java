@@ -22,6 +22,7 @@ import com.openjiuwen.core.sysop.result.UploadFileResult;
 import com.openjiuwen.core.sysop.result.UploadFileStreamResult;
 import com.openjiuwen.core.sysop.result.WriteFileResult;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -46,12 +47,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Also mirrors Python's {@code TestSkillCapability} in
  * {@code tests/unit_tests/agent/skill/test_skill_system_mock.py}.</p>
  */
+@Tag("issue196-w9")
 class SkillUtilTest {
     private static final String SYS_OPERATION_ID = "sys-op";
     private static final String SINGLE_SKILL_DIR = "/virtual/single_skill";
     private static final String SINGLE_SKILL_MD = SINGLE_SKILL_DIR + "/skill.md";
 
     private RecordingFsOperation fs;
+
+    @Test
+    void legacyPromptConstantRemainsSourceCompatible() {
+        assertThat(SkillUtil.SKILL_PROMPT_CONTENT)
+                .isEqualTo(SkillUtil.SKILL_PROMPT_CONTENT_LEGACY)
+                .contains("read_file");
+    }
 
     @BeforeEach
     void setUp() {
@@ -99,10 +108,35 @@ class SkillUtilTest {
 
             assertThat(prompt)
                     .contains("You are an agent equipped with various skills to solve problems.")
-                    .contains("using read_file and follow its workflow.")
+                    .contains("use the skill_tool meta tool")
                     .contains("0.Skill name: single_skill")
                     .contains("Skill description: SINGLE desc")
-                    .contains("Skill directory:");
+                    .contains("Loading: on-demand via skill_tool");
+        } finally {
+            CwdContext.reset();
+        }
+    }
+
+    @Test
+    @Tag("TC-SKL-04")
+    void getSkillPromptKeepsLegacyReadFileInstructionWhenOnDemandDisabled() throws Exception {
+        SkillUtil util = skillUtil();
+        SkillConfig config = new SkillConfig();
+        config.setOnDemandLoading(false);
+        util.setSkillConfig(config);
+        util.registerSkills(SINGLE_SKILL_MD, null, null);
+
+        CwdContext.setWorkspace("/virtual");
+        CwdContext.setCwd("/virtual");
+        CwdContext.setProjectRoot("/virtual");
+        try {
+            String prompt = util.get_skill_prompt();
+
+            assertThat(prompt)
+                    .contains("using read_file")
+                    .contains("0.Skill name: single_skill")
+                    .doesNotContain("use the skill_tool meta tool")
+                    .doesNotContain("Loading: on-demand via skill_tool");
         } finally {
             CwdContext.reset();
         }

@@ -20,10 +20,10 @@ import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.tools.CodeTool;
 import com.openjiuwen.harness.tools.FilesystemTools;
+import com.openjiuwen.harness.tools.shell.bash.BashTool;
 import com.openjiuwen.harness.tools.skills.ListSkillTool;
 import com.openjiuwen.harness.tools.skills.SkillDescriptor;
 import com.openjiuwen.harness.tools.skills.SkillTool;
-import com.openjiuwen.harness.tools.shell.bash.BashTool;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -36,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -47,7 +48,8 @@ public class SkillUseRail extends DeepAgentRail {
 
     public static final String SKILL_MODE_ALL = "all";
     public static final String SKILL_MODE_AUTO_LIST = "auto_list";
-    private static final Set<String> VALID_SKILL_MODES = Set.of(SKILL_MODE_ALL, SKILL_MODE_AUTO_LIST);
+    private static final Set<String> VALID_SKILL_MODES =
+            Set.of(SKILL_MODE_ALL, SKILL_MODE_AUTO_LIST);
 
     private final List<Path> skillDirs;
     private final String skillMode;
@@ -81,8 +83,7 @@ public class SkillUseRail extends DeepAgentRail {
             List<String> skillDirectories,
             String skillMode,
             Iterable<String> enabledSkills,
-            Iterable<String> disabledSkills
-    ) {
+            Iterable<String> disabledSkills) {
         this(skillDirectories, skillMode, enabledSkills, disabledSkills, List.of());
     }
 
@@ -100,9 +101,15 @@ public class SkillUseRail extends DeepAgentRail {
             String skillMode,
             Iterable<String> enabledSkills,
             Iterable<String> disabledSkills,
-            List<RemoteSkillSource> remoteSkillSources
-    ) {
-        this(skillDirectories, skillMode, enabledSkills, disabledSkills, remoteSkillSources, true, true);
+            List<RemoteSkillSource> remoteSkillSources) {
+        this(
+                skillDirectories,
+                skillMode,
+                enabledSkills,
+                disabledSkills,
+                remoteSkillSources,
+                true,
+                true);
     }
 
     /**
@@ -123,8 +130,7 @@ public class SkillUseRail extends DeepAgentRail {
             List<String> disabledSkills,
             List<RemoteSkillSource> remoteSkillSources,
             boolean enableCache,
-            boolean hasTools
-    ) {
+            boolean hasTools) {
         this(
                 (Iterable<String>) skillDirectories,
                 skillMode,
@@ -132,8 +138,7 @@ public class SkillUseRail extends DeepAgentRail {
                 disabledSkills,
                 remoteSkillSources,
                 enableCache,
-                hasTools
-        );
+                hasTools);
     }
 
     public SkillUseRail(
@@ -142,8 +147,7 @@ public class SkillUseRail extends DeepAgentRail {
             boolean enableCache,
             boolean includeTools,
             Iterable<String> enabledSkills,
-            Iterable<String> disabledSkills
-    ) {
+            Iterable<String> disabledSkills) {
         this(
                 parseNameList(skillsDir),
                 skillMode,
@@ -151,8 +155,7 @@ public class SkillUseRail extends DeepAgentRail {
                 disabledSkills,
                 List.of(),
                 enableCache,
-                includeTools
-        );
+                includeTools);
     }
 
     private SkillUseRail(
@@ -162,10 +165,10 @@ public class SkillUseRail extends DeepAgentRail {
             Iterable<String> disabledSkills,
             List<RemoteSkillSource> remoteSkillSources,
             boolean enableCache,
-            boolean hasTools
-    ) {
+            boolean hasTools) {
         setPriority(100);
-        String resolvedMode = skillMode == null || skillMode.isBlank() ? SKILL_MODE_AUTO_LIST : skillMode;
+        String resolvedMode =
+                skillMode == null || skillMode.isBlank() ? SKILL_MODE_AUTO_LIST : skillMode;
         if (!VALID_SKILL_MODES.contains(resolvedMode)) {
             throw new IllegalArgumentException("Unsupported skill_mode: " + skillMode);
         }
@@ -226,7 +229,9 @@ public class SkillUseRail extends DeepAgentRail {
     public void beforeModelCall(AgentCallbackContext context) {
         reloadSkills();
         String resolvedLanguage = language;
-        if (context != null && context.getExtra() != null && context.getExtra().get("language") != null) {
+        if (context != null
+                && context.getExtra() != null
+                && context.getExtra().get("language") != null) {
             resolvedLanguage = String.valueOf(context.getExtra().get("language"));
         }
         applySkillsSection(null, buildSkillsSection(resolvedLanguage));
@@ -332,26 +337,28 @@ public class SkillUseRail extends DeepAgentRail {
         List<String> lines = new ArrayList<>();
         int index = 0;
         for (SkillDescriptor skill : skills) {
-            lines.add(SkillsSection.buildSkillLine(
-                    index++,
-                    skill.name(),
-                    getSkillDescription(skill),
-                    Path.of(skill.directory(), "SKILL.md").toString()
-            ));
+            lines.add(
+                    SkillsSection.buildSkillLine(
+                            index++,
+                            skill.name(),
+                            getSkillDescription(skill),
+                            Path.of(skill.directory(), "SKILL.md").toString(),
+                            skill.metadata()));
         }
-        return SkillsSection.buildAllModeSkillPrompt(SkillsSection.buildSkillLines(lines), promptLanguage);
+        return SkillsSection.buildAllModeSkillPrompt(
+                SkillsSection.buildSkillLines(lines), promptLanguage);
     }
 
     public Map<String, String> getEvolutionTexts() {
         return new LinkedHashMap<>(evolutionTexts);
     }
 
-    private void applySkillsSection(CallbackContext ctx, PromptSection section) {
+    private void applySkillsSection(CallbackContext ctx, Optional<PromptSection> section) {
         if (ctx != null) {
-            if (section == null) {
+            if (section.isEmpty()) {
                 ctx.put(SectionName.SKILLS, null);
             } else {
-                ctx.put("skills_section", section);
+                ctx.put("skills_section", section.get());
                 ctx.put("skills", dumpSkills());
             }
         }
@@ -360,9 +367,7 @@ public class SkillUseRail extends DeepAgentRail {
             return;
         }
         builder.removeSection(SectionName.SKILLS);
-        if (section != null) {
-            builder.addSection(section);
-        }
+        section.ifPresent(builder::addSection);
     }
 
     private void registerSkillTools(DeepAgent agent) {
@@ -423,7 +428,9 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     private static boolean isAbilityPresent(DeepAgent agent, String name) {
-        if (name == null || agent.getAgent() == null || agent.getAgent().getAbilityManager() == null) {
+        if (name == null
+                || agent.getAgent() == null
+                || agent.getAgent().getAbilityManager() == null) {
             return false;
         }
         return agent.getAgent().getAbilityManager().get(name).isPresent();
@@ -449,23 +456,20 @@ public class SkillUseRail extends DeepAgentRail {
         return null;
     }
 
-    private PromptSection buildSkillsSection(String resolvedLanguage) {
+    private Optional<PromptSection> buildSkillsSection(String resolvedLanguage) {
         if (SKILL_MODE_ALL.equals(skillMode)) {
             List<String> lines = new ArrayList<>();
             int index = 0;
             for (SkillDescriptor skill : skills) {
-                lines.add(SkillsSection.buildSkillLine(
-                        index++,
-                        skill.name(),
-                        getSkillDescription(skill),
-                        Path.of(skill.directory(), "SKILL.md").toString()
-                ));
+                lines.add(
+                        SkillsSection.buildSkillLine(
+                                index++,
+                                skill.name(),
+                                getSkillDescription(skill),
+                                Path.of(skill.directory(), "SKILL.md").toString()));
             }
             return SkillsSection.buildSkillsSection(
-                    SkillsSection.buildSkillLines(lines),
-                    resolvedLanguage,
-                    SKILL_MODE_ALL
-            );
+                    SkillsSection.buildSkillLines(lines), resolvedLanguage, SKILL_MODE_ALL);
         }
         return SkillsSection.buildSkillsSection("", resolvedLanguage, SKILL_MODE_AUTO_LIST);
     }
@@ -486,10 +490,10 @@ public class SkillUseRail extends DeepAgentRail {
                 continue;
             }
             try (var stream = Files.list(root)) {
-                List<Path> children = stream
-                        .filter(Files::isDirectory)
-                        .sorted(Comparator.comparing(path -> path.getFileName().toString()))
-                        .toList();
+                List<Path> children =
+                        stream.filter(Files::isDirectory)
+                                .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                                .toList();
                 for (Path child : children) {
                     Path skillMd = child.resolve("SKILL.md");
                     if (!Files.isRegularFile(skillMd)) {
@@ -498,7 +502,8 @@ public class SkillUseRail extends DeepAgentRail {
                     Path key = child.toAbsolutePath().normalize();
                     discovered.add(key);
                     long updatedAt = Files.getLastModifiedTime(skillMd).toMillis();
-                    if (!skillCache.containsKey(key) || skillUpdatedAt.getOrDefault(key, -1L) != updatedAt) {
+                    if (!skillCache.containsKey(key)
+                            || skillUpdatedAt.getOrDefault(key, -1L) != updatedAt) {
                         SkillDescriptor descriptor = loadSkill(child, skillMd);
                         skillCache.put(key, descriptor);
                         skillUpdatedAt.put(key, updatedAt);
@@ -513,36 +518,89 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     private SkillDescriptor loadSkill(Path skillDir, Path skillMd) {
-        String description;
         try {
-            description = loadDescription(skillMd);
+            String text = Files.readString(skillMd, StandardCharsets.UTF_8);
+            SkillFrontMatter frontMatter = parseSkillFrontMatter(text);
+            String source = normalizedSkillSource(frontMatter.source());
+            String name =
+                    frontMatter.name() == null || frontMatter.name().isBlank()
+                            ? skillDir.getFileName().toString()
+                            : frontMatter.name();
+            String id =
+                    frontMatter.id() == null || frontMatter.id().isBlank()
+                            ? source + "/" + name
+                            : frontMatter.id();
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("source", source);
+            metadata.put("id", id);
+            if (frontMatter.protectedSkill()) {
+                metadata.put("protected", true);
+            }
+            return new SkillDescriptor(
+                    name,
+                    frontMatter.description(),
+                    skillDir.toAbsolutePath().normalize().toString(),
+                    metadata);
         } catch (IOException exception) {
-            description = "Skill located in " + skillDir;
+            return new SkillDescriptor(
+                    skillDir.getFileName().toString(),
+                    "Skill located in " + skillDir,
+                    skillDir.toAbsolutePath().normalize().toString(),
+                    Map.of(
+                            "source",
+                            "filesystem",
+                            "id",
+                            "filesystem/" + skillDir.getFileName().toString()));
         }
-        return new SkillDescriptor(
-                skillDir.getFileName().toString(),
-                description,
-                skillDir.toAbsolutePath().normalize().toString(),
-                Map.of()
-        );
+    }
+
+    private record SkillFrontMatter(
+            String name, String description, String id, String source, boolean protectedSkill) {}
+
+    private static SkillFrontMatter parseSkillFrontMatter(String text) {
+        if (text == null || !text.startsWith("---")) {
+            return new SkillFrontMatter(null, "", null, null, false);
+        }
+        List<String> lines = text.lines().toList();
+        int endIndex = -1;
+        for (int index = 1; index < lines.size(); index++) {
+            if ("---".equals(lines.get(index).trim())) {
+                endIndex = index;
+                break;
+            }
+        }
+        if (endIndex < 0) {
+            return new SkillFrontMatter(null, "", null, null, false);
+        }
+        Map<String, String> values = new LinkedHashMap<>();
+        for (int index = 1; index < endIndex; index++) {
+            String line = lines.get(index);
+            int separator = line.indexOf(':');
+            if (separator <= 0) {
+                continue;
+            }
+            values.put(
+                    line.substring(0, separator).strip(),
+                    line.substring(separator + 1).strip().replaceAll("^['\"]|['\"]$", ""));
+        }
+        return new SkillFrontMatter(
+                values.get("name"),
+                values.getOrDefault("description", ""),
+                values.get("id"),
+                values.get("source"),
+                Boolean.parseBoolean(values.getOrDefault("protected", "false")));
+    }
+
+    private static String normalizedSkillSource(String source) {
+        if ("classpath".equalsIgnoreCase(source) || "workspace".equalsIgnoreCase(source)) {
+            return source.toLowerCase(java.util.Locale.ROOT);
+        }
+        return "filesystem";
     }
 
     private static String loadDescription(Path skillMd) throws IOException {
-        String text = Files.readString(skillMd, StandardCharsets.UTF_8);
-        if (!text.startsWith("---")) {
-            return "";
-        }
-        String[] parts = text.split("---", 3);
-        if (parts.length < 3) {
-            return "";
-        }
-        for (String line : parts[1].split("\\R")) {
-            String trimmed = line.trim();
-            if (trimmed.startsWith("description:")) {
-                return trimmed.substring("description:".length()).trim().replaceAll("^['\"]|['\"]$", "");
-            }
-        }
-        return "";
+        return parseSkillFrontMatter(Files.readString(skillMd, StandardCharsets.UTF_8))
+                .description();
     }
 
     private List<SkillDescriptor> collectSkillsInOrder() {
@@ -586,16 +644,18 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     /**
-     * Downloads one remote skill source into {@code targetRoot}. Tests may override this
-     * to avoid real GitHub access.
+     * Downloads one remote skill source into {@code targetRoot}. Tests may override this to avoid
+     * real GitHub access.
      *
      * @param deepAgent owning agent
      * @param source remote source
      * @param targetRoot local directory that later skill discovery will scan
      */
-    protected void uploadRemoteSkill(DeepAgent deepAgent, RemoteSkillSource source, Path targetRoot) {
+    protected void uploadRemoteSkill(
+            DeepAgent deepAgent, RemoteSkillSource source, Path targetRoot) {
         RemoteSkillUtil remoteSkillUtil = new RemoteSkillUtil(resolveOwnerId(deepAgent));
-        remoteSkillUtil.uploadSkillFromGitHub(source.toGitHubTree(), targetRoot.toString(), source.token());
+        remoteSkillUtil.uploadSkillFromGitHub(
+                source.toGitHubTree(), targetRoot.toString(), source.token());
     }
 
     private Path resolveRemoteTargetRoot(DeepAgent deepAgent) {
@@ -608,14 +668,18 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     private static Path defaultRemoteTargetRoot(DeepAgent deepAgent) {
-        if (deepAgent != null && deepAgent.getWorkspace() != null && deepAgent.getWorkspace().root() != null) {
+        if (deepAgent != null
+                && deepAgent.getWorkspace() != null
+                && deepAgent.getWorkspace().root() != null) {
             return deepAgent.getWorkspace().root().resolve("skills");
         }
         return Path.of("skills").toAbsolutePath().normalize();
     }
 
     private static String resolveOwnerId(DeepAgent deepAgent) {
-        if (deepAgent == null || deepAgent.getCard() == null || deepAgent.getCard().getId() == null) {
+        if (deepAgent == null
+                || deepAgent.getCard() == null
+                || deepAgent.getCard().getId() == null) {
             return "";
         }
         return deepAgent.getCard().getId();
@@ -685,7 +749,8 @@ public class SkillUseRail extends DeepAgentRail {
      * @param token optional GitHub token
      * @since 2026-09-11
      */
-    public record RemoteSkillSource(String owner, String repo, String ref, String directory, String token) {
+    public record RemoteSkillSource(
+            String owner, String repo, String ref, String directory, String token) {
         public RemoteSkillSource {
             owner = normalizeRequired(owner, "owner");
             repo = normalizeRequired(repo, "repo");
@@ -704,7 +769,8 @@ public class SkillUseRail extends DeepAgentRail {
             }
             String normalized = value.trim();
             if (normalized.contains("/") || normalized.contains("\\")) {
-                throw new IllegalArgumentException("remote skill " + field + " must be a single path segment");
+                throw new IllegalArgumentException(
+                        "remote skill " + field + " must be a single path segment");
             }
             return normalized;
         }
@@ -717,11 +783,13 @@ public class SkillUseRail extends DeepAgentRail {
             try {
                 Path path = Path.of(normalized);
                 if (isUnsafeDirectory(path, normalized)) {
-                    throw new IllegalArgumentException("remote skill directory must stay within the repository");
+                    throw new IllegalArgumentException(
+                            "remote skill directory must stay within the repository");
                 }
                 return normalized;
             } catch (InvalidPathException ex) {
-                throw new IllegalArgumentException("remote skill directory is invalid: " + value, ex);
+                throw new IllegalArgumentException(
+                        "remote skill directory is invalid: " + value, ex);
             }
         }
 

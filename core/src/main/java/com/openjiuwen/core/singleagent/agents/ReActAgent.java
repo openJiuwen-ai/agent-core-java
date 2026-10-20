@@ -1187,6 +1187,22 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             return result;
         }
 
+        ToolCall rejectedToolCall = state.getPendingToolCalls().stream()
+                .filter(toolCall -> getAbilityManager().isExternalTool(toolCall.getName()))
+                .filter(toolCall -> !getAbilityManager()
+                        .isToolAvailableForExecution(toolCall.getName(), session))
+                .findFirst()
+                .orElse(null);
+        if (rejectedToolCall != null) {
+            Map<String, Object> result = new LinkedHashMap<>(Map.of(
+                    "output", "Tool '" + rejectedToolCall.getName() + "' is not active. "
+                            + "Activate its tool group before resuming execution.",
+                    "result_type", "error"
+            ));
+            invokeInputs.setResult(result);
+            return result;
+        }
+
         AssistantMessage resumeAiMessage = state.getAssistantMessage() == null
                 ? AssistantMessage.builder().content("").toolCalls(state.getPendingToolCalls()).build()
                 : copyAssistantMessage(state.getAssistantMessage());
@@ -3293,11 +3309,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static void copyRemainingExtras(Map<?, ?> inputs, AgentCallbackContext ctx) {
         Map<String, Object> extra = ctx.getExtra();
         for (Map.Entry<?, ?> entry : inputs.entrySet()) {
-            Object keyObj = entry.getKey();
-            if (!(keyObj instanceof String)) {
+            if (!(entry.getKey() instanceof String key)) {
                 continue;
             }
-            String key = (String) keyObj;
             if (!"query".equals(key) && !"conversation_id".equals(key)
                     && !"user_id".equals(key) && !"_streaming".equals(key)
                     && !"_steering_queue".equals(key) && entry.getValue() != null) {

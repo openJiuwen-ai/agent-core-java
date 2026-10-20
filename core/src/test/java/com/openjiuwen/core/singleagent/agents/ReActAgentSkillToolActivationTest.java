@@ -38,7 +38,7 @@ class ReActAgentSkillToolActivationTest {
     private Path tempDir;
 
     @Test
-    void skillToolBecomesVisibleOnIterationAfterRegisteredSkillDocumentIsRead() throws Exception {
+    void skillMetaToolVisibleAndSkillBoundToolActivatesAfterDocumentRead() throws Exception {
         Path skillDir = tempDir.resolve("echo-skill");
         Files.createDirectories(skillDir);
         Path skillDocument = skillDir.resolve("SKILL.md");
@@ -75,9 +75,9 @@ class ReActAgentSkillToolActivationTest {
             Object result = agent.invoke(Map.of("query", "use skill"), new MemorySession("session-1"));
 
             assertThat(agent.toolNamesPerCall).containsExactly(
-                    List.of("read_file"),
-                    List.of("read_file", "echoTool"),
-                    List.of("read_file", "echoTool")
+                    List.of("read_file", "skill_tool"),
+                    List.of("read_file", "skill_tool", "echoTool"),
+                    List.of("read_file", "skill_tool", "echoTool")
             );
             assertThat(result).isInstanceOf(Map.class);
             Map<?, ?> resultMap = (Map<?, ?>) result;
@@ -90,7 +90,7 @@ class ReActAgentSkillToolActivationTest {
     }
 
     @Test
-    void skillToolStaysHiddenWhenSkillDocumentReadDoesNotSucceed() throws Exception {
+    void skillBoundToolStaysHiddenWhenSkillDocumentReadDoesNotSucceed() throws Exception {
         Path skillDir = tempDir.resolve("hidden-skill");
         Files.createDirectories(skillDir);
         Path skillDocument = skillDir.resolve("SKILL.md");
@@ -126,8 +126,8 @@ class ReActAgentSkillToolActivationTest {
             Object result = agent.invoke(Map.of("query", "try hidden skill"), new MemorySession("session-failed-read"));
 
             assertThat(agent.toolNamesPerCall).containsExactly(
-                    List.of("read_file"),
-                    List.of("read_file")
+                    List.of("read_file", "skill_tool"),
+                    List.of("read_file", "skill_tool")
             );
             assertThat(result).isInstanceOf(Map.class);
         } finally {
@@ -136,7 +136,7 @@ class ReActAgentSkillToolActivationTest {
     }
 
     @Test
-    void skillToolStaysHiddenWhenReadResultDoesNotIncludePath() throws Exception {
+    void skillBoundToolStaysHiddenWhenReadResultDoesNotIncludePath() throws Exception {
         Path skillDir = tempDir.resolve("pathless-skill");
         Files.createDirectories(skillDir);
         Path skillDocument = skillDir.resolve("SKILL.md");
@@ -173,8 +173,8 @@ class ReActAgentSkillToolActivationTest {
             Object result = agent.invoke(Map.of("query", "try pathless skill"), new MemorySession("session-pathless"));
 
             assertThat(agent.toolNamesPerCall).containsExactly(
-                    List.of("read_file"),
-                    List.of("read_file")
+                    List.of("read_file", "skill_tool"),
+                    List.of("read_file", "skill_tool")
             );
             assertThat(result).isInstanceOf(Map.class);
         } finally {

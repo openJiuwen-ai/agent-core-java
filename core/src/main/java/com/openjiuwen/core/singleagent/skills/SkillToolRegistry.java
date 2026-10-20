@@ -70,6 +70,20 @@ public class SkillToolRegistry {
         return bindings.containsKey(skillName);
     }
 
+    public synchronized boolean isSkillTool(String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            return false;
+        }
+        for (SkillToolBinding binding : bindings.values()) {
+            for (Tool tool : binding.getTools()) {
+                if (toolName.equals(SkillToolBinding.toolName(tool))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public synchronized List<Tool> listToolsForActiveSkills(List<String> activeSkillNames) {
         List<Tool> result = new ArrayList<>();
         for (List<Tool> tools : listToolsByActiveSkill(activeSkillNames).values()) {
