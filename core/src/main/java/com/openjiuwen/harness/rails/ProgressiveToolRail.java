@@ -130,6 +130,8 @@ public class ProgressiveToolRail extends DeepAgentRail {
     /**
      * Persistent, because ReActAgent clears transient sections at the start of every inner
      * invocation; {@link #uninit} removes them.
+     *
+     * @param builder prompt builder to receive the sections, may be null
      */
     private void addPromptSections(SystemPromptBuilder builder) {
         if (builder == null) {
@@ -219,6 +221,9 @@ public class ProgressiveToolRail extends DeepAgentRail {
 
     /**
      * The system prompt is rendered by the inner ReAct agent, so look there as well as on the deep agent.
+     *
+     * @param candidate object to resolve the prompt builder from, may be null
+     * @return the resolved prompt builder, or null when none can be found
      */
     private static SystemPromptBuilder promptBuilderFrom(Object candidate) {
         if (candidate == null) {

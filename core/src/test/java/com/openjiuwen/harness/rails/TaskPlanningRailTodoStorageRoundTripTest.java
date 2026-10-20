@@ -23,12 +23,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Todo tools backed by a {@code TodoStorage} must keep every todo field across save and load.
+ * Storage-backed task planning tools must keep every task field across save and load.
  *
  * @since 2026-10-20
  */
 class TaskPlanningRailTodoStorageRoundTripTest {
-
     private static final Map<String, Object> SESSION = Map.of("session_id", "s1");
 
     @TempDir

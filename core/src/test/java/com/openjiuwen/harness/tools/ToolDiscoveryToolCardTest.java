@@ -2,11 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.harness.tools.tool_discovery;
+package com.openjiuwen.harness.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.harness.tools.tool_discovery.LoadToolsTool;
+import com.openjiuwen.harness.tools.tool_discovery.SearchToolsTool;
 
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +20,6 @@ import java.util.Map;
  * @since 2026-10-20
  */
 class ToolDiscoveryToolCardTest {
-
     @Test
     void testSearchToolsCardUsesFunctionNameAndSchema() {
         ToolCard card = new SearchToolsTool(null, null).getCard();

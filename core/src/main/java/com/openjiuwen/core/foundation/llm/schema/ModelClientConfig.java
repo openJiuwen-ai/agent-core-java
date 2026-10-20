@@ -446,7 +446,7 @@ public class ModelClientConfig {
         /**
          * Sets whether rate limited failures are retried.
          *
-         * @param retryOnRateLimit retry switch for the rate limited category
+         * @param isRetryOnRateLimit retry switch for the rate limited category
          * @return this builder
          * @since 2026-10-19
          */
@@ -458,7 +458,7 @@ public class ModelClientConfig {
         /**
          * Sets whether temporary failures are retried.
          *
-         * @param retryOnTemporary retry switch for the temporary category
+         * @param isRetryOnTemporary retry switch for the temporary category
          * @return this builder
          * @since 2026-10-19
          */
@@ -611,7 +611,7 @@ public class ModelClientConfig {
         /**
          * Sets whether rate limited failures are retried.
          *
-         * @param retryOnRateLimit retry switch for the rate limited category
+         * @param isRetryOnRateLimit retry switch for the rate limited category
          * @return this builder
          * @since 2026-10-19
          */
@@ -624,7 +624,7 @@ public class ModelClientConfig {
         /**
          * Sets whether temporary failures are retried.
          *
-         * @param retryOnTemporary retry switch for the temporary category
+         * @param isRetryOnTemporary retry switch for the temporary category
          * @return this builder
          * @since 2026-10-19
          */

@@ -30,7 +30,6 @@ import java.util.Map;
  * @since 2026-10-20
  */
 class ProgressiveToolRailModelRequestTest {
-
     @Test
     void testNativeBeforeModelCallFiltersModelRequestTools() {
         ProgressiveToolRail rail = new ProgressiveToolRail(config());
@@ -43,7 +42,7 @@ class ProgressiveToolRailModelRequestTest {
         rail.getCallbacks().get(AgentCallbackEvent.BEFORE_MODEL_CALL)
                 .handle(context).toCompletableFuture().join();
 
-        assertThat(inputs.getTools()).extracting(tool -> ((ToolInfo) tool).getName())
+        assertThat(inputs.getTools()).extracting(ProgressiveToolRailModelRequestTest::toolName)
                 .containsExactly("read_file");
     }
 
@@ -60,7 +59,7 @@ class ProgressiveToolRailModelRequestTest {
         rail.getCallbacks().get(AgentCallbackEvent.BEFORE_MODEL_CALL)
                 .handle(context).toCompletableFuture().join();
 
-        assertThat(inputs.getTools()).extracting(tool -> ((ToolInfo) tool).getName())
+        assertThat(inputs.getTools()).extracting(ProgressiveToolRailModelRequestTest::toolName)
                 .containsExactly("read_file", "web_search");
         assertThat(context.getExtra()).doesNotContainKey("session");
     }
@@ -73,13 +72,27 @@ class ProgressiveToolRailModelRequestTest {
 
         rail.init(agent);
         // ReActAgent clears transient sections at the start of every inner invocation.
-        ((ReActAgent) agent.reactAgent()).getSystemPromptBuilder().clearTransient();
-        String prompt = ((ReActAgent) agent.reactAgent()).getSystemPromptBuilder().build();
+        reactAgent(agent).getSystemPromptBuilder().clearTransient();
+        String prompt = reactAgent(agent).getSystemPromptBuilder().build();
         assertThat(prompt).contains("search_tools").contains("load_tools");
 
         rail.uninit(agent);
-        assertThat(((ReActAgent) agent.reactAgent()).getSystemPromptBuilder().build())
+        assertThat(reactAgent(agent).getSystemPromptBuilder().build())
                 .doesNotContain("load_tools");
+    }
+
+    private static String toolName(Object tool) {
+        if (tool instanceof ToolInfo info) {
+            return info.getName();
+        }
+        throw new IllegalStateException("ToolInfo expected but got " + tool.getClass().getName());
+    }
+
+    private static ReActAgent reactAgent(DeepAgent agent) {
+        if (agent.reactAgent() instanceof ReActAgent reactAgent) {
+            return reactAgent;
+        }
+        throw new IllegalStateException("ReActAgent expected");
     }
 
     private static DeepAgentConfig config() {
