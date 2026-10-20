@@ -57,6 +57,8 @@ public final class ToolMetadataRegistry {
         registerBuiltinProvider(new LspToolMetadataProvider());
         registerBuiltinProvider(new EnterWorktreePromptToolProviders.EnterWorktreeMetadataProvider());
         registerBuiltinProvider(new ExitWorktreePromptToolProviders.ExitWorktreeMetadataProvider());
+        registerBuiltinProvider(new SearchToolsMetadataProvider());
+        registerBuiltinProvider(new LoadToolsMetadataProvider());
     }
 
     private ToolMetadataRegistry() {
