@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.context.processor.offloader;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
@@ -15,13 +18,11 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Focused parity tests for message offload behavior.
@@ -31,6 +32,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Mirrors Python's related tests in
  * {@code tests/unit_tests/core/context_engine/test_message_offloader.py}.</p>
+ *
+ * <p>v2 (架构文档 §7.2.1): the message-count threshold trigger was removed;
+ * triggering is token-total based ({@code > tokensThreshold}), so tests drive
+ * the trigger through explicit {@link ModelContext.TokenCounterPort} doubles.</p>
  */
 class MessageOffloaderTest {
 
@@ -40,11 +45,6 @@ class MessageOffloaderTest {
         trimConfig.setTrimSize(500);
         trimConfig.setLargeMessageThreshold(500);
         assertThatThrownBy(() -> new MessageOffloader(trimConfig)).isInstanceOf(BaseError.class);
-
-        MessageOffloaderConfig keepConfig = new MessageOffloaderConfig();
-        keepConfig.setMessagesToKeep(20);
-        keepConfig.setMessagesThreshold(20);
-        assertThatThrownBy(() -> new MessageOffloader(keepConfig)).isInstanceOf(BaseError.class);
     }
 
     @Test
@@ -57,19 +57,9 @@ class MessageOffloaderTest {
     }
 
     @Test
-    void invalidConfigMessagesToKeepGreaterThanThresholdRaises() {
-        MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesToKeep(25);
-        config.setMessagesThreshold(20);
-
-        assertThatThrownBy(() -> new MessageOffloader(config)).isInstanceOf(BaseError.class);
-    }
-
-    @Test
     void validConfigCreatesContextSuccessfully() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
         config.setMessagesToKeep(10);
-        config.setMessagesThreshold(20);
         config.setLargeMessageThreshold(500);
         config.setTrimSize(100);
 
@@ -87,7 +77,7 @@ class MessageOffloaderTest {
     @Test
     void belowMessagesToKeepDoesNotOffload() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(20);
+        config.setTokensThreshold(100000);
         config.setMessagesToKeep(10);
         config.setLargeMessageThreshold(10);
         config.setTrimSize(5);
@@ -108,32 +98,32 @@ class MessageOffloaderTest {
     }
 
     @Test
-    void aboveMessagesThresholdOffloadsAndReloadsOriginalContent() {
+    void aboveTokenThresholdOffloadsAndReloadsOriginalContent() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(4);
-        config.setTokensThreshold(100000);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(30);
         config.setTrimSize(10);
         config.setOffloadMessageType(List.of("tool"));
         config.setKeepLastRound(false);
-        SessionModelContext context = contextWith(config, null);
+        ModelContext.TokenCounterPort tokenCounter = contentLengthCounter();
+        SessionModelContext context = contextWith(config, tokenCounter);
         String longContent = "x".repeat(100);
 
         context.addMessages(List.of(
                 new UserMessage("u1"),
                 new ToolMessage(longContent, "tc-1"),
-                new UserMessage("u2"),
-                new UserMessage("u3")
+                new UserMessage("u2")
         )).toCompletableFuture().join();
-        assertThat(context.getMessages()).noneMatch(OffloadMessage.class::isInstance);
-
-        context.addMessages(new UserMessage("u4")).toCompletableFuture().join();
 
         List<BaseMessage> result = context.getMessages();
-        assertThat(result).hasSize(5);
+        assertThat(result).hasSize(3);
         assertThat(result.get(1)).isInstanceOf(OffloadMessage.class);
-        OffloadMessage marker = (OffloadMessage) result.get(1);
-        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        OffloadMessage marker = result.get(1) instanceof OffloadMessage om ? om : null;
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawReloader = context.reloaderTool();
+        SessionModelContext.ReloaderTool reloader =
+                rawReloader instanceof SessionModelContext.ReloaderTool rt ? rt : null;
         assertThat(reloader.reloadOriginalContextMessages(marker.getOffloadHandle(), marker.getOffloadType()))
                 .contains(longContent);
     }
@@ -141,13 +131,12 @@ class MessageOffloaderTest {
     @Test
     void streamStateHistoryRecordsModifiedOffloadMessages() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(1);
-        config.setTokensThreshold(100000);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(30);
         config.setTrimSize(10);
         config.setOffloadMessageType(List.of("tool"));
         config.setKeepLastRound(false);
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
 
         context.addMessages(List.of(
                 new ToolMessage("x".repeat(100), "tc-stream"),
@@ -172,7 +161,6 @@ class MessageOffloaderTest {
     @Test
     void tokenThresholdUsesContextTokenCounter() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(100);
         config.setTokensThreshold(50);
         config.setLargeMessageThreshold(10);
         config.setTrimSize(5);
@@ -194,7 +182,7 @@ class MessageOffloaderTest {
     @Test
     void shortMessagesAreNotOffloaded() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(3);
+        config.setTokensThreshold(100000);
         config.setLargeMessageThreshold(100);
         config.setTrimSize(10);
         config.setOffloadMessageType(List.of("tool"));
@@ -213,13 +201,13 @@ class MessageOffloaderTest {
     @Test
     void offloadOnlyConfiguredRolesAndPreservesRecentMessages() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(2);
+        config.setTokensThreshold(100);
         config.setLargeMessageThreshold(10);
         config.setTrimSize(5);
         config.setOffloadMessageType(List.of("user", "assistant"));
         config.setMessagesToKeep(1);
         config.setKeepLastRound(false);
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, contentLengthCounter());
 
         context.addMessages(List.of(
                 new UserMessage("U".repeat(50)),
@@ -238,13 +226,13 @@ class MessageOffloaderTest {
     @Test
     void messagesToKeepLimitsOffloadRangeToOlderMessages() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(3);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(10);
         config.setTrimSize(5);
         config.setOffloadMessageType(List.of("tool"));
         config.setMessagesToKeep(2);
         config.setKeepLastRound(false);
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
 
         context.addMessages(List.of(
                 new ToolMessage("A".repeat(50), "tc-1"),
@@ -263,12 +251,12 @@ class MessageOffloaderTest {
     @Test
     void keepLastRoundPreservesFinalAssistantBoundary() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(2);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(10);
         config.setTrimSize(5);
         config.setOffloadMessageType(List.of("tool"));
         config.setKeepLastRound(true);
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
 
         context.addMessages(List.of(
                 new UserMessage("u1"),
@@ -286,12 +274,12 @@ class MessageOffloaderTest {
     @Test
     void offloadTrimsContentAndReloadsOriginalContent() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(1);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(30);
         config.setTrimSize(10);
         config.setOffloadMessageType(List.of("tool"));
         config.setKeepLastRound(false);
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
         String longContent = "a".repeat(200);
 
         context.addMessages(List.of(
@@ -313,12 +301,12 @@ class MessageOffloaderTest {
     @Test
     void offloadPreservesToolCallId() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(1);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(10);
         config.setTrimSize(5);
         config.setOffloadMessageType(List.of("tool"));
         config.setKeepLastRound(false);
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
         String fullContent = "Very long tool response: " + "x".repeat(100);
 
         context.addMessages(List.of(
@@ -338,14 +326,13 @@ class MessageOffloaderTest {
     @Test
     void fullFlowAddMessagesTriggersOffloadAndReloadsContent() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(4);
-        config.setTokensThreshold(100000);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(40);
         config.setTrimSize(15);
         config.setOffloadMessageType(List.of("tool", "user"));
         config.setMessagesToKeep(2);
         config.setKeepLastRound(true);
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
 
         context.addMessages(List.of(
                 new UserMessage("u1"),
@@ -370,13 +357,13 @@ class MessageOffloaderTest {
     @Test
     void multiRoundDialogueOffloadsOldToolsAndPreservesLatestFinalAssistant() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(10);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(30);
         config.setTrimSize(10);
         config.setOffloadMessageType(List.of("tool"));
         config.setMessagesToKeep(8);
         config.setKeepLastRound(true);
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
         List<BaseMessage> messages = new java.util.ArrayList<>();
         for (int round = 0; round < 3; round++) {
             messages.add(new UserMessage("user-round-" + round));
@@ -407,7 +394,7 @@ class MessageOffloaderTest {
     @Test
     void protectedToolByExactNameIsNotOffloaded() {
         MessageOffloaderConfig config = baseProtectedConfig(List.of("reload_original_context_messages"));
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
 
         context.addMessages(List.of(
                 new UserMessage("u"),
@@ -423,7 +410,7 @@ class MessageOffloaderTest {
     @Test
     void protectedToolPatternUsesToolArguments() {
         MessageOffloaderConfig config = baseProtectedConfig(List.of("read:path/to/*.py"));
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
 
         context.addMessages(List.of(
                 new UserMessage("u"),
@@ -437,7 +424,7 @@ class MessageOffloaderTest {
     @Test
     void protectedToolPatternMatchesMarkdownPath() {
         MessageOffloaderConfig config = baseProtectedConfig(List.of("view_file:*.md"));
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
         String longContent = "X".repeat(200);
 
         context.addMessages(List.of(
@@ -453,7 +440,7 @@ class MessageOffloaderTest {
     @Test
     void protectedToolPatternDoesNotMatchDifferentPath() {
         MessageOffloaderConfig config = baseProtectedConfig(List.of("read_file:*USER.md"));
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
 
         context.addMessages(List.of(
                 new UserMessage("u"),
@@ -467,7 +454,7 @@ class MessageOffloaderTest {
     @Test
     void unprotectedToolIsOffloaded() {
         MessageOffloaderConfig config = baseProtectedConfig(List.of("reload_original_context_messages"));
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
 
         context.addMessages(List.of(
                 new UserMessage("u"),
@@ -481,7 +468,7 @@ class MessageOffloaderTest {
     @Test
     void protectedToolQuestionMarkPatternMatchesSingleCharacter() {
         MessageOffloaderConfig config = baseProtectedConfig(List.of("read:file?.txt"));
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
         String longContent = "X".repeat(200);
 
         context.addMessages(List.of(
@@ -505,7 +492,7 @@ class MessageOffloaderTest {
                 "reload_original_context_messages",
                 "view_file:*.md",
                 "read:*.py"));
-        SessionModelContext context = contextWith(config, null);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
         String longContent = "X".repeat(200);
 
         context.addMessages(List.of(
@@ -532,6 +519,16 @@ class MessageOffloaderTest {
                 MessageOffloader.extractToolArgs(toolCall), "*.json")).isTrue();
     }
 
+    private static ModelContext.TokenCounterPort fixedTokenCounter(long tokens) {
+        return messages -> (int) tokens;
+    }
+
+    private static ModelContext.TokenCounterPort contentLengthCounter() {
+        return messages -> messages == null ? 0 : messages.stream()
+                .mapToInt(message -> message.getContent() instanceof String text ? text.length() : 0)
+                .sum();
+    }
+
     private static SessionModelContext contextWith(MessageOffloaderConfig config,
                                                    ModelContext.TokenCounterPort tokenCounter) {
         MessageOffloader offloader = new MessageOffloader(config);
@@ -541,7 +538,7 @@ class MessageOffloaderTest {
 
     private static MessageOffloaderConfig baseProtectedConfig(List<String> protectedToolNames) {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
-        config.setMessagesThreshold(2);
+        config.setTokensThreshold(50);
         config.setLargeMessageThreshold(10);
         config.setTrimSize(5);
         config.setOffloadMessageType(List.of("tool"));

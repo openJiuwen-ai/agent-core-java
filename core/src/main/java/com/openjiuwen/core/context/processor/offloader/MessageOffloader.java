@@ -12,6 +12,11 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.offload.api.OffloadException;
+import com.openjiuwen.core.context.offload.api.OffloadService;
+import com.openjiuwen.core.context.offload.model.OffloadNamespace;
+import com.openjiuwen.core.context.offload.model.OffloadRef;
+import com.openjiuwen.core.context.offload.model.OffloadRequest;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.context.schema.OffloadMessage;
@@ -24,7 +29,6 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,16 +37,25 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 /**
- * Trims and offloads large context messages when configured count or token thresholds are exceeded.
+ * Trims and offloads large context messages when configured token thresholds are exceeded.
  *
  * <p>Mirrors Python's {@code MessageOffloader} in
  * {@code openjiuwen/core/context_engine/processor/offloader/message_offloader.py}.</p>
+ *
+ * <p>v2 (架构文档 §7.2.1): the message-count threshold trigger was removed;
+ * triggering is token-total based only, and per-message decisions additionally
+ * honor the {@code openjiuwen.offload_done} metadata flag and the recent-window
+ * protection.</p>
  */
 public class MessageOffloader extends ContextProcessor {
     public static final String OMIT_STRING = "...";
+
+    /** Metadata flag marking messages whose content already lives offloaded (防重循环, 架构文档 §1.1). */
+    public static final String OFFLOAD_DONE_METADATA_KEY = "openjiuwen.offload_done";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageOffloader.class);
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -52,6 +65,12 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     private final MessageOffloaderConfig config;
+
+    /** Optional v2 pipeline; {@code null} keeps the legacy buffer/filesystem path. */
+    private volatile OffloadService offloadService;
+
+    /** Namespace supplier for the v2 pipeline; resolved per-save when null. */
+    private volatile Supplier<OffloadNamespace> namespaceSupplier;
 
     public MessageOffloader(Object config) {
         this(asConfig(config));
@@ -65,6 +84,40 @@ public class MessageOffloader extends ContextProcessor {
         super(config);
         this.config = config;
         validateConfig();
+    }
+
+    /**
+     * Wires the v2 {@link OffloadService} pipeline (架构文档 §2.2, T-P0-04).
+     * When unset the processor keeps its legacy buffer/filesystem behavior.
+     */
+    public void setOffloadService(OffloadService offloadService, Supplier<OffloadNamespace> namespaceSupplier) {
+        this.offloadService = offloadService;
+        this.namespaceSupplier = namespaceSupplier;
+    }
+
+    /**
+     * @return the wired v2 pipeline, or {@code null} when running in legacy mode.
+     */
+    public OffloadService getOffloadService() {
+        return offloadService;
+    }
+
+    /**
+     * Subclass-visible accessor for the v2 pipeline.
+     */
+    protected OffloadService offloadService() {
+        return offloadService;
+    }
+
+    /**
+     * Subclass-visible v2 save entry (gate → reserve → store chain → commit).
+     *
+     * @param message the message to offload
+     * @param context the session context carrying the namespace
+     * @return the offload receipt, or empty when the save failed
+     */
+    protected Optional<OffloadRef> saveViaOffloadService(BaseMessage message, SessionModelContext context) {
+        return doSaveViaOffloadService(message, context);
     }
 
     public MessageOffloaderConfig getConfig() {
@@ -102,22 +155,15 @@ public class MessageOffloader extends ContextProcessor {
             return CompletableFuture.completedFuture(false);
         }
 
-        Integer messagesThreshold = config.getMessagesThreshold();
-        if (messagesThreshold != null && messageSize > messagesThreshold) {
-            if (!hasOffloadCandidate(allMessages, context)) {
-                return CompletableFuture.completedFuture(false);
-            }
-            LOGGER.info("[{} triggered] context messages num {} exceeds threshold of {}",
-                    processorType(), messageSize, messagesThreshold);
-            return CompletableFuture.completedFuture(true);
-        }
-
+        // v2: message-count threshold trigger removed (架构文档 §7.2.1);
+        // only the token-total branch remains ("<= threshold" keeps prod behavior).
         int tokens = 0;
         if (context != null && context.tokenCounter() != null) {
             tokens += context.tokenCounter().countTokens(context.getMessages());
             tokens += context.tokenCounter().countTokens(messagesToAdd == null ? List.of() : messagesToAdd);
         }
-        if (tokens > config.getTokensThreshold()) {
+        // 设计文档 §11.3 / AC-1-02/03: 达到阈值即触发（含边界，>=）。
+        if (tokens >= config.getTokensThreshold()) {
             if (!hasOffloadCandidate(allMessages, context)) {
                 return CompletableFuture.completedFuture(false);
             }
@@ -143,9 +189,17 @@ public class MessageOffloader extends ContextProcessor {
         List<BaseMessage> processedMessages = new ArrayList<>(messages == null ? List.of() : messages);
         int offloadRange = getOffloadRange(processedMessages);
         List<Integer> modifiedIndices = new ArrayList<>();
+        // G.NAM.08: intentional descriptive name for the protection flag
+        boolean isRecentProtectionActive = offloadService != null && config.getRecentMessageProtectionCount() > 0;
 
         for (int index = offloadRange - 1; index >= 0; index--) {
             BaseMessage message = processedMessages.get(index);
+            // v2 D7 保护窗口: the most recent N messages stay inline; as the
+            // window slides forward with new messages, older candidates become
+            // offloadable again (滑动窗口溢出恢复).
+            if (isRecentProtectionActive && isWithinRecentProtection(processedMessages, index)) {
+                continue;
+            }
             if (!shouldOffloadMessage(message, processedMessages, context)) {
                 continue;
             }
@@ -171,6 +225,16 @@ public class MessageOffloader extends ContextProcessor {
         if (kwargs != null) {
             extraFields.putAll(kwargs);
         }
+        // v2: route through the OffloadService pipeline when wired; on total
+        // store failure the original message is kept inline (共享约定 13).
+        if (offloadService != null) {
+            Optional<OffloadRef> ref = saveViaOffloadService(message, context);
+            if (ref.isEmpty()) {
+                return CompletableFuture.completedFuture(message);
+            }
+            return CompletableFuture.completedFuture(
+                    wrapOffloadMessage(message, ref.get(), trimmedContent, extraFields));
+        }
         OffloadTarget target = newOffloadHandleAndPath(context);
         return offloadMessages(
                 message.getRole(),
@@ -184,6 +248,77 @@ public class MessageOffloader extends ContextProcessor {
         ).thenApply(rawMessage -> wrapOffloadMessage(message, rawMessage, target.offloadHandle(), extraFields));
     }
 
+    /**
+     * Saves the message through the v2 pipeline (gate → reserve → store chain
+     * → commit). Never throws: any failure returns empty so the caller
+     * keeps the original message inline.
+     *
+     * @param message the message to offload
+     * @param context the session context carrying the namespace
+     * @return the offload receipt, or empty when the save failed
+     */
+    private Optional<OffloadRef> doSaveViaOffloadService(BaseMessage message, SessionModelContext context) {
+        if (offloadService == null) {
+            // Legacy mode: no v2 pipeline wired, caller falls back to the
+            // filesystem/in-memory path.
+            return Optional.empty();
+        }
+        try {
+            // postTokenCount = the token footprint of what stays context-visible
+            // after offloading (preview + marker), AC-6-04.
+            String preview = message.getContentAsString().substring(0,
+                    Math.min(config.getTrimSize(), message.getContentAsString().length())) + OMIT_STRING;
+            long postTokens = ContextUtils.estimateTokens(preview + markerSuffix());
+            OffloadRequest request = OffloadRequest.builder()
+                    .namespace(resolveNamespace(context))
+                    .algorithmId(processorType())
+                    .source(String.valueOf(UUID.randomUUID()))
+                    .messages(List.of(message))
+                    .preTokenCount(estimateTokens(message, context))
+                    .postTokenCount(postTokens)
+                    .build();
+            return offloadService.save(request);
+        } catch (OffloadException ex) {
+            // Intentional: offloader must not propagate exceptions to the compression pipeline
+            LOGGER.warn("[{}] offload save failed, keeping message inline: {}",
+                    processorType(), ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Upper-bound estimate of the rendered marker footprint
+     * ({@code [[OFFLOAD: handle=32hex, type=filesystem, path=...]]}) so the
+     * postTokenCount metric covers the whole context-visible replacement.
+     */
+    private static String markerSuffix() {
+        return String.format(OFFLOAD_MESSAGE_MARKER,
+                "0".repeat(32), "filesystem", MessageOffloader.class.getSimpleName() + "_0".repeat(32) + ".json");
+    }
+
+    private OffloadNamespace resolveNamespace(SessionModelContext context) {
+        Supplier<OffloadNamespace> supplier = namespaceSupplier;
+        if (supplier != null) {
+            OffloadNamespace supplied = supplier.get();
+            if (supplied != null) {
+                return supplied;
+            }
+        }
+        return OffloadNamespace.of("", context == null ? "" : context.sessionId(), "");
+    }
+
+    private static long estimateTokens(BaseMessage message, SessionModelContext context) {
+        if (context != null && context.tokenCounter() != null) {
+            try {
+                return context.tokenCounter().countTokens(List.of(message));
+            } catch (RuntimeException ex) {
+                // Intentional: token-counter failure must not propagate; fall back to char length.
+                LOGGER.warn("token count failed, falling back to char length: {}", ex.getMessage());
+            }
+        }
+        return message == null ? 0L : message.getContentAsString().length();
+    }
+
     OffloadTarget newOffloadHandleAndPath(SessionModelContext context) {
         String offloadHandle = UUID.randomUUID().toString().replace("-", "");
         String sessionId = context == null ? "" : context.sessionId();
@@ -191,7 +326,8 @@ public class MessageOffloader extends ContextProcessor {
         String fileName = processorType() + "_" + offloadHandle + ".json";
         if (workspaceDir != null && !workspaceDir.isBlank()) {
             return new OffloadTarget(offloadHandle,
-                    Path.of(workspaceDir, "context", sessionId + "_context", "offload", fileName).toString());
+                    java.nio.file.Path.of(workspaceDir, "context", sessionId + "_context", "offload",
+                            fileName).toString());
         }
         return new OffloadTarget(offloadHandle, null);
     }
@@ -210,7 +346,12 @@ public class MessageOffloader extends ContextProcessor {
 
     boolean hasOffloadCandidate(List<BaseMessage> messages, SessionModelContext context) {
         int offloadRange = getOffloadRange(messages);
+        // G.NAM.08: intentional descriptive name for the protection flag
+        boolean isRecentProtectionActive = offloadService != null && config.getRecentMessageProtectionCount() > 0;
         for (int index = offloadRange - 1; index >= 0; index--) {
+            if (isRecentProtectionActive && isWithinRecentProtection(messages, index)) {
+                continue;
+            }
             if (shouldOffloadMessage(messages.get(index), messages, context)) {
                 return true;
             }
@@ -225,13 +366,49 @@ public class MessageOffloader extends ContextProcessor {
         if (!(message.getContent() instanceof String content)) {
             return false;
         }
-        if (content.length() <= config.getLargeMessageThreshold()) {
+        // v2 防重循环 (架构文档 §1.1): already-offloaded (or reload-result)
+        // messages must never be offloaded again.
+        if (isOffloadDone(message)) {
+            return false;
+        }
+        // v2 单条卸载边界 (AC-1-03): content size reaching the threshold
+        // (>=) qualifies, in contrast to the trigger scan which stays "> ".
+        if (content.length() < config.getLargeMessageThreshold()) {
             return false;
         }
         if (message instanceof OffloadMessage) {
             return false;
         }
         return !isProtectedToolMessage(message, contextMessages);
+    }
+
+    /**
+     * @return {@code true} when the message metadata carries the
+     * {@code openjiuwen.offload_done=true} flag (架构文档 §7.2.1 ①).
+     */
+    static boolean isOffloadDone(BaseMessage message) {
+        Map<String, Object> metadata = message == null ? null : message.getMetadata();
+        if (metadata == null) {
+            return false;
+        }
+        Object flag = metadata.get(OFFLOAD_DONE_METADATA_KEY);
+        // 共享约定 5: the flag value is the string "true"; Boolean.TRUE is
+        // accepted too so programmatic writers keep working.
+        return Boolean.TRUE.equals(flag) || "true".equalsIgnoreCase(String.valueOf(flag));
+    }
+
+    /**
+     * @return {@code true} when {@code index} sits inside the most recent
+     * {@code recentMessageProtectionCount} messages of {@code messages}
+     * (架构文档 §7.2.1 ②, D7 protection window).
+     */
+    boolean isWithinRecentProtection(List<BaseMessage> messages, int index) {
+        int protectionCount = config.getRecentMessageProtectionCount();
+        if (protectionCount <= 0 || messages == null) {
+            return false;
+        }
+        int lastProtectedStart = messages.size() - protectionCount;
+        return index >= lastProtectedStart;
     }
 
     boolean isProtectedToolMessage(BaseMessage message, List<BaseMessage> contextMessages) {
@@ -319,15 +496,28 @@ public class MessageOffloader extends ContextProcessor {
                     "trim_size " + config.getTrimSize() + " cannot larger than large_message_threshold "
                             + config.getLargeMessageThreshold());
         }
-        if (config.getMessagesToKeep() != null
-                && config.getMessagesThreshold() != null
-                && config.getMessagesToKeep() >= config.getMessagesThreshold()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.CONTEXT_EXECUTION_ERROR,
-                    "error_msg",
-                    "messages_to_keep " + config.getMessagesToKeep()
-                            + " cannot larger than messages_threshold " + config.getMessagesThreshold());
+        // v2: messages_to_keep / messages_threshold coupling check removed together
+        // with the message-count threshold (架构文档 §7.2.1).
+    }
+
+    /**
+     * v2 wrapper: renders the unified marker from the service receipt and
+     * carries {@code tool_call_id} through for tool-role messages.
+     */
+    private BaseMessage wrapOffloadMessage(BaseMessage source, OffloadRef ref, String trimmedContent,
+                                           Map<String, Object> kwargs) {
+        Map<String, Object> safeKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
+        if ("tool".equals(source.getRole()) && source instanceof ToolMessage toolMessage) {
+            safeKwargs.putIfAbsent("tool_call_id", toolMessage.getToolCallId());
         }
+        String marker = String.format(OFFLOAD_MESSAGE_MARKER, ref.handle(), ref.type(),
+                ref.pathOrKey() == null ? "" : ref.pathOrKey());
+        return OffloadMessages.createOffloadMessage(
+                source.getRole(),
+                trimmedContent + marker,
+                ref.handle(),
+                ref.type(),
+                safeKwargs);
     }
 
     private BaseMessage wrapOffloadMessage(BaseMessage source, BaseMessage rawMessage, String fallbackHandle,

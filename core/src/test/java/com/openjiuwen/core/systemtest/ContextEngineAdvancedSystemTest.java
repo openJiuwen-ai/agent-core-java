@@ -288,13 +288,11 @@ class ContextEngineAdvancedSystemTest {
         @DisplayName("MessageOffloaderConfig builder")
         void testMessageOffloaderBuilder() {
             MessageOffloaderConfig config = new MessageOffloaderConfig();
-            config.setMessagesThreshold(50);
             config.setTokensThreshold(15000);
             config.setOffloadMessageType(List.of("tool", "system"));
             config.setTrimSize(200);
             config.setKeepLastRound(false);
 
-            assertEquals(50, config.getMessagesThreshold());
             assertEquals(15000, config.getTokensThreshold());
             assertEquals(List.of("tool", "system"), config.getOffloadMessageType());
             assertEquals(200, config.getTrimSize());

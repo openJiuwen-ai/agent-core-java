@@ -442,6 +442,9 @@ public final class ContextUtils {
     }
 
     private static boolean hasSingularToolCall(BaseMessage message) {
+        if (hasToolCalls(message)) {
+            return true;
+        }
         Optional<Object> directValue = readProperty(message, "tool_call");
         if (directValue.isPresent()) {
             Object value = directValue.get();

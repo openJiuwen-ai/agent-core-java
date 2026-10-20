@@ -34,8 +34,20 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/context_engine/processor/base.py}.</p>
  */
 public abstract class ContextProcessor implements SessionModelContext.ContextProcessorPort {
-    public static final String OFFLOAD_MESSAGE_HANDLE = "[[OFFLOAD: handle=%s, type=%s]]";
-    public static final String OFFLOAD_MESSAGE_HANDLE_WITH_PATH = "[[OFFLOAD: type=%s, path=%s]]";
+    /**
+     * Unified offload marker, three-segment form with a path hint
+     * (共享约定 4): {@code [[OFFLOAD: handle=<hex32>, type=<backend>, path=<path>]]}.
+     * Replaces the legacy two-constant scheme; {@code OFFLOAD_MESSAGE_HANDLE}
+     * below is kept as a compatible alias pointing at the no-path form.
+     */
+    public static final String OFFLOAD_MESSAGE_MARKER = "[[OFFLOAD: handle=%s, type=%s, path=%s]]";
+
+    /** Unified offload marker without a path hint: {@code [[OFFLOAD: handle=<hex32>, type=<backend>]]}. */
+    public static final String OFFLOAD_MESSAGE_MARKER_NO_PATH = "[[OFFLOAD: handle=%s, type=%s]]";
+
+    /** @deprecated compatible alias of {@link #OFFLOAD_MESSAGE_MARKER_NO_PATH}. */
+    @Deprecated
+    public static final String OFFLOAD_MESSAGE_HANDLE = OFFLOAD_MESSAGE_MARKER_NO_PATH;
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
@@ -258,10 +270,10 @@ public abstract class ContextProcessor implements SessionModelContext.ContextPro
                                                              String offloadPath, Map<String, Object> kwargs) {
         String markedContent;
         if (!isBlank(offloadPath)) {
-            markedContent = String.valueOf(content) + String.format(OFFLOAD_MESSAGE_HANDLE_WITH_PATH, "filesystem",
-                    offloadPath);
+            markedContent = String.valueOf(content) + String.format(OFFLOAD_MESSAGE_MARKER, offloadHandle,
+                    "filesystem", offloadPath);
         } else {
-            markedContent = String.valueOf(content) + String.format(OFFLOAD_MESSAGE_HANDLE, offloadHandle,
+            markedContent = String.valueOf(content) + String.format(OFFLOAD_MESSAGE_MARKER_NO_PATH, offloadHandle,
                     "filesystem");
         }
         return createOffloadMessage(role, markedContent, offloadHandle, "filesystem", kwargs);

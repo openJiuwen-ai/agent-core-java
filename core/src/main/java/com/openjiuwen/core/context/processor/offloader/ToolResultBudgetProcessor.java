@@ -7,6 +7,7 @@ package com.openjiuwen.core.context.processor.offloader;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.offload.model.OffloadRef;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.schema.OffloadMessage;
 import com.openjiuwen.core.context.schema.OffloadMessages;
@@ -108,7 +109,8 @@ public class ToolResultBudgetProcessor extends MessageOffloader {
         List<RoundRange> exceeded = new ArrayList<>();
         for (RoundRange roundRange : iterRoundRanges(messages)) {
             int totalSize = roundToolResultSize(messages, roundRange.startIndex(), roundRange.endIndex(), context);
-            if (totalSize > budgetConfig.getTokensThreshold()
+            // 设计文档 §11.3 / AC-1-02/03: 达到阈值即触发（含边界，>=）。
+            if (totalSize >= budgetConfig.getTokensThreshold()
                     && !collectRoundCandidates(messages, roundRange.startIndex(), roundRange.endIndex(),
                     context).isEmpty()) {
                 exceeded.add(roundRange);
@@ -162,7 +164,7 @@ public class ToolResultBudgetProcessor extends MessageOffloader {
         boolean changed = false;
         List<Integer> modifiedIndices = new ArrayList<>();
         while (roundToolResultSize(messages, roundRange.startIndex(), roundRange.endIndex(), context)
-                > budgetConfig.getTokensThreshold()) {
+                >= budgetConfig.getTokensThreshold()) {
             List<Candidate> candidates = collectRoundCandidates(messages, roundRange.startIndex(),
                     roundRange.endIndex(), context);
             if (candidates.isEmpty()) {
@@ -200,6 +202,11 @@ public class ToolResultBudgetProcessor extends MessageOffloader {
         if (message instanceof OffloadMessage) {
             return false;
         }
+        // 防重循环 (架构文档 §1.1): reload results carry openjiuwen.offload_done
+        // and must never be offloaded again.
+        if (isOffloadDone(message)) {
+            return false;
+        }
         if (!(message.getContent() instanceof String)) {
             return false;
         }
@@ -225,6 +232,14 @@ public class ToolResultBudgetProcessor extends MessageOffloader {
         Object content = message.getContent();
         if (!(content instanceof String text)) {
             return CompletableFuture.completedFuture(message);
+        }
+
+        // v2 pipeline (架构文档 §2.2): publish through OffloadService when wired;
+        // failure keeps the original message inline (共享约定 13).
+        Optional<OffloadRef> v2Ref = saveViaOffloadService(message, context);
+        if (v2Ref.isPresent()) {
+            return CompletableFuture.completedFuture(
+                    wrapBudgetOffloadMessage(message, v2Ref.get(), text, kwargs));
         }
 
         OffloadTarget target = newBudgetOffloadHandleAndPath(context);
@@ -312,6 +327,28 @@ public class ToolResultBudgetProcessor extends MessageOffloader {
 
     private static List<Integer> sortedDistinct(List<Integer> values) {
         return values.stream().distinct().sorted().toList();
+    }
+
+    /**
+     * v2 wrapper mirroring {@link #wrapBudgetOffloadMessage}: renders the unified
+     * marker from the {@link OffloadRef} receipt into the {@code <persisted-output>}
+     * envelope. The path segment uses the ref's {@code pathOrKey} verbatim
+     * ({@code path=None} when the backend has no path, matching legacy rendering).
+     */
+    private BaseMessage wrapBudgetOffloadMessage(ToolMessage source, OffloadRef ref, String originalText,
+                                                 Map<String, Object> kwargs) {
+        Map<String, Object> safeFields = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
+        safeFields.putIfAbsent("tool_call_id", source.getToolCallId());
+        if (source.getMetadata() != null && !safeFields.containsKey("metadata")) {
+            safeFields.put("metadata", new LinkedHashMap<>(source.getMetadata()));
+        }
+        String marker = String.format(OFFLOAD_MESSAGE_MARKER, ref.handle(), ref.type(),
+                ref.pathOrKey() == null ? "None" : ref.pathOrKey());
+        String preview = originalText.substring(0, Math.min(budgetConfig.getTrimSize(), originalText.length()));
+        boolean hasMore = originalText.length() > budgetConfig.getTrimSize();
+        String persistedContent = buildPersistedOutputMessage(originalText.length(), marker, preview, hasMore);
+        return OffloadMessages.createOffloadMessage(source.getRole(), persistedContent,
+                ref.handle(), ref.type(), safeFields);
     }
 
     private static String pathText(String path) {

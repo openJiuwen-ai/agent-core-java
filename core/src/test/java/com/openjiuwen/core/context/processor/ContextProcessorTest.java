@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.context.processor;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
@@ -13,6 +15,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,8 +23,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Focused parity tests for context processor base behavior.
@@ -134,7 +135,7 @@ class ContextProcessorTest {
                 .toCompletableFuture().join();
 
         assertThat(hint).isInstanceOf(AssistantMessage.class);
-        assertThat(hint.getContentAsString()).contains("[[OFFLOAD: type=filesystem, path=");
+        assertThat(hint.getContentAsString()).contains("[[OFFLOAD: handle=handle-2, type=filesystem, path=");
         assertThat(Files.readString(offloadFile)).contains("handle-2").contains("large");
     }
 

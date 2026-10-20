@@ -6,6 +6,7 @@ package com.openjiuwen.core.context.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.context.offload.model.OffloadConfig;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,8 +15,13 @@ import java.util.Objects;
 /**
  * Mirrors Python's {@code ContextEngineConfig} in
  * {@code openjiuwen/core/context_engine/schema/config.py}.
+ *
+ * <p>v2 (架构文档 §3.4): carries the Context Offload switch
+ * ({@code enable_offload}, default off) and the nested
+ * {@link OffloadConfig} block; unknown keys keep parsing.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class ContextEngineConfig {
     @JsonProperty("max_context_message_num")
     private Integer maxContextMessageNum;
@@ -47,6 +53,12 @@ public class ContextEngineConfig {
 
     @JsonProperty("openrouter_request_timeout")
     private double openrouterRequestTimeout = 3.0;
+
+    @JsonProperty("enable_offload")
+    private boolean isOffloadEnabled;
+
+    @JsonProperty("offload")
+    private OffloadConfig offload;
 
     public ContextEngineConfig() {
     }
@@ -195,6 +207,37 @@ public class ContextEngineConfig {
         this.openrouterRequestTimeout = openrouterRequestTimeout;
     }
 
+    /**
+     * Returns whether the Context Offload v2 pipeline is enabled (default off).
+     *
+     * @return {@code true} when the Context Offload v2 pipeline is enabled
+     */
+    public boolean isEnableOffload() {
+        return isOffloadEnabled;
+    }
+
+    /**
+     * Sets whether the Context Offload v2 pipeline is enabled.
+     *
+     * @param isOffloadEnabled whether to enable the Context Offload v2 pipeline
+     */
+    public void setEnableOffload(boolean isOffloadEnabled) {
+        this.isOffloadEnabled = isOffloadEnabled;
+    }
+
+    /**
+     * Returns the nested offload pipeline configuration.
+     *
+     * @return the nested offload pipeline configuration, or {@code null} for defaults
+     */
+    public OffloadConfig getOffload() {
+        return offload;
+    }
+
+    public void setOffload(OffloadConfig offload) {
+        this.offload = offload;
+    }
+
     private static void validatePositive(Integer value, String fieldName) {
         if (value != null && value <= 0) {
             throw new IllegalArgumentException(fieldName + " must be > 0");
@@ -212,13 +255,15 @@ public class ContextEngineConfig {
         return enableReload == that.enableReload
                 && enableTiktokenCounter == that.enableTiktokenCounter
                 && enableOpenrouterModelContextWindowTokens == that.enableOpenrouterModelContextWindowTokens
+                && isOffloadEnabled == that.isOffloadEnabled
                 && Double.compare(openrouterRequestTimeout, that.openrouterRequestTimeout) == 0
                 && Objects.equals(maxContextMessageNum, that.maxContextMessageNum)
                 && Objects.equals(defaultWindowMessageNum, that.defaultWindowMessageNum)
                 && Objects.equals(defaultWindowRoundNum, that.defaultWindowRoundNum)
                 && Objects.equals(contextWindowTokens, that.contextWindowTokens)
                 && Objects.equals(modelName, that.modelName)
-                && Objects.equals(modelContextWindowTokens, that.modelContextWindowTokens);
+                && Objects.equals(modelContextWindowTokens, that.modelContextWindowTokens)
+                && Objects.equals(offload, that.offload);
     }
 
     @Override
@@ -233,7 +278,9 @@ public class ContextEngineConfig {
                 modelName,
                 modelContextWindowTokens,
                 enableOpenrouterModelContextWindowTokens,
-                openrouterRequestTimeout
+                openrouterRequestTimeout,
+                isOffloadEnabled,
+                offload
         );
     }
 
@@ -248,6 +295,8 @@ public class ContextEngineConfig {
         private Map<String, Integer> modelContextWindowTokens;
         private boolean enableOpenrouterModelContextWindowTokens;
         private double openrouterRequestTimeout = 3.0;
+        private boolean isOffloadEnabled;
+        private OffloadConfig offload;
 
         private Builder() {
         }
@@ -309,10 +358,36 @@ public class ContextEngineConfig {
             return this;
         }
 
+        /**
+         * Sets whether the Context Offload v2 pipeline is enabled.
+         *
+         * @param isOffloadEnabled {@code true} to enable the offload pipeline, {@code false} to disable (default)
+         * @return this builder for chaining
+         */
+        public Builder enableOffload(boolean isOffloadEnabled) {
+            this.isOffloadEnabled = isOffloadEnabled;
+            return this;
+        }
+
+        /**
+         * Sets the nested offload pipeline configuration.
+         *
+         * @param offload the offload configuration block, or {@code null} to use defaults
+         * @return this builder for chaining
+         */
+        public Builder offload(OffloadConfig offload) {
+            this.offload = offload;
+            return this;
+        }
+
         public ContextEngineConfig build() {
-            return new ContextEngineConfig(maxContextMessageNum, defaultWindowMessageNum, defaultWindowRoundNum,
-                    enableReload, enableTiktokenCounter, contextWindowTokens, modelName,
-                    modelContextWindowTokens, enableOpenrouterModelContextWindowTokens, openrouterRequestTimeout);
+            ContextEngineConfig config = new ContextEngineConfig(maxContextMessageNum, defaultWindowMessageNum,
+                    defaultWindowRoundNum, enableReload, enableTiktokenCounter,
+                    contextWindowTokens, modelName, modelContextWindowTokens,
+                    enableOpenrouterModelContextWindowTokens, openrouterRequestTimeout);
+            config.setEnableOffload(isOffloadEnabled);
+            config.setOffload(offload);
+            return config;
         }
     }
 }
