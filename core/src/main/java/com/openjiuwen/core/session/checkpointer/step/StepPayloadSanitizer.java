@@ -15,9 +15,10 @@ import java.util.regex.Pattern;
  * truncated to a summary. The state snapshot used for resume is never
  * sanitized here - it needs full fidelity; only the journal trail is
  * summarized.</p>
+ *
+ * @since 0.1.17
  */
 public class StepPayloadSanitizer {
-
     /** Default payload length kept before truncation. */
     public static final int DEFAULT_MAX_PAYLOAD_LENGTH = 2048;
 

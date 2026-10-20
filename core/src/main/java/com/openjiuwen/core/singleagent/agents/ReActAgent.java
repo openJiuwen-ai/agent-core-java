@@ -36,6 +36,10 @@ import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
+import com.openjiuwen.core.session.checkpointer.step.KvStepJournal;
+import com.openjiuwen.core.session.checkpointer.step.PolicyEvaluator;
+import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
 import com.openjiuwen.core.session.checkpointer.step.StepJournal;
@@ -141,11 +145,11 @@ public class ReActAgent extends BaseAgent {
     private final ConcurrentHashMap<String, ContextWindow> lastAffinityWindows = new ConcurrentHashMap<>();
 
     /** Step boundary trigger coordinating policy evaluation, cursor persistence, and audit. */
-    private volatile com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger stepCheckpointTrigger =
-            new com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger(
+    private volatile StepCheckpointTrigger stepCheckpointTrigger =
+            new StepCheckpointTrigger(
                     null,
                     null,
-                    com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy.STEP_AUTO);
+                    StepCheckpointPolicy.STEP_AUTO);
 
     public ReActAgent(AgentCard card) {
         super(card);
@@ -1573,10 +1577,10 @@ public class ReActAgent extends BaseAgent {
     private void bindStepCheckpointTrigger(AgentSessionApi session, StepCheckpointPolicy invokeOverride) {
         Checkpointer checkpointer = resolveCheckpointer(session);
         StepJournal journal = resolveStepJournal(checkpointer);
-        StepCheckpointPolicy effectivePolicy = new com.openjiuwen.core.session.checkpointer.step.PolicyEvaluator()
+        StepCheckpointPolicy effectivePolicy = new PolicyEvaluator()
                 .resolve(config.getStepCheckpointPolicy(), invokeOverride);
         stepCheckpointTrigger = new StepCheckpointTrigger(checkpointer, journal, effectivePolicy,
-                new com.openjiuwen.core.session.checkpointer.step.PolicyEvaluator());
+                new PolicyEvaluator());
     }
 
     private Checkpointer resolveCheckpointer(AgentSessionApi session) {
@@ -1588,8 +1592,8 @@ public class ReActAgent extends BaseAgent {
     }
 
     private StepJournal resolveStepJournal(Checkpointer checkpointer) {
-        if (checkpointer instanceof com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer persistence) {
-            return new com.openjiuwen.core.session.checkpointer.step.KvStepJournal(persistence.kvStore());
+        if (checkpointer instanceof PersistenceCheckpointer persistence) {
+            return new KvStepJournal(persistence.kvStore());
         }
         return null;
     }
@@ -1880,10 +1884,8 @@ public class ReActAgent extends BaseAgent {
                                 typedBaseSession(session),
                                 null,
                                 stepSignals(session),
-                                "TOOL_CALL",
-                                toolCallNames(toolCalls),
-                                StepStatus.COMPLETED,
-                                iterationDurationMillis(ctx));
+                                new StepBoundary("TOOL_CALL", toolCallNames(toolCalls), StepStatus.COMPLETED,
+                                        iterationDurationMillis(ctx)));
                     } catch (RuntimeException exception) {
                         iterationFailureLogged = true;
                         Loggers.AGENT.exception(

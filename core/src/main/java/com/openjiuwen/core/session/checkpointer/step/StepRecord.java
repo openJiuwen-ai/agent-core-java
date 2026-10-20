@@ -11,9 +11,10 @@ import java.util.Map;
  * One audit record for a step boundary. Append-only, never used for resume -
  * the resume path relies on the cursor riding the state snapshot; the journal
  * exists purely for replay and audit.
+ *
+ * @since 0.1.17
  */
 public class StepRecord {
-
     private String sessionId;
     private String agentId;
     private long seq;

@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.checkpointer.step;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -29,8 +31,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * End-to-end step-checkpoint resumption through the real ReActAgent loop.
  *
@@ -50,7 +50,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ol>
  */
 class StepCheckpointEndToEndTest {
-
     private static final String SESSION_ID = "step-e2e-session";
 
     private PersistenceCheckpointer checkpointer;
@@ -77,12 +76,12 @@ class StepCheckpointEndToEndTest {
     @DisplayName("tool-call boundaries persist cursor+state; a fresh session resumes both")
     void toolCallBoundariesSurviveSessionRestart() {
         AtomicInteger turnOneCalls = new AtomicInteger();
-        ReActAgent agent = newAgent(StepCheckpointPolicy.STEP_ALWAYS);
-        agent.setLlm(scriptedModel(turnOneCalls, null));
+        ReActAgent reactAgent = newAgent(StepCheckpointPolicy.STEP_ALWAYS);
+        reactAgent.setLlm(scriptedModel(turnOneCalls, null));
 
-        AgentSession firstTurn = new AgentSession(SESSION_ID, null, agent.getCard());
+        AgentSession firstTurn = new AgentSession(SESSION_ID, null, reactAgent.getCard());
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) agent.invoke(
+        Map<String, Object> result = (Map<String, Object>) reactAgent.invoke(
                 Map.of("query", "run the tools", "conversation_id", SESSION_ID), firstTurn);
 
         assertThat(result).containsEntry("result_type", "answer");
@@ -97,7 +96,7 @@ class StepCheckpointEndToEndTest {
 
         // A brand-new session for the same id resumes state and cursor together:
         // the restart path is preRun -> preAgentExecute -> snapshot recover.
-        AgentSession resumedTurn = new AgentSession(SESSION_ID, null, agent.getCard());
+        AgentSession resumedTurn = new AgentSession(SESSION_ID, null, reactAgent.getCard());
         resumedTurn.preRun(Map.of());
         StepCursor persisted = checkpointer.lastCompletedStep(resumedTurn.getInner());
         assertThat(persisted).isNotNull();
@@ -108,19 +107,19 @@ class StepCheckpointEndToEndTest {
         KvStepJournal journal = new KvStepJournal(checkpointer.kvStore());
         List<StepRecord> trail = journal.replay(SESSION_ID);
         assertThat(trail).isNotEmpty();
-        assertThat(trail).allMatch(record -> record.getSessionId().equals(SESSION_ID));
+        assertThat(trail).allMatch(record -> SESSION_ID.equals(record.getSessionId()));
     }
 
     @Test
     @DisplayName("STEP_OFF skips persistence while the audit journal still records boundaries")
     void policyOffKeepsStateCleanButAudits() {
-        ReActAgent agent = newAgent(StepCheckpointPolicy.STEP_OFF);
+        ReActAgent reactAgent = newAgent(StepCheckpointPolicy.STEP_OFF);
         AtomicInteger calls = new AtomicInteger();
-        agent.setLlm(scriptedModel(calls, null));
+        reactAgent.setLlm(scriptedModel(calls, null));
 
-        AgentSession session = new AgentSession(SESSION_ID, null, agent.getCard());
+        AgentSession session = new AgentSession(SESSION_ID, null, reactAgent.getCard());
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) agent.invoke(
+        Map<String, Object> result = (Map<String, Object>) reactAgent.invoke(
                 Map.of("query", "run without steps", "conversation_id", SESSION_ID), session);
 
         assertThat(result).containsEntry("result_type", "answer");
@@ -133,13 +132,13 @@ class StepCheckpointEndToEndTest {
     @Test
     @DisplayName("invoke-level override STEP_OFF beats agent-level STEP_ALWAYS")
     void invokeOverrideBeatsAgentDefault() {
-        ReActAgent agent = newAgent(StepCheckpointPolicy.STEP_ALWAYS);
+        ReActAgent reactAgent = newAgent(StepCheckpointPolicy.STEP_ALWAYS);
         AtomicInteger calls = new AtomicInteger();
-        agent.setLlm(scriptedModel(calls, null));
+        reactAgent.setLlm(scriptedModel(calls, null));
 
-        AgentSession session = new AgentSession(SESSION_ID, null, agent.getCard());
+        AgentSession session = new AgentSession(SESSION_ID, null, reactAgent.getCard());
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) agent.invoke(
+        Map<String, Object> result = (Map<String, Object>) reactAgent.invoke(
                 Map.of("query", "override to off",
                         "conversation_id", SESSION_ID,
                         "step_checkpoint_policy", "STEP_OFF"),
@@ -156,12 +155,12 @@ class StepCheckpointEndToEndTest {
     @Test
     @DisplayName("AUTO activates late after the completed-step threshold (D1 signal)")
     void autoPolicyActivatesAfterCompletedStepThreshold() {
-        ReActAgent agent = newAgent(StepCheckpointPolicy.STEP_AUTO);
+        ReActAgent reactAgent = newAgent(StepCheckpointPolicy.STEP_AUTO);
         AtomicInteger calls = new AtomicInteger();
-        agent.setLlm(scriptedModel(calls, null));
+        reactAgent.setLlm(scriptedModel(calls, null));
 
-        AgentSession session = new AgentSession(SESSION_ID, null, agent.getCard());
-        agent.invoke(Map.of("query", "drive auto policy", "conversation_id", SESSION_ID), session);
+        AgentSession session = new AgentSession(SESSION_ID, null, reactAgent.getCard());
+        reactAgent.invoke(Map.of("query", "drive auto policy", "conversation_id", SESSION_ID), session);
 
         // Two tool-call boundaries are below the AUTO D1 threshold (3), so no
         // step cursor is persisted, but the boundaries were observed.

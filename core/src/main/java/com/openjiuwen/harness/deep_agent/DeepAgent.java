@@ -44,6 +44,10 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -242,11 +246,11 @@ public class DeepAgent implements AutoCloseable {
     private boolean isExplicitCompletionPolicy;
 
     /** Step boundary trigger coordinating policy evaluation, cursor persistence, and audit. */
-    private com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger stepCheckpointTrigger =
-            new com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger(
+    private StepCheckpointTrigger stepCheckpointTrigger =
+            new StepCheckpointTrigger(
                     null,
                     null,
-                    com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy.STEP_AUTO);
+                    StepCheckpointPolicy.STEP_AUTO);
 
     public DeepAgent() {
         this(null, null, null);
@@ -3940,9 +3944,7 @@ public class DeepAgent implements AutoCloseable {
         }
         Object resultType = roundResult == null ? null : roundResult.get("result_type");
         boolean hasInterrupt = "interrupt".equals(String.valueOf(resultType));
-        com.openjiuwen.core.session.checkpointer.step.StepStatus status = hasInterrupt
-                ? com.openjiuwen.core.session.checkpointer.step.StepStatus.RUNNING
-                : com.openjiuwen.core.session.checkpointer.step.StepStatus.COMPLETED;
+        StepStatus status = hasInterrupt ? StepStatus.RUNNING : StepStatus.COMPLETED;
         BaseSession baseSession = session instanceof AgentSession typedSession
                 ? typedSession.getInner()
                 : null;
@@ -3950,7 +3952,7 @@ public class DeepAgent implements AutoCloseable {
             return;
         }
         stepCheckpointTrigger.stepCompleted(baseSession, null, null,
-                "PHASE", stepName, status, 0L);
+                new StepBoundary("PHASE", stepName, status, 0L));
     }
 
     public void clearState(Object session, boolean clearPersisted) {

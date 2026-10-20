@@ -12,9 +12,10 @@ import java.util.Objects;
  * <p>Defaults follow issue #195 section 3.7.2: tools >= 8, completed steps >= 3,
  * single-step duration >= 5s. Values are overridable per agent config; the
  * first tuning pass happens after load testing.</p>
+ *
+ * @since 0.1.17
  */
 public class StepAutoThresholds {
-
     /** Default tool-count threshold for structural signal C3. */
     public static final int DEFAULT_TOOL_COUNT = 8;
 

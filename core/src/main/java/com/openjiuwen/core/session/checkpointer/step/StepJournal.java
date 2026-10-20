@@ -13,9 +13,10 @@ import java.util.List;
  * crash loses audit tail only, never correctness. Implementations should
  * sanitize payloads before persisting (issue #195 section 3.6.1) and honor a
  * retention policy aligned with the checkpointer's.</p>
+ *
+ * @since 0.1.17
  */
 public interface StepJournal {
-
     /**
      * Append one step record. Implementations must not throw on storage
      * failure; audit must not break the execution path.

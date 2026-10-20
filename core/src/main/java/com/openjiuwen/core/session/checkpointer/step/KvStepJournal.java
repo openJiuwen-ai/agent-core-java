@@ -18,9 +18,10 @@ import java.util.Map;
  * prefix read and purge walks sessions. Keys follow the shape
  * {@code stepjournal:<sessionId>:<seq>}; payload sanitization happens before
  * {@link #append} is reached via {@link StepPayloadSanitizer}.</p>
+ *
+ * @since 0.1.17
  */
 public class KvStepJournal implements StepJournal {
-
     /** KV key prefix shared by all journal records. */
     public static final String KEY_PREFIX = "stepjournal";
 

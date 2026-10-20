@@ -13,9 +13,10 @@ package com.openjiuwen.core.session.checkpointer.step;
  * working in every mode, so {@link #STEP_OFF} means "no extra per-step cost",
  * never "checkpointer disabled". HITL interrupt points bypass the policy and
  * always persist, because they are correctness rather than performance.</p>
+ *
+ * @since 0.1.17
  */
 public enum StepCheckpointPolicy {
-
     /** No step-level persistence; round-level checkpoints remain active. */
     STEP_OFF,
 

@@ -30,9 +30,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Callers (restart wiring, sweeper) share one instance; the processed
  * registry makes duplicate scans idempotent within a process.</p>
+ *
+ * @since 0.1.17
  */
 public class StepCheckpointRecoveryService {
-
     private static final Logger log = LoggerFactory.getLogger(StepCheckpointRecoveryService.class);
 
     private final Checkpointer checkpointer;

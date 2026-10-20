@@ -12,9 +12,10 @@ package com.openjiuwen.core.session.checkpointer.step;
  * first; only when the hook is not registered, reports {@code NOT_HANDLED},
  * or throws does the caller fall back to the safe default. An undecided
  * external state must end in markLost, never in silent revival.</p>
+ *
+ * @since 0.1.17
  */
 public interface StepRecoveryHook {
-
     /**
      * Attempt to recover one leftover session.
      *
@@ -36,14 +37,32 @@ public interface StepRecoveryHook {
     /** Outcome values returned by {@link #recover}. */
     record RecoveryResult(Outcome outcome, String detail) {
 
+        /**
+         * Build a result telling the caller the task was recovered.
+         *
+         * @param detail human-readable recovery detail for audit
+         * @return result with outcome {@code RECOVERED}
+         */
         public static RecoveryResult recovered(String detail) {
             return new RecoveryResult(Outcome.RECOVERED, detail);
         }
 
+        /**
+         * Build a result telling the caller the task was marked failed on purpose.
+         *
+         * @param detail human-readable failure detail for audit
+         * @return result with outcome {@code MARKED_FAILED}
+         */
         public static RecoveryResult markedFailed(String detail) {
             return new RecoveryResult(Outcome.MARKED_FAILED, detail);
         }
 
+        /**
+         * Build a result telling the caller the hook declined to handle the task.
+         *
+         * @param detail human-readable decline detail for audit
+         * @return result with outcome {@code NOT_HANDLED}
+         */
         public static RecoveryResult notHandled(String detail) {
             return new RecoveryResult(Outcome.NOT_HANDLED, detail);
         }

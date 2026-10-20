@@ -4,6 +4,12 @@
 
 package com.openjiuwen.core.session.checkpointer.step;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.session.BaseSession;
@@ -18,15 +24,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for the step-level checkpoint layer: cursor round-trip, policy
@@ -34,7 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * recovery pipeline.
  */
 class StepCheckpointTest {
-
     @BeforeEach
     void clearTenantContext() {
         TenantContextHolder.clearCurrentTenant();
@@ -307,7 +305,8 @@ class StepCheckpointTest {
 
         StepCheckpointTrigger trigger = new StepCheckpointTrigger(
                 checkpointer, null, StepCheckpointPolicy.STEP_OFF);
-        trigger.stepCompleted(session, null, null, "TOOL_CALL", "search", StepStatus.COMPLETED, 1L);
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, 1L));
 
         assertNull(StepCursor.fromState(state.getState()));
         assertEquals(1, trigger.observedSteps());
@@ -322,7 +321,8 @@ class StepCheckpointTest {
 
         StepCheckpointTrigger trigger = new StepCheckpointTrigger(
                 checkpointer, null, StepCheckpointPolicy.STEP_ALWAYS);
-        trigger.stepCompleted(session, null, null, "TOOL_CALL", "search", StepStatus.COMPLETED, 1L);
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, 1L));
 
         StepCursor persisted = StepCursor.fromState(state.getState());
         assertNotNull(persisted);
@@ -339,7 +339,8 @@ class StepCheckpointTest {
 
         StepCheckpointTrigger trigger = new StepCheckpointTrigger(
                 checkpointer, journal, StepCheckpointPolicy.STEP_OFF);
-        trigger.stepCompleted(session, null, null, "TOOL_CALL", "search", StepStatus.COMPLETED, 1L);
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, 1L));
 
         assertNull(StepCursor.fromState(state.getState()));
         assertEquals(1, journal.replay("session-audit").size());

@@ -22,9 +22,10 @@ package com.openjiuwen.core.session.checkpointer.step;
  *
  * <p>The evaluator is stateless; dynamic counters live in the caller's
  * {@link StepSignalContext}, so one evaluator instance can be shared.</p>
+ *
+ * @since 0.1.17
  */
 public final class PolicyEvaluator {
-
     private final StepAutoThresholds thresholds;
 
     public PolicyEvaluator() {

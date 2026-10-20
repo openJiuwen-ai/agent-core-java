@@ -18,9 +18,10 @@ import java.util.Objects;
  * flushed by the same checkpointer save, recovery reads the cursor to know
  * "which step was reached" and restores the state of that exact moment -
  * there is no window where the cursor and the state disagree.</p>
+ *
+ * @since 0.1.17
  */
 public class StepCursor {
-
     /** Session state key under which the cursor map is stored. */
     public static final String STATE_KEY = "step_cursor";
 

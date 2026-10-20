@@ -13,9 +13,10 @@ import java.util.Objects;
  * <p>Populated per invocation by the embedding agent (ReAct loop or DeepAgent
  * task loop). Every field is optional; missing facts simply weaken the signal
  * set, never fail the evaluation.</p>
+ *
+ * @since 0.1.17
  */
 public class StepSignalContext {
-
     private String taskType;
     private boolean hasWorkflow;
     private boolean hasInteractiveCapability;

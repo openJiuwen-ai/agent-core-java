@@ -9,6 +9,8 @@ package com.openjiuwen.core.session.checkpointer.step;
  *
  * <p>The status travels with the full state snapshot written by the checkpointer,
  * so recovery can tell whether the last persisted step finished or died mid-flight.</p>
+ *
+ * @since 0.1.17
  */
 public enum StepStatus {
     /** The step started but has not finished; recovery treats it as unfinished work. */

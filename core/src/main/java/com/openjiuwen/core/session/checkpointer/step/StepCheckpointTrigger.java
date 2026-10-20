@@ -26,9 +26,10 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>The trigger keeps the running sequence number per instance; instances are
  * per agent execution, so the counter naturally resets between tasks.</p>
+ *
+ * @since 0.1.17
  */
 public class StepCheckpointTrigger {
-
     private static final Logger log = LoggerFactory.getLogger(StepCheckpointTrigger.class);
 
     private final Checkpointer checkpointer;
@@ -73,14 +74,11 @@ public class StepCheckpointTrigger {
      * @param session session in the middle of a task, may be null to no-op
      * @param invokeOverride per-invocation policy override; null means "not overridden"
      * @param signals execution-time facts for AUTO evaluation, may be null
-     * @param stepType step category, e.g. TOOL_CALL / LLM_RESPONSE / PHASE
-     * @param stepName tool name or phase name
-     * @param status completion status of the step
-     * @param stepDurationMillis duration of the step in millis, for D2 and audit
+     * @param boundary identity of the completed step
      */
     public void stepCompleted(BaseSession session, StepCheckpointPolicy invokeOverride, StepSignalContext signals,
-                              String stepType, String stepName, StepStatus status, long stepDurationMillis) {
-        if (session == null) {
+                              StepBoundary boundary) {
+        if (session == null || boundary == null) {
             return;
         }
         long seq = seqCounter.incrementAndGet();
@@ -90,7 +88,8 @@ public class StepCheckpointTrigger {
         if (checkpointer != null
                 && evaluator.shouldPersist(agentDefault, invokeOverride, signalsWithDurations(signals, seq))) {
             try {
-                checkpointer.stepCompleted(session, new StepCursor(seq, stepType, stepName, status, now));
+                checkpointer.stepCompleted(session, new StepCursor(seq, boundary.stepType(), boundary.stepName(),
+                        boundary.status(), now));
             } catch (RuntimeException exception) {
                 log.warn("Step-level checkpoint failed for session {}: {}",
                         session.sessionId(), exception.getMessage());
@@ -98,8 +97,8 @@ public class StepCheckpointTrigger {
         }
         if (journal != null) {
             try {
-                journal.append(new StepRecord(session.sessionId(), "", seq, stepType, stepName,
-                        "", status, now));
+                journal.append(new StepRecord(session.sessionId(), "", seq, boundary.stepType(), boundary.stepName(),
+                        "", boundary.status(), now));
             } catch (RuntimeException exception) {
                 log.debug("Step journal append failed for session {}: {}",
                         session.sessionId(), exception.getMessage());
