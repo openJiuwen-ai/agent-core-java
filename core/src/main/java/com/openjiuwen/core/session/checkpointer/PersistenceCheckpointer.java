@@ -20,6 +20,7 @@ import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.state.AgentStateCollection;
 import com.openjiuwen.core.session.state.SessionStateAccess;
@@ -169,6 +170,35 @@ public class PersistenceCheckpointer extends Checkpointer {
         return keys != null && !keys.isEmpty();
     }
 
+    /**
+     * Scan persisted agent state blobs for sessions whose last step cursor is
+     * still RUNNING. Reads every session's agent-state blob through the KV
+     * prefix query and deserializes the cursor from the snapshot.
+     *
+     * @return one RUNNING cursor per session that has one, empty when none
+     */
+    @Override
+    public List<StepCursor> scanRunningSteps() {
+        Map<String, Object> blobs = kvStore.getByPrefix(
+                TenantKVStoreKeyResolver.resolvePrefix("")).join();
+        if (blobs == null || blobs.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Object> snapshots = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : blobs.entrySet()) {
+            if (!entry.getKey().contains(":agent:") || !entry.getKey().endsWith(":agent_state_blobs")) {
+                continue;
+            }
+            Object state = agentStorage.deserializeBlob(entry.getValue());
+            if (state instanceof Map<?, ?> stateMap) {
+                Map<String, Object> normalized = new LinkedHashMap<>();
+                stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+                snapshots.put(entry.getKey(), normalized);
+            }
+        }
+        return runningCursorsFromStates(snapshots);
+    }
+
     @Override
     public void release(String sessionId) {
         release(sessionId, null);
@@ -196,7 +226,13 @@ public class PersistenceCheckpointer extends Checkpointer {
         kvStore.close();
     }
 
-    BaseKVStore kvStore() {
+    /**
+     * Expose the underlying KV store for step-journal wiring in the same
+     * package family; read-only usage by step components.
+     *
+     * @return the KV store backing this checkpointer
+     */
+    public BaseKVStore kvStore() {
         return kvStore;
     }
 
@@ -472,6 +508,36 @@ public class PersistenceCheckpointer extends Checkpointer {
             if (sessionState != null) {
                 sessionState.setState(toMap(state));
             }
+        }
+
+        /**
+         * Deserialize a stored agent-state blob into the state map.
+         *
+         * @param blob serialized blob read from the KV store, may be null
+         * @return the restored state, or null when the blob is unreadable
+         */
+        Object deserializeBlob(Object blob) {
+            if (blob == null) {
+                return null;
+            }
+            Serializer.TypedBytes typed;
+            if (blob instanceof Serializer.TypedBytes typedBytes) {
+                typed = typedBytes;
+            } else if (blob instanceof byte[] bytes) {
+                typed = new Serializer.TypedBytes("java", bytes);
+            } else {
+                typed = new Serializer.TypedBytes("java",
+                        String.valueOf(blob).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            try {
+                return serializerAccess().loadsTyped(typed);
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+
+        private Serializer serializerAccess() {
+            return Serializer.create("java");
         }
     }
 

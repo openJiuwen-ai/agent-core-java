@@ -42,7 +42,18 @@ import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
+import com.openjiuwen.core.session.checkpointer.step.KvStepJournal;
+import com.openjiuwen.core.session.checkpointer.step.PolicyEvaluator;
+import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepJournal;
+import com.openjiuwen.core.session.checkpointer.step.StepSignalContext;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -148,6 +159,13 @@ public class ReActAgent extends BaseAgent {
 
     /** Previous LLM-bound window per session, used for affinity window-diff eviction. */
     private final ConcurrentHashMap<String, ContextWindow> lastAffinityWindows = new ConcurrentHashMap<>();
+
+    /** Step boundary trigger coordinating policy evaluation, cursor persistence, and audit. */
+    private volatile StepCheckpointTrigger stepCheckpointTrigger =
+            new StepCheckpointTrigger(
+                    null,
+                    null,
+                    StepCheckpointPolicy.STEP_AUTO);
 
     public ReActAgent(AgentCard card) {
         super(card);
@@ -1677,13 +1695,16 @@ public class ReActAgent extends BaseAgent {
         }
         Object query;
         String conversationId = null;
+        StepCheckpointPolicy invokePolicyOverride = null;
         if (inputs instanceof Map<?, ?> map) {
             query = map.containsKey("query") ? map.get("query") : "";
             Object conversation = map.get("conversation_id");
             conversationId = conversation == null ? null : String.valueOf(conversation);
+            invokePolicyOverride = StepCheckpointPolicy.fromString(map.get("step_checkpoint_policy"));
         } else {
             query = inputs;
         }
+        bindStepCheckpointTrigger(session, invokePolicyOverride);
 
         boolean needCleanup = false;
         AgentSessionApi activeSession = session;
@@ -1704,6 +1725,107 @@ public class ReActAgent extends BaseAgent {
                 conversationId,
                 kwargs
         );
+    }
+
+    /**
+     * Bind the step checkpoint trigger to the current invocation: wire the
+     * session's checkpointer, a journal when the KV store is available, and
+     * the effective policy resolved from the agent-level default and the
+     * per-invocation override.
+     *
+     * @param session invocation session, may be null
+     * @param invokeOverride per-invocation policy override; null means "not overridden"
+     */
+    private void bindStepCheckpointTrigger(AgentSessionApi session, StepCheckpointPolicy invokeOverride) {
+        Checkpointer checkpointer = resolveCheckpointer(session);
+        StepJournal journal = resolveStepJournal(checkpointer);
+        StepCheckpointPolicy effectivePolicy = new PolicyEvaluator()
+                .resolve(config.getStepCheckpointPolicy(), invokeOverride);
+        stepCheckpointTrigger = new StepCheckpointTrigger(checkpointer, journal, effectivePolicy,
+                new PolicyEvaluator());
+    }
+
+    private Checkpointer resolveCheckpointer(AgentSessionApi session) {
+        if (session instanceof AgentSession typedSession && typedSession.getInner() != null
+                && typedSession.getInner().checkpointer() != null) {
+            return typedSession.getInner().checkpointer();
+        }
+        return null;
+    }
+
+    private StepJournal resolveStepJournal(Checkpointer checkpointer) {
+        if (checkpointer instanceof PersistenceCheckpointer persistence) {
+            return new KvStepJournal(persistence.kvStore());
+        }
+        return null;
+    }
+
+    /**
+     * Unwrap the product session to the internal {@link BaseSession} expected
+     * by the checkpointer step entry points.
+     *
+     * @param session invocation session, may be null
+     * @return the internal session, or null when unavailable
+     */
+    private static BaseSession typedBaseSession(AgentSessionApi session) {
+        if (session instanceof AgentSession typedSession) {
+            return typedSession.getInner();
+        }
+        if (session instanceof BaseSession baseSession) {
+            return baseSession;
+        }
+        return null;
+    }
+
+    /**
+     * Build the AUTO signal context for the current invocation.
+     *
+     * @param session invocation session, may be null
+     * @return signal context populated with tool count and HITL capability
+     */
+    private StepSignalContext stepSignals(AgentSessionApi session) {
+        List<ToolInfo> tools = listEffectiveToolInfo(session);
+        boolean hasInteractiveCapability = tools.stream()
+                .anyMatch(tool -> "ask_user".equals(tool.getName()));
+        return new StepSignalContext(
+                "",
+                false,
+                hasInteractiveCapability,
+                tools.size(),
+                stepCheckpointTrigger.observedSteps(),
+                0L);
+    }
+
+    /**
+     * Join tool call names for cursor step-name recording.
+     *
+     * @param toolCalls tool calls of the finished step, may be null
+     * @return comma-joined names, empty when no calls
+     */
+    private static String toolCallNames(List<ToolCall> toolCalls) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return "";
+        }
+        List<String> names = new ArrayList<>(toolCalls.size());
+        for (ToolCall toolCall : toolCalls) {
+            names.add(toolCall.getName() == null ? "" : toolCall.getName());
+        }
+        return String.join(",", names);
+    }
+
+    /**
+     * Duration of the current ReAct iteration in millis, derived from the
+     * loop start timestamp recorded by the callback context.
+     *
+     * @param ctx callback context of the running invocation
+     * @return elapsed millis since the iteration started; 0 when unknown
+     */
+    private static long iterationDurationMillis(AgentCallbackContext ctx) {
+        Object startedAt = ctx == null ? null : ctx.getExtra().get("_iteration_started_at_millis");
+        if (!(startedAt instanceof Number number)) {
+            return 0L;
+        }
+        return Math.max(0L, System.currentTimeMillis() - number.longValue());
     }
 
     public Object innerInvoke(AgentSessionApi session, Object inputs, Object query, boolean needCleanup,
@@ -1834,6 +1956,7 @@ public class ReActAgent extends BaseAgent {
                 for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
                     ctx.enterIteration(iteration);
                     int iterationNumber = iteration + 1;
+                    ctx.getExtra().put("_iteration_started_at_millis", System.currentTimeMillis());
                     Loggers.AGENT.info("ReAct iteration {}/{} started",
                             iterationNumber, ctx.getMaxIterations());
                     try {
@@ -1919,6 +2042,12 @@ public class ReActAgent extends BaseAgent {
                                 ToolExecutionTurnOrigin.NORMAL_TOOL_LOOP)) {
                             break;
                         }
+                        stepCheckpointTrigger.stepCompleted(
+                                typedBaseSession(session),
+                                null,
+                                stepSignals(session),
+                                new StepBoundary("TOOL_CALL", toolCallNames(toolCalls), StepStatus.COMPLETED,
+                                        iterationDurationMillis(ctx)));
                     } catch (RuntimeException exception) {
                         iterationFailureLogged = true;
                         Loggers.AGENT.exception(

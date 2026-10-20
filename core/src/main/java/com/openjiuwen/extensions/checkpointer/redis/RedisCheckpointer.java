@@ -12,6 +12,7 @@ import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.checkpointer.CheckpointerProvider;
 import com.openjiuwen.core.session.constants.SessionConstants;
@@ -196,6 +197,20 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
         }
 
         return !redisStore.getByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join().isEmpty();
+    }
+
+    /**
+     * Scan persisted agent state blobs for sessions whose last step cursor is
+     * still RUNNING, delegating to the agent storage's cursor scan.
+     *
+     * @return one RUNNING cursor per session that has one, empty when none
+     */
+    @Override
+    public List<StepCursor> scanRunningSteps() {
+        if (redisStore == null) {
+            return List.of();
+        }
+        return agentStorage.scanRunningCursors().join();
     }
 
     /**

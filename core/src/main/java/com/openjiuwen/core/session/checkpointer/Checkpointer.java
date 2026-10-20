@@ -10,10 +10,23 @@ import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Base checkpointer for agent, team, workflow, and graph state.
+ *
+ * <p>Step-level entry points ({@link #stepCompleted}, {@link #lastCompletedStep},
+ * {@link #scanRunningSteps()}) reuse the existing full-snapshot storage: the
+ * cursor is written into the session state and flushed together with the state
+ * by the regular save path, so no additional storage structure exists.</p>
  */
 public abstract class Checkpointer implements AutoCloseable {
 
@@ -119,6 +132,124 @@ public abstract class Checkpointer implements AutoCloseable {
     }
 
     public void postAgentExecute(BaseSession session) {
+    }
+
+    /**
+     * Persist a completed step boundary: writes the cursor into the session
+     * state under {@link StepCursor#STATE_KEY} and flushes the full snapshot
+     * through the regular agent-state save, keeping cursor and state in the
+     * same transaction.
+     *
+     * <p>The default implementation works on every backend because it only
+     * relies on the session state and {@link #postAgentExecute}. Backends may
+     * override for cheaper equivalents.</p>
+     *
+     * @param session session in the middle of a task
+     * @param cursor cursor describing the completed step; seq must be strictly
+     *               greater than the currently persisted cursor
+     */
+    public void stepCompleted(BaseSession session, StepCursor cursor) {
+        if (session == null || cursor == null || session.state() == null) {
+            return;
+        }
+        StepCursor previous = lastCompletedStep(session);
+        if (!cursor.isAfter(previous)) {
+            return;
+        }
+        Map<String, Object> update = new LinkedHashMap<>();
+        update.put(StepCursor.STATE_KEY, cursor.toMap());
+        session.state().update(update);
+        postAgentExecute(session);
+    }
+
+    /**
+     * Return the last persisted completed-step cursor for the session.
+     *
+     * <p>The default reads {@link StepCursor#STATE_KEY} out of the live session
+     * state, which was restored from the snapshot at execution start and kept
+     * fresh by {@link #stepCompleted}.</p>
+     *
+     * @param session session to inspect
+     * @return the last cursor, or null when no step has been persisted yet
+     */
+    public StepCursor lastCompletedStep(BaseSession session) {
+        if (session == null || session.state() == null) {
+            return null;
+        }
+        Object state = session.state().get(StepCursor.STATE_KEY);
+        StepCursor cursor = StepCursor.fromMap(state);
+        return cursor == null ? null : cursor;
+    }
+
+    /**
+     * Scan persisted sessions whose last step cursor is still RUNNING, i.e.
+     * tasks left behind by a crashed or restarted process. Used by recovery
+     * and the runtime dead-step sweeper.
+     *
+     * <p>The base implementation has no cross-session index and returns an
+     * empty list; backends with a queryable store override it.</p>
+     *
+     * @return cursors of sessions with an unfinished last step, empty when none
+     */
+    public List<StepCursor> scanRunningSteps() {
+        return List.of();
+    }
+
+    /**
+     * Whether a persisted last-step cursor is in RUNNING state.
+     *
+     * @param cursor cursor to inspect, may be null
+     * @return true when the cursor exists and its status is RUNNING
+     */
+    protected static boolean isRunningCursor(StepCursor cursor) {
+        return cursor != null && cursor.getStatus() == StepStatus.RUNNING;
+    }
+
+    /**
+     * Deserialize a cursor blob stored under a raw KV key.
+     *
+     * @param blob value previously written through {@link #writeCursorBlob}, may be null
+     * @return the restored cursor, or null when the blob is absent or not a cursor map
+     */
+    protected static StepCursor readCursorBlob(Object blob) {
+        return StepCursor.fromMap(blob);
+    }
+
+    /**
+     * Build the serialized map form of a cursor for raw KV writes.
+     *
+     * @param cursor cursor to serialize
+     * @return map form, never null
+     */
+    protected static Map<String, Object> writeCursorBlob(StepCursor cursor) {
+        Objects.requireNonNull(cursor, "cursor");
+        return cursor.toMap();
+    }
+
+    /**
+     * Collect cursors in RUNNING state from recovered state snapshots.
+     *
+     * @param states snapshot maps keyed by session id, values may be anything
+     * @return one RUNNING cursor per session that has one
+     */
+    protected static List<StepCursor> runningCursorsFromStates(Map<String, Object> states) {
+        List<StepCursor> running = new ArrayList<>();
+        if (states == null) {
+            return running;
+        }
+        for (Map.Entry<String, Object> entry : states.entrySet()) {
+            Object snapshot = entry.getValue();
+            if (!(snapshot instanceof Map<?, ?> snapshotMap)) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            snapshotMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+            StepCursor cursor = StepCursor.fromState(normalized);
+            if (isRunningCursor(cursor)) {
+                running.add(cursor);
+            }
+        }
+        return running;
     }
 
     public void preAgentTeamExecute(BaseSession session, Object inputs) {
