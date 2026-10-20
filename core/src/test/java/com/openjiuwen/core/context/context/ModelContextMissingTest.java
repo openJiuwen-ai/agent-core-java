@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.context.context;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ContextStats;
@@ -16,6 +19,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -25,9 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Supplemental unit tests for model-context behavior.
@@ -645,7 +646,8 @@ class ModelContextMissingTest {
 
         String result = tool.reloadOriginalContextMessages("nonexistent", "in_memory");
 
-        assertThat(result).contains("Failed to reload");
+        // v2 structured error text (架构文档 §4.2): no stack trace, no absolute path.
+        assertThat(result).contains("OFFLOAD_MISSING");
         assertThat(result).contains("nonexistent");
     }
 

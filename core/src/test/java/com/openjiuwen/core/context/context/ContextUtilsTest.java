@@ -4,19 +4,19 @@
 
 package com.openjiuwen.core.context.context;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Focused parity tests for context utility helpers.
@@ -98,14 +98,23 @@ class ContextUtilsTest {
                 .build();
         BaseMessage assistantWithSingularToolCall = new BaseMessage("assistant", "singular");
         assistantWithSingularToolCall.setMetadata(Map.of("tool_call", Map.of("id", "call-2")));
+        BaseMessage plainAssistant = new AssistantMessage("final answer");
 
-        Optional<Integer> index = ContextUtils.findLastAiMessageWithoutToolCall(List.of(
+        // Builder-style AssistantMessage with toolCalls must be treated as having a tool call,
+        // and the Python-style metadata "tool_call" check must stay effective.
+        assertThat(ContextUtils.findLastAiMessageWithoutToolCall(List.of(
                 new BaseMessage("user", "q"),
                 assistantWithToolCalls,
                 assistantWithSingularToolCall
-        ));
+        ))).isEmpty();
 
-        assertThat(index).contains(1);
+        // A plain assistant answer without any tool call is the offload boundary.
+        assertThat(ContextUtils.findLastAiMessageWithoutToolCall(List.of(
+                new BaseMessage("user", "q"),
+                assistantWithToolCalls,
+                assistantWithSingularToolCall,
+                plainAssistant
+        ))).contains(3);
     }
 
     @Test

@@ -18,6 +18,12 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.context.offload.api.OffloadErrorCode;
+import com.openjiuwen.core.context.offload.api.OffloadException;
+import com.openjiuwen.core.context.offload.api.OffloadService;
+import com.openjiuwen.core.context.offload.compat.OffloadMessageBufferAdapter;
+import com.openjiuwen.core.context.offload.model.OffloadNamespace;
+import com.openjiuwen.core.context.offload.model.OffloadPayload;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
 import java.time.Instant;
@@ -33,6 +39,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 /**
  * Session-scoped model context backed by a rolling message buffer.
@@ -47,6 +54,13 @@ public class SessionModelContext implements ModelContext {
     public static final String CONTEXT_MESSAGE_ID_KEY = "context_message_id";
     public static final int DEFAULT_CONTEXT_MAX_TOKENS = 200000;
 
+    /**
+     * Anti-recursion flag mirrored from {@code MessageOffloader.OFFLOAD_DONE_METADATA_KEY}
+     * (kept local to avoid a compile-time dependency cycle between context and processor
+     * packages; the value must stay in lockstep, 共享约定 5).
+     */
+    public static final String OFFLOAD_DONE_METADATA_KEY = "openjiuwen.offload_done";
+
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     private static final String RELOADER_SYSTEM_PROMPT = """
             You may see offloaded content markers in your context: [[OFFLOAD: handle=<id>, type=<type>]].
@@ -56,7 +70,8 @@ public class SessionModelContext implements ModelContext {
             - Call reload_original_context_messages(offload_handle="<id>", offload_type="<type>") with the exact values from the marker
             - Do not guess or make up the missing content
                         
-            Storage types: "in_memory" (session cache).
+            Storage types: "in_memory" (session cache), "filesystem" (local offload file),
+            "redis" (Redis cache). Always pass the type exactly as shown in the marker.
             """;
     private static final Map<String, Integer> MODEL_DEFAULT_CONTEXT_WINDOW_TOKENS = buildDefaultContextWindowTokens();
 
@@ -80,6 +95,18 @@ public class SessionModelContext implements ModelContext {
     private Object sessionRef;
     private boolean activeCompressionInProgress;
     private OffloadMessageBuffer offloadMessageBuffer;
+
+    /** v2 pipeline; {@code null} keeps the legacy in-memory buffer path (架构文档 §2.2). */
+    private volatile OffloadService offloadService;
+
+    /**
+     * Namespace supplier resolved at reload time so the ownership check always uses
+     * the live server-side session context (never model input, 架构文档 §3.2).
+     */
+    private volatile Supplier<OffloadNamespace> offloadNamespaceSupplier;
+
+    /** Non-null iff {@link #offloadService} is wired; routes legacy calls through v2. */
+    private volatile OffloadMessageBufferAdapter offloadAdapter;
 
     public SessionModelContext(String contextId, String sessionId, ContextEngineConfig config) {
         this(contextId, sessionId, config, List.of(), List.of(), null, null, null, null, null);
@@ -128,6 +155,32 @@ public class SessionModelContext implements ModelContext {
                 .build();
     }
 
+    /**
+     * Wires the v2 offload pipeline. After this call the reload tool reads through
+     * {@link OffloadService} (five-step validation) and {@link #offloadMessages(String, List)}
+     * publishes via {@link OffloadMessageBufferAdapter}; the legacy in-memory buffer
+     * remains the fallback for pre-v2 entries restored by {@link #loadState(Map)}.
+     *
+     * @param offloadService the v2 facade (must not be null)
+     * @param namespaceSupplier live namespace source (nullable; falls back to the
+     *                          session-only namespace)
+     */
+    public void bindOffloadService(OffloadService offloadService, Supplier<OffloadNamespace> namespaceSupplier) {
+        this.offloadService = Objects.requireNonNull(offloadService, "offloadService must not be null");
+        this.offloadNamespaceSupplier = namespaceSupplier;
+        this.offloadAdapter = new OffloadMessageBufferAdapter(offloadService,
+                namespaceSupplier == null ? null : namespaceSupplier.get(), offloadMessageBuffer);
+    }
+
+    /**
+     * Returns the wired v2 offload pipeline.
+     *
+     * @return the wired v2 pipeline, or {@code null} in legacy mode
+     */
+    public OffloadService getOffloadService() {
+        return offloadService;
+    }
+
     @Override
     public int length() {
         return messageBuffer.size();
@@ -171,6 +224,14 @@ public class SessionModelContext implements ModelContext {
         if (newProcessors != null) {
             processors.addAll(newProcessors);
         }
+    }
+
+    /**
+     * @return a defensive copy of the live processor instances (assembly
+     * wiring reads this to reach {@code MessageOffloader} instances).
+     */
+    public List<ContextProcessorPort> getProcessors() {
+        return new ArrayList<>(processors);
     }
 
     @Override
@@ -410,11 +471,33 @@ public class SessionModelContext implements ModelContext {
 
     @Override
     public ToolPort reloaderTool() {
-        return new ReloaderTool(reloaderToolCard, offloadMessageBuffer);
+        return new ReloaderTool(reloaderToolCard, offloadService, this::resolveOffloadNamespace, offloadMessageBuffer);
+    }
+
+    /**
+     * Resolves the ownership namespace for reload/offload calls (架构文档 §3.2):
+     * prefers the live supplier wired by {@link #bindOffloadService}, falling back
+     * to the session-only namespace so the ownership check never depends on model
+     * input. Never returns {@code null}.
+     */
+    private OffloadNamespace resolveOffloadNamespace() {
+        Supplier<OffloadNamespace> supplier = offloadNamespaceSupplier;
+        if (supplier != null) {
+            OffloadNamespace supplied = supplier.get();
+            if (supplied != null) {
+                return supplied;
+            }
+        }
+        return OffloadNamespace.of("", "", sessionId(), contextId());
     }
 
     public void offloadMessages(String offloadHandle, List<BaseMessage> messages) {
         validateMessages(messages);
+        OffloadMessageBufferAdapter adapter = offloadAdapter;
+        if (adapter != null) {
+            adapter.offload(offloadHandle, "in_memory", ensureContextMessageIds(messages));
+            return;
+        }
         offloadMessageBuffer.offload(offloadHandle, "in_memory", ensureContextMessageIds(messages));
     }
 
@@ -1109,7 +1192,10 @@ public class SessionModelContext implements ModelContext {
         offloadHandle.put("type", "string");
         Map<String, Object> offloadType = new LinkedHashMap<>();
         offloadType.put("description", "The storage backend used when the content was offloaded. Must be one of: "
-                + "'in_memory': Content was stored in in-memory cache.");
+                + "'in_memory': Content was stored in in-memory cache. "
+                + "'filesystem': Content was offloaded to a local file; "
+                + "'redis': Content was stored in Redis. "
+                + "Pass the type exactly as rendered in the [[OFFLOAD: ...]] marker.");
         offloadType.put("type", "string");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("offload_handle", offloadHandle);
@@ -1343,15 +1429,24 @@ public class SessionModelContext implements ModelContext {
      * Reload tool facade.
      *
      * <p>Mirrors Python's {@code reloader_tool} returned tool in
-     * {@code openjiuwen/core/context_engine/context/context.py}.</p>
+     * {@code openjiuwen/core/context_engine/context/context.py}. When the v2
+     * pipeline is wired it loads through {@link OffloadService} (five-step
+     * validation, structured {@code <CODE>: handle=<id>} failure text that never
+     * breaks the agent turn — 架构文档 §4.2); otherwise it falls back to the
+     * legacy in-memory buffer.</p>
      */
     public static final class ReloaderTool implements ToolPort {
         private final ToolInfo toolInfo;
-        private final OffloadMessageBuffer offloadBuffer;
+        private final OffloadService offloadService;
+        private final Supplier<OffloadNamespace> namespaceSupplier;
+        private final OffloadMessageBuffer legacyBuffer;
 
-        private ReloaderTool(ToolInfo toolInfo, OffloadMessageBuffer offloadBuffer) {
+        private ReloaderTool(ToolInfo toolInfo, OffloadService offloadService,
+                             Supplier<OffloadNamespace> namespaceSupplier, OffloadMessageBuffer legacyBuffer) {
             this.toolInfo = Objects.requireNonNull(toolInfo, "toolInfo");
-            this.offloadBuffer = Objects.requireNonNull(offloadBuffer, "offloadBuffer");
+            this.offloadService = offloadService;
+            this.namespaceSupplier = namespaceSupplier;
+            this.legacyBuffer = legacyBuffer;
         }
 
         @Override
@@ -1364,40 +1459,145 @@ public class SessionModelContext implements ModelContext {
         }
 
         public String reloadOriginalContextMessages(String offloadHandle, String offloadType) {
-            List<BaseMessage> reloadedMessages = offloadBuffer.reloadBlocking(offloadHandle, offloadType);
-            if (reloadedMessages.isEmpty()) {
-                return "Failed to reload messages with offload_handle=" + offloadHandle
-                        + " and offload_type=" + offloadType;
+            return reloadOriginalContextMessages(offloadHandle, offloadType, 0, 0);
+        }
+
+        /**
+         * Reloads offloaded messages with optional pagination (架构文档 T18,
+         * C2 增强分页): {@code offset}/{@code limit} slice the payload so an
+         * oversized reload result cannot re-enter the Offload loop unbounded.
+         *
+         * @param offloadHandle 32-char hex handle from the marker
+         * @param offloadType   backend marker token
+         * @param offset        0-based message offset (0 = from start)
+         * @param limit         max messages to return (0 = no limit)
+         * @return reloaded message text, or a structured failure string
+         */
+        public String reloadOriginalContextMessages(String offloadHandle, String offloadType,
+                                                    int offset, int limit) {
+            if (offloadHandle == null || offloadHandle.isBlank()) {
+                return OffloadErrorCode.OFFLOAD_MISSING + ": handle=" + offloadHandle;
             }
-            return formatReloadedMessages(offloadHandle, reloadedMessages);
+            int safeOffset = Math.max(0, offset);
+            int safeLimit = Math.max(0, limit);
+            OffloadService service = offloadService;
+            if (service != null) {
+                try {
+                    OffloadPayload payload = service.load(resolveNamespace(), offloadHandle, offloadType);
+                    List<BaseMessage> messages = applyReloadWindow(payload.toBaseMessages(), safeOffset, safeLimit);
+                    return withOffloadDoneMetadata(
+                            formatReloadedMessages(offloadHandle, messages, safeOffset));
+                } catch (OffloadException ex) {
+                    // Structured error text: no stack trace, no absolute path (共享约定 9).
+                    return ex.code() + ": handle=" + offloadHandle;
+                } catch (RuntimeException ignored) {
+                    // fall through to the legacy buffer below
+                }
+            }
+            List<BaseMessage> reloadedMessages = legacyBuffer.reloadBlocking(offloadHandle, offloadType);
+            if (reloadedMessages.isEmpty()) {
+                return OffloadErrorCode.OFFLOAD_MISSING + ": handle=" + offloadHandle;
+            }
+            List<BaseMessage> windowed = applyReloadWindow(reloadedMessages, safeOffset, safeLimit);
+            return withOffloadDoneMetadata(formatReloadedMessages(offloadHandle, windowed, safeOffset));
+        }
+
+        /**
+         * Slices the reload result to the requested window; an empty window
+         * (offset beyond payload) falls back to the first {@code limit}
+         * messages so the model never gets a blank tool result.
+         */
+        private static List<BaseMessage> applyReloadWindow(List<BaseMessage> messages, int offset, int limit) {
+            List<BaseMessage> safe = messages == null ? List.of() : messages;
+            if (offset <= 0 && limit <= 0) {
+                return safe;
+            }
+            int from = Math.min(offset, safe.size());
+            int to = limit <= 0 ? safe.size() : Math.min(safe.size(), from + limit);
+            List<BaseMessage> window = safe.subList(from, to);
+            if (window.isEmpty() && safe.isEmpty()) {
+                return safe;
+            }
+            if (window.isEmpty()) {
+                // offset ran past the end: clamp to the trailing window
+                int fallbackFrom = limit <= 0 ? 0 : Math.max(0, safe.size() - limit);
+                return safe.subList(fallbackFrom, safe.size());
+            }
+            return new ArrayList<>(window);
         }
 
         /**
          * Reloads offloaded messages using tool-style arguments.
          *
-         * @param arguments map containing {@code offload_handle} and {@code offload_type}
-         * @return reloaded message text, or a failure string when the handle is missing
+         * @param arguments map containing {@code offload_handle} and {@code offload_type},
+         *                  optional {@code offset} and {@code limit} for pagination
+         * @return reloaded message text, or a structured failure string when the handle is missing
          */
         public Object invoke(Map<String, Object> arguments) {
             Object handle = arguments == null ? null : arguments.get("offload_handle");
             Object type = arguments == null ? null : arguments.get("offload_type");
             String offloadHandle = handle == null ? null : String.valueOf(handle);
             String offloadType = type == null ? null : String.valueOf(type);
-            return reloadOriginalContextMessages(offloadHandle, offloadType);
+            int offset = intValue(arguments, "offset");
+            int limit = intValue(arguments, "limit");
+            return reloadOriginalContextMessages(offloadHandle, offloadType, offset, limit);
+        }
+
+        private static int intValue(Map<String, Object> arguments, String key) {
+            if (arguments == null) {
+                return 0;
+            }
+            Object value = arguments.get(key);
+            if (value instanceof Number number) {
+                return number.intValue();
+            }
+            if (value instanceof String text && !text.isBlank()) {
+                try {
+                    return Integer.parseInt(text.trim());
+                } catch (NumberFormatException ignored) {
+                    return 0;
+                }
+            }
+            return 0;
+        }
+
+        private OffloadNamespace resolveNamespace() {
+            if (namespaceSupplier != null) {
+                OffloadNamespace supplied = namespaceSupplier.get();
+                if (supplied != null) {
+                    return supplied;
+                }
+            }
+            return OffloadNamespace.of("", "", "", "");
+        }
+
+        /**
+         * Appends the anti-recursion flag to the tool output so the runtime
+         * {@code ToolMessage} built from it carries {@code openjiuwen.offload_done=true}
+         * (架构文档 §4.2, 共享约定 5: value is the string {@code "true"}).
+         */
+        private static String withOffloadDoneMetadata(String formattedContent) {
+            return String.format("%s\n%s=%s", formattedContent,
+                    OFFLOAD_DONE_METADATA_KEY, "true");
         }
     }
 
-    private static String formatReloadedMessages(String offloadHandle, List<BaseMessage> messages) {
+    private static String formatReloadedMessages(String offloadHandle, List<BaseMessage> messages, int offset) {
         StringBuilder formattedContent = new StringBuilder("reload messages with handle=")
                 .append(offloadHandle)
+                .append(offset > 0 ? " (offset=" + offset + ")" : "")
                 .append(":\n");
         for (int index = 0; index < messages.size(); index++) {
-            formattedContent.append("message ").append(index + 1).append(": ")
+            formattedContent.append("message ").append(offset + index + 1).append(": ")
                     .append(writeJson(messages.get(index).modelDump()));
             if (index != messages.size() - 1) {
                 formattedContent.append('\n');
             }
         }
         return formattedContent.toString();
+    }
+
+    private static String formatReloadedMessages(String offloadHandle, List<BaseMessage> messages) {
+        return formatReloadedMessages(offloadHandle, messages, 0);
     }
 }

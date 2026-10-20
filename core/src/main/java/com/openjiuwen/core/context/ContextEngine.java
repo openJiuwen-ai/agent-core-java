@@ -251,6 +251,22 @@ public class ContextEngine {
         return contextIds;
     }
 
+    /**
+     * @return all contexts currently pooled for the given session (unordered).
+     */
+    public List<ModelContext> getContexts(String sessionId) {
+        List<ModelContext> contexts = new ArrayList<>();
+        if (sessionId == null) {
+            return contexts;
+        }
+        for (ModelContext context : contextPool.values()) {
+            if (sessionId.equals(context.sessionId())) {
+                contexts.add(context);
+            }
+        }
+        return contexts;
+    }
+
     private SessionModelContext.ContextProcessorPort createProcessor(String processorType, Object processorConfig) {
         ProcessorFactory factory = PROCESSOR_FACTORY_MAP.get(processorType);
         if (factory == null) {

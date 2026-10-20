@@ -11,6 +11,22 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.offload.api.OffloadCatalog;
+import com.openjiuwen.core.context.offload.api.OffloadCatalogImpl;
+import com.openjiuwen.core.context.offload.api.OffloadService;
+import com.openjiuwen.core.context.offload.api.OffloadServiceImpl;
+import com.openjiuwen.core.context.offload.api.OffloadStore;
+import com.openjiuwen.core.context.offload.cleanup.OffloadJanitor;
+import com.openjiuwen.core.context.offload.cleanup.SessionOffloadGate;
+import com.openjiuwen.core.context.offload.model.OffloadBackend;
+import com.openjiuwen.core.context.offload.model.OffloadConfig;
+import com.openjiuwen.core.context.offload.model.OffloadNamespace;
+import com.openjiuwen.core.context.offload.store.CompositeOffloadStore;
+import com.openjiuwen.core.context.offload.store.FileOffloadStore;
+import com.openjiuwen.core.context.offload.store.MemoryOffloadStore;
+import com.openjiuwen.core.context.offload.store.RedisOffloadStore;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
@@ -89,6 +105,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
@@ -97,7 +114,7 @@ import java.util.logging.Logger;
  * <p>Mirrors Python's {@code ReActAgent} in
  * {@code openjiuwen/core/single_agent/agents/react_agent.py}.</p>
  */
-public class ReActAgent extends BaseAgent {
+public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(ReActAgent.class.getName());
 
     public static final String IDENTITY_SECTION = "identity";
@@ -131,6 +148,12 @@ public class ReActAgent extends BaseAgent {
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
     private final com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook kvCacheModelCallHook =
             new com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook();
+
+    /** Shared v2 offload pipeline; {@code null} until {@link #initContext} enables it. */
+    private volatile OffloadService offloadService;
+
+    /** Background reaper for offloaded payloads; non-null iff the pipeline is running. */
+    private volatile OffloadJanitor offloadJanitor;
 
     /** Previous LLM-bound window per session, used for affinity window-diff eviction. */
     private final ConcurrentHashMap<String, ContextWindow> lastAffinityWindows = new ConcurrentHashMap<>();
@@ -830,6 +853,7 @@ public class ReActAgent extends BaseAgent {
                 return Optional.of(path);
             }
         } catch (IllegalArgumentException ignored) {
+            // expected: no action needed
         }
         return Optional.empty();
     }
@@ -1458,6 +1482,7 @@ public class ReActAgent extends BaseAgent {
         ContextEngine activeContextEngine = refreshContextEngineIfNeeded();
         ModelContext context = activeContextEngine.createContext(null, session, config.getContextProcessors(), null,
                 null);
+        bindOffloadPipeline(context, session);
         ModelContext.ToolPort contextReloader = context.reloaderTool();
         if (appliedContextEngineConfig.isEnableReload()) {
             Tool reloader = asSessionReloader(contextReloader);
@@ -1480,6 +1505,162 @@ public class ReActAgent extends BaseAgent {
             return new ReloaderAbility(reloader);
         }
         return null;
+    }
+
+    /**
+     * Wires the Context Offload v2 pipeline into a freshly created context
+     * (架构文档 §2.2, T-P0-05). Legacy mode stays untouched when
+     * {@code enable_offload} is false.
+     *
+     * <p>Assembly order matters: build the store chain first, then the
+     * service, and bind the context before the processors so a concurrent
+     * save never observes a half-wired pipeline.</p>
+     */
+    private void bindOffloadPipeline(ModelContext context, AgentSessionApi session) {
+        ContextEngineConfig engineConfig = appliedContextEngineConfig;
+        if (engineConfig == null || !engineConfig.isEnableOffload() || !(context instanceof SessionModelContext smc)) {
+            return;
+        }
+        if (smc.getOffloadService() != null) {
+            // Context reuse (engine pool): already bound — keep the single shared pipeline.
+            return;
+        }
+        try {
+            OffloadConfig offloadConfig = engineConfig.getOffload() == null
+                    ? new OffloadConfig()
+                    : engineConfig.getOffload();
+            CompositeOffloadStore compositeStore = buildCompositeStore(offloadConfig);
+            OffloadCatalog catalog = new OffloadCatalogImpl();
+            OffloadService service = new OffloadServiceImpl(catalog, compositeStore,
+                    new SessionOffloadGate(), offloadConfig);
+            Supplier<OffloadNamespace> namespaceSupplier = () -> OffloadNamespace.of("", "",
+                    session == null ? smc.sessionId() : session.getSessionId(), smc.contextId());
+            smc.bindOffloadService(service, namespaceSupplier);
+            for (MessageOffloader offloader : findOffloaders(smc)) {
+                syncProtectionConfig(offloader, offloadConfig);
+                offloader.setOffloadService(service, namespaceSupplier);
+            }
+            this.offloadService = service;
+            startOffloadJanitor(catalog, compositeStore, service, offloadConfig);
+            Loggers.AGENT.info("Context offload v2 pipeline bound, session={}", namespaceSupplier.get());
+        } catch (RuntimeException ex) {
+            // Intentional: agent loop must not propagate exceptions to the model
+            // Offload is an enhancement, never a hard dependency: degrade to legacy mode.
+            Loggers.AGENT.warning("Context offload v2 pipeline binding failed, falling back to legacy mode: "
+                    + ex.getMessage());
+        }
+    }
+
+    /**
+     * Builds the backend chain honoring primary/fallback/final_fallback with
+     * the canonical FILE → REDIS → MEMORY default (架构文档 §3.4).
+     */
+    private static CompositeOffloadStore buildCompositeStore(OffloadConfig offloadConfig) {
+        LinkedHashMap<OffloadBackend, OffloadStore> chain = new LinkedHashMap<>();
+        addBackendToChain(chain, offloadConfig.getPrimaryBackend(), offloadConfig);
+        addBackendToChain(chain, offloadConfig.getFallbackBackend(), offloadConfig);
+        addBackendToChain(chain, offloadConfig.getFinalFallback(), offloadConfig);
+        return new CompositeOffloadStore(chain);
+    }
+
+    private static void addBackendToChain(LinkedHashMap<OffloadBackend, OffloadStore> chain,
+                                          OffloadBackend backend, OffloadConfig offloadConfig) {
+        if (backend == null || backend == OffloadBackend.COMPOSITE || chain.containsKey(backend)) {
+            return;
+        }
+        switch (backend) {
+            case FILESYSTEM -> chain.put(backend, new FileOffloadStore(resolveWorkspaceRoot(offloadConfig),
+                    offloadConfig.isEnableFileLock()));
+            case REDIS -> {
+                if (offloadConfig.getRedis() != null) {
+                    chain.put(backend, new RedisOffloadStore(offloadConfig.getRedis()));
+                }
+            }
+            case MEMORY -> chain.put(backend, new MemoryOffloadStore());
+            default -> Loggers.AGENT.info("Offload backend not part of a concrete chain, skipped: {}", backend);
+        }
+    }
+
+    private static java.nio.file.Path resolveWorkspaceRoot(OffloadConfig offloadConfig) {
+        String configured = offloadConfig.getWorkspaceRoot();
+        if (configured != null && !configured.isBlank()) {
+            return java.nio.file.Path.of(configured);
+        }
+        return java.nio.file.Path.of(System.getProperty("user.dir"), "offload");
+    }
+
+    /**
+     * Finds every offloader processor instance (MessageOffloader and its
+     * {@code ToolResultBudgetProcessor} subclass) carried by the context.
+     */
+    private static List<MessageOffloader> findOffloaders(SessionModelContext smc) {
+        List<MessageOffloader> offloaders = new ArrayList<>();
+        for (SessionModelContext.ContextProcessorPort processor : smc.getProcessors()) {
+            if (processor instanceof MessageOffloader offloader) {
+                offloaders.add(offloader);
+            }
+        }
+        return offloaders;
+    }
+
+    /**
+     * V-3 单一配置源: the pipeline-level {@code OffloadConfig} overrides the
+     * processor defaults for the shared protection window so
+     * {@code recent_message_protection_count} / {@code protected_tool_names}
+     * configured on {@code enableOffload.offload} take effect (they were dead
+     * settings before). Explicit non-default processor values are preserved.
+     */
+    private static void syncProtectionConfig(MessageOffloader offloader, OffloadConfig offloadConfig) {
+        if (offloadConfig == null) {
+            return;
+        }
+        MessageOffloaderConfig target = offloader.getConfig();
+        if (target == null) {
+            return;
+        }
+        if (offloadConfig.getRecentMessageProtectionCount() != 5) {
+            target.setRecentMessageProtectionCount(offloadConfig.getRecentMessageProtectionCount());
+        }
+        List<String> pipelineTools = offloadConfig.getProtectedToolNames();
+        List<String> defaultTools = List.of("reload_original_context_messages");
+        if (pipelineTools != null && !pipelineTools.equals(defaultTools)) {
+            target.setProtectedToolNames(pipelineTools);
+        }
+    }
+
+    /**
+     * Starts one shared janitor per agent; the singleton guards make restarts
+     * (e.g. after {@code refreshContextEngineIfNeeded}) no-ops.
+     */
+    private void startOffloadJanitor(OffloadCatalog catalog, CompositeOffloadStore store,
+                                     OffloadService service, OffloadConfig offloadConfig) {
+        if (offloadJanitor != null) {
+            return;
+        }
+        synchronized (this) {
+            if (offloadJanitor == null) {
+                OffloadJanitor janitor = new OffloadJanitor(catalog, store, service, offloadConfig);
+                janitor.start();
+                this.offloadJanitor = janitor;
+            }
+        }
+    }
+
+    /**
+     * Releases agent-scoped resources: stops the offload janitor daemon
+     * (D-3 资源回收). Idempotent; the agent stays usable for reads after
+     * close, only the background reaping stops.
+     */
+    @Override
+    public void close() {
+        OffloadJanitor janitor = this.offloadJanitor;
+        if (janitor != null) {
+            janitor.close();
+        }
+    }
+
+    public OffloadService getOffloadService() {
+        return offloadService;
     }
 
     private static final class ReloaderAbility extends Tool {
@@ -2135,18 +2316,50 @@ public class ReActAgent extends BaseAgent {
 
     public void clearSession(String sessionId) {
         invokeStaticRunnerRelease(sessionId);
+        cleanupOffloadNamespaces(sessionId, null);
         contextEngine.clearContext(null, sessionId);
     }
 
     public boolean clearContextMessages(String sessionId, String contextId) {
         String effectiveSessionId = sessionId == null ? ContextEngine.DEFAULT_SESSION_ID : sessionId;
         String effectiveContextId = contextId == null ? ContextEngine.DEFAULT_CONTEXT_ID : contextId;
+        cleanupOffloadNamespaces(effectiveSessionId, effectiveContextId);
         ModelContext context = contextEngine.getContext(effectiveContextId, effectiveSessionId);
         if (context == null) {
             return false;
         }
         context.clearMessages(false).toCompletableFuture().join();
         return true;
+    }
+
+    /**
+     * AC-4-10 session 结束清理: removes every offload entry owned by the
+     * cleared session contexts before the contexts themselves go away.
+     * Best-effort — cleanup failures never block context clearing
+     * (offload is an enhancement, 共享约定 13).
+     */
+    private void cleanupOffloadNamespaces(String sessionId, String contextId) {
+        OffloadService service = this.offloadService;
+        if (service == null || sessionId == null) {
+            return;
+        }
+        try {
+            OffloadNamespace namespace = OffloadNamespace.of("", "", sessionId,
+                    contextId == null ? "" : contextId);
+            service.deleteNamespace(namespace);
+            if (contextId == null) {
+                // Whole-session sweep: also cover the context-scoped
+                // namespaces created per contextId by the binding supplier.
+                for (ModelContext context : contextEngine.getContexts(sessionId)) {
+                    if (context instanceof SessionModelContext smc && smc.getOffloadService() == service) {
+                        service.deleteNamespace(OffloadNamespace.of("", "", sessionId, smc.contextId()));
+                    }
+                }
+            }
+        } catch (RuntimeException ex) {
+            // Intentional: agent loop must not propagate exceptions to the model
+            Loggers.AGENT.debug("Offload namespace cleanup skipped: {}", ex.getMessage());
+        }
     }
 
     @Override
@@ -2196,7 +2409,9 @@ public class ReActAgent extends BaseAgent {
                 .contextWindowTokens(source.getContextWindowTokens())
                 .modelName(source.getModelName())
                 .enableOpenrouterModelContextWindowTokens(source.isEnableOpenrouterModelContextWindowTokens())
-                .openrouterRequestTimeout(source.getOpenrouterRequestTimeout());
+                .openrouterRequestTimeout(source.getOpenrouterRequestTimeout())
+                .enableOffload(source.isEnableOffload())
+                .offload(source.getOffload());
         Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
         if (modelWindowTokens != null) {
             snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
