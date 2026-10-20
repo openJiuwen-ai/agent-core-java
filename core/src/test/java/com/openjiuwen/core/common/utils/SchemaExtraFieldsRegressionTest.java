@@ -16,6 +16,11 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Verifies declared schema policies at the tool argument validation boundary.
+ *
+ * @since 2026-10-20
+ */
 class SchemaExtraFieldsRegressionTest {
     @Test
     void strictToolSchemaRejectsUnknownArgumentsWithValidationCode() {
@@ -27,7 +32,7 @@ class SchemaExtraFieldsRegressionTest {
     }
 
     @Test
-    void explicitAdditionalPropertyPolicyPreservesPythonAllowAndIgnoreBehavior() {
+    void additionalPropertyPolicyPreservesPythonAllowAndIgnore() {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("properties", Map.of("a", Map.of("type", "integer")));
         schema.put("additionalProperties", true);

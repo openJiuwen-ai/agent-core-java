@@ -1,11 +1,11 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.memory;
 
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.core.common.utils.Singleton;
 import com.openjiuwen.core.foundation.store.BaseMemoryIndex;
@@ -17,17 +17,18 @@ import com.openjiuwen.core.foundation.store.db.DefaultDbStore;
 import com.openjiuwen.core.foundation.store.index.SimpleMemoryIndex;
 import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.memory.migration.MigrationPlan;
-import com.openjiuwen.memory.migration.operation.BaseOperation;
+
+import org.h2.jdbcx.JdbcDataSource;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import org.h2.jdbcx.JdbcDataSource;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 /**
  * Mirrors Python's {@code TestLongTermMemoryRegisterPlugin} in
@@ -94,7 +95,8 @@ class LongTermMemoryRegisterPluginMissingTest {
 
         assertThat(memory.getMemoryIndex()).isInstanceOf(SimpleMemoryIndex.class);
         assertThat(memory.getMemoryIndex().search("user", "scope", "query", List.of(), 1).join()).isEmpty();
-        ((SimpleMemoryIndex) memory.getMemoryIndex()).setEmbeddingModel(new TestEmbedding());
+        SimpleMemoryIndex index = assertInstanceOf(SimpleMemoryIndex.class, memory.getMemoryIndex());
+        index.setEmbeddingModel(new TestEmbedding());
         assertThat(memory.getMemoryIndex().search("user", "scope", "query", List.of(), 1).join()).isEmpty();
     }
 
@@ -146,7 +148,8 @@ class LongTermMemoryRegisterPluginMissingTest {
         private final List<String> collections = new ArrayList<>();
 
         @Override
-        public CompletableFuture<Void> createCollection(String collectionName, Object schema, Map<String, Object> kwargs) {
+        public CompletableFuture<Void> createCollection(
+                String collectionName, Object schema, Map<String, Object> kwargs) {
             if (!collections.contains(collectionName)) {
                 collections.add(collectionName);
             }
@@ -193,7 +196,8 @@ class LongTermMemoryRegisterPluginMissingTest {
         }
 
         @Override
-        public CompletableFuture<Void> deleteDocsByIds(String collectionName, List<String> ids, Map<String, Object> kwargs) {
+        public CompletableFuture<Void> deleteDocsByIds(
+                String collectionName, List<String> ids, Map<String, Object> kwargs) {
             return CompletableFuture.completedFuture(null);
         }
 
@@ -217,7 +221,8 @@ class LongTermMemoryRegisterPluginMissingTest {
         }
 
         @Override
-        public CompletableFuture<Void> updateCollectionMetadata(String collectionName, Map<String, Object> metadataUpdate) {
+        public CompletableFuture<Void> updateCollectionMetadata(
+                String collectionName, Map<String, Object> metadataUpdate) {
             metadata.computeIfAbsent(collectionName, ignored -> new LinkedHashMap<>()).putAll(metadataUpdate);
             return CompletableFuture.completedFuture(null);
         }

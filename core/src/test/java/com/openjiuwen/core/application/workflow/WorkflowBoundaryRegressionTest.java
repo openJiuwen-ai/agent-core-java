@@ -1,10 +1,15 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-package com.openjiuwen.core.application.workflow_agent;
+
+package com.openjiuwen.core.application.workflow;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
-import com.openjiuwen.core.application.workflow.WorkflowAgent;
+import com.openjiuwen.core.application.workflow_agent.WorkflowController;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -14,16 +19,18 @@ import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertSame;
-
+/**
+ * Verifies workflow registration and tracing across invocation boundaries.
+ *
+ * @since 2026-10-20
+ */
 class WorkflowBoundaryRegressionTest {
     @Test
     void duplicateWorkflowIdentityKeepsFirstProviderAndSingleCandidate() {
@@ -36,7 +43,7 @@ class WorkflowBoundaryRegressionTest {
             agent.addWorkflows(List.of(first, duplicate));
             assertEquals(1, agent.getWorkflows().size());
             assertSame(first, agent.getWorkflows().get(0));
-            WorkflowController controller = (WorkflowController) agent.getController();
+            WorkflowController controller = assertInstanceOf(WorkflowController.class, agent.getController());
             assertEquals(1, controller.getAgentConfig().getWorkflows().size());
         } finally {
             Runner.resourceMgr().removeWorkflow(id + "_1");

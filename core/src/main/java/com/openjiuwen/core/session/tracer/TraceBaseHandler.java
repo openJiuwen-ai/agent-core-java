@@ -19,7 +19,7 @@ import java.util.Set;
  * {@code openjiuwen/core/session/tracer/handler.py}.
  */
 public abstract class TraceBaseHandler {
-
+    /** Current trace sink; rebound when a resumed invocation supplies a new stream manager. */
     protected volatile StreamWriter<TraceSchema> streamWriter;
     protected final SpanManager spanManager;
 

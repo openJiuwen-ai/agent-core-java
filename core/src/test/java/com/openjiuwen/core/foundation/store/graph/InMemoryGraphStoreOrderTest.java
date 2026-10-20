@@ -1,15 +1,21 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.store.graph;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
+/**
+ * Verifies deterministic top-k ordering for tied graph-store search scores.
+ *
+ * @since 2026-10-20
+ */
 class InMemoryGraphStoreOrderTest {
     @Test
     void equalScoreTopKPreservesInsertionOrderAcrossReadsAndUpserts() {

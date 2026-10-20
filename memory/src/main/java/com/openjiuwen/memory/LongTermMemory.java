@@ -206,21 +206,21 @@ public class LongTermMemory {
     }
 
     private void migrateRegisteredStores() {
-        runMigration(store -> RunMigrations.runKvMigrations((BaseKVStore) store), this.kvStore, "kv store").join();
+        runMigration(RunMigrations::runKvMigrations, this.kvStore, "kv store").join();
         if (this.vectorStore != null) {
             runMigration(
-                    store -> RunMigrations.runVectorMigrations((BaseVectorStore) store),
+                    RunMigrations::runVectorMigrations,
                     this.vectorStore,
                     "vector store"
             ).join();
         }
         if (this.dbStore != null) {
             SqlDbStore sqlDbStore = new SqlDbStore(this.dbStore);
-            runMigration(store -> RunMigrations.runSqlMigrations((SqlDbStore) store), sqlDbStore, "db store").join();
+            runMigration(RunMigrations::runSqlMigrations, sqlDbStore, "db store").join();
         }
         if (this.messageStore != null) {
             runMigration(
-                    store -> RunMigrations.runMessageMigrations((BaseMessageStore) store),
+                    RunMigrations::runMessageMigrations,
                     this.messageStore,
                     "message store"
             ).join();
@@ -1150,9 +1150,8 @@ public class LongTermMemory {
         return true;
     }
 
-    private CompletableFuture<Void> runMigration(Function<Object, CompletableFuture<Void>> migrateFunc,
-                                                 Object store,
-                                                 String storeType) {
+    private <T> CompletableFuture<Void> runMigration(Function<T, CompletableFuture<Void>> migrateFunc,
+            T store, String storeType) {
         try {
             MEMORY_LOGGER.info("Starting {} migration. event_type={}",
                     storeType, LogEventType.MEMORY_INIT.getValue());

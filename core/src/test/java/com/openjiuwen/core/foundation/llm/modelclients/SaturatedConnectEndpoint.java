@@ -20,6 +20,7 @@ import java.util.List;
  */
 final class SaturatedConnectEndpoint implements AutoCloseable {
     private static final int MAX_FILL_CONNECTIONS = 32;
+
     private final ServerSocket listener;
     private final List<Socket> connections = new ArrayList<>();
 

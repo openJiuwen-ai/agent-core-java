@@ -1,7 +1,11 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.workflow.component.loop;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
@@ -16,6 +20,7 @@ import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.core.workflow.component.End;
 import com.openjiuwen.core.workflow.component.Start;
 import com.openjiuwen.core.workflow.component.SubWorkflowComponentImpl;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23,9 +28,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-
+/**
+ * Verifies nested loop inputs and aggregate preservation across pause and resume.
+ *
+ * @since 2026-10-20
+ */
 class NestedLoopResumeRegressionTest {
     @Test
     void loopReadsEnclosingNodeInputsAcrossPauseAndResume() {
@@ -57,9 +64,11 @@ class NestedLoopResumeRegressionTest {
         WorkflowOutput completed = flow.invoke(second, session(id), null);
         assertEquals(WorkflowExecutionState.COMPLETED, completed.getState());
         assertEquals(2, executions.get());
-        Map<?, ?> output = (Map<?, ?>) ((Map<?, ?>) completed.getResult()).get("output");
+        Map<?, ?> envelope = assertInstanceOf(Map.class, completed.getResult());
+        Map<?, ?> output = assertInstanceOf(Map.class, envelope.get("output"));
+        Map<?, ?> rounds = assertInstanceOf(Map.class, output.get("rounds"));
         assertEquals(List.of(Map.of("answer", "first answer"), Map.of("answer", "second answer")),
-                ((Map<?, ?>) output.get("rounds")).get("answers"));
+                rounds.get("answers"));
     }
 
     private static void assertLoopQuestion(WorkflowOutput output) {
@@ -72,7 +81,7 @@ class NestedLoopResumeRegressionTest {
     }
 
     @Test
-    void restoresFreshSessionWithoutLosingInputsRoundsOrSameNamedAggregates() {
+    void restoresSessionWithInputsRoundsAndSameNamedAggregates() {
         Workflow flow = outerFlow();
         String sessionId = UUID.randomUUID().toString();
         WorkflowOutput result = flow.invoke(Map.of(), session(sessionId), null);
@@ -148,7 +157,7 @@ class NestedLoopResumeRegressionTest {
     private static final class Ask extends WorkflowComponent {
         @Override
         public Object invoke(Object input, NodeSessionApi session, ModelContext context) {
-            Map<?, ?> values = (Map<?, ?>) input;
+            Map<?, ?> values = assertInstanceOf(Map.class, input);
             return Map.of("answer", session.interact(values.get("round")));
         }
     }

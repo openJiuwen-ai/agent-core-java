@@ -32,6 +32,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 
+/**
+ * Verifies that sensitive logging hides payloads without changing model results.
+ *
+ * @since 2026-10-20
+ */
 @Isolated("Temporarily changes process-wide sensitive logging configuration")
 class SiliconFlowSensitiveLoggingTest {
     private static final String PRIVATE_TEXT = "private-payload-marker";

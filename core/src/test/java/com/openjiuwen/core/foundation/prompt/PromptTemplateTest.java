@@ -1,19 +1,8 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.prompt;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,6 +11,18 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Focused parity tests for prompt templates.
@@ -85,7 +86,7 @@ class PromptTemplateTest {
     }
 
     @Test
-    void messageMappingsAreNormalizedLikePydanticWithoutAcceptingInvalidLists() {
+    void normalizesMessageMappingsAndRejectsInvalidLists() {
         Map<String, Object> mapped = Map.of("role", "user", "content", "hello {{name}}",
                 "metadata", Map.of("source", "mapping"));
         PromptTemplate template = PromptTemplate.builder().content(List.of(mapped)).build();

@@ -515,7 +515,6 @@ public class Workflow {
                     WorkflowExecutionState.COMPLETED);
             return finishWorkflowInvoke(framework, output);
         }
-        boolean implicitDefaultSession = session == null && defaultCard;
         session = defaultWorkflowSessionIfMissing(session);
         validateSession(session);
         Object validatedInputs = validateInputs(inputs, skipInputsValidate);
@@ -550,9 +549,10 @@ public class Workflow {
                                 WorkflowExecutionState.INPUT_REQUIRED);
                     }
                     Object result;
+                    boolean isImplicitDefaultSession = request.session() == null && defaultCard;
                     if (containsCustomSchema(visibleOutputChunks)) {
                         Object finalResult = WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
-                        finalResult = normalizeImplicitDefaultWorkflowResult(finalResult, implicitDefaultSession);
+                        finalResult = normalizeImplicitDefaultWorkflowResult(finalResult, isImplicitDefaultSession);
                         finalResult = normalizeInteractiveLoopEnvelopeIndexes(finalResult);
                         List<Object> completedChunks = new ArrayList<>(visibleOutputChunks);
                         completedChunks.add(new OutputSchema("workflow_final", 0, finalResult));
@@ -561,7 +561,7 @@ public class Workflow {
                         result = isStreaming
                                 ? stableCompletedOutputChunks(visibleOutputChunks)
                                 : WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
-                        result = normalizeImplicitDefaultWorkflowResult(result, implicitDefaultSession);
+                        result = normalizeImplicitDefaultWorkflowResult(result, isImplicitDefaultSession);
                         result = normalizeInteractiveLoopEnvelopeIndexes(result);
                     }
                     return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);

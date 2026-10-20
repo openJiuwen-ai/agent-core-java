@@ -188,7 +188,7 @@ public class WorkflowController {
             AgentSessionApi activeSession,
             List<StreamMode> streamModes) {
         Object session = workflowSession(activeSession);
-        ModelContext modelContext = workflowContext(workflow, activeSession);
+        ModelContext modelContext = workflowContext(workflow, activeSession).orElse(null);
         if (streamModes == null) {
             return workflow.invoke(workflowInputs, session, modelContext);
         }
@@ -239,13 +239,14 @@ public class WorkflowController {
         }
     }
 
-    private ModelContext workflowContext(Workflow workflow, AgentSessionApi activeSession) {
+    private Optional<ModelContext> workflowContext(Workflow workflow, AgentSessionApi activeSession) {
         if (!(contextEngine instanceof ContextEngine engine) || activeSession == null) {
-            return null;
+            return Optional.empty();
         }
         String contextId = workflow.getCard().getId() + "_" + workflow.getCard().getVersion();
         ModelContext context = engine.getContext(contextId, activeSession.getSessionId());
-        return context == null ? engine.createContext(contextId, activeSession) : context;
+        return Optional.ofNullable(context)
+                .or(() -> Optional.ofNullable(engine.createContext(contextId, activeSession)));
     }
 
     private Event eventFromInputs(Map<String, Object> inputs) {
@@ -348,7 +349,7 @@ public class WorkflowController {
         Iterator<? extends Object> iterator = workflow.stream(
                 effectiveInputs,
                 workflowSession(activeSession),
-                workflowContext(workflow, activeSession),
+                workflowContext(workflow, activeSession).orElse(null),
                 streamModes == null ? List.of(StreamMode.OUTPUT) : streamModes);
         return new Iterator<>() {
             @Override

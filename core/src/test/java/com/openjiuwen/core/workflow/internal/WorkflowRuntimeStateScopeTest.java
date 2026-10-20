@@ -1,16 +1,23 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.workflow.internal;
-
-import com.openjiuwen.core.common.constants.Constant;
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import com.openjiuwen.core.common.constants.Constant;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+/**
+ * Verifies enclosing input visibility for loop bodies and ordinary subworkflows.
+ *
+ * @since 2026-10-20
+ */
 class WorkflowRuntimeStateScopeTest {
     @Test
     void loopReadsEnclosingInputsWithoutReplacingLocalValues() {
