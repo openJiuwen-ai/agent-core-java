@@ -2395,14 +2395,11 @@ public class DeepAgent implements AutoCloseable {
             }
             if (agent != null) {
                 agent.getAbilityManager().unregisterSessionTool(sessionId);
-                if (agent.getContextEngine() != null) {
-                    agent.getContextEngine().clearContext(null, sessionId);
-                }
-                // Release the per-session affinity window held by ReActAgent:
-                // clearContext alone does not touch lastAffinityWindows, so
-                // without this call one ContextWindow (with the full message
-                // shallow copy) stays reachable per finished session.
-                agent.clearSession(sessionId);
+                // Release the per-session affinity window held by ReActAgent
+                // (heap-leak fix) without touching the checkpointer store:
+                // a session interrupted mid-round can still be resumed later,
+                // so checkpoint release must not happen here.
+                agent.releaseSessionRuntime(sessionId);
             }
             clearSessionTracer(session);
             if (loopController != null) {

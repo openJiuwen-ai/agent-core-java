@@ -2600,6 +2600,28 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         }
     }
 
+    /**
+     * Release the per-session affinity window (the heap-leak fix entry) plus
+     * the context engine state, WITHOUT the checkpointer {@code release}
+     * side-effect of {@link #clearSession(String)}.
+     *
+     * <p>Some teardown paths (e.g. DeepAgent task-loop shutdown) run while the
+     * session may still be resumed later (interrupt-resume, follow-up rounds);
+     * dropping the checkpointer's agent store there breaks subsequent
+     * invocations with "agent store not found". Callers that truly end the
+     * session must use {@link #clearSession(String)}.</p>
+     *
+     * @param sessionId session whose in-memory runtime state should be released
+     * @since 0.1.17
+     */
+    public void releaseSessionRuntime(String sessionId) {
+        cleanupOffloadNamespaces(sessionId, null);
+        contextEngine.clearContext(null, sessionId);
+        if (sessionId != null) {
+            lastAffinityWindows.remove(sessionId);
+        }
+    }
+
     public boolean clearContextMessages(String sessionId, String contextId) {
         String effectiveSessionId = sessionId == null ? ContextEngine.DEFAULT_SESSION_ID : sessionId;
         String effectiveContextId = contextId == null ? ContextEngine.DEFAULT_CONTEXT_ID : contextId;
