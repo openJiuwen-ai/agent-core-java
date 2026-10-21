@@ -423,7 +423,7 @@ DeepAgentConfig.builder()
 | 配置 | 维度 | 作用 |
 |------|------|------|
 | `suggestedRounds` | 轮次 | 保障轮次，期内不干预 |
-| `firstCheckpoint` 等 | 轮次 | 检查点节奏（下限 max(10, 保障轮次)） |
+| `firstCheckpoint` 等 | 轮次 | 检查点节奏（缺省 max(10, 保障轮次)；显式值下限为保障轮次） |
 | `hardLimit` | 轮次 | 绝对上限；触顶后先给一轮收尾（安全阀），仍不收敛则终止 |
 | `totalBudgetSeconds` | 时间 | 墙钟总预算；到期即终止，不再派发新动作 |
 | `nearDeadlineThresholdSeconds` | 时间 | 剩余低于阈值时注入一次「尽快收尾」提示 |

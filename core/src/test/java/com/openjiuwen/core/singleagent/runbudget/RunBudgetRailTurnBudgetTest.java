@@ -188,6 +188,36 @@ class RunBudgetRailTurnBudgetTest {
     }
 
     @Test
+    void firstCheckpointAtSubTenGuarantee_evaluationAtConfiguredRound() {
+        // Issue #236: an explicit first checkpoint equal to a sub-ten guarantee is honored
+        // instead of being postponed to round ten
+        // Given guarantee 5 with firstCheckpoint 5 and continuous progress over 6 rounds
+        agent = RunBudgetTestFixture.newAgent("turn-b04s", 201);
+        rail = RunBudgetTestFixture.registerBudgetRail(agent, RunBudgetConfig.builder()
+                .turnEnabled(true).suggestedRounds(5).firstCheckpoint(5).build());
+        AtomicInteger toolCalls = new AtomicInteger();
+        String toolId = RunBudgetTestFixture.registerEchoTool(agent, "b04s", toolIds, 0L, toolCalls);
+        agent.setLlm(RunBudgetTestFixture.scriptedModel(
+                progressiveToolCalls(toolId, 6), RunBudgetTestFixture.answer("done at 7")).model());
+
+        // When invoked
+        try (RunBudgetTestFixture.RecordingEvents events = RunBudgetTestFixture.RecordingEvents.install()) {
+            Map<String, Object> result = RunBudgetTestFixture.runSync(
+                    agent, Map.of("query", "hi"), RunBudgetTestFixture.newSession("b04s-s", agent));
+
+            // Then the first checkpoint lands at round 5 and nothing fires before it
+            assertThat(result.get("result_type")).isEqualTo("answer");
+            List<Map<String, Object>> checkpoints = events.payloadsOf("turn_budget_checkpoint");
+            assertThat(checkpoints).hasSize(1);
+            assertThat(checkpoints.get(0)).containsEntry("round", 5)
+                    .containsEntry("progressed", true);
+            assertThat(events.payloadsOf("turn_budget_extended")).hasSize(1)
+                    .allSatisfy(payload -> assertThat(payload).containsEntry("next_interval", 10));
+            assertThat(events.countOf("turn_budget_stall_prompted")).isZero();
+        }
+    }
+
+    @Test
     void checkpointEvaluation_makesNoExtraModelCalls() {
         // UT-B05: progress evaluation is local heuristics only, zero model calls
         // Given a progressing task over 15 rounds
