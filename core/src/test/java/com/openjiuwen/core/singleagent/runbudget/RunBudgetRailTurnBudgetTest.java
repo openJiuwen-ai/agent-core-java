@@ -188,7 +188,7 @@ class RunBudgetRailTurnBudgetTest {
     }
 
     @Test
-    void firstCheckpointAtSubTenGuarantee_evaluationStartsAtConfiguredRound() {
+    void firstCheckpointAtSubTenGuarantee_evaluationAtConfiguredRound() {
         // Issue #236: an explicit first checkpoint equal to a sub-ten guarantee is honored
         // instead of being postponed to round ten
         // Given guarantee 5 with firstCheckpoint 5 and continuous progress over 6 rounds
