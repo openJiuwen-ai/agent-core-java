@@ -71,15 +71,15 @@ public class SystemPromptBuilder {
         return new LinkedHashMap<>(sections);
     }
 
-    public boolean hasSection(String name) {
+    public synchronized boolean hasSection(String name) {
         return sections.containsKey(name);
     }
 
-    public Optional<PromptSection> getSection(String name) {
+    public synchronized Optional<PromptSection> getSection(String name) {
         return Optional.ofNullable(sections.get(name));
     }
 
-    public String build() {
+    public synchronized String build() {
         List<PromptSection> sortedSections = new ArrayList<>(getSectionsForBuild());
         sortedSections.sort(Comparator.comparingInt(PromptSection::getPriority));
         return sortedSections.stream()
@@ -88,7 +88,7 @@ public class SystemPromptBuilder {
                 .collect(Collectors.joining("\n\n"));
     }
 
-    protected List<PromptSection> getSectionsForBuild() {
+    protected synchronized List<PromptSection> getSectionsForBuild() {
         return new ArrayList<>(sections.values());
     }
 
