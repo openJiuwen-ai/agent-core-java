@@ -16,13 +16,13 @@ import java.util.Properties;
  */
 public final class SkillConfig {
     /** Default value for blocking protected-classpath overrides. */
-    public static final boolean DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED = true;
+    public static final boolean SHOULD_BLOCK_PROTECTED_OVERRIDE_BY_DEFAULT = true;
 
     /** Default workspace SKILL.md size limit in bytes. */
     public static final int DEFAULT_WORKSPACE_MAX_BYTES = 262144;
 
     /** Default value for on-demand Skill loading. */
-    public static final boolean DEFAULT_IS_ON_DEMAND_LOADING = true;
+    public static final boolean SHOULD_LOAD_ON_DEMAND_BY_DEFAULT = true;
 
     /** System property for the protected-classpath override policy. */
     public static final String PROPERTY_PROTECTED_OVERRIDE_BLOCKED =
@@ -34,9 +34,9 @@ public final class SkillConfig {
     /** System property for on-demand Skill loading. */
     public static final String PROPERTY_ON_DEMAND_LOADING = "skill.on-demand-loading";
 
-    private boolean isProtectedOverrideBlocked = DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED;
+    private boolean isProtectedOverrideBlocked = SHOULD_BLOCK_PROTECTED_OVERRIDE_BY_DEFAULT;
     private int workspaceMaxBytes = DEFAULT_WORKSPACE_MAX_BYTES;
-    private boolean isOnDemandLoading = DEFAULT_IS_ON_DEMAND_LOADING;
+    private boolean isOnDemandLoading = SHOULD_LOAD_ON_DEMAND_BY_DEFAULT;
 
     /**
      * Returns whether protected classpath Skills block higher-layer overrides.

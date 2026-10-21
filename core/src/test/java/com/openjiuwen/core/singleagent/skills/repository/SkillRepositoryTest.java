@@ -156,7 +156,7 @@ class SkillRepositoryTest {
     }
 
     @Test
-    void classpathRepository_loadsDirectoryResourcesAndKeepsSkillDirectory() {
+    void classpathRepository_loadsDirectoryResources_keepsSkillDirectory() {
         ClasspathSkillRepository repository = new ClasspathSkillRepository("issue196/skills");
         List<Skill> loaded = repository.loadAll();
 

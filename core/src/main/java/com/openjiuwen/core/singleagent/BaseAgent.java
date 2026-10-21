@@ -79,6 +79,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private volatile SkillUtil skillUtil;
     private final Object skillUtilLock = new Object();
     private Object config;
+    private volatile boolean isSkillMetaToolRegistered;
 
     /**
      * Owner token for global resource registration. Generated per instance at creation time and
@@ -133,13 +134,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                 "reason",
                 error != null ? String.valueOf(error) : "add resource failed");
     }
-
-    /**
-     * Lazy init SkillUtil.
-     *
-     * @since 0.1.7
-     */
-    private volatile boolean isSkillMetaToolRegistered;
 
     private void registerSkillMetaTool() {
         ToolCard metaToolCard =

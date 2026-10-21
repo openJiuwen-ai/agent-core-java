@@ -55,6 +55,7 @@ public class SkillUtil {
 
     private final SkillManager skillManager;
     private final RemoteSkillUtil remoteSkillUtil;
+    private SkillConfig skillConfig = SkillConfig.fromEnvironment();
 
     public SkillUtil(String sysOperationId) {
         this.skillManager = new SkillManager(sysOperationId);
@@ -142,8 +143,6 @@ public class SkillUtil {
     public boolean has_skill() {
         return hasSkill();
     }
-
-    private SkillConfig skillConfig = SkillConfig.fromEnvironment();
 
     public void setSkillConfig(SkillConfig config) {
         this.skillConfig = config == null ? new SkillConfig() : config;

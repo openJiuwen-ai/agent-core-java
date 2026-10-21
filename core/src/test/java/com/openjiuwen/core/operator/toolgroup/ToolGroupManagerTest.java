@@ -49,7 +49,7 @@ class ToolGroupManagerTest {
     }
 
     @Test
-    void registerSkillToolGroup_whenNameUsesSkillPrefix_replacesImplicitGroup() {
+    void registerSkillToolGroup_skillPrefix_replacesImplicitGroup() {
         toolGroupManager.registerSkillToolGroup(
                 new ToolGroup("skill:cleanup", "Initial", List.of("delete_file")));
         ToolGroup updated =
@@ -62,7 +62,7 @@ class ToolGroupManagerTest {
     }
 
     @Test
-    void groupRegistry_whenRegisteredAndUnregistered_exposesStableSnapshot() {
+    void groupRegistry_afterUnregister_exposesStableSnapshot() {
         ToolGroup researchGroup = new ToolGroup("research", null, List.of("search"));
         ToolGroup analysisGroup = new ToolGroup("analysis", "Analysis", List.of("chart"));
         toolGroupManager.registerToolGroup(researchGroup);
@@ -79,7 +79,7 @@ class ToolGroupManagerTest {
 
     @Test
     @Tag("TC-TG-02")
-    void getActiveToolNames_whenActiveGroupsAreEmptyOrUnknown_returnsOnlyUngroupedTools() {
+    void getActiveToolNames_forEmptyOrUnknownGroups_returnsUngroupedTools() {
         toolGroupManager.registerToolGroup(
                 new ToolGroup("research", "Research", List.of("search")));
 
@@ -123,7 +123,7 @@ class ToolGroupManagerTest {
     }
 
     @Test
-    void isToolEligibleForExecution_whenToolIsInActiveExplicitGroup_returnsTrue() {
+    void isToolEligibleForExecution_inActiveExplicitGroup_returnsTrue() {
         toolGroupManager.registerToolGroup(
                 new ToolGroup("research", "Research", List.of("search")));
 
@@ -132,7 +132,7 @@ class ToolGroupManagerTest {
     }
 
     @Test
-    void isToolEligibleForExecution_whenExplicitGroupIsInactive_skillGroupCannotOverride() {
+    void isToolEligibleForExecution_inactiveGroup_skillCannotOverride() {
         toolGroupManager.registerToolGroup(
                 new ToolGroup("danger_tools", "Danger tools", List.of("delete_file")));
 
@@ -154,7 +154,7 @@ class ToolGroupManagerTest {
     }
 
     @Test
-    void isToolEligibleForExecution_whenToolNameIsUnknownOrBlank_returnsExpectedResult() {
+    void isToolEligibleForExecution_unknownOrBlankTool_returnsExpected() {
         toolGroupManager.registerToolGroup(
                 new ToolGroup("research", "Research", List.of("search")));
 

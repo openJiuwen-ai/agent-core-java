@@ -47,7 +47,7 @@ class BaseAgentToolGroupTest {
     private Path tempDir;
 
     @Test
-    void listEffectiveToolInfo_whenNoGroupsRegistered_returnsUnfilteredResult() {
+    void listEffectiveToolInfo_withoutGroups_returnsUnfilteredResult() {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "clock");
@@ -208,7 +208,7 @@ class BaseAgentToolGroupTest {
 
     @Test
     @Tag("TC-LNK-02")
-    void skillToolRegistryListToolsByActiveSkill_originalSemanticsPreserved() {
+    void skillToolRegistryListToolsByActiveSkill_preservesSemantics() {
         TestAgent agent = new TestAgent();
         Tool first = skillTool("firstTool");
         Tool second = skillTool("secondTool");
@@ -407,7 +407,7 @@ class BaseAgentToolGroupTest {
     }
 
     @Test
-    void directCallWithNullSession_ungroupedToolExecutesGroupedToolRejected() {
+    void directCallWithNullSession_executesUngroupedRejectsGrouped() {
         TestAgent agent = new TestAgent();
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "delete_file");
