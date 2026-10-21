@@ -61,6 +61,25 @@ class RunBudgetConfigValidationTest {
     }
 
     @Test
+    void build_firstCheckpointEqualToSubTenGuarantee_succeeds() {
+        // Given a first checkpoint exactly at a sub-ten guarantee (issue #236), When building,
+        // Then accepted: the guarantee floor is the only hard bound, ten stays a default
+        RunBudgetConfig config = RunBudgetConfig.builder()
+                .suggestedRounds(5).firstCheckpoint(5).build();
+
+        assertThat(config.getFirstCheckpoint()).isEqualTo(5);
+    }
+
+    @Test
+    void build_firstCheckpointBelowGuarantee_throws() {
+        // Given a first checkpoint piercing the guarantee zone, When building, Then fail-fast
+        assertThatThrownBy(() -> RunBudgetConfig.builder()
+                .suggestedRounds(5).firstCheckpoint(4).build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("run-budget firstCheckpoint must be no less than the guarantee");
+    }
+
+    @Test
     void build_nonPositiveTimeBudget_throws() {
         // Given a negative total budget, When building, Then fail-fast
         assertThatThrownBy(() -> RunBudgetConfig.builder().totalBudgetSeconds(-5).build())

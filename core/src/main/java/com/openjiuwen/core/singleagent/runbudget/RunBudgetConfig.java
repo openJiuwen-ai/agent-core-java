@@ -250,6 +250,8 @@ public class RunBudgetConfig {
 
         /**
          * Sets the explicit first checkpoint; null derives {@code max(10, guarantee)}.
+         * An explicit value must be no less than the guarantee so that checkpoint
+         * evaluation never lands inside the non-intervention guarantee window.
          *
          * @param checkpoint first checkpoint round
          * @return this builder
@@ -376,10 +378,9 @@ public class RunBudgetConfig {
         }
 
         private void validateFirstCheckpoint(int effectiveGuarantee) {
-            int minimum = Math.max(MIN_FIRST_CHECKPOINT, effectiveGuarantee);
-            if (firstCheckpoint != null && firstCheckpoint < minimum) {
+            if (firstCheckpoint != null && firstCheckpoint < effectiveGuarantee) {
                 throw new IllegalArgumentException(
-                        "run-budget firstCheckpoint must be no less than max(10, guarantee)");
+                        "run-budget firstCheckpoint must be no less than the guarantee");
             }
         }
 
