@@ -91,7 +91,7 @@ public final class WorkspaceSkillRepository implements SkillRepository {
 
     private Optional<Skill> loadSkill(Path skillFile) {
         SkillContentValidator.ValidationResult validation = validator.validate(skillFile, root);
-        if (!validation.allowed()) {
+        if (!validation.isAllowed()) {
             com.openjiuwen.core.common.logging.Loggers.AGENT.warning(
                     "SKILL_REJECTED: source=workspace path={} reason={}",
                     skillFile,

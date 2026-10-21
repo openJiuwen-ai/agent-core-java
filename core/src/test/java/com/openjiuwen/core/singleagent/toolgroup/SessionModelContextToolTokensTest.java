@@ -16,7 +16,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-@Tag("issue196-w3")
+/**
+ * Tests session tool-token counting.
+ *
+ * @since 0.1.17
+ */
 class SessionModelContextToolTokensTest {
     @Test
     void toolTokensUseOnlyTheFilteredToolList() {

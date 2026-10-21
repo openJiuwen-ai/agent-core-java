@@ -533,7 +533,7 @@ public class SkillUseRail extends DeepAgentRail {
             Map<String, Object> metadata = new LinkedHashMap<>();
             metadata.put("source", source);
             metadata.put("id", id);
-            if (frontMatter.protectedSkill()) {
+            if (frontMatter.isProtectedSkill()) {
                 metadata.put("protected", true);
             }
             return new SkillDescriptor(
@@ -555,7 +555,7 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     private record SkillFrontMatter(
-            String name, String description, String id, String source, boolean protectedSkill) {}
+            String name, String description, String id, String source, boolean isProtectedSkill) {}
 
     private static SkillFrontMatter parseSkillFrontMatter(String text) {
         if (text == null || !text.startsWith("---")) {

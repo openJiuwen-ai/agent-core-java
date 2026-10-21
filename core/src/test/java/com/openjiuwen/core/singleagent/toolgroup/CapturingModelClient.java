@@ -17,7 +17,11 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Mock LLM client that captures every request for offline model-call tests. */
+/**
+ * Mock LLM client that captures every request for offline model-call tests.
+ *
+ * @since 0.1.17
+ */
 public final class CapturingModelClient implements Model.ModelClient {
     private final AssistantMessage response;
     private final Queue<List<BaseMessage>> capturedMessageLists = new ConcurrentLinkedQueue<>();

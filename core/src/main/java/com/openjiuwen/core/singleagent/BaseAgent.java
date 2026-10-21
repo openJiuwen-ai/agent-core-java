@@ -55,7 +55,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
-/** Base class for current single-agent implementations. */
+/**
+ * Base class for current single-agent implementations.
+ *
+ * @since 0.1.17
+ */
 public abstract class BaseAgent implements AgentCallbackFirer {
     /**
      * Session state key holding the names of explicitly activated skills.
@@ -134,7 +138,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      *
      * @since 0.1.7
      */
-    private volatile boolean skillMetaToolRegistered;
+    private volatile boolean isSkillMetaToolRegistered;
 
     private void registerSkillMetaTool() {
         ToolCard metaToolCard =
@@ -236,15 +240,15 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     }
 
     private void ensureSkillMetaToolRegistered() {
-        if (skillMetaToolRegistered) {
+        if (isSkillMetaToolRegistered) {
             return;
         }
         synchronized (skillUtilLock) {
             if (abilityManager.getTools().containsKey("skill_tool")) {
-                skillMetaToolRegistered = true;
-            } else if (!skillMetaToolRegistered) {
+                isSkillMetaToolRegistered = true;
+            } else if (!isSkillMetaToolRegistered) {
                 registerSkillMetaTool();
-                skillMetaToolRegistered = true;
+                isSkillMetaToolRegistered = true;
             }
         }
     }
@@ -255,10 +259,10 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             for (String skillName : getActiveSkillNames(session)) {
                 activeGroupNames.add("skill:" + skillName);
             }
-            boolean inRegisteredGroup =
+            boolean isToolInRegisteredGroup =
                     toolGroupManager.getGroups().stream()
                             .anyMatch(group -> group.toolNames().contains(toolName));
-            if (inRegisteredGroup) {
+            if (isToolInRegisteredGroup) {
                 return toolGroupManager.isToolEligibleForExecution(toolName, activeGroupNames);
             }
             if (skillToolRegistry.isSkillTool(toolName)) {
@@ -326,8 +330,8 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return registerSkill(List.of(skillPath));
     }
 
-    public CompletionStage<Boolean> registerSkill(String skillPath, boolean useMetadataName) {
-        return registerSkill(List.of(skillPath), useMetadataName);
+    public CompletionStage<Boolean> registerSkill(String skillPath, boolean shouldUseMetadataNames) {
+        return registerSkill(List.of(skillPath), shouldUseMetadataNames);
     }
 
     public CompletionStage<Boolean> registerSkill(List<String> skillPaths) {
@@ -366,11 +370,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      * Registers multiple Skill paths for this agent.
      *
      * @param skillPaths paths to Skill files or directories
-     * @param useMetadataName whether metadata names override directory names
+     * @param shouldUseMetadataNames whether metadata names override directory names
      * @return future completing with true when registration succeeds
      */
     public CompletionStage<Boolean> registerSkill(
-            List<String> skillPaths, boolean useMetadataName) {
+            List<String> skillPaths, boolean shouldUseMetadataNames) {
         lazyInitSkill();
         if (skillUtil == null) {
             return CompletableFuture.failedFuture(
@@ -378,9 +382,9 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                             "sys_operation_id is required before registering skills"));
         }
         try {
-            Boolean registered = skillUtil.registerSkills(skillPaths, this, null, useMetadataName);
+            Boolean isRegistered = skillUtil.registerSkills(skillPaths, this, null, shouldUseMetadataNames);
             ensureSkillMetaToolRegistered();
-            return CompletableFuture.completedFuture(registered);
+            return CompletableFuture.completedFuture(isRegistered);
         } catch (IOException | RuntimeException exception) {
             return CompletableFuture.failedFuture(exception);
         }
@@ -403,11 +407,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      *
      * @param skillPath single path or list of paths to register
      * @param skillsRoot trusted root containing loadable skills
-     * @param useMetadataName whether metadata names override directory names
+     * @param shouldUseMetadataNames whether metadata names override directory names
      * @return future completing with true when registration succeeds
      */
     public CompletionStage<Boolean> registerSkill(
-            Object skillPath, Path skillsRoot, boolean useMetadataName) {
+            Object skillPath, Path skillsRoot, boolean shouldUseMetadataNames) {
         lazyInitSkill();
         if (skillUtil == null) {
             return CompletableFuture.failedFuture(
@@ -416,22 +420,22 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         }
         try {
             if (skillPath instanceof String path) {
-                Boolean registered =
+                Boolean isRegistered =
                         skillUtil.registerSkills(
-                                List.of(path), skillsRoot, this, null, useMetadataName);
+                                List.of(path), skillsRoot, this, null, shouldUseMetadataNames);
                 ensureSkillMetaToolRegistered();
-                return CompletableFuture.completedFuture(registered);
+                return CompletableFuture.completedFuture(isRegistered);
             }
             if (skillPath instanceof List<?> paths) {
                 List<String> skillPaths = new ArrayList<>();
                 for (Object item : paths) {
                     skillPaths.add(String.valueOf(item));
                 }
-                Boolean registered =
+                Boolean isRegistered =
                         skillUtil.registerSkills(
-                                skillPaths, skillsRoot, this, null, useMetadataName);
+                                skillPaths, skillsRoot, this, null, shouldUseMetadataNames);
                 ensureSkillMetaToolRegistered();
-                return CompletableFuture.completedFuture(registered);
+                return CompletableFuture.completedFuture(isRegistered);
             }
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("Unsupported skill path type"));
@@ -877,7 +881,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         this.abilityManager =
                 abilityManager == null ? new AbilityManager(card.getId()) : abilityManager;
         this.abilityManager.setToolAvailabilityChecker(createDefaultToolAvailabilityChecker());
-        this.skillMetaToolRegistered = false;
+        this.isSkillMetaToolRegistered = false;
         ensureSkillMetaToolRegistered();
     }
 

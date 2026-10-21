@@ -38,7 +38,7 @@ public final class SkillContentValidator {
         return workspaceMaxBytes;
     }
 
-    public record ValidationResult(boolean allowed, String reason) {}
+    public record ValidationResult(boolean isAllowed, String reason) {}
 
     /**
      * Validates that a Skill file exists, is readable, and is within the size limit.

@@ -12,7 +12,11 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.Properties;
 
-@Tag("issue196-w7")
+/**
+ * Tests Skill configuration resolution.
+ *
+ * @since 0.1.17
+ */
 class SkillConfigTest {
     @Test
     void fromSources_readsSystemPropertiesAndEnvironmentOverrides() {

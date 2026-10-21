@@ -11,7 +11,11 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Creates temporary filesystem or workspace Skill fixtures for repository tests. */
+/**
+ * Creates temporary filesystem or workspace Skill fixtures for repository tests.
+ *
+ * @since 0.1.17
+ */
 public final class SkillFixtureFactory {
     private static final String SKILL_FILE_NAME = "SKILL.md";
 

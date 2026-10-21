@@ -19,7 +19,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-@Tag("issue196-w5")
+/**
+ * Tests Skill repository loading.
+ *
+ * @since 0.1.17
+ */
 class SkillRepositoryTest {
     @TempDir
     private Path tempDir;

@@ -25,10 +25,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-@Tag("issue196-w3")
-@Tag("issue196-w11")
-@Tag("TC-LNK-04")
-@Tag("TC-PRF-01")
+/**
+ * Tests ReAct tool-group exposure.
+ *
+ * @since 0.1.17
+ */
 class ReActGroupToolsCaptureTest {
     private static final int TOOL_COUNT = 8;
 

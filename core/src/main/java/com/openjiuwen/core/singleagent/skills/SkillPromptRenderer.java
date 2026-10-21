@@ -44,7 +44,7 @@ public final class SkillPromptRenderer {
     }
 
     /** Renders the legacy-compatible prompt line while reusing unified metadata. */
-    public static String renderPromptLine(int index, Skill skill, boolean onDemandLoading) {
+    public static String renderPromptLine(int index, Skill skill, boolean isOnDemandLoading) {
         String metadata = renderMetadata(skill);
         if (metadata.isEmpty()) {
             return "";
@@ -72,10 +72,10 @@ public final class SkillPromptRenderer {
             line.append("; Source: ").append(fields.get("source"));
         }
         if (fields.containsKey("path")) {
-            line.append(onDemandLoading ? "; Skill path: " : "; Skill directory: ")
+            line.append(isOnDemandLoading ? "; Skill path: " : "; Skill directory: ")
                     .append(fields.get("path"));
         }
-        if (onDemandLoading) {
+        if (isOnDemandLoading) {
             line.append("; Loading: on-demand via skill_tool");
         }
         return line.toString();

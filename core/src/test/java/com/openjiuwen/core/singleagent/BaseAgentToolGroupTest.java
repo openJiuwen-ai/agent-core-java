@@ -37,7 +37,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@Tag("issue196-w2")
+/**
+ * Tests BaseAgent tool-group behavior.
+ *
+ * @since 0.1.17
+ */
 class BaseAgentToolGroupTest {
     @TempDir
     private Path tempDir;

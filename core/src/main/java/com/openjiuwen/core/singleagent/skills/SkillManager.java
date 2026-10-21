@@ -56,7 +56,7 @@ public class SkillManager {
     private final List<String> skillOrder = new ArrayList<>();
     private final Function<String, BaseFsOperation> fsResolver;
     private volatile List<SkillRepository> injectedRepositories;
-    private volatile boolean protectedOverrideBlocked = true;
+    private volatile boolean isProtectedOverrideBlocked = true;
     private volatile SkillConfig skillConfig = SkillConfig.fromEnvironment();
     private String sysOperationId;
     private String description = "";
@@ -68,7 +68,7 @@ public class SkillManager {
     public SkillManager(String sysOperationId, Function<String, BaseFsOperation> fsResolver) {
         this.sysOperationId = sysOperationId;
         this.fsResolver = fsResolver == null ? SkillManager::resolveFsOperation : fsResolver;
-        this.protectedOverrideBlocked = this.skillConfig.isProtectedOverrideBlocked();
+        this.isProtectedOverrideBlocked = this.skillConfig.isProtectedOverrideBlocked();
     }
 
     public void setSysOperationId(String sysOperationId) {
@@ -98,13 +98,13 @@ public class SkillManager {
         return injectedRepositories == null ? List.of() : injectedRepositories;
     }
 
-    public void setProtectedOverrideBlocked(boolean blocked) {
-        this.protectedOverrideBlocked = blocked;
+    public void setProtectedOverrideBlocked(boolean isBlocked) {
+        this.isProtectedOverrideBlocked = isBlocked;
     }
 
     public void setSkillConfig(SkillConfig config) {
         this.skillConfig = config == null ? new SkillConfig() : config;
-        this.protectedOverrideBlocked = this.skillConfig.isProtectedOverrideBlocked();
+        this.isProtectedOverrideBlocked = this.skillConfig.isProtectedOverrideBlocked();
         applyWorkspaceConfig();
     }
 
@@ -121,7 +121,7 @@ public class SkillManager {
     }
 
     public boolean isProtectedOverrideBlocked() {
-        return protectedOverrideBlocked;
+        return isProtectedOverrideBlocked;
     }
 
     public Skill register(Path skillPath) throws IOException {
@@ -129,41 +129,41 @@ public class SkillManager {
         return registered.isEmpty() ? null : registered.get(0);
     }
 
-    public List<Skill> register(Path skillPath, boolean overwrite) throws IOException {
-        return register(skillPath, overwrite, false);
+    public List<Skill> register(Path skillPath, boolean shouldOverwrite) throws IOException {
+        return register(skillPath, shouldOverwrite, false);
     }
 
     /**
      * Registers all skills found at a path.
      *
      * @param skillPath skill file or directory path
-     * @param overwrite whether existing skills may be replaced
-     * @param useMetadataName whether metadata names override directory names
+     * @param shouldOverwrite whether existing skills may be replaced
+     * @param shouldUseMetadataName whether metadata names override directory names
      * @return registered skills in path order
      * @throws IOException if the path cannot be resolved or read
      */
-    public List<Skill> register(Path skillPath, boolean overwrite, boolean useMetadataName)
+    public List<Skill> register(Path skillPath, boolean shouldOverwrite, boolean shouldUseMetadataName)
             throws IOException {
         if (skillPath == null) {
             return List.of();
         }
-        return register(List.of(skillPath), overwrite, useMetadataName);
+        return register(List.of(skillPath), shouldOverwrite, shouldUseMetadataName);
     }
 
-    public List<Skill> register(List<Path> skillPaths, boolean overwrite) throws IOException {
-        return register(skillPaths, overwrite, false);
+    public List<Skill> register(List<Path> skillPaths, boolean shouldOverwrite) throws IOException {
+        return register(skillPaths, shouldOverwrite, false);
     }
 
     /**
      * Registers all skills found under the supplied paths.
      *
      * @param skillPaths skill files or directories to register
-     * @param overwrite whether existing skills may be replaced
-     * @param useMetadataName whether metadata names override directory names
+     * @param shouldOverwrite whether existing skills may be replaced
+     * @param shouldUseMetadataName whether metadata names override directory names
      * @return registered skills in path order
      * @throws IOException if a path cannot be resolved or read
      */
-    public List<Skill> register(List<Path> skillPaths, boolean overwrite, boolean useMetadataName)
+    public List<Skill> register(List<Path> skillPaths, boolean shouldOverwrite, boolean shouldUseMetadataName)
             throws IOException {
         List<Skill> registered = new ArrayList<>();
         if (skillPaths == null) {
@@ -171,7 +171,7 @@ public class SkillManager {
         }
         BaseFsOperation fs = getFsOperation();
         for (Path path : skillPaths) {
-            registered.addAll(registerRoot(fs, path, overwrite, useMetadataName));
+            registered.addAll(registerRoot(fs, path, shouldOverwrite, shouldUseMetadataName));
         }
         return registered;
     }
@@ -181,20 +181,20 @@ public class SkillManager {
      *
      * @param skillPath path to the skill directory or file
      * @param skillsRoot trusted root containing loadable skills
-     * @param overwrite whether to overwrite existing skills
-     * @param useMetadataName whether to use metadata name from SKILL.md
+     * @param shouldOverwrite whether to overwrite existing skills
+     * @param shouldUseMetadataName whether to use metadata name from SKILL.md
      * @return registered skills
      * @throws IOException if the skill path cannot be resolved
      * @since 0.1.13
      */
     public List<Skill> register(
-            String skillPath, Path skillsRoot, boolean overwrite, boolean useMetadataName)
+            String skillPath, Path skillsRoot, boolean shouldOverwrite, boolean shouldUseMetadataName)
             throws IOException {
         if (skillPath == null || skillPath.isBlank()) {
             return List.of();
         }
         return register(
-                List.of(resolveSafeSkillPath(skillPath, skillsRoot)), overwrite, useMetadataName);
+                List.of(resolveSafeSkillPath(skillPath, skillsRoot)), shouldOverwrite, shouldUseMetadataName);
     }
 
     /**
@@ -285,7 +285,7 @@ public class SkillManager {
                 if (skill == null || skill.getName() == null || skill.getName().isBlank()) {
                     continue;
                 }
-                if (protectedOverrideBlocked && protectedNames.contains(skill.getName())) {
+                if (isProtectedOverrideBlocked && protectedNames.contains(skill.getName())) {
                     continue;
                 }
                 if (matchesExplicitId(skill, skillId) && matchesExplicitPath(skill, skillPath)) {
@@ -313,7 +313,7 @@ public class SkillManager {
             }
         }
         if (candidates.size() != 1
-                || (protectedOverrideBlocked
+                || (isProtectedOverrideBlocked
                         && protectedNames.contains(candidates.get(0).getName()))) {
             return Optional.empty();
         }
@@ -441,7 +441,7 @@ public class SkillManager {
                     Skill existing = merged.get(skill.getName());
                     if (existing != null
                             && existing.isProtectedSkill()
-                            && protectedOverrideBlocked) {
+                            && isProtectedOverrideBlocked) {
                         Loggers.AGENT.warning(
                                 "SKILL_OVERRIDE_BLOCKED: skill_id={} source={} attempted_source={}"
                                     + " existing_path={} attempted_path={} protected=true",
@@ -618,7 +618,7 @@ public class SkillManager {
     }
 
     private List<Skill> registerRoot(
-            BaseFsOperation fs, Path root, boolean overwrite, boolean useMetadataName)
+            BaseFsOperation fs, Path root, boolean shouldOverwrite, boolean shouldUseMetadataName)
             throws IOException {
         List<Skill> registered = new ArrayList<>();
         if (root == null) {
@@ -635,9 +635,9 @@ public class SkillManager {
                                 false,
                                 null));
         if (dirsResult.getCode() != 0) {
-            Optional<Skill> asFile = createSkillFromPath(fs, root, useMetadataName);
+            Optional<Skill> asFile = createSkillFromPath(fs, root, shouldUseMetadataName);
             if (asFile.isPresent()) {
-                addToRegistry(asFile.get(), overwrite);
+                addToRegistry(asFile.get(), shouldOverwrite);
                 registered.add(asFile.get());
             }
             return registered;
@@ -645,18 +645,18 @@ public class SkillManager {
 
         Optional<Path> directSkillMd = findSkillMd(fs, root.toString());
         if (directSkillMd.isPresent()) {
-            Optional<Skill> skill = createSkillFromPath(fs, directSkillMd.get(), useMetadataName);
+            Optional<Skill> skill = createSkillFromPath(fs, directSkillMd.get(), shouldUseMetadataName);
             if (skill.isPresent()) {
-                addToRegistry(skill.get(), overwrite);
+                addToRegistry(skill.get(), shouldOverwrite);
                 registered.add(skill.get());
             }
             return registered;
         }
 
         for (DiscoveredSkill discovered : discoverSkillDirs(fs, root)) {
-            Optional<Skill> skill = createSkillFromPath(fs, discovered.skillMd(), useMetadataName);
+            Optional<Skill> skill = createSkillFromPath(fs, discovered.skillMd(), shouldUseMetadataName);
             if (skill.isPresent()) {
-                addToRegistry(skill.get(), overwrite);
+                addToRegistry(skill.get(), shouldOverwrite);
                 registered.add(skill.get());
             }
         }
@@ -664,14 +664,14 @@ public class SkillManager {
     }
 
     private Optional<Skill> createSkillFromPath(
-            BaseFsOperation fs, Path path, boolean useMetadataName) throws IOException {
-        SkillDocument skillDocument = loadSkillDocument(fs, path, useMetadataName);
+            BaseFsOperation fs, Path path, boolean shouldUseMetadataName) throws IOException {
+        SkillDocument skillDocument = loadSkillDocument(fs, path, shouldUseMetadataName);
         if (skillDocument.description() == null) {
             return Optional.empty();
         }
         Path skillDirectory = path.getParent();
         String folderName = skillDirectory == null ? "" : skillDirectory.getFileName().toString();
-        String skillName = useMetadataName ? skillDocument.metadataName() : folderName;
+        String skillName = shouldUseMetadataName ? skillDocument.metadataName() : folderName;
         return Optional.of(new Skill(skillName, skillDocument.description(), skillDirectory));
     }
 
@@ -679,7 +679,7 @@ public class SkillManager {
         return loadSkillDocument(fs, path, false).description();
     }
 
-    private SkillDocument loadSkillDocument(BaseFsOperation fs, Path path, boolean useMetadataName)
+    private SkillDocument loadSkillDocument(BaseFsOperation fs, Path path, boolean shouldUseMetadataName)
             throws IOException {
         description = "";
         ReadFileResult result =
@@ -709,7 +709,7 @@ public class SkillManager {
                     "Skill.md file does not contain a description field");
         }
         Object rawMetadataName = yamlData.get("name");
-        if (useMetadataName
+        if (shouldUseMetadataName
                 && (!(rawMetadataName instanceof String metadataName) || metadataName.isBlank())) {
             throw new IllegalArgumentException(
                     "Skill.md file does not contain a valid string name field");
@@ -784,8 +784,8 @@ public class SkillManager {
         return Optional.empty();
     }
 
-    private void addToRegistry(Skill skill, boolean overwrite) {
-        if (!overwrite && registry.containsKey(skill.getName())) {
+    private void addToRegistry(Skill skill, boolean shouldOverwrite) {
+        if (!shouldOverwrite && registry.containsKey(skill.getName())) {
             throw new IllegalArgumentException("Skill already exists: " + skill.getName());
         }
         registry.put(skill.getName(), skill);

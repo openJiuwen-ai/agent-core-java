@@ -13,7 +13,11 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-@Tag("issue196-w1")
+/**
+ * Tests immutable ToolGroup behavior.
+ *
+ * @since 0.1.17
+ */
 class ToolGroupTest {
     @Test
     void toolGroup_whenInputCollectionChanges_keepsInternalStateUnchanged() {

@@ -49,11 +49,11 @@ class HarnessBashToolCompatibilityTest {
         if (pathValue == null) {
             return false;
         }
-        boolean windows =
+        boolean isWindows =
                 System.getProperty("os.name", "")
                         .toLowerCase(java.util.Locale.ROOT)
                         .contains("windows");
-        String executable = windows ? "bash.exe" : "bash";
+        String executable = isWindows ? "bash.exe" : "bash";
         for (String directory : pathValue.split(java.io.File.pathSeparator)) {
             try {
                 Path candidate = Path.of(directory).resolve(executable);

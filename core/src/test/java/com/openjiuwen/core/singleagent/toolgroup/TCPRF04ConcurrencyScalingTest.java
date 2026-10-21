@@ -22,8 +22,11 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-@Tag("issue196-w11")
-@Tag("TC-PRF-01")
+/**
+ * Tests tool-group concurrency scaling.
+ *
+ * @since 0.1.17
+ */
 class TCPRF04ConcurrencyScalingTest {
     private static final int TOOL_COUNT = 50;
 
@@ -64,10 +67,10 @@ class TCPRF04ConcurrencyScalingTest {
                 concurrency,
                 index -> new TestSession("session-" + index),
                 (index, session) -> {
-                    boolean activateA = index % 2 == 0;
+                    boolean shouldActivateA = index % 2 == 0;
                     for (int round = 0; round < roundsPerSession; round++) {
                         long start = System.nanoTime();
-                        if (activateA) {
+                        if (shouldActivateA) {
                             agent.activateToolGroup("group_a", session);
                         } else {
                             agent.activateToolGroup("group_b", session);
@@ -79,7 +82,7 @@ class TCPRF04ConcurrencyScalingTest {
                                         .toList();
                         long elapsed = System.nanoTime() - start;
                         totalNanos.addAndGet(elapsed);
-                        if (activateA) {
+                        if (shouldActivateA) {
                             if (visible.size() != 45
                                     || !visible.contains("tool_0")
                                     || visible.contains("tool_5")) {
@@ -93,7 +96,7 @@ class TCPRF04ConcurrencyScalingTest {
                             }
                         }
 
-                        agent.deactivateToolGroup(activateA ? "group_a" : "group_b", session);
+                        agent.deactivateToolGroup(shouldActivateA ? "group_a" : "group_b", session);
                         List<String> afterDeactivate =
                                 agent.listEffectiveToolInfo(session).stream()
                                         .map(ToolInfo::getName)

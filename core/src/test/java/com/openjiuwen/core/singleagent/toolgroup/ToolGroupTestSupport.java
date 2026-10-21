@@ -12,7 +12,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Shared factory and collection helpers for ToolGroup test cases. */
+/**
+ * Shared factory and collection helpers for ToolGroup test cases.
+ *
+ * @since 0.1.17
+ */
 public final class ToolGroupTestSupport {
     private static final Map<String, Object> EMPTY_PARAMETERS = Map.of();
 

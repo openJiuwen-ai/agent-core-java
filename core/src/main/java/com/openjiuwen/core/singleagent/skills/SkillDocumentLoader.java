@@ -136,7 +136,7 @@ public final class SkillDocumentLoader {
                                         ? SkillConfig.DEFAULT_WORKSPACE_MAX_BYTES
                                         : config.getWorkspaceMaxBytes())
                         .validateSize(resolved);
-        if (result.allowed()) {
+        if (result.isAllowed()) {
             return false;
         }
         logRejected(skill, resolved.toString(), result.reason());

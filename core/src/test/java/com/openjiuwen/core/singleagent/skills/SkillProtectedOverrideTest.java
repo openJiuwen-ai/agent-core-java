@@ -20,7 +20,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-@Tag("issue196-w7")
+/**
+ * Tests protected Skill override policy.
+ *
+ * @since 0.1.17
+ */
 class SkillProtectedOverrideTest {
     @TempDir
     private Path tempDir;
@@ -80,13 +84,13 @@ class SkillProtectedOverrideTest {
         writeSkill(wsRoot.resolve("normal_skill"), "normal_skill", "Normal skill.");
 
         SkillContentValidator validator = new SkillContentValidator();
-        assertThat(validator.validate(oversizedDir.resolve("SKILL.md"), wsRoot).allowed())
+        assertThat(validator.validate(oversizedDir.resolve("SKILL.md"), wsRoot).isAllowed())
                 .isFalse();
         assertThat(
                         validator
                                 .validate(
                                         wsRoot.resolve("normal_skill").resolve("SKILL.md"), wsRoot)
-                                .allowed())
+                                .isAllowed())
                 .isTrue();
         SkillRepository wsRepo = new WorkspaceSkillRepository(wsRoot, "user1");
         SkillManager manager = new SkillManager("test-op");
@@ -111,13 +115,13 @@ class SkillProtectedOverrideTest {
                                 .validate(
                                         outsideRoot.resolve("outside_skill").resolve("SKILL.md"),
                                         wsRoot)
-                                .allowed())
+                                .isAllowed())
                 .isFalse();
         assertThat(
                         validator
                                 .validate(
                                         wsRoot.resolve("inside_skill").resolve("SKILL.md"), wsRoot)
-                                .allowed())
+                                .isAllowed())
                 .isTrue();
     }
 

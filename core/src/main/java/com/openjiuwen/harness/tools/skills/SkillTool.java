@@ -18,7 +18,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-/** Reads the content of a selected skill file. */
+/**
+ * Reads the content of a selected skill file.
+ *
+ * @since 0.1.17
+ */
 public class SkillTool extends AbstractHarnessTool {
 
     private final Supplier<List<SkillDescriptor>> skillsSupplier;
@@ -112,10 +116,10 @@ public class SkillTool extends AbstractHarnessTool {
                 continue;
             }
             Object descriptorId = skill.metadata() == null ? null : skill.metadata().get("id");
-            boolean idMatches = skillId.isBlank() || skillId.equals(String.valueOf(descriptorId));
-            boolean pathMatches = skillPath.isBlank() || pathMatches(skill, skillPath);
-            boolean nameMatches = skillName.isBlank() || skillName.equals(skill.name());
-            if (idMatches && pathMatches && nameMatches) {
+            boolean isIdMatched = skillId.isBlank() || skillId.equals(String.valueOf(descriptorId));
+            boolean isPathMatched = skillPath.isBlank() || pathMatches(skill, skillPath);
+            boolean isNameMatched = skillName.isBlank() || skillName.equals(skill.name());
+            if (isIdMatched && isPathMatched && isNameMatched) {
                 return Optional.of(skill);
             }
         }

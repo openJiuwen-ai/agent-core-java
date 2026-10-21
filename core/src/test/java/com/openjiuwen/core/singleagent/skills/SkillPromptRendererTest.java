@@ -12,7 +12,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 
-@Tag("issue196-w9")
+/**
+ * Tests Skill metadata prompt rendering.
+ *
+ * @since 0.1.17
+ */
 class SkillPromptRendererTest {
     @TempDir
     private Path tempDir;

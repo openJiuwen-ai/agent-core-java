@@ -142,11 +142,11 @@ class TCPRF04ToolSelectionAccuracyTest {
                         .filter(
                                 tool -> {
                                     String name = tool.getName();
-                                    boolean inFocusedGroup =
+                                    boolean isToolInFocusedGroup =
                                             TEST_CASES.stream()
                                                     .map(TestCase::expectedTool)
                                                     .anyMatch(name::equals);
-                                    return inFocusedGroup
+                                    return isToolInFocusedGroup
                                             || "tool_10".equals(name)
                                             || "tool_11".equals(name);
                                 })
@@ -179,11 +179,11 @@ class TCPRF04ToolSelectionAccuracyTest {
                         .filter(
                                 tool -> {
                                     String name = tool.getName();
-                                    boolean inFocusedGroup =
+                                    boolean isToolInFocusedGroup =
                                             TEST_CASES.stream()
                                                     .map(TestCase::expectedTool)
                                                     .anyMatch(name::equals);
-                                    return inFocusedGroup
+                                    return isToolInFocusedGroup
                                             || "tool_10".equals(name)
                                             || "tool_11".equals(name);
                                 })

@@ -12,8 +12,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-@Tag("issue196-w1")
-@Tag("TC-TG-01")
+/**
+ * Tests ToolGroupManager registration.
+ *
+ * @since 0.1.17
+ */
 class ToolGroupManagerTest {
     private final ToolGroupManager toolGroupManager = new ToolGroupManager();
 

@@ -10,10 +10,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-    /**
-     * Assumption helpers for tests that require symbolic-link support.
-     *
-     */
+/** Test assumptions for filesystems that support symbolic links.
+ *
+ * @since 0.1.17
+ */
 public final class SymlinkAssumptions {
     private SymlinkAssumptions() {}
 

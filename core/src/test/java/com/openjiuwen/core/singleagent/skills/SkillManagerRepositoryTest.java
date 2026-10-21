@@ -22,7 +22,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Tag("issue196-w6")
+/**
+ * Tests Skill repository merging.
+ *
+ * @since 0.1.17
+ */
 class SkillManagerRepositoryTest {
     @TempDir
     private Path tempDir;

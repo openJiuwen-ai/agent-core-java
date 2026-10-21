@@ -18,7 +18,11 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.function.IntFunction;
 
-/** Runs isolated session actions in parallel for ToolGroup state tests. */
+/**
+ * Runs isolated session actions in parallel for ToolGroup state tests.
+ *
+ * @since 0.1.17
+ */
 public final class SessionConcurrencyHarness {
     private static final int THREAD_KEEP_ALIVE_SECONDS = 30;
     private static final int TASK_TIMEOUT_SECONDS = 30;

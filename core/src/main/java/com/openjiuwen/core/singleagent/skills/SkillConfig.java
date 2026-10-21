@@ -16,11 +16,11 @@ import java.util.Properties;
  */
 public final class SkillConfig {
     /** Default value for blocking protected-classpath overrides. */
-    public static final boolean DEFAULT_HAS_PROTECTED_OVERRIDE_BLOCKED = true;
+    public static final boolean DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED = true;
     /** Default workspace SKILL.md size limit in bytes. */
     public static final int DEFAULT_WORKSPACE_MAX_BYTES = 262144;
     /** Default value for on-demand Skill loading. */
-    public static final boolean DEFAULT_USES_ON_DEMAND_LOADING = true;
+    public static final boolean DEFAULT_IS_ON_DEMAND_LOADING = true;
     /** System property for the protected-classpath override policy. */
     public static final String PROPERTY_PROTECTED_OVERRIDE_BLOCKED =
             "skill.protected-override-blocked";
@@ -29,9 +29,9 @@ public final class SkillConfig {
     /** System property for on-demand Skill loading. */
     public static final String PROPERTY_ON_DEMAND_LOADING = "skill.on-demand-loading";
 
-    private boolean isProtectedOverrideBlocked = DEFAULT_HAS_PROTECTED_OVERRIDE_BLOCKED;
+    private boolean isProtectedOverrideBlocked = DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED;
     private int workspaceMaxBytes = DEFAULT_WORKSPACE_MAX_BYTES;
-    private boolean usesOnDemandLoading = DEFAULT_USES_ON_DEMAND_LOADING;
+    private boolean isOnDemandLoading = DEFAULT_IS_ON_DEMAND_LOADING;
 
     /**
      * Returns whether protected classpath Skills block higher-layer overrides.
@@ -75,16 +75,16 @@ public final class SkillConfig {
      * @return true when Skill bodies are loaded on demand
      */
     public boolean isOnDemandLoading() {
-        return usesOnDemandLoading;
+        return isOnDemandLoading;
     }
 
     /**
      * Sets the on-demand Skill loading mode.
      *
-     * @param usesOnDemand whether Skill bodies are loaded on demand
+     * @param isOnDemand whether Skill bodies are loaded on demand
      */
-    public void setOnDemandLoading(boolean usesOnDemand) {
-        this.usesOnDemandLoading = usesOnDemand;
+    public void setOnDemandLoading(boolean isOnDemand) {
+        this.isOnDemandLoading = isOnDemand;
     }
 
     /**

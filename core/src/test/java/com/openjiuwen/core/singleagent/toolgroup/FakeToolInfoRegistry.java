@@ -12,7 +12,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** In-memory {@link ToolInfo} registry used by ToolGroup tests. */
+/**
+ * In-memory {@link ToolInfo} registry used by ToolGroup tests.
+ *
+ * @since 0.1.17
+ */
 public final class FakeToolInfoRegistry {
     private final Map<String, ToolInfo> toolInfosByName = new ConcurrentHashMap<>();
 

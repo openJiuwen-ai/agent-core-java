@@ -13,8 +13,11 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.util.Optional;
 
-@Tag("issue196-w9")
-@Tag("TC-SEC-07")
+/**
+ * Tests Skill document path validation.
+ *
+ * @since 0.1.17
+ */
 class SkillPathValidatorTest {
     @TempDir
     private Path tempDir;

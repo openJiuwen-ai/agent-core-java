@@ -14,9 +14,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-@Tag("issue196-w9")
-@Tag("TC-SKL-04")
-@Tag("TC-SEC-07")
+/**
+ * Tests Skill document loading.
+ *
+ * @since 0.1.17
+ */
 class SkillDocumentLoaderTest {
     @TempDir
     private Path tempDir;

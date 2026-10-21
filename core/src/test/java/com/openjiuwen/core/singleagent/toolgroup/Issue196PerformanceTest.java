@@ -22,10 +22,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@Tag("issue196-w11")
-@Tag("TC-PRF-01")
-@Tag("TC-PRF-02")
-@Tag("TC-PRF-03")
+/**
+ * Tests tool-group filtering performance.
+ *
+ * @since 0.1.17
+ */
 class Issue196PerformanceTest {
     private static final int TOOL_COUNT = 50;
 
