@@ -36,10 +36,9 @@ class SkillToolMissingTest {
         SkillTool skillTool = new SkillTool(() -> List.of(skill));
 
         ToolOutput skillResult =
-                (ToolOutput)
-                        skillTool.invoke(
-                                Map.of("skill_name", "test_skill_1", "relative_file_path", ""),
-                                Map.of());
+                invokeSkillTool(
+                        skillTool,
+                        Map.of("skill_name", "test_skill_1", "relative_file_path", ""));
 
         assertTrue(skillResult.isSuccess());
         assertDataContains(skillResult, skill.directory());
@@ -83,10 +82,9 @@ class SkillToolMissingTest {
         SkillTool skillTool = new SkillTool(() -> List.of(skill));
 
         ToolOutput skillResult =
-                (ToolOutput)
-                        skillTool.invoke(
-                                Map.of("skill_name", "test_skill_2", "relative_file_path", ""),
-                                Map.of());
+                invokeSkillTool(
+                        skillTool,
+                        Map.of("skill_name", "test_skill_2", "relative_file_path", ""));
 
         assertFalse(skillResult.isSuccess());
         assertNotNull(skillResult.getError());
@@ -100,14 +98,13 @@ class SkillToolMissingTest {
         SkillTool skillTool = new SkillTool(() -> List.of(skill));
 
         ToolOutput skillResult =
-                (ToolOutput)
-                        skillTool.invoke(
-                                Map.of(
-                                        "skill_name",
-                                        "test_skill_1",
-                                        "relative_file_path",
-                                        "reference/temp_file.md"),
-                                Map.of());
+                invokeSkillTool(
+                        skillTool,
+                        Map.of(
+                                "skill_name",
+                                "test_skill_1",
+                                "relative_file_path",
+                                "reference/temp_file.md"));
 
         assertTrue(skillResult.isSuccess());
         assertDataContains(skillResult, "test_skill_1 temp file content");
@@ -121,14 +118,13 @@ class SkillToolMissingTest {
         SkillTool skillTool = new SkillTool(() -> List.of(skill));
 
         ToolOutput skillResult =
-                (ToolOutput)
-                        skillTool.invoke(
-                                Map.of(
-                                        "skill_name",
-                                        "test_skill_1",
-                                        "relative_file_path",
-                                        "reference/unknown_file.md"),
-                                Map.of());
+                invokeSkillTool(
+                        skillTool,
+                        Map.of(
+                                "skill_name",
+                                "test_skill_1",
+                                "relative_file_path",
+                                "reference/unknown_file.md"));
 
         assertFalse(skillResult.isSuccess());
         assertNotNull(skillResult.getError());
@@ -175,6 +171,14 @@ class SkillToolMissingTest {
 
         assertTrue(result.isSuccess());
         assertDataContains(result, "Explicit skill body");
+    }
+
+    private static ToolOutput invokeSkillTool(
+            SkillTool skillTool, Map<String, Object> inputs) throws Exception {
+        if (!(skillTool.invoke(inputs, Map.of()) instanceof ToolOutput result)) {
+            throw new IllegalStateException("skill_tool did not return ToolOutput");
+        }
+        return result;
     }
 
     private SkillDescriptor writeSkill(String name, String description, String body)

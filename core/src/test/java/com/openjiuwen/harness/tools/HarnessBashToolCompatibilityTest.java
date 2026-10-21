@@ -10,15 +10,13 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
 
 class HarnessBashToolCompatibilityTest {
     @TempDir Path tempDir;
 
     @Test
-    void bashToolShouldExecuteCommandAndInterpretGrepExit() throws InterruptedException {
+    void bashToolShouldExecuteCommandAndInterpretGrepExit() {
         assumeBashAvailable();
         BashTool tool = new BashTool();
 
@@ -37,29 +35,36 @@ class HarnessBashToolCompatibilityTest {
                 .isEqualTo("No matches found");
     }
 
-    private static void assumeBashAvailable() throws InterruptedException {
-        boolean isAvailable;
-        try {
-            Process process =
-                    new ProcessBuilder("bash", "-lc", "true")
-                            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                            .redirectError(ProcessBuilder.Redirect.DISCARD)
-                            .start();
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-            while (process.isAlive() && System.nanoTime() < deadline) {
-                TimeUnit.MILLISECONDS.sleep(50);
-            }
-            isAvailable = !process.isAlive() && process.exitValue() == 0;
-            if (!isAvailable) {
-                process.destroyForcibly();
-            }
-        } catch (IOException exception) {
-            isAvailable = false;
-        }
+    private static void assumeBashAvailable() {
+        boolean isAvailable = isBashOnPath();
         Assumptions.assumeTrue(
                 isAvailable,
                 "bash is unavailable on this platform; execute this assertion on Linux CI or"
                     + " Windows with Git Bash");
+    }
+
+    private static boolean isBashOnPath() {
+        String pathValue = System.getenv("PATH");
+        if (pathValue == null) {
+            return false;
+        }
+        boolean windows =
+                System.getProperty("os.name", "")
+                        .toLowerCase(java.util.Locale.ROOT)
+                        .contains("windows");
+        String executable = windows ? "bash.exe" : "bash";
+        for (String directory : pathValue.split(java.io.File.pathSeparator)) {
+            try {
+                Path candidate = Path.of(directory).resolve(executable);
+                if (java.nio.file.Files.isRegularFile(candidate)
+                        && java.nio.file.Files.isExecutable(candidate)) {
+                    return true;
+                }
+            } catch (java.nio.file.InvalidPathException ignored) {
+                continue;
+            }
+        }
+        return false;
     }
 
     @Test
