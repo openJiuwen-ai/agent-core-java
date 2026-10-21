@@ -19,7 +19,11 @@ public final class SkillToolMetadataProvider implements ToolMetadataProvider {
 
     static {
         DESCRIPTIONS.put("cn", "使用此工具查看特定技能的内容");
-        DESCRIPTIONS.put("en", "Use this tool to view the skill contents of a certain skill");
+        DESCRIPTIONS.put(
+                "en",
+                "Read skill documents. Select a skill by skill_name, skill_id, or skill_path;"
+                        + " use relative_path='SKILL.md' for the main document or a relative path"
+                        + " for extra files.");
 
         Map<String, Object> cnSchema = new LinkedHashMap<>();
         cnSchema.put("type", "object");
@@ -62,8 +66,8 @@ public final class SkillToolMetadataProvider implements ToolMetadataProvider {
         ));
         enProperties.put("relative_path", Map.of(
                 "type", "string",
-                "description", "Optional. Views a specific file within the skill directory at the relative_path. "
-                        + "Leave blank to view the main SKILL.md file."
+                "description", "Optional relative path within skill directory (default:"
+                        + " SKILL.md)"
         ));
         enSchema.put("properties", enProperties);
         enSchema.put("required", List.of());

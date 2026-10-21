@@ -44,6 +44,7 @@ public final class ToolMetadataRegistry {
         registerBuiltinProvider(new FilesystemPromptToolProviders.ListDirMetadataProvider());
         registerBuiltinProvider(new FilesystemPromptToolProviders.GrepMetadataProvider());
         registerBuiltinProvider(new ListSkillMetadataProvider());
+        registerBuiltinProvider(new SkillToolMetadataProvider());
         registerBuiltinProvider(new TodoPromptToolProviders.TodoCreateMetadataProvider());
         registerBuiltinProvider(new TodoPromptToolProviders.TodoListMetadataProvider());
         registerBuiltinProvider(new TodoPromptToolProviders.TodoModifyMetadataProvider());

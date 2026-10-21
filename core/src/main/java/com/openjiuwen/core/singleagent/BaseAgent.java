@@ -219,28 +219,12 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             if (abilityManager.getTools().containsKey("skill_tool")) {
                 isSkillMetaToolRegistered = true;
             } else if (!isSkillMetaToolRegistered) {
-                isSkillMetaToolRegistered = tryRegisterSkillMetaTool();
+                registerSkillMetaTool();
+                isSkillMetaToolRegistered = true;
             } else {
                 return;
             }
         }
-    }
-
-    private boolean tryRegisterSkillMetaTool() {
-        try {
-            registerSkillMetaTool();
-            return true;
-        } catch (RuntimeException exception) {
-            if (isSkillToolAlreadyRegistered(exception)) {
-                return true;
-            }
-            throw exception;
-        }
-    }
-
-    private boolean isSkillToolAlreadyRegistered(RuntimeException exception) {
-        return abilityManager.getTools().containsKey("skill_tool")
-                && String.valueOf(exception.getMessage()).contains("definition conflict");
     }
 
     private ToolAvailabilityChecker createDefaultToolAvailabilityChecker() {
