@@ -57,9 +57,7 @@ import java.util.concurrent.CompletionStage;
 
 /** Base class for current single-agent implementations. */
 public abstract class BaseAgent implements AgentCallbackFirer {
-    /** Session-state key holding active Skill names. */
     public static final String ACTIVE_SKILL_NAMES_STATE_KEY = "active_skill_names";
-    /** Session-state key holding active explicit ToolGroup names. */
     public static final String ACTIVE_TOOL_GROUP_NAMES_STATE_KEY = "active_tool_group_names";
 
     private final AgentCard card;
@@ -133,9 +131,63 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private volatile boolean skillMetaToolRegistered;
 
     private void registerSkillMetaTool() {
+        ToolCard metaToolCard =
+                ToolCard.builder()
+                        .id("skill_tool")
+                        .name("skill_tool")
+                        .description(
+                                "Read skill documents. Select a skill by skill_name, skill_id, or"
+                                    + " skill_path; use relative_path='SKILL.md' for the main"
+                                    + " document or a relative path for extra files.")
+                        .inputParams(
+                                Map.of(
+                                        "type", "object",
+                                        "properties",
+                                                Map.of(
+                                                        "skill_name",
+                                                                Map.of(
+                                                                        "type",
+                                                                        "string",
+                                                                        "description",
+                                                                        "Name of the skill to"
+                                                                            + " read"),
+                                                        "skill_id",
+                                                                Map.of(
+                                                                        "type",
+                                                                        "string",
+                                                                        "description",
+                                                                        "Optional stable Skill id."
+                                                                            + " Prefer this to"
+                                                                            + " select a"
+                                                                            + " non-default Skill"
+                                                                            + " layer."),
+                                                        "skill_path",
+                                                                Map.of(
+                                                                        "type",
+                                                                        "string",
+                                                                        "description",
+                                                                        "Optional trusted Skill"
+                                                                            + " directory or"
+                                                                            + " SKILL.md path. Must"
+                                                                            + " resolve to a"
+                                                                            + " registered"
+                                                                            + " repository."),
+                                                        "relative_path",
+                                                                Map.of(
+                                                                        "type",
+                                                                        "string",
+                                                                        "description",
+                                                                        "Relative path within skill"
+                                                                            + " directory (default:"
+                                                                            + " SKILL.md)")),
+                                        "required", List.of()))
+                        .stateless(true)
+                        .parallelSafe(true)
+                        .idempotent(true)
+                        .build();
         LocalFunction metaTool =
                 new LocalFunction(
-                        skillMetaToolCard(),
+                        metaToolCard,
                         inputs -> {
                             Map<String, Object> args = new LinkedHashMap<>();
                             if (inputs != null) {
@@ -177,59 +229,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         abilityManager.addAbility(metaTool.getCard(), metaTool);
     }
 
-    private static ToolCard skillMetaToolCard() {
-        return ToolCard.builder()
-                .id("skill_tool")
-                .name("skill_tool")
-                .description(
-                        "Read skill documents. Select a skill by skill_name, skill_id, or"
-                                + " skill_path; use relative_path='SKILL.md' for the main"
-                                + " document or a relative path for extra files.")
-                .inputParams(
-                        Map.of(
-                                "type", "object",
-                                "properties",
-                                        Map.of(
-                                                "skill_name",
-                                                        Map.of(
-                                                                "type", "string",
-                                                                "description",
-                                                                        "Name of the skill to read"),
-                                                "skill_id",
-                                                        Map.of(
-                                                                "type", "string",
-                                                                "description",
-                                                                        "Optional stable Skill id."
-                                                                                + " Prefer this to"
-                                                                                + " select a"
-                                                                                + " non-default"
-                                                                                + " Skill layer."),
-                                                "skill_path",
-                                                        Map.of(
-                                                                "type", "string",
-                                                                "description",
-                                                                        "Optional trusted Skill"
-                                                                                + " directory or"
-                                                                                + " SKILL.md"
-                                                                                + " path. Must"
-                                                                                + " resolve to a"
-                                                                                + " registered"
-                                                                                + " repository."),
-                                                "relative_path",
-                                                        Map.of(
-                                                                "type", "string",
-                                                                "description",
-                                                                        "Relative path within"
-                                                                                + " skill directory"
-                                                                                + " (default:"
-                                                                                + " SKILL.md)")),
-                                "required", List.of()))
-                .stateless(true)
-                .parallelSafe(true)
-                .idempotent(true)
-                .build();
-    }
-
     private void ensureSkillMetaToolRegistered() {
         if (skillMetaToolRegistered) {
             return;
@@ -250,10 +249,10 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             for (String skillName : getActiveSkillNames(session)) {
                 activeGroupNames.add("skill:" + skillName);
             }
-            boolean isToolInRegisteredGroup =
+            boolean inRegisteredGroup =
                     toolGroupManager.getGroups().stream()
                             .anyMatch(group -> group.toolNames().contains(toolName));
-            if (isToolInRegisteredGroup) {
+            if (inRegisteredGroup) {
                 return toolGroupManager.isToolEligibleForExecution(toolName, activeGroupNames);
             }
             if (skillToolRegistry.isSkillTool(toolName)) {
@@ -357,13 +356,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         this.ownerToken = ownerToken;
     }
 
-    /**
-     * Registers local Skills and exposes their tools through implicit groups.
-     *
-     * @param skillPaths paths to Skill files, directories, or repositories
-     * @param useMetadataName whether front-matter names override directory names
-     * @return future completed with whether registration succeeded
-     */
     public CompletionStage<Boolean> registerSkill(
             List<String> skillPaths, boolean useMetadataName) {
         lazyInitSkill();
@@ -393,14 +385,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return registerSkill(skillPath, skillsRoot, false);
     }
 
-    /**
-     * Registers trusted-root Skills and exposes their tools through implicit groups.
-     *
-     * @param skillPath path or list of paths to register
-     * @param skillsRoot trusted root containing loadable Skills
-     * @param useMetadataName whether front-matter names override directory names
-     * @return future completed with whether registration succeeded
-     */
     public CompletionStage<Boolean> registerSkill(
             Object skillPath, Path skillsRoot, boolean useMetadataName) {
         lazyInitSkill();
@@ -443,67 +427,43 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         try {
             skillToolRegistry.registerAll(bindings);
             ensureSkillMetaToolRegistered();
-            registerImplicitSkillGroups(bindings);
+            if (bindings != null) {
+                for (SkillToolBinding binding : bindings) {
+                    if (binding == null
+                            || binding.getSkillName() == null
+                            || binding.getSkillName().isBlank()) {
+                        continue;
+                    }
+                    String implicitGroupName = "skill:" + binding.getSkillName();
+                    List<String> toolNames = new ArrayList<>();
+                    for (Tool tool :
+                            skillToolRegistry
+                                    .listToolsByActiveSkill(List.of(binding.getSkillName()))
+                                    .getOrDefault(binding.getSkillName(), List.of())) {
+                        if (tool != null
+                                && tool.getCard() != null
+                                && tool.getCard().getName() != null
+                                && !tool.getCard().getName().isBlank()) {
+                            toolNames.add(tool.getCard().getName());
+                        }
+                    }
+                    if (!toolNames.isEmpty()) {
+                        toolGroupManager.unregisterToolGroup(implicitGroupName);
+                        ToolGroup implicitGroup =
+                                new ToolGroup(
+                                        implicitGroupName,
+                                        "Implicit group for skill " + binding.getSkillName(),
+                                        toolNames);
+                        toolGroupManager.registerSkillToolGroup(implicitGroup);
+                    }
+                }
+            }
             return CompletableFuture.completedFuture(true);
         } catch (RuntimeException exception) {
             return CompletableFuture.failedFuture(exception);
         }
     }
 
-    private void registerImplicitSkillGroups(List<SkillToolBinding> bindings) {
-        if (bindings == null) {
-            return;
-        }
-        for (SkillToolBinding binding : bindings) {
-            registerImplicitSkillGroup(binding);
-        }
-    }
-
-    private void registerImplicitSkillGroup(SkillToolBinding binding) {
-        if (binding == null
-                || binding.getSkillName() == null
-                || binding.getSkillName().isBlank()) {
-            return;
-        }
-        String implicitGroupName = "skill:" + binding.getSkillName();
-        List<String> toolNames = skillToolNames(binding.getSkillName());
-        if (toolNames.isEmpty()) {
-            return;
-        }
-        toolGroupManager.unregisterToolGroup(implicitGroupName);
-        ToolGroup implicitGroup =
-                new ToolGroup(
-                        implicitGroupName,
-                        "Implicit group for skill " + binding.getSkillName(),
-                        toolNames);
-        toolGroupManager.registerSkillToolGroup(implicitGroup);
-    }
-
-    private List<String> skillToolNames(String skillName) {
-        List<String> toolNames = new ArrayList<>();
-        List<Tool> tools =
-                skillToolRegistry
-                        .listToolsByActiveSkill(List.of(skillName))
-                        .getOrDefault(skillName, List.of());
-        for (Tool tool : tools) {
-            if (tool != null
-                    && tool.getCard() != null
-                    && tool.getCard().getName() != null
-                    && !tool.getCard().getName().isBlank()) {
-                toolNames.add(tool.getCard().getName());
-            }
-        }
-        return toolNames;
-    }
-
-    /**
-     * Downloads and registers Skills described by a GitHub tree.
-     *
-     * @param skillsDir local directory for downloaded Skills
-     * @param githubTree remote repository tree
-     * @param token optional GitHub access token
-     * @return future completed with downloaded Skill paths
-     */
     public CompletionStage<List<java.nio.file.Path>> registerRemoteSkills(
             String skillsDir, GitHubTree githubTree, String token) {
         lazyInitSkill();
@@ -514,14 +474,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                 skillUtil.registerRemoteSkills(skillsDir, githubTree, token));
     }
 
-    /**
-     * Registers a callback with an execution priority.
-     *
-     * @param event callback event to observe
-     * @param callback callback to execute
-     * @param priority execution priority
-     * @return future completed with this agent
-     */
     public CompletionStage<BaseAgent> registerCallback(
             AgentCallbackEvent event, AgentCallback callback, int priority) {
         return agentCallbackManager
@@ -575,15 +527,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                         });
     }
 
-    /**
-     * Executes callbacks registered for an event.
-     *
-     * @param event callback event to execute
-     * @param inputs event inputs
-     * @param session session associated with the event
-     * @param context model context associated with the event
-     * @return future completed when callbacks finish
-     */
     public CompletionStage<Void> executeCallbacks(
             AgentCallbackEvent event,
             Object inputs,
@@ -637,14 +580,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      *
      * @param inputs agent input
      * @param session session object
-     * @param streamModes stream output modes
-     * @return iterator of stream output
-     */
-    /**
-     * Streams execution using the legacy AgentSession type.
-     *
-     * @param inputs agent input
-     * @param session legacy agent session
      * @param streamModes stream output modes
      * @return iterator of stream output
      */
@@ -748,13 +683,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return normalizeActiveSkillNames(session.getState(ACTIVE_SKILL_NAMES_STATE_KEY));
     }
 
-    /**
-     * Activates an explicit ToolGroup for the session.
-     *
-     * @param groupName registered ToolGroup name
-     * @param session session whose state is updated
-     * @return this agent
-     */
     public BaseAgent activateToolGroup(String groupName, AgentSessionApi session) {
         String normalizedGroupName = normalizeGroupName(groupName);
         if (normalizedGroupName.startsWith("skill:")) {
@@ -770,13 +698,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return this;
     }
 
-    /**
-     * Deactivates an explicit ToolGroup for the session.
-     *
-     * @param groupName ToolGroup name
-     * @param session session whose state is updated
-     * @return this agent
-     */
     public BaseAgent deactivateToolGroup(String groupName, AgentSessionApi session) {
         String normalizedGroupName = normalizeGroupName(groupName);
         requireSession(session);
@@ -788,12 +709,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return this;
     }
 
-    /**
-     * Returns active explicit ToolGroup names for the session.
-     *
-     * @param session session whose state is inspected
-     * @return active ToolGroup names
-     */
     public List<String> getActiveToolGroupNames(AgentSessionApi session) {
         if (session == null) {
             return List.of();
@@ -801,11 +716,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return normalizeGroupNames(session.getState(ACTIVE_TOOL_GROUP_NAMES_STATE_KEY));
     }
 
-    /**
-     * Registers an explicit ToolGroup.
-     *
-     * @param group ToolGroup to register
-     */
     public void registerToolGroup(ToolGroup group) {
         if (group != null && group.name() != null && group.name().startsWith("skill:")) {
             throw new IllegalArgumentException(
@@ -814,11 +724,6 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         toolGroupManager.registerToolGroup(group);
     }
 
-    /**
-     * Removes an explicit ToolGroup registration.
-     *
-     * @param name ToolGroup name
-     */
     public void unregisterToolGroup(String name) {
         toolGroupManager.unregisterToolGroup(name);
     }

@@ -18,6 +18,7 @@ import java.util.List;
  * @since 0.1.17
  */
 public interface SkillRepository {
+
     /** Returns the origin layer represented by this repository. */
     SkillSource source();
 

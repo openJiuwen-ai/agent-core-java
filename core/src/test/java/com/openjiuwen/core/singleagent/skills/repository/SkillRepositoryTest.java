@@ -21,6 +21,7 @@ import java.util.List;
 
 @Tag("issue196-w5")
 class SkillRepositoryTest {
+
     @TempDir private Path tempDir;
 
     @Test

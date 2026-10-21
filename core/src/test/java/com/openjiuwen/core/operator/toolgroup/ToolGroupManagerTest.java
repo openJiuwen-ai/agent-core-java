@@ -15,6 +15,7 @@ import java.util.List;
 @Tag("issue196-w1")
 @Tag("TC-TG-01")
 class ToolGroupManagerTest {
+
     private final ToolGroupManager toolGroupManager = new ToolGroupManager();
 
     @Test

@@ -9,6 +9,7 @@ import java.util.Map;
 
 /** Parses YAML front matter key-value pairs from a SKILL.md text body. */
 final class SkillFrontMatterParser {
+
     private SkillFrontMatterParser() {}
 
     static Map<String, String> parse(String text) {

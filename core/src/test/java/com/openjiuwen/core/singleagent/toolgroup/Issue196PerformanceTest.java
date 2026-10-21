@@ -27,13 +27,27 @@ import java.util.Map;
 @Tag("TC-PRF-02")
 @Tag("TC-PRF-03")
 class Issue196PerformanceTest {
+
     private static final int TOOL_COUNT = 50;
 
     @Test
     @Tag("TC-PRF-02")
     void highFrequencyToggle_maintainsStableState() {
-        PerfAgent agent = agentWithToggleGroups();
+        PerfAgent agent = new PerfAgent();
         PerfSession session = new PerfSession("perf-session");
+        for (int i = 0; i < TOOL_COUNT; i++) {
+            registerGlobalTool(agent, "tool_" + i);
+        }
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "group_a",
+                        "Group A",
+                        List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "group_b",
+                        "Group B",
+                        List.of("tool_5", "tool_6", "tool_7", "tool_8", "tool_9")));
 
         for (int round = 0; round < 100; round++) {
             agent.activateToolGroup("group_a", session);
@@ -59,10 +73,22 @@ class Issue196PerformanceTest {
     @Test
     @Tag("TC-PRF-03")
     void groupedFiltering_reducesToolSchemaCount() {
-        PerfAgent unfilteredAgent = agentWithAllTools();
+        PerfAgent unfilteredAgent = new PerfAgent();
         PerfSession fullSession = new PerfSession("full-session");
-        PerfAgent filteredAgent = agentWithFocusedGroup();
+        for (int i = 0; i < TOOL_COUNT; i++) {
+            registerGlobalTool(unfilteredAgent, "tool_" + i);
+        }
+
+        PerfAgent filteredAgent = new PerfAgent();
         PerfSession filteredSession = new PerfSession("filtered-session");
+        for (int i = 0; i < TOOL_COUNT; i++) {
+            registerGlobalTool(filteredAgent, "tool_" + i);
+        }
+        filteredAgent.registerToolGroup(
+                new ToolGroup(
+                        "focused",
+                        "Focused tools",
+                        List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
 
         int fullCount = unfilteredAgent.listEffectiveToolInfo(fullSession).size();
         int filteredCount = filteredAgent.listEffectiveToolInfo(filteredSession).size();
@@ -77,10 +103,22 @@ class Issue196PerformanceTest {
 
     @Test
     void groupedFiltering_reducesEstimatedTokenUsage() {
-        PerfAgent unfilteredAgent = agentWithAllTools();
+        PerfAgent unfilteredAgent = new PerfAgent();
         PerfSession fullSession = new PerfSession("full-token-session");
-        PerfAgent filteredAgent = agentWithFocusedGroup();
+        for (int i = 0; i < TOOL_COUNT; i++) {
+            registerGlobalTool(unfilteredAgent, "tool_" + i);
+        }
+
+        PerfAgent filteredAgent = new PerfAgent();
         PerfSession filteredSession = new PerfSession("filtered-token-session");
+        for (int i = 0; i < TOOL_COUNT; i++) {
+            registerGlobalTool(filteredAgent, "tool_" + i);
+        }
+        filteredAgent.registerToolGroup(
+                new ToolGroup(
+                        "focused",
+                        "Focused tools",
+                        List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
 
         int fullTokens = estimateTokens(unfilteredAgent.listEffectiveToolInfo(fullSession));
         int filteredTokens = estimateTokens(filteredAgent.listEffectiveToolInfo(filteredSession));
@@ -99,42 +137,6 @@ class Issue196PerformanceTest {
         System.out.printf(
                 "[TC-PRF-03] Estimated tokens: full=%d filtered=%d reduction=%.0f%%%n",
                 fullTokens, filteredTokens, reduction.doubleValue());
-    }
-
-    private static PerfAgent agentWithAllTools() {
-        PerfAgent agent = new PerfAgent();
-        for (int index = 0; index < TOOL_COUNT; index++) {
-            registerGlobalTool(agent, "tool_" + index);
-        }
-        return agent;
-    }
-
-    private static PerfAgent agentWithFocusedGroup() {
-        PerfAgent agent = agentWithAllTools();
-        agent.registerToolGroup(
-                new ToolGroup(
-                        "focused",
-                        "Focused tools",
-                        List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
-        return agent;
-    }
-
-    private static PerfAgent agentWithToggleGroups() {
-        PerfAgent agent = new PerfAgent();
-        for (int index = 0; index < TOOL_COUNT; index++) {
-            registerGlobalTool(agent, "tool_" + index);
-        }
-        agent.registerToolGroup(
-                new ToolGroup(
-                        "group_a",
-                        "Group A",
-                        List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
-        agent.registerToolGroup(
-                new ToolGroup(
-                        "group_b",
-                        "Group B",
-                        List.of("tool_5", "tool_6", "tool_7", "tool_8", "tool_9")));
-        return agent;
     }
 
     private static int estimateTokens(List<ToolInfo> tools) {

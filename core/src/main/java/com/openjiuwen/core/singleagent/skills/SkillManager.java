@@ -79,21 +79,11 @@ public class SkillManager {
         setSysOperationId(sysOperationId);
     }
 
-    /**
-     * Replaces the repository list used for Skill loading.
-     *
-     * @param repositories ordered repositories, or null to clear the override
-     */
     public void setRepositories(List<SkillRepository> repositories) {
         this.injectedRepositories = repositories == null ? null : List.copyOf(repositories);
         applyWorkspaceConfig();
     }
 
-    /**
-     * Returns the injected repositories.
-     *
-     * @return injected repositories, or an empty list when not overridden
-     */
     public List<SkillRepository> getRepositories() {
         return injectedRepositories == null ? List.of() : injectedRepositories;
     }
@@ -129,27 +119,10 @@ public class SkillManager {
         return registered.isEmpty() ? null : registered.get(0);
     }
 
-    /**
-     * Registers all Skills below a path using the directory name.
-     *
-     * @param skillPath Skill file, directory, or repository path
-     * @param overwrite whether existing Skills may be replaced
-     * @return registered Skills
-     * @throws IOException when a Skill cannot be read
-     */
     public List<Skill> register(Path skillPath, boolean overwrite) throws IOException {
         return register(skillPath, overwrite, false);
     }
 
-    /**
-     * Registers all Skills below a path.
-     *
-     * @param skillPath Skill file, directory, or repository path
-     * @param overwrite whether existing Skills may be replaced
-     * @param useMetadataName whether front-matter names override directory names
-     * @return registered Skills
-     * @throws IOException when a Skill cannot be read
-     */
     public List<Skill> register(Path skillPath, boolean overwrite, boolean useMetadataName)
             throws IOException {
         if (skillPath == null) {
@@ -158,27 +131,10 @@ public class SkillManager {
         return register(List.of(skillPath), overwrite, useMetadataName);
     }
 
-    /**
-     * Registers all Skills below the supplied paths using directory names.
-     *
-     * @param skillPaths Skill files, directories, or repository paths
-     * @param overwrite whether existing Skills may be replaced
-     * @return registered Skills
-     * @throws IOException when a Skill cannot be read
-     */
     public List<Skill> register(List<Path> skillPaths, boolean overwrite) throws IOException {
         return register(skillPaths, overwrite, false);
     }
 
-    /**
-     * Registers all Skills below the supplied paths.
-     *
-     * @param skillPaths Skill files, directories, or repository paths
-     * @param overwrite whether existing Skills may be replaced
-     * @param useMetadataName whether front-matter names override directory names
-     * @return registered Skills
-     * @throws IOException when a Skill cannot be read
-     */
     public List<Skill> register(List<Path> skillPaths, boolean overwrite, boolean useMetadataName)
             throws IOException {
         List<Skill> registered = new ArrayList<>();
@@ -450,68 +406,47 @@ public class SkillManager {
     private void refreshFromRepositories() {
         Map<String, Skill> merged = new LinkedHashMap<>();
         for (SkillRepository repository : injectedRepositories) {
-            mergeRepository(merged, repository);
+            String repositorySource =
+                    repository.source() == null ? "unknown" : repository.source().value();
+            for (Skill skill : repository.loadAll()) {
+                if (skill != null && skill.getName() != null && !skill.getName().isBlank()) {
+                    Skill existing = merged.get(skill.getName());
+                    if (existing != null
+                            && existing.isProtectedSkill()
+                            && protectedOverrideBlocked) {
+                        Loggers.AGENT.warning(
+                                "SKILL_OVERRIDE_BLOCKED: skill_id={} source={} attempted_source={}"
+                                    + " existing_path={} attempted_path={} protected=true",
+                                skill.getId() != null ? skill.getId() : skill.getName(),
+                                existing.getSource() == null
+                                        ? "unknown"
+                                        : existing.getSource().value(),
+                                repositorySource,
+                                normalizedSkillPath(existing),
+                                normalizedSkillPath(skill));
+                        continue;
+                    }
+                    if (existing != null) {
+                        Loggers.AGENT.info(
+                                "SKILL_OVERRIDE: skill_id={} previous_source={} new_source={}"
+                                    + " path={}",
+                                skill.getId() != null ? skill.getId() : skill.getName(),
+                                existing.getSource() == null
+                                        ? "unknown"
+                                        : existing.getSource().value(),
+                                repositorySource,
+                                normalizedSkillPath(skill));
+                    } else {
+                        Loggers.AGENT.info(
+                                "SKILL_LOAD: skill_id={} source={} path={}",
+                                skill.getId() != null ? skill.getId() : skill.getName(),
+                                repositorySource,
+                                normalizedSkillPath(skill));
+                    }
+                    merged.put(skill.getName(), skill);
+                }
+            }
         }
-        replaceRegistry(merged);
-        Loggers.AGENT.debug("refreshFromRepositories completed, skills count: {}", registry.size());
-    }
-
-    private void mergeRepository(Map<String, Skill> merged, SkillRepository repository) {
-        String repositorySource =
-                repository.source() == null ? "unknown" : repository.source().value();
-        for (Skill skill : repository.loadAll()) {
-            mergeSkill(merged, skill, repositorySource);
-        }
-    }
-
-    private void mergeSkill(Map<String, Skill> merged, Skill skill, String repositorySource) {
-        if (skill == null || skill.getName() == null || skill.getName().isBlank()) {
-            return;
-        }
-        Skill existing = merged.get(skill.getName());
-        if (existing == null) {
-            logSkillLoad(skill, repositorySource);
-            merged.put(skill.getName(), skill);
-            return;
-        }
-        if (existing.isProtectedSkill() && protectedOverrideBlocked) {
-            logProtectedOverrideBlocked(skill, existing, repositorySource);
-            return;
-        }
-        logSkillOverride(skill, existing, repositorySource);
-        merged.put(skill.getName(), skill);
-    }
-
-    private void logSkillLoad(Skill skill, String repositorySource) {
-        Loggers.AGENT.info(
-                "SKILL_LOAD: skill_id={} source={} path={}",
-                skill.getId() != null ? skill.getId() : skill.getName(),
-                repositorySource,
-                normalizedSkillPath(skill));
-    }
-
-    private void logSkillOverride(Skill skill, Skill existing, String repositorySource) {
-        Loggers.AGENT.info(
-                "SKILL_OVERRIDE: skill_id={} previous_source={} new_source={} path={}",
-                skill.getId() != null ? skill.getId() : skill.getName(),
-                existing.getSource() == null ? "unknown" : existing.getSource().value(),
-                repositorySource,
-                normalizedSkillPath(skill));
-    }
-
-    private void logProtectedOverrideBlocked(
-            Skill skill, Skill existing, String repositorySource) {
-        Loggers.AGENT.warning(
-                "SKILL_OVERRIDE_BLOCKED: skill_id={} source={} attempted_source={}"
-                        + " existing_path={} attempted_path={} protected=true",
-                skill.getId() != null ? skill.getId() : skill.getName(),
-                existing.getSource() == null ? "unknown" : existing.getSource().value(),
-                repositorySource,
-                normalizedSkillPath(existing),
-                normalizedSkillPath(skill));
-    }
-
-    private void replaceRegistry(Map<String, Skill> merged) {
         registry.clear();
         updateAtCache.clear();
         skillOrder.clear();
@@ -519,6 +454,7 @@ public class SkillManager {
             registry.put(skill.getName(), skill);
             skillOrder.add(skill.getName());
         }
+        Loggers.AGENT.debug("refreshFromRepositories completed, skills count: {}", registry.size());
     }
 
     private static String normalizedSkillPath(Skill skill) {

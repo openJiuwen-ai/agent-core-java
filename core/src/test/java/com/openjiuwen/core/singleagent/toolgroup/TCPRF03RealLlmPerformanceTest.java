@@ -72,6 +72,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @Timeout(1800)
 class TCPRF03RealLlmPerformanceTest {
+
     private static final Path RAW_LOG = Path.of("target", "tcprf03_real_llm_raw.csv");
     private static final Path SUMMARY_LOG = Path.of("target", "tcprf03_real_llm_summary.txt");
     private static final int TOOL_COUNT = 20;
@@ -233,15 +234,21 @@ class TCPRF03RealLlmPerformanceTest {
                 int requestNumber = requestIndex + 1;
                 futures.add(
                         executor.submit(
-                                () -> invokeTrackedStreaming(
-                                        new InvocationRequest(
-                                                task,
-                                                mode,
-                                                concurrency,
-                                                round,
-                                                requestNumber,
-                                                tools),
-                                        failures)));
+                                (Callable<Sample>)
+                                        () -> {
+                                            try {
+                                                return invokeStreaming(
+                                                        task,
+                                                        tools,
+                                                        mode,
+                                                        concurrency,
+                                                        round,
+                                                        requestNumber);
+                                            } catch (IOException exception) {
+                                                failures.incrementAndGet();
+                                                throw exception;
+                                            }
+                                        }));
             }
             for (Future<Sample> future : futures) {
                 samples.add(future.get(5, TimeUnit.MINUTES));
@@ -257,23 +264,14 @@ class TCPRF03RealLlmPerformanceTest {
         return samples;
     }
 
-    private Sample invokeTrackedStreaming(
-            InvocationRequest request, AtomicInteger failures) throws Exception {
-        try {
-            return invokeStreaming(request);
-        } catch (IOException exception) {
-            failures.incrementAndGet();
-            throw exception;
-        }
-    }
-
-    private Sample invokeStreaming(InvocationRequest request) throws Exception {
-        Task task = request.task();
-        String mode = request.mode();
-        int concurrency = request.concurrency();
-        int round = request.round();
-        int requestIndex = request.requestIndex();
-        List<ToolInfo> tools = request.tools();
+    private Sample invokeStreaming(
+            Task task,
+            List<ToolInfo> tools,
+            String mode,
+            int concurrency,
+            int round,
+            int requestIndex)
+            throws Exception {
         List<BaseMessage> messages =
                 List.of(
                         new SystemMessage(
@@ -611,14 +609,6 @@ class TCPRF03RealLlmPerformanceTest {
                 .parameters(Map.of("type", "object", "properties", Map.of(), "required", List.of()))
                 .build();
     }
-
-    private record InvocationRequest(
-            Task task,
-            String mode,
-            int concurrency,
-            int round,
-            int requestIndex,
-            List<ToolInfo> tools) {}
 
     private record Task(String prompt, String expectedTool) {}
 

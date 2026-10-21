@@ -30,6 +30,7 @@ import java.util.stream.IntStream;
 @Tag("TC-LNK-04")
 @Tag("TC-PRF-01")
 class ReActGroupToolsCaptureTest {
+
     private static final int TOOL_COUNT = 8;
 
     @Test

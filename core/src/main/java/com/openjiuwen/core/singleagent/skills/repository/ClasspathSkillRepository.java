@@ -32,6 +32,7 @@ import java.util.jar.JarFile;
  * @since 0.1.17
  */
 public final class ClasspathSkillRepository implements SkillRepository {
+
     private static final String[] SKILL_FILE_NAMES = {"SKILL.md", "Skill.md", "skill.md"};
 
     private final String classpathRoot;

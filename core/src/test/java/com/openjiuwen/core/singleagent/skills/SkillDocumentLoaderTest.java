@@ -18,6 +18,7 @@ import java.nio.file.Path;
 @Tag("TC-SKL-04")
 @Tag("TC-SEC-07")
 class SkillDocumentLoaderTest {
+
     @TempDir private Path tempDir;
 
     @Test

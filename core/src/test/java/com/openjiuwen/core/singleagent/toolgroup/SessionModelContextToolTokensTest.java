@@ -18,6 +18,7 @@ import java.util.List;
 
 @Tag("issue196-w3")
 class SessionModelContextToolTokensTest {
+
     @Test
     void toolTokensUseOnlyTheFilteredToolList() {
         SessionModelContext.ToolTokenCounterPort counter =

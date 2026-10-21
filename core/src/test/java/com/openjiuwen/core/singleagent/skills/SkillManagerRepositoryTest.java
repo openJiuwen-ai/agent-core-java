@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 
 @Tag("issue196-w6")
 class SkillManagerRepositoryTest {
+
     @TempDir private Path tempDir;
 
     @Test

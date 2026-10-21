@@ -20,21 +20,12 @@ import java.util.function.IntFunction;
 
 /** Runs isolated session actions in parallel for ToolGroup state tests. */
 public final class SessionConcurrencyHarness {
+
     private static final int THREAD_KEEP_ALIVE_SECONDS = 30;
     private static final int TASK_TIMEOUT_SECONDS = 30;
 
     private SessionConcurrencyHarness() {}
 
-    /**
-     * Runs isolated session actions concurrently and waits for all results.
-     *
-     * @param sessionCount number of sessions to create
-     * @param sessionFactory factory that creates each session
-     * @param sessionAction action to execute against each session
-     * @throws InterruptedException when the test thread is interrupted
-     * @throws ExecutionException when a session action fails
-     * @throws TimeoutException when a session action exceeds the timeout
-     */
     public static void runInParallel(
             int sessionCount,
             IntFunction<AgentSessionApi> sessionFactory,
