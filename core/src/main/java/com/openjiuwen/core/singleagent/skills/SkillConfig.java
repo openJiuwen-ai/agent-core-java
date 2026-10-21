@@ -15,55 +15,94 @@ import java.util.Properties;
  * @since 0.1.17
  */
 public final class SkillConfig {
-
-    public static final boolean DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED = true;
+    /** Default value for blocking protected-classpath overrides. */
+    public static final boolean DEFAULT_HAS_PROTECTED_OVERRIDE_BLOCKED = true;
+    /** Default workspace SKILL.md size limit in bytes. */
     public static final int DEFAULT_WORKSPACE_MAX_BYTES = 262144;
-    public static final boolean DEFAULT_IS_ON_DEMAND_LOADING = true;
+    /** Default value for on-demand Skill loading. */
+    public static final boolean DEFAULT_USES_ON_DEMAND_LOADING = true;
+    /** System property for the protected-classpath override policy. */
     public static final String PROPERTY_PROTECTED_OVERRIDE_BLOCKED =
             "skill.protected-override-blocked";
+    /** System property for the workspace SKILL.md size limit. */
     public static final String PROPERTY_WORKSPACE_MAX_BYTES = "skill.workspace-max-bytes";
+    /** System property for on-demand Skill loading. */
     public static final String PROPERTY_ON_DEMAND_LOADING = "skill.on-demand-loading";
 
-    private boolean isProtectedOverrideBlocked = DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED;
+    private boolean isProtectedOverrideBlocked = DEFAULT_HAS_PROTECTED_OVERRIDE_BLOCKED;
     private int workspaceMaxBytes = DEFAULT_WORKSPACE_MAX_BYTES;
-    private boolean isOnDemandLoading = DEFAULT_IS_ON_DEMAND_LOADING;
+    private boolean usesOnDemandLoading = DEFAULT_USES_ON_DEMAND_LOADING;
 
-    /** Returns whether protected classpath Skills block higher-layer overrides. */
+    /**
+     * Returns whether protected classpath Skills block higher-layer overrides.
+     *
+     * @return true when protected Skills cannot be overridden
+     */
     public boolean isProtectedOverrideBlocked() {
         return isProtectedOverrideBlocked;
     }
 
-    /** Sets the protected-classpath override policy. */
+    /**
+     * Sets the protected-classpath override policy.
+     *
+     * @param isBlocked whether protected Skills cannot be overridden
+     */
     public void setProtectedOverrideBlocked(boolean isBlocked) {
         this.isProtectedOverrideBlocked = isBlocked;
     }
 
-    /** Returns the workspace SKILL.md size limit in bytes. */
+    /**
+     * Returns the workspace SKILL.md size limit in bytes.
+     *
+     * @return maximum accepted SKILL.md size
+     */
     public int getWorkspaceMaxBytes() {
         return workspaceMaxBytes;
     }
 
-    /** Sets the workspace SKILL.md size limit in bytes. */
+    /**
+     * Sets the workspace SKILL.md size limit in bytes.
+     *
+     * @param maxBytes maximum accepted SKILL.md size
+     */
     public void setWorkspaceMaxBytes(int maxBytes) {
         this.workspaceMaxBytes = maxBytes;
     }
 
-    /** Returns whether Skill bodies are loaded through {@code skill_tool}. */
+    /**
+     * Returns whether Skill bodies are loaded through {@code skill_tool}.
+     *
+     * @return true when Skill bodies are loaded on demand
+     */
     public boolean isOnDemandLoading() {
-        return isOnDemandLoading;
+        return usesOnDemandLoading;
     }
 
-    /** Sets the on-demand Skill loading mode. */
-    public void setOnDemandLoading(boolean isOnDemand) {
-        this.isOnDemandLoading = isOnDemand;
+    /**
+     * Sets the on-demand Skill loading mode.
+     *
+     * @param usesOnDemand whether Skill bodies are loaded on demand
+     */
+    public void setOnDemandLoading(boolean usesOnDemand) {
+        this.usesOnDemandLoading = usesOnDemand;
     }
 
-    /** Builds configuration from Java system properties and environment variables. */
+    /**
+     * Builds configuration from Java system properties and environment variables.
+     *
+     * @return resolved configuration with defaults for missing values
+     */
     public static SkillConfig fromEnvironment() {
         return fromSources(System.getProperties(), System.getenv());
     }
 
-    /** Builds configuration from explicit property and environment sources. */
+    /**
+     * Builds configuration from explicit property and environment sources.
+     *
+     * @param properties Java system-style property source
+     * @param environment environment variable source
+     * @return resolved configuration with defaults for missing values
+     */
     public static SkillConfig fromSources(Properties properties, Map<String, String> environment) {
         SkillConfig config = new SkillConfig();
         Optional<Boolean> protectedBlocked =

@@ -15,6 +15,12 @@ import com.openjiuwen.core.session.AgentSessionApi;
  * @since 0.1.17
  */
 public interface ToolAvailabilityChecker {
-
+    /**
+     * Returns whether the tool may execute for this session.
+     *
+     * @param toolName name of the requested tool
+     * @param session session issuing the tool request
+     * @return true when execution is allowed
+     */
     boolean isAvailable(String toolName, AgentSessionApi session);
 }

@@ -23,13 +23,17 @@ import java.util.Set;
  * @since 0.1.17
  */
 public final class ToolGroupManager {
-
     private static final String SKILL_GROUP_PREFIX = "skill:";
 
     private final Map<String, ToolGroup> toolGroupsByName =
             Collections.synchronizedMap(new LinkedHashMap<>());
 
-    /** Registers an explicit tool group and rejects duplicate or reserved names. */
+    /**
+     * Registers an explicit tool group and rejects duplicate or reserved names.
+     *
+     * @param toolGroup group to register
+     * @throws IllegalArgumentException when the group is null or invalid
+     */
     public void registerToolGroup(ToolGroup toolGroup) {
         if (toolGroup == null) {
             throw new IllegalArgumentException("Tool group must not be null");
@@ -52,7 +56,12 @@ public final class ToolGroupManager {
         }
     }
 
-    /** Registers or replaces the reserved implicit group for one Skill. */
+    /**
+     * Registers or replaces the reserved implicit group for one Skill.
+     *
+     * @param toolGroup implicit Skill group to register
+     * @throws IllegalArgumentException when the group is null or invalid
+     */
     public void registerSkillToolGroup(ToolGroup toolGroup) {
         if (toolGroup == null) {
             throw new IllegalArgumentException("Tool group must not be null");
@@ -66,7 +75,11 @@ public final class ToolGroupManager {
         }
     }
 
-    /** Removes a registered group; unknown names are ignored. */
+    /**
+     * Removes a registered group; unknown names are ignored.
+     *
+     * @param groupName name of the group to remove
+     */
     public void unregisterToolGroup(String groupName) {
         if (groupName == null || groupName.isBlank()) {
             return;
@@ -76,7 +89,12 @@ public final class ToolGroupManager {
         }
     }
 
-    /** Returns a registered group by its normalized name. */
+    /**
+     * Returns a registered group by its normalized name.
+     *
+     * @param groupName name of the group to find
+     * @return matching group, or empty when not registered
+     */
     public Optional<ToolGroup> getToolGroup(String groupName) {
         if (groupName == null || groupName.isBlank()) {
             return Optional.empty();
@@ -86,14 +104,24 @@ public final class ToolGroupManager {
         }
     }
 
-    /** Returns a stable snapshot of all registered groups. */
+    /**
+     * Returns a stable snapshot of all registered groups.
+     *
+     * @return immutable list of registered groups
+     */
     public List<ToolGroup> getGroups() {
         synchronized (toolGroupsByName) {
             return List.copyOf(toolGroupsByName.values());
         }
     }
 
-    /** Filters registered tool names using the session's active group names. */
+    /**
+     * Filters registered tool names using the session's active group names.
+     *
+     * @param activeGroupNames groups enabled for this session
+     * @param registeredToolNames tools currently available to the agent
+     * @return immutable sorted list of eligible tool names
+     */
     public List<String> getActiveToolNames(
             Collection<String> activeGroupNames, Collection<String> registeredToolNames) {
         Set<String> normalizedActiveGroupNames = normalizeNames(activeGroupNames);
@@ -120,7 +148,13 @@ public final class ToolGroupManager {
         return activeToolNames.stream().distinct().sorted().toList();
     }
 
-    /** Determines whether a tool is eligible for direct execution in this session. */
+    /**
+     * Determines whether a tool is eligible for direct execution in this session.
+     *
+     * @param toolName name of the requested tool
+     * @param activeGroupNames groups enabled for this session
+     * @return true when the tool is eligible
+     */
     public boolean isToolEligibleForExecution(
             String toolName, Collection<String> activeGroupNames) {
         String normalizedToolName = toolName == null ? "" : toolName.trim();

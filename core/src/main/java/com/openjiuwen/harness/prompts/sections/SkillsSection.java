@@ -101,11 +101,30 @@ SKILL.md using skill_tool.
 
     private SkillsSection() {}
 
+    /**
+     * Builds a one-line Skill summary with an optional SKILL.md path.
+     *
+     * @param index display order of the Skill
+     * @param skillName name shown to the model
+     * @param description short Skill summary
+     * @param skillMdPath optional path to the main Skill document
+     * @return formatted Skill line
+     */
     public static String buildSkillLine(
             int index, String skillName, String description, String skillMdPath) {
         return buildSkillLine(index, skillName, description, skillMdPath, Map.of());
     }
 
+    /**
+     * Builds a one-line Skill summary with optional metadata and path.
+     *
+     * @param index display order of the Skill
+     * @param skillName name shown to the model
+     * @param description short Skill summary
+     * @param skillMdPath optional path to the main Skill document
+     * @param metadata optional id, source, and future metadata values
+     * @return formatted Skill line
+     */
     public static String buildSkillLine(
             int index,
             String skillName,
@@ -119,9 +138,16 @@ SKILL.md using skill_tool.
                         .append(skillName)
                         .append(": ")
                         .append(description);
-        metadataValue(metadata, "id").ifPresent(id -> builder.append("\n   ID: ").append(id));
+        metadataValue(metadata, "id")
+                .ifPresent(
+                        id -> {
+                            builder.append("\n   ID: ").append(id);
+                        });
         metadataValue(metadata, "source")
-                .ifPresent(source -> builder.append("\n   Source: ").append(source));
+                .ifPresent(
+                        source -> {
+                            builder.append("\n   Source: ").append(source);
+                        });
         if (skillMdPath != null && !skillMdPath.isEmpty()) {
             builder.append("\n   Path: ").append(skillMdPath);
         }
@@ -135,6 +161,12 @@ SKILL.md using skill_tool.
                 : Optional.of(String.valueOf(value));
     }
 
+    /**
+     * Joins non-empty Skill lines into the all-mode prompt body.
+     *
+     * @param lines ordered Skill lines to join
+     * @return joined Skill body, or an empty string when none are usable
+     */
     public static String buildSkillLines(Iterable<String> lines) {
         StringJoiner joiner = new StringJoiner("\n\n");
         if (lines == null) {
@@ -148,23 +180,56 @@ SKILL.md using skill_tool.
         return joiner.toString();
     }
 
+    /**
+     * Builds the prompt used when all Skill metadata is exposed.
+     *
+     * @param skillLines rendered Skill metadata lines
+     * @param language requested prompt language
+     * @return all-mode Skill prompt
+     */
     public static String buildAllModeSkillPrompt(String skillLines, String language) {
         String resolvedLanguage = resolveLanguage(language);
         String text = skillLines == null ? "" : skillLines.trim();
         if (text.isEmpty()) {
             return getNoSkillPrompt(resolvedLanguage);
         }
-        return getAllModeHeader(resolvedLanguage) + text + getAllModeInstruction(resolvedLanguage);
+        return getAllModeHeader(resolvedLanguage)
+                + text
+                + getAllModeInstruction(resolvedLanguage);
     }
 
+    /**
+     * Builds the compact prompt that directs the model to list Skills first.
+     *
+     * @param language requested prompt language
+     * @return auto-list Skill prompt
+     */
     public static String buildAutoListModeSkillPrompt(String language) {
-        return "en".equals(resolveLanguage(language)) ? AUTO_LIST_EN : AUTO_LIST_CN;
+        return "en".equals(resolveLanguage(language))
+                ? AUTO_LIST_EN
+                : AUTO_LIST_CN;
     }
 
+    /**
+     * Builds the list_skill selector system prompt.
+     *
+     * @param language requested prompt language
+     * @return system prompt for selecting Skills
+     */
     public static String getListSkillSystemPrompt(String language) {
-        return "en".equals(resolveLanguage(language)) ? LIST_SKILL_EN : LIST_SKILL_CN;
+        return "en".equals(resolveLanguage(language))
+                ? LIST_SKILL_EN
+                : LIST_SKILL_CN;
     }
 
+    /**
+     * Builds a Skills prompt section for the requested mode.
+     *
+     * @param skillLines rendered Skill metadata lines for all mode
+     * @param language requested prompt language
+     * @param mode all or auto_list rendering mode
+     * @return Skills prompt section, or empty for an unknown mode
+     */
     public static Optional<PromptSection> buildSkillsSection(
             String skillLines, String language, String mode) {
         String resolvedLanguage = resolveLanguage(language);
@@ -180,27 +245,48 @@ SKILL.md using skill_tool.
                 new PromptSection(SectionName.SKILLS, Map.of(resolvedLanguage, content), PRIORITY));
     }
 
+    /**
+     * Builds a Skills prompt section for the requested mode.
+     *
+     * @param skillLines rendered Skill metadata lines
+     * @param language requested prompt language
+     * @param mode all or auto_list rendering mode
+     * @return Skills prompt section, or empty for an unknown mode
+     */
     public static Optional<PromptSection> build(String skillLines, String language, String mode) {
         return buildSkillsSection(skillLines, language, mode);
     }
 
+    /**
+     * Builds the default auto-list Skills prompt section.
+     *
+     * @return Skills prompt section
+     */
     public static Optional<PromptSection> build() {
         return buildSkillsSection("", DEFAULT_LANGUAGE, "auto_list");
     }
 
     private static String resolveLanguage(String language) {
-        return "en".equals(language) ? "en" : DEFAULT_LANGUAGE;
+        return "en".equals(language)
+                ? "en"
+                : DEFAULT_LANGUAGE;
     }
 
     private static String getAllModeHeader(String language) {
-        return "en".equals(language) ? ALL_MODE_HEADER_EN : ALL_MODE_HEADER_CN;
+        return "en".equals(language)
+                ? ALL_MODE_HEADER_EN
+                : ALL_MODE_HEADER_CN;
     }
 
     private static String getAllModeInstruction(String language) {
-        return "en".equals(language) ? ALL_MODE_INSTRUCTION_EN : ALL_MODE_INSTRUCTION_CN;
+        return "en".equals(language)
+                ? ALL_MODE_INSTRUCTION_EN
+                : ALL_MODE_INSTRUCTION_CN;
     }
 
     private static String getNoSkillPrompt(String language) {
-        return "en".equals(language) ? NO_SKILL_EN : NO_SKILL_CN;
+        return "en".equals(language)
+                ? NO_SKILL_EN
+                : NO_SKILL_CN;
     }
 }

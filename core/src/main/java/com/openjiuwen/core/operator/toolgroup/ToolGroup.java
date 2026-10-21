@@ -21,7 +21,14 @@ public record ToolGroup(String name, String description, Collection<String> tool
 
     private static final String SKILL_GROUP_PREFIX = "skill:";
 
-    /** Creates and validates an immutable tool-group snapshot. */
+    /**
+     * Creates and validates an immutable tool-group snapshot.
+     *
+     * @param name unique group name
+     * @param description optional human-readable description
+     * @param toolNames ordered tool names in this group
+     * @throws IllegalArgumentException when name or tool names are invalid
+     */
     public ToolGroup {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Tool group name must not be blank");

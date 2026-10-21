@@ -847,6 +847,13 @@ public class AbilityManager {
         }
     }
 
+    /**
+     * Returns whether the tool may execute for the supplied session.
+     *
+     * @param toolName name of the requested tool
+     * @param session session issuing the request
+     * @return true when no checker blocks execution
+     */
     public boolean isToolAvailableForExecution(String toolName, Object session) {
         ToolAvailabilityChecker checker = toolAvailabilityChecker;
         if (checker == null) {
