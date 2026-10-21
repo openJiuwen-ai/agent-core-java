@@ -171,6 +171,9 @@ every Java review:
   Recalculate these limits after extracting helpers.
 - `G.DCL.02`: declare and initialize each local variable close to its first
   use; declaration-to-first-use distance must not exceed 10 lines.
+  For before/after state assertions, keep the initial snapshot before mutations
+  and extract the intervening scenario into a focused helper. Never move the
+  snapshot past mutations or add a meaningless early use to satisfy the checker.
 - `G.MET.05`/`G.MET.06`: return empty containers for empty results and use
   `Optional` for genuinely absent scalar results. Do not return or assign
   `null` to an `Optional`.

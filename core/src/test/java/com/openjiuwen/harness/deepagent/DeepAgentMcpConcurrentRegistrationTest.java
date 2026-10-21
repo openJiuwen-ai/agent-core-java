@@ -293,6 +293,12 @@ class DeepAgentMcpConcurrentRegistrationTest {
     void sameConfigWinnerIsReusedAfterStaleProbe() throws Exception {
         installToolMgr(new CountingToolManager());
         GlobalRegistrySnapshot before = GlobalRegistrySnapshot.take();
+        runSameConfigWinnerAfterStaleProbe();
+        cleanUpRegisteredState();
+        GlobalRegistrySnapshot.take().assertDeltaZero(before);
+    }
+
+    private void runSameConfigWinnerAfterStaleProbe() {
         McpServerConfig winner = facadeConfig("stale-lib", "http://stale");
         assertThat(resourceMgr.addMcpServer(winner, "stale-owner", null).get(0).isError()).isFalse();
         registeredServerIds.add("stale-lib");
@@ -305,14 +311,18 @@ class DeepAgentMcpConcurrentRegistrationTest {
         assertThat(resourceMgr.listMcpServers("stale-agent")).extracting(McpServerConfig::getServerId)
                 .containsExactly("stale-lib");
         assertThat(agent.getAgent().getAbilityManager().get("stale-lib")).isPresent();
-        cleanUpRegisteredState();
-        GlobalRegistrySnapshot.take().assertDeltaZero(before);
     }
 
     @Test
     void conflictingWinnerIsRejectedAfterStaleProbe() throws Exception {
         installToolMgr(new CountingToolManager());
         GlobalRegistrySnapshot before = GlobalRegistrySnapshot.take();
+        runConflictingWinnerAfterStaleProbe();
+        cleanUpRegisteredState();
+        GlobalRegistrySnapshot.take().assertDeltaZero(before);
+    }
+
+    private void runConflictingWinnerAfterStaleProbe() {
         McpServerConfig winner = facadeConfig("stale-conflict", "http://established");
         assertThat(resourceMgr.addMcpServer(winner, "stale-owner", null).get(0).isError()).isFalse();
         registeredServerIds.add("stale-conflict");
@@ -326,8 +336,6 @@ class DeepAgentMcpConcurrentRegistrationTest {
         assertThat(resourceMgr.getMcpServerConfig("stale-conflict").sameConnectionAs(winner)).isTrue();
         assertThat(resourceMgr.listMcpServers("stale-rejected")).isEmpty();
         assertThat(agent.getAgent().getAbilityManager().get("stale-conflict")).isEmpty();
-        cleanUpRegisteredState();
-        GlobalRegistrySnapshot.take().assertDeltaZero(before);
     }
 
     private void initializeAfterStaleMcpProbe(DeepAgent agent, String serverId) {
