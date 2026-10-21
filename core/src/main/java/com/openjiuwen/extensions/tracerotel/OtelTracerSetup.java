@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.tracerotel;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 
@@ -182,10 +183,9 @@ public final class OtelTracerSetup {
      */
     private static void registerShutdownHook() {
         if (SHUTDOWN_HOOK_REGISTERED.compareAndSet(false, true)) {
-            Thread hook = new Thread(OtelTracerSetup::shutdownOtelTracer, "otel-tracer-shutdown");
-            hook.setUncaughtExceptionHandler(
-                    (thread, error) -> LOG.warn("otel: tracerotel shutdown hook failed - {}", error.getMessage()));
-            Runtime.getRuntime().addShutdownHook(hook);
+            // 复用统一线程入口：线程命名与未捕获异常日志由该入口负责
+            Runtime.getRuntime().addShutdownHook(OpenJiuwenExecutors.newThread(
+                    OtelTracerSetup::shutdownOtelTracer, "otel-tracer-shutdown", false));
         }
     }
 

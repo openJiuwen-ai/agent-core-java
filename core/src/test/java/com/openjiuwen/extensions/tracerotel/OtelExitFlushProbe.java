@@ -47,7 +47,5 @@ public final class OtelExitFlushProbe {
                 .build();
         Tracer tracer = OtelTracerSetup.initOtelTracer(config);
         tracer.spanBuilder("exit_flush_probe_span").startSpan().end();
-        // 该标记是给父测试 OtelExitFlushSubprocessTest 读子进程标准输出的通信约定，不走日志框架
-        System.out.println("PROBE_SPAN_ENDED");
     }
 }

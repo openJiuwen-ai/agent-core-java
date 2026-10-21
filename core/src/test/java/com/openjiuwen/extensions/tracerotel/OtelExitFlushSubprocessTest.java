@@ -4,7 +4,10 @@
 
 package com.openjiuwen.extensions.tracerotel;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.sun.net.httpserver.HttpServer;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -16,13 +19,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Exit-flush regression test for {@link OtelTracerSetup}.
@@ -31,6 +29,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * asserts that the span buffered in the {@code BatchSpanProcessor} reaches the collector before the
  * child exits. Without an exit-time flush the daemon export worker never runs, so the assertion
  * fails — this is the reproduction of "the last span is lost at process exit".</p>
+ *
+ * <p>The probe is expected to exit with code {@code 0}: its {@code main} only returns after the span
+ * has been ended, so a non-zero code would mean the probe itself failed.</p>
  *
  * @since 0.1.17
  */
@@ -46,8 +47,7 @@ class OtelExitFlushSubprocessTest {
 
     @Test
     @DisplayName("buffered span is exported before the JVM exits")
-    void testBufferedSpanExportedOnExit()
-            throws IOException, InterruptedException, ExecutionException, TimeoutException {
+    void testBufferedSpanExportedOnExit() throws IOException, InterruptedException {
         AtomicInteger exports = new AtomicInteger();
         HttpServer collector = HttpServer.create(new InetSocketAddress("127.0.0.1", 0),
                 COLLECTOR_STUB_BACKLOG);
@@ -64,33 +64,24 @@ class OtelExitFlushSubprocessTest {
             String endpoint = "http://127.0.0.1:" + collector.getAddress().getPort();
             Process probe = new ProcessBuilder(buildProbeCommand(endpoint)).redirectErrorStream(true)
                     .start();
-            // 在独立线程上排空子进程输出，避免其写满管道缓冲后阻塞；读取仍受 PROBE_TIMEOUT 约束
-            CompletableFuture<String> probeOutputFuture =
-                    CompletableFuture.supplyAsync(() -> readProbeOutput(probe));
+            // 先启动排空线程再 waitFor，避免子进程写满管道缓冲后阻塞
+            StreamDrainer drainer = new StreamDrainer(probe.getInputStream());
+            drainer.start();
             boolean hasExited = probe.waitFor(PROBE_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
             if (!hasExited) {
                 probe.destroyForcibly();
             }
-            String probeOutput = probeOutputFuture.get(PROBE_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+            drainer.join(PROBE_TIMEOUT.toMillis());
+            String probeOutput = drainer.output();
 
             assertThat(hasExited).as("probe JVM must exit within %s; output=%s", PROBE_TIMEOUT, probeOutput)
                     .isTrue();
             assertThat(probe.exitValue()).as("probe exit code; output=%s", probeOutput).isZero();
-            assertThat(probeOutput).as("probe must end a span before exiting").contains("PROBE_SPAN_ENDED");
             assertThat(awaitExports(exports))
                     .as("collector must receive the buffered span before exit; output=%s", probeOutput)
                     .isTrue();
         } finally {
             collector.stop(0);
-        }
-    }
-
-    /** Read the merged stdout/stderr of the probe so the child never blocks on a full pipe. */
-    private static String readProbeOutput(Process probe) {
-        try (InputStream input = probe.getInputStream()) {
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            return "probe output unavailable - " + e.getMessage();
         }
     }
 
@@ -111,5 +102,36 @@ class OtelExitFlushSubprocessTest {
             Thread.sleep(DELIVERY_POLL_MILLIS);
         }
         return exports.get() > 0;
+    }
+
+    /**
+     * Drain the merged stdout/stderr of the probe on a dedicated thread.
+     *
+     * <p>The drainer must be started before {@code waitFor()} so the child can keep writing without
+     * blocking on a full pipe, and joined afterwards so the collected output is complete.</p>
+     */
+    private static final class StreamDrainer extends Thread {
+        private final InputStream input;
+
+        private String output = "";
+
+        StreamDrainer(InputStream input) {
+            super("otel-exit-flush-probe-drainer");
+            this.input = input;
+            setDaemon(true);
+        }
+
+        @Override
+        public void run() {
+            try (InputStream stream = input) {
+                output = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                output = "probe output unavailable - " + e.getMessage();
+            }
+        }
+
+        String output() {
+            return output;
+        }
     }
 }
