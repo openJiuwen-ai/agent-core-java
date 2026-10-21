@@ -26,6 +26,16 @@ public final class SessionConcurrencyHarness {
 
     private SessionConcurrencyHarness() {}
 
+    /**
+     * Runs one isolated session action per index on a bounded thread pool.
+     *
+     * @param sessionCount number of sessions to create
+     * @param sessionFactory function that creates each session
+     * @param sessionAction action to execute against each session
+     * @throws InterruptedException if the current thread is interrupted while waiting
+     * @throws ExecutionException if any session action fails
+     * @throws TimeoutException if a session action does not finish in time
+     */
     public static void runInParallel(
             int sessionCount,
             IntFunction<AgentSessionApi> sessionFactory,

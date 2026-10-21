@@ -70,6 +70,12 @@ public class SkillToolRegistry {
         return bindings.containsKey(skillName);
     }
 
+    /**
+     * Returns whether the supplied tool name belongs to a registered Skill.
+     *
+     * @param toolName tool name to inspect
+     * @return true when the name belongs to a registered Skill tool
+     */
     public synchronized boolean isSkillTool(String toolName) {
         if (toolName == null || toolName.isBlank()) {
             return false;

@@ -44,18 +44,38 @@ public final class CapturingModelClient implements Model.ModelClient {
         return CompletableFuture.completedFuture(response);
     }
 
+    /**
+     * Returns every captured message list.
+     *
+     * @return immutable copy of captured message lists
+     */
     public List<List<BaseMessage>> capturedMessageLists() {
         return List.copyOf(capturedMessageLists);
     }
 
+    /**
+     * Returns every captured tool list.
+     *
+     * @return immutable copy of captured tool lists
+     */
     public List<List<?>> capturedToolLists() {
         return List.copyOf(capturedToolLists);
     }
 
+    /**
+     * Returns the most recently captured tool list.
+     *
+     * @return latest tool list, or an empty list when no call was captured
+     */
     public List<?> lastCapturedToolList() {
         return capturedToolLists.stream().reduce((first, second) -> second).orElseGet(List::of);
     }
 
+    /**
+     * Returns the number of model invocations captured by this client.
+     *
+     * @return captured invocation count
+     */
     public int invokeCount() {
         return invokeCount.get();
     }

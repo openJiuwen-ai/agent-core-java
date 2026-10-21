@@ -10,10 +10,19 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+    /**
+     * Assumption helpers for tests that require symbolic-link support.
+     *
+     */
 public final class SymlinkAssumptions {
 
     private SymlinkAssumptions() {}
 
+    /**
+     * Skips the current test unless symbolic links can be created under the probe root.
+     *
+     * @param probeRoot temporary directory used for the probe
+     */
     public static void assumeCreationSupported(Path probeRoot) {
         Path target = null;
         Path link = null;

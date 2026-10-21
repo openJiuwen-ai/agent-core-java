@@ -79,11 +79,21 @@ public class SkillManager {
         setSysOperationId(sysOperationId);
     }
 
+    /**
+     * Replaces the injected Skill repository chain.
+     *
+     * @param repositories repositories to use, or null to restore default discovery
+     */
     public void setRepositories(List<SkillRepository> repositories) {
         this.injectedRepositories = repositories == null ? null : List.copyOf(repositories);
         applyWorkspaceConfig();
     }
 
+    /**
+     * Returns the injected Skill repositories.
+     *
+     * @return immutable repository list, or an empty list when repositories are not injected
+     */
     public List<SkillRepository> getRepositories() {
         return injectedRepositories == null ? List.of() : injectedRepositories;
     }
@@ -123,6 +133,15 @@ public class SkillManager {
         return register(skillPath, overwrite, false);
     }
 
+    /**
+     * Registers all skills found at a path.
+     *
+     * @param skillPath skill file or directory path
+     * @param overwrite whether existing skills may be replaced
+     * @param useMetadataName whether metadata names override directory names
+     * @return registered skills in path order
+     * @throws IOException if the path cannot be resolved or read
+     */
     public List<Skill> register(Path skillPath, boolean overwrite, boolean useMetadataName)
             throws IOException {
         if (skillPath == null) {
@@ -135,6 +154,15 @@ public class SkillManager {
         return register(skillPaths, overwrite, false);
     }
 
+    /**
+     * Registers all skills found under the supplied paths.
+     *
+     * @param skillPaths skill files or directories to register
+     * @param overwrite whether existing skills may be replaced
+     * @param useMetadataName whether metadata names override directory names
+     * @return registered skills in path order
+     * @throws IOException if a path cannot be resolved or read
+     */
     public List<Skill> register(List<Path> skillPaths, boolean overwrite, boolean useMetadataName)
             throws IOException {
         List<Skill> registered = new ArrayList<>();

@@ -16,6 +16,10 @@ public final class SkillFixtureFactory {
 
     private static final String SKILL_FILE_NAME = "SKILL.md";
 
+    /**
+     * Repository types supported by Skill fixtures.
+     *
+     */
     public enum SkillFixtureSource {
         CLASSPATH("classpath"),
         FILESYSTEM("filesystem"),
@@ -27,6 +31,11 @@ public final class SkillFixtureFactory {
             this.directoryName = directoryName;
         }
 
+    /**
+     * Returns the fixture directory name for this source type.
+     *
+     * @return source directory name
+     */
         public String directoryName() {
             return directoryName;
         }
@@ -36,6 +45,17 @@ public final class SkillFixtureFactory {
 
     private SkillFixtureFactory() {}
 
+    /**
+     * Writes a Skill fixture beneath the source-specific repository directory.
+     *
+     * @param temporaryRoot root containing all fixture repositories
+     * @param source repository type for the fixture
+     * @param skillName fixture skill name
+     * @param body fixture Skill body
+     * @param isProtected whether the fixture overrides are protected
+     * @return the created fixture
+     * @throws IOException if the fixture cannot be written
+     */
     public static SkillFixture writeSkill(
             Path temporaryRoot,
             SkillFixtureSource source,
@@ -51,6 +71,17 @@ public final class SkillFixtureFactory {
         return new SkillFixture(source, skillFile);
     }
 
+    /**
+     * Writes a Skill fixture directly beneath the specified repository root.
+     *
+     * @param repositoryRoot repository directory for the fixture
+     * @param skillName fixture skill name
+     * @param description fixture Skill description
+     * @param body fixture Skill body
+     * @param isProtected whether the fixture overrides are protected
+     * @return the created SKILL.md path
+     * @throws IOException if the fixture cannot be written
+     */
     public static Path writeSkill(
             Path repositoryRoot,
             String skillName,

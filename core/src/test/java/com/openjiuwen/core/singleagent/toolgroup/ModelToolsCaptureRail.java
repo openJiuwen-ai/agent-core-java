@@ -26,14 +26,28 @@ public final class ModelToolsCaptureRail extends AgentRail {
         }
     }
 
+    /**
+     * Returns every captured tool list.
+     *
+     * @return immutable copy of captured tool lists
+     */
     public List<List<Object>> capturedToolLists() {
         return List.copyOf(capturedToolLists);
     }
 
+    /**
+     * Returns the most recently captured tool list.
+     *
+     * @return latest tool list, or an empty list when no request was captured
+     */
     public List<Object> lastCapturedToolList() {
         return capturedToolLists.stream().reduce((first, second) -> second).orElseGet(List::of);
     }
 
+    /**
+     * Removes all captured tool lists.
+     *
+     */
     public void clear() {
         capturedToolLists.clear();
     }

@@ -57,7 +57,13 @@ import java.util.concurrent.CompletionStage;
 
 /** Base class for current single-agent implementations. */
 public abstract class BaseAgent implements AgentCallbackFirer {
+    /**
+     * Session state key holding the names of explicitly activated skills.
+     */
     public static final String ACTIVE_SKILL_NAMES_STATE_KEY = "active_skill_names";
+    /**
+     * Session state key holding the names of explicitly activated tool groups.
+     */
     public static final String ACTIVE_TOOL_GROUP_NAMES_STATE_KEY = "active_tool_group_names";
 
     private final AgentCard card;
@@ -356,6 +362,13 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         this.ownerToken = ownerToken;
     }
 
+    /**
+     * Registers multiple Skill paths for this agent.
+     *
+     * @param skillPaths paths to Skill files or directories
+     * @param useMetadataName whether metadata names override directory names
+     * @return future completing with true when registration succeeds
+     */
     public CompletionStage<Boolean> registerSkill(
             List<String> skillPaths, boolean useMetadataName) {
         lazyInitSkill();
@@ -385,6 +398,14 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return registerSkill(skillPath, skillsRoot, false);
     }
 
+    /**
+     * Registers one or more Skill paths inside a trusted root.
+     *
+     * @param skillPath single path or list of paths to register
+     * @param skillsRoot trusted root containing loadable skills
+     * @param useMetadataName whether metadata names override directory names
+     * @return future completing with true when registration succeeds
+     */
     public CompletionStage<Boolean> registerSkill(
             Object skillPath, Path skillsRoot, boolean useMetadataName) {
         lazyInitSkill();
@@ -464,6 +485,14 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         }
     }
 
+    /**
+     * Registers skills supplied by a GitHub tree.
+     *
+     * @param skillsDir destination directory for downloaded skills
+     * @param githubTree GitHub tree containing skill files
+     * @param token GitHub access token
+     * @return future completing with the downloaded skill paths
+     */
     public CompletionStage<List<java.nio.file.Path>> registerRemoteSkills(
             String skillsDir, GitHubTree githubTree, String token) {
         lazyInitSkill();
@@ -474,6 +503,14 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                 skillUtil.registerRemoteSkills(skillsDir, githubTree, token));
     }
 
+    /**
+     * Registers a callback for an agent event.
+     *
+     * @param event event that triggers the callback
+     * @param callback callback to register
+     * @param priority callback execution priority
+     * @return future completing with this agent
+     */
     public CompletionStage<BaseAgent> registerCallback(
             AgentCallbackEvent event, AgentCallback callback, int priority) {
         return agentCallbackManager
@@ -527,6 +564,15 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                         });
     }
 
+    /**
+     * Executes callbacks registered for an event.
+     *
+     * @param event event whose callbacks should run
+     * @param inputs agent inputs supplied to callbacks
+     * @param session session supplied to callbacks
+     * @param context model context supplied to callbacks
+     * @return future completing when all callbacks finish
+     */
     public CompletionStage<Void> executeCallbacks(
             AgentCallbackEvent event,
             Object inputs,
@@ -593,6 +639,14 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return invoke(inputs, apiSession);
     }
 
+    /**
+     * Streams execution using the legacy session API.
+     *
+     * @param inputs agent input
+     * @param session legacy session object
+     * @param streamModes stream output modes
+     * @return iterator of stream output
+     */
     public Iterator<Object> stream(
             Object inputs, AgentSession session, List<StreamMode> streamModes) {
         AgentSessionApi apiSession = session;
@@ -683,6 +737,13 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return normalizeActiveSkillNames(session.getState(ACTIVE_SKILL_NAMES_STATE_KEY));
     }
 
+    /**
+     * Activates an explicit tool group for the session.
+     *
+     * @param groupName registered tool-group name
+     * @param session session whose state should be updated
+     * @return this agent
+     */
     public BaseAgent activateToolGroup(String groupName, AgentSessionApi session) {
         String normalizedGroupName = normalizeGroupName(groupName);
         if (normalizedGroupName.startsWith("skill:")) {
@@ -698,6 +759,13 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return this;
     }
 
+    /**
+     * Deactivates an explicit tool group for the session.
+     *
+     * @param groupName registered tool-group name
+     * @param session session whose state should be updated
+     * @return this agent
+     */
     public BaseAgent deactivateToolGroup(String groupName, AgentSessionApi session) {
         String normalizedGroupName = normalizeGroupName(groupName);
         requireSession(session);
@@ -709,6 +777,12 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return this;
     }
 
+    /**
+     * Returns the session explicitly activated tool-group names.
+     *
+     * @param session session whose state should be inspected
+     * @return immutable active tool-group names
+     */
     public List<String> getActiveToolGroupNames(AgentSessionApi session) {
         if (session == null) {
             return List.of();
@@ -716,6 +790,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return normalizeGroupNames(session.getState(ACTIVE_TOOL_GROUP_NAMES_STATE_KEY));
     }
 
+    /**
+     * Registers an explicit tool group on this agent.
+     *
+     * @param group tool group to register
+     */
     public void registerToolGroup(ToolGroup group) {
         if (group != null && group.name() != null && group.name().startsWith("skill:")) {
             throw new IllegalArgumentException(
@@ -724,6 +803,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         toolGroupManager.registerToolGroup(group);
     }
 
+    /**
+     * Removes an explicit tool group by name.
+     *
+     * @param name tool-group name to remove
+     */
     public void unregisterToolGroup(String name) {
         toolGroupManager.unregisterToolGroup(name);
     }

@@ -19,6 +19,10 @@ import java.nio.file.Path;
  */
 public final class SkillContentValidator {
 
+    /**
+     * Default maximum size of a workspace-level SKILL.md file.
+     *
+     */
     public static final int DEFAULT_WORKSPACE_MAX_BYTES = 262144;
 
     private final int workspaceMaxBytes;
@@ -37,6 +41,12 @@ public final class SkillContentValidator {
 
     public record ValidationResult(boolean allowed, String reason) {}
 
+    /**
+     * Validates that a Skill file exists, is readable, and is within the size limit.
+     *
+     * @param skillFile Skill file to validate
+     * @return validation result with the rejection reason when disallowed
+     */
     public ValidationResult validateSize(Path skillFile) {
         if (skillFile == null) {
             return new ValidationResult(false, "null path");
@@ -61,6 +71,13 @@ public final class SkillContentValidator {
         }
     }
 
+    /**
+     * Validates containment, readability, encoding, and size for a workspace Skill file.
+     *
+     * @param skillFile Skill file to validate
+     * @param workspaceRoot trusted workspace root
+     * @return validation result with the rejection reason when disallowed
+     */
     public ValidationResult validate(Path skillFile, Path workspaceRoot) {
         if (skillFile == null || workspaceRoot == null) {
             return new ValidationResult(false, "null path");

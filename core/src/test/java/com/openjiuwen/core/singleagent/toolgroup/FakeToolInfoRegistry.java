@@ -17,6 +17,12 @@ public final class FakeToolInfoRegistry {
 
     private final Map<String, ToolInfo> toolInfosByName = new ConcurrentHashMap<>();
 
+    /**
+     * Registers a defensive copy of a tool description.
+     *
+     * @param toolInfo tool description to register
+     * @return independent copy of the registered tool description
+     */
     public ToolInfo register(ToolInfo toolInfo) {
         ToolInfo storedToolInfo = copyToolInfo(toolInfo);
         ToolInfo existingToolInfo =
@@ -27,14 +33,29 @@ public final class FakeToolInfoRegistry {
         return copyToolInfo(storedToolInfo);
     }
 
+    /**
+     * Removes a tool description by name.
+     *
+     * @param toolName name of the tool to remove
+     * @return true if a tool was removed
+     */
     public boolean unregister(String toolName) {
         return toolInfosByName.remove(toolName) != null;
     }
 
+    /**
+     * Removes all registered tool descriptions.
+     *
+     */
     public void clear() {
         toolInfosByName.clear();
     }
 
+    /**
+     * Lists registered tool descriptions sorted by name.
+     *
+     * @return immutable list of copied tool descriptions
+     */
     public List<ToolInfo> listToolInfos() {
         return toolInfosByName.values().stream()
                 .sorted(Comparator.comparing(ToolInfo::getName))
@@ -42,19 +63,41 @@ public final class FakeToolInfoRegistry {
                 .toList();
     }
 
+    /**
+     * Lists registered tool names in sorted order.
+     *
+     * @return immutable sorted tool-name list
+     */
     public List<String> listToolNames() {
         return toolInfosByName.values().stream().map(ToolInfo::getName).sorted().toList();
     }
 
+    /**
+     * Finds a copied tool description by name.
+     *
+     * @param toolName tool name to find
+     * @return matching tool description, or empty when absent
+     */
     public Optional<ToolInfo> findToolInfo(String toolName) {
         return Optional.ofNullable(toolInfosByName.get(toolName))
                 .map(FakeToolInfoRegistry::copyToolInfo);
     }
 
+    /**
+     * Returns whether a tool name is registered.
+     *
+     * @param toolName tool name to check
+     * @return true when the name is registered
+     */
     public boolean containsToolName(String toolName) {
         return toolInfosByName.containsKey(toolName);
     }
 
+    /**
+     * Returns the number of registered tool descriptions.
+     *
+     * @return registered tool count
+     */
     public int toolCount() {
         return toolInfosByName.size();
     }
