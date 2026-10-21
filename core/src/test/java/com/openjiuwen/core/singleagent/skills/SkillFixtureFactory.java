@@ -38,9 +38,9 @@ public final class SkillFixtureFactory {
         }
     }
 
-    public record SkillFixture(SkillFixtureSource source, Path skillFile) {}
-
     private SkillFixtureFactory() {}
+
+    public record SkillFixture(SkillFixtureSource source, Path skillFile) {}
 
     /**
      * Writes a Skill fixture beneath the source-specific repository directory.

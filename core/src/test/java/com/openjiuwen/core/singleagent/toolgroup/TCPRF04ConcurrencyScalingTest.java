@@ -68,12 +68,9 @@ class TCPRF04ConcurrencyScalingTest {
                 index -> new TestSession("session-" + index),
                 (index, session) ->
                         runSessionRounds(
-                                agent,
+                                new SessionTestContext(agent, session, failures, totalNanos),
                                 index,
-                                session,
-                                roundsPerSession,
-                                failures,
-                                totalNanos));
+                                roundsPerSession));
 
         long avgMicros = totalNanos.get() / (concurrency * roundsPerSession * 2) / 1000;
         System.out.printf(
@@ -83,14 +80,7 @@ class TCPRF04ConcurrencyScalingTest {
     }
 
     private static void runSessionRounds(
-            TestAgent agent,
-            int index,
-            AgentSessionApi session,
-            int roundsPerSession,
-            AtomicInteger failures,
-            AtomicLong totalNanos) {
-        SessionTestContext testContext =
-                new SessionTestContext(agent, session, failures, totalNanos);
+            SessionTestContext testContext, int index, int roundsPerSession) {
         boolean shouldActivateA = index % 2 == 0;
         for (int round = 0; round < roundsPerSession; round++) {
             long start = System.nanoTime();

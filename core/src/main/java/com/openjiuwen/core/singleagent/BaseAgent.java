@@ -143,61 +143,45 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     }
 
     private ToolCard skillMetaToolCard() {
-        ToolCard metaToolCard =
-                ToolCard.builder()
-                        .id("skill_tool")
-                        .name("skill_tool")
-                        .description(
-                                "Read skill documents. Select a skill by skill_name, skill_id, or"
-                                    + " skill_path; use relative_path='SKILL.md' for the main"
-                                    + " document or a relative path for extra files.")
-                        .inputParams(
-                                Map.of(
-                                        "type", "object",
-                                        "properties",
-                                                Map.of(
-                                                        "skill_name",
-                                                                Map.of(
-                                                                        "type",
-                                                                        "string",
-                                                                        "description",
-                                                                        "Name of the skill to"
-                                                                            + " read"),
-                                                        "skill_id",
-                                                                Map.of(
-                                                                        "type",
-                                                                        "string",
-                                                                        "description",
-                                                                        "Optional stable Skill id."
-                                                                            + " Prefer this to"
-                                                                            + " select a"
-                                                                            + " non-default Skill"
-                                                                            + " layer."),
-                                                        "skill_path",
-                                                                Map.of(
-                                                                        "type",
-                                                                        "string",
-                                                                        "description",
-                                                                        "Optional trusted Skill"
-                                                                            + " directory or"
-                                                                            + " SKILL.md path. Must"
-                                                                            + " resolve to a"
-                                                                            + " registered"
-                                                                            + " repository."),
-                                                        "relative_path",
-                                                                Map.of(
-                                                                        "type",
-                                                                        "string",
-                                                                        "description",
-                                                                        "Relative path within skill"
-                                                                            + " directory (default:"
-                                                                            + " SKILL.md)")),
-                                        "required", List.of()))
-                        .stateless(true)
-                        .parallelSafe(true)
-                        .idempotent(true)
-                        .build();
-        return metaToolCard;
+        return ToolCard.builder()
+                .id("skill_tool")
+                .name("skill_tool")
+                .description(
+                        "Read skill documents. Select a skill by skill_name, skill_id, or"
+                            + " skill_path; use relative_path='SKILL.md' for the main"
+                            + " document or a relative path for extra files.")
+                .inputParams(skillMetaToolParameters())
+                .stateless(true)
+                .parallelSafe(true)
+                .idempotent(true)
+                .build();
+    }
+
+    private Map<String, Object> skillMetaToolParameters() {
+        return Map.of(
+                "type", "object",
+                "properties", skillMetaToolProperties(),
+                "required", List.of());
+    }
+
+    private Map<String, Object> skillMetaToolProperties() {
+        return Map.of(
+                "skill_name", skillMetaToolProperty("Name of the skill to read"),
+                "skill_id",
+                        skillMetaToolProperty(
+                                "Optional stable Skill id. Prefer this to select a non-default"
+                                        + " Skill layer."),
+                "skill_path",
+                        skillMetaToolProperty(
+                                "Optional trusted Skill directory or SKILL.md path. Must resolve"
+                                        + " to a registered repository."),
+                "relative_path",
+                        skillMetaToolProperty(
+                                "Relative path within skill directory (default: SKILL.md)"));
+    }
+
+    private Map<String, Object> skillMetaToolProperty(String description) {
+        return Map.of("type", "string", "description", description);
     }
 
     private Map<String, Object> invokeSkillMetaTool(Map<String, Object> inputs) {

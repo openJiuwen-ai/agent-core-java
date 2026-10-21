@@ -272,24 +272,14 @@ class TCPRF03RealLlmPerformanceTest {
     }
 
     private Sample invokeStreaming(StreamRequest request) throws Exception {
+        ModelInvokeOptions options = modelInvokeOptions(request);
+        long start = System.nanoTime();
         List<BaseMessage> messages =
                 List.of(
                         new SystemMessage(
                                 "You are a tool routing benchmark. Select exactly one tool and do"
                                         + " not answer in prose."),
                         new UserMessage(request.task().prompt()));
-        ModelInvokeOptions options =
-                ModelInvokeOptions.builder()
-                        .tools(
-                                request.tools().stream()
-                                        .map(TCPRF03RealLlmPerformanceTest::toOpenAiFormat)
-                                        .toList())
-                        .temperature(0.0F)
-                        .topP(0.1F)
-                        .maxTokens(128)
-                        .timeout(120.0F)
-                        .build();
-        long start = System.nanoTime();
         long firstTokenNanos = 0L;
         AssistantMessageChunk merged = null;
         Iterator<AssistantMessageChunk> iterator = modelClient.stream(messages, options);
@@ -319,6 +309,19 @@ class TCPRF03RealLlmPerformanceTest {
                 usage == null ? 0 : usage.getOutputTokens(),
                 firstTokenNanos / 1_000_000L,
                 totalNanos / 1_000_000L);
+    }
+
+    private ModelInvokeOptions modelInvokeOptions(StreamRequest request) {
+        return ModelInvokeOptions.builder()
+                .tools(
+                        request.tools().stream()
+                                .map(TCPRF03RealLlmPerformanceTest::toOpenAiFormat)
+                                .toList())
+                .temperature(0.0F)
+                .topP(0.1F)
+                .maxTokens(128)
+                .timeout(120.0F)
+                .build();
     }
 
     private record StreamRequest(
