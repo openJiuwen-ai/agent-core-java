@@ -272,13 +272,12 @@ class TCPRF03RealLlmPerformanceTest {
     }
 
     private Sample invokeStreaming(StreamRequest request) throws Exception {
-        Task task = request.task();
         List<BaseMessage> messages =
                 List.of(
                         new SystemMessage(
                                 "You are a tool routing benchmark. Select exactly one tool and do"
                                         + " not answer in prose."),
-                        new UserMessage(task.prompt()));
+                        new UserMessage(request.task().prompt()));
         ModelInvokeOptions options =
                 ModelInvokeOptions.builder()
                         .tools(
@@ -314,7 +313,7 @@ class TCPRF03RealLlmPerformanceTest {
                 request.concurrency(),
                 request.round(),
                 request.requestIndex(),
-                task.expectedTool(),
+                request.task().expectedTool(),
                 selectedTool(merged),
                 usage == null ? 0 : usage.getInputTokens(),
                 usage == null ? 0 : usage.getOutputTokens(),

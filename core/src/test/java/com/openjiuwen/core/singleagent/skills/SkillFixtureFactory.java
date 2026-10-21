@@ -19,6 +19,9 @@ import java.util.Objects;
 public final class SkillFixtureFactory {
     private static final String SKILL_FILE_NAME = "SKILL.md";
 
+    /**
+     * Repository types supported by Skill fixtures.
+     */
     public enum SkillFixtureSource {
         CLASSPATH("classpath"),
         FILESYSTEM("filesystem"),

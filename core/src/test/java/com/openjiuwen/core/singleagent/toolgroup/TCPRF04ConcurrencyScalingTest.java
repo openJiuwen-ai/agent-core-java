@@ -89,29 +89,32 @@ class TCPRF04ConcurrencyScalingTest {
             int roundsPerSession,
             AtomicInteger failures,
             AtomicLong totalNanos) {
+        SessionTestContext testContext =
+                new SessionTestContext(agent, session, failures, totalNanos);
         boolean shouldActivateA = index % 2 == 0;
         for (int round = 0; round < roundsPerSession; round++) {
             long start = System.nanoTime();
-            activateSessionGroup(agent, session, shouldActivateA);
-            List<String> visible = visibleToolNames(agent, session);
-            totalNanos.addAndGet(System.nanoTime() - start);
+            activateSessionGroup(testContext, shouldActivateA);
+            List<String> visible = visibleToolNames(testContext);
+            testContext.totalNanos().addAndGet(System.nanoTime() - start);
             if (hasUnexpectedVisibleTools(visible, shouldActivateA)) {
-                failures.incrementAndGet();
+                testContext.failures().incrementAndGet();
             }
-            deactivateSessionGroup(agent, session, shouldActivateA);
-            if (visibleToolNames(agent, session).size() != 40) {
-                failures.incrementAndGet();
+            deactivateSessionGroup(testContext, shouldActivateA);
+            if (visibleToolNames(testContext).size() != 40) {
+                testContext.failures().incrementAndGet();
             }
         }
     }
 
     private static void activateSessionGroup(
-            TestAgent agent, AgentSessionApi session, boolean shouldActivateA) {
-        agent.activateToolGroup(shouldActivateA ? "group_a" : "group_b", session);
+            SessionTestContext testContext, boolean shouldActivateA) {
+        testContext.agent().activateToolGroup(
+                shouldActivateA ? "group_a" : "group_b", testContext.session());
     }
 
-    private static List<String> visibleToolNames(TestAgent agent, AgentSessionApi session) {
-        return agent.listEffectiveToolInfo(session).stream()
+    private static List<String> visibleToolNames(SessionTestContext testContext) {
+        return testContext.agent().listEffectiveToolInfo(testContext.session()).stream()
                 .map(ToolInfo::getName)
                 .toList();
     }
@@ -126,9 +129,16 @@ class TCPRF04ConcurrencyScalingTest {
     }
 
     private static void deactivateSessionGroup(
-            TestAgent agent, AgentSessionApi session, boolean shouldActivateA) {
-        agent.deactivateToolGroup(shouldActivateA ? "group_a" : "group_b", session);
+            SessionTestContext testContext, boolean shouldActivateA) {
+        testContext.agent().deactivateToolGroup(
+                shouldActivateA ? "group_a" : "group_b", testContext.session());
     }
+
+    private record SessionTestContext(
+            TestAgent agent,
+            AgentSessionApi session,
+            AtomicInteger failures,
+            AtomicLong totalNanos) {}
 
     private static void registerGlobalTool(TestAgent agent, String name) {
         LocalFunction tool =

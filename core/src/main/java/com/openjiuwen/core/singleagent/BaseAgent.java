@@ -137,6 +137,12 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     }
 
     private void registerSkillMetaTool() {
+        LocalFunction metaTool =
+                new LocalFunction(skillMetaToolCard(), this::invokeSkillMetaTool);
+        abilityManager.addAbility(metaTool.getCard(), metaTool);
+    }
+
+    private ToolCard skillMetaToolCard() {
         ToolCard metaToolCard =
                 ToolCard.builder()
                         .id("skill_tool")
@@ -191,11 +197,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                         .parallelSafe(true)
                         .idempotent(true)
                         .build();
-        LocalFunction metaTool =
-                new LocalFunction(
-                        metaToolCard,
-                        this::invokeSkillMetaTool);
-        abilityManager.addAbility(metaTool.getCard(), metaTool);
+        return metaToolCard;
     }
 
     private Map<String, Object> invokeSkillMetaTool(Map<String, Object> inputs) {
