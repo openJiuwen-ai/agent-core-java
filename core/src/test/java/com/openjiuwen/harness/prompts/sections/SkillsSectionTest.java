@@ -34,11 +34,12 @@ class SkillsSectionTest {
         String line = SkillsSection.buildSkillLine(1, "browser", "Inspect pages",
                 "skills/browser/SKILL.md", Map.of("id", "filesystem/browser", "source", "filesystem"));
 
-        assertEquals("""
-                1. browser: Inspect pages
-                   ID: filesystem/browser
-                   Source: filesystem
-                   Path: skills/browser/SKILL.md""", line);
+        assertEquals(
+                "1. browser: Inspect pages\n"
+                + "   ID: filesystem/browser\n"
+                + "   Source: filesystem\n"
+                + "   Path: skills/browser/SKILL.md",
+                line);
     }
 
     @Test

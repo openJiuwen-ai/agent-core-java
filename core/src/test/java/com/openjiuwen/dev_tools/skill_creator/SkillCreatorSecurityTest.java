@@ -17,7 +17,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 class SkillCreatorSecurityTest {
-    @TempDir Path tempDir;
+    @TempDir
+    Path tempDir;
 
     @Test
     void resolvesOutputOnlyWithinAllowedRoot() throws IOException {

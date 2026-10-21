@@ -16,7 +16,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 class SkillFixtureFactoryTest {
-    @TempDir private Path tempDirectory;
+    @TempDir
+    private Path tempDirectory;
 
     @Test
     void writeSkill_whenThreeSourcesRequested_createsDistinctFiles() throws IOException {

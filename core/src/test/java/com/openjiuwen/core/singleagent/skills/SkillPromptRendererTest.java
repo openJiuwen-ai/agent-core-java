@@ -14,7 +14,8 @@ import java.nio.file.Path;
 
 @Tag("issue196-w9")
 class SkillPromptRendererTest {
-    @TempDir private Path tempDir;
+    @TempDir
+    private Path tempDir;
 
     @Test
     @Tag("TC-SKL-04")

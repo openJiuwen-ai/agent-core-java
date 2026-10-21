@@ -13,7 +13,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 
 class HarnessBashToolCompatibilityTest {
-    @TempDir Path tempDir;
+    @TempDir
+    Path tempDir;
 
     @Test
     void bashToolShouldExecuteCommandAndInterpretGrepExit() {

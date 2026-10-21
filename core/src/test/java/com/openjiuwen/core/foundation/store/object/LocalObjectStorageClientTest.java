@@ -19,7 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 class LocalObjectStorageClientTest {
-    @TempDir Path tempDir;
+    @TempDir
+    Path tempDir;
 
     @Test
     void storesSingleLevelNamesWithinConfiguredRoot() throws Exception {

@@ -24,7 +24,8 @@ import java.util.stream.Collectors;
 
 @Tag("issue196-w6")
 class SkillManagerRepositoryTest {
-    @TempDir private Path tempDir;
+    @TempDir
+    private Path tempDir;
 
     @Test
     void setRepositories_getAllReturnsMergedSnapshot() throws IOException {

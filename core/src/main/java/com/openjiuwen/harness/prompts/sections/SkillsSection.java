@@ -21,83 +21,67 @@ public final class SkillsSection {
     private static final int PRIORITY = 40;
 
     private static final String LIST_SKILL_CN =
-            """
-            你是一个技能选择器。
-            你的任务是为给定的用户任务选择最相关的技能。
-            仅返回一个 JSON 对象。
-            输出格式：
-            {
-              "skills": ["skill_name_1", "skill_name_2"]
-            }
-            """;
+            "你是一个技能选择器。\n"
+            + "你的任务是为给定的用户任务选择最相关的技能。\n"
+            + "仅返回一个 JSON 对象。\n"
+            + "输出格式：\n"
+            + "{\n"
+            + "  \"skills\": [\"skill_name_1\", \"skill_name_2\"]\n"
+            + "}\n";
 
     private static final String LIST_SKILL_EN =
-            """
-            You are a list_skill selector.
-            Your task is to select the most relevant skills for the given user task.
-            Return a JSON object only.
-            Output format:
-            {
-              "skills": ["skill_name_1", "skill_name_2"]
-            }
-            """;
+            "You are a list_skill selector.\n"
+            + "Your task is to select the most relevant skills for the given user task.\n"
+            + "Return a JSON object only.\n"
+            + "Output format:\n"
+            + "{\n"
+            + "  \"skills\": [\"skill_name_1\", \"skill_name_2\"]\n"
+            + "}\n";
 
     private static final String ALL_MODE_HEADER_CN =
-            """
-            # 技能
-
-            执行前先用 skill_tool 阅读相关 SKILL.md。
-
-            可用技能：
-            """;
+            "# 技能\n"
+            + "\n"
+            + "执行前先用 skill_tool 阅读相关 SKILL.md。\n"
+            + "\n"
+            + "可用技能：\n";
 
     private static final String ALL_MODE_HEADER_EN =
-            """
-            # Skills
-
-            Read the relevant SKILL.md using skill_tool before execution.
-
-            Available skills:
-            """;
+            "# Skills\n"
+            + "\n"
+            + "Read the relevant SKILL.md using skill_tool before execution.\n"
+            + "\n"
+            + "Available skills:\n";
 
     private static final String ALL_MODE_INSTRUCTION_CN = "\n选择最相关的技能，先阅读其 SKILL.md 再执行。";
     private static final String ALL_MODE_INSTRUCTION_EN =
             "\nSelect the most relevant skill by reading its SKILL.md with skill_tool first.";
 
     private static final String AUTO_LIST_CN =
-            """
-            # 技能
-
-            需要时先调用 list_skill 查看可用技能，再用 skill_tool 读取相关 SKILL.md 后执行。
-            需要时使用 code 执行 Python 或 JavaScript；执行 shell 命令时，根据运行环境信息选择合适的 shell
-            （Windows 按 Git Bash/PowerShell 可用性选择，Linux/macOS 通常使用 bash/sh）。
-            """;
+            "# 技能\n"
+            + "\n"
+            + "需要时先调用 list_skill 查看可用技能，再用 skill_tool 读取相关 SKILL.md 后执行。\n"
+            + "需要时使用 code 执行 Python 或 JavaScript；执行 shell 命令时，根据运行环境信息选择合适的 shell\n"
+            + "（Windows 按 Git Bash/PowerShell 可用性选择，Linux/macOS 通常使用 bash/sh）。\n";
 
     private static final String AUTO_LIST_EN =
-            """
-            # Skills
-
-            When needed, call list_skill first to see available skills,
-            then read the relevant SKILL.md with skill_tool before execution.
-            Use code for Python or JavaScript snippets when needed.
-            For shell commands, choose the shell according to the runtime environment information
-            (Windows depends on Git Bash/PowerShell availability; Linux/macOS usually use bash/sh).
-            """;
+            "# Skills\n"
+            + "\n"
+            + "When needed, call list_skill first to see available skills,\n"
+            + "then read the relevant SKILL.md with skill_tool before execution.\n"
+            + "Use code for Python or JavaScript snippets when needed.\n"
+            + "For shell commands, choose the shell according to the runtime environment information\n"
+            + "(Windows depends on Git Bash/PowerShell availability; Linux/macOS usually use bash/sh).\n";
 
     private static final String NO_SKILL_CN =
-            """
-            # 技能
-
-            当前任务没有选择任何技能。如有技能信息可用，请用 skill_tool 阅读相关 SKILL.md。
-            """;
+            "# 技能\n"
+            + "\n"
+            + "当前任务没有选择任何技能。如有技能信息可用，请用 skill_tool 阅读相关 SKILL.md。\n";
 
     private static final String NO_SKILL_EN =
-            """
-# Skills
-
-No skill was selected for this task. When skill information is available, read the relevant \
-SKILL.md using skill_tool.
-""";
+            "# Skills\n"
+            + "\n"
+            + "No skill was selected for this task. When skill information is available, read the relevant "
+            + "SKILL.md using skill_tool.\n";
 
     private SkillsSection() {}
 

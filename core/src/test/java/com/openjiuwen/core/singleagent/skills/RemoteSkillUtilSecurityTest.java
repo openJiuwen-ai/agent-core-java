@@ -16,7 +16,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 class RemoteSkillUtilSecurityTest {
-    @TempDir Path tempDir;
+    @TempDir
+    Path tempDir;
 
     @Test
     void resolvesNestedSkillFilesWithinBaseDirectory() throws Exception {

@@ -97,7 +97,8 @@ class TCPRF03RealLlmPerformanceTest {
     private static List<Integer> concurrencyLevels;
     private static int maxParallelRequests;
 
-    @TempDir private Path tempDir;
+    @TempDir
+    private Path tempDir;
 
     @BeforeAll
     static void requireRealLlmEnvironment() {

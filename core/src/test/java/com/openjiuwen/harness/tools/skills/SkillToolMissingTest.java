@@ -28,7 +28,8 @@ import java.util.Map;
  */
 class SkillToolMissingTest {
 
-    @TempDir private Path tempDir;
+    @TempDir
+    private Path tempDir;
 
     @Test
     void skillToolReadsSkillMarkdown() throws Exception {

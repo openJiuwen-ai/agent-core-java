@@ -457,10 +457,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                     }
                     String implicitGroupName = "skill:" + binding.getSkillName();
                     List<String> toolNames = new ArrayList<>();
-                    for (Tool tool :
+                    List<Tool> skillTools =
                             skillToolRegistry
                                     .listToolsByActiveSkill(List.of(binding.getSkillName()))
-                                    .getOrDefault(binding.getSkillName(), List.of())) {
+                                    .getOrDefault(binding.getSkillName(), List.of());
+                    for (Tool tool : skillTools) {
                         if (tool != null
                                 && tool.getCard() != null
                                 && tool.getCard().getName() != null
@@ -914,8 +915,8 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         for (ToolInfo toolInfo : abilityManager.listToolInfo()) {
             addToolInfo(merged, sources, toolInfo, "global ability");
         }
-        for (Map.Entry<String, List<Tool>> entry :
-                skillToolRegistry.listToolsByActiveSkill(activeSkillNames).entrySet()) {
+        Map<String, List<Tool>> skillTools = skillToolRegistry.listToolsByActiveSkill(activeSkillNames);
+        for (Map.Entry<String, List<Tool>> entry : skillTools.entrySet()) {
             String source = "active skill '" + entry.getKey() + "'";
             for (Tool tool : entry.getValue()) {
                 if (tool == null || tool.getCard() == null) {

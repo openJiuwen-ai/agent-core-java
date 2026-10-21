@@ -16,7 +16,8 @@ import java.util.Optional;
 @Tag("issue196-w9")
 @Tag("TC-SEC-07")
 class SkillPathValidatorTest {
-    @TempDir private Path tempDir;
+    @TempDir
+    private Path tempDir;
 
     @Test
     void safeRelativePath_isAccepted() {
