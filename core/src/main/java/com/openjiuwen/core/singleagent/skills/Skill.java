@@ -24,7 +24,7 @@ public class Skill {
     private long updateAt;
     private SkillSource source;
     private String id;
-    private boolean protectedSkill;
+    private boolean isProtectedSkill;
 
     public Skill() {
     }
@@ -55,7 +55,7 @@ public class Skill {
         if (id != null && !id.isBlank()) {
             result.put("id", id);
         }
-        if (protectedSkill) {
+        if (isProtectedSkill) {
             result.put("protected", true);
         }
         return result;
@@ -72,7 +72,7 @@ public class Skill {
                 + "\nDirectory: " + directory
                 + "\nSource: " + (source == null ? null : source.value())
                 + "\nId: " + id
-                + "\nProtected: " + protectedSkill;
+                + "\nProtected: " + isProtectedSkill;
     }
 
     public String repr() {
@@ -130,10 +130,10 @@ public class Skill {
     }
 
     public boolean isProtectedSkill() {
-        return protectedSkill;
+        return isProtectedSkill;
     }
 
-    public void setProtectedSkill(boolean protectedSkill) {
-        this.protectedSkill = protectedSkill;
+    public void setProtectedSkill(boolean isProtectedSkill) {
+        this.isProtectedSkill = isProtectedSkill;
     }
 }

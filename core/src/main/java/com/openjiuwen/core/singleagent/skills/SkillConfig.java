@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.skills;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Properties;
 
 /**
@@ -15,26 +16,26 @@ import java.util.Properties;
  */
 public final class SkillConfig {
 
-    public static final boolean DEFAULT_PROTECTED_OVERRIDE_BLOCKED = true;
+    public static final boolean DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED = true;
     public static final int DEFAULT_WORKSPACE_MAX_BYTES = 262144;
-    public static final boolean DEFAULT_ON_DEMAND_LOADING = true;
+    public static final boolean DEFAULT_IS_ON_DEMAND_LOADING = true;
     public static final String PROPERTY_PROTECTED_OVERRIDE_BLOCKED =
             "skill.protected-override-blocked";
     public static final String PROPERTY_WORKSPACE_MAX_BYTES = "skill.workspace-max-bytes";
     public static final String PROPERTY_ON_DEMAND_LOADING = "skill.on-demand-loading";
 
-    private boolean protectedOverrideBlocked = DEFAULT_PROTECTED_OVERRIDE_BLOCKED;
+    private boolean isProtectedOverrideBlocked = DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED;
     private int workspaceMaxBytes = DEFAULT_WORKSPACE_MAX_BYTES;
-    private boolean onDemandLoading = DEFAULT_ON_DEMAND_LOADING;
+    private boolean isOnDemandLoading = DEFAULT_IS_ON_DEMAND_LOADING;
 
     /** Returns whether protected classpath Skills block higher-layer overrides. */
     public boolean isProtectedOverrideBlocked() {
-        return protectedOverrideBlocked;
+        return isProtectedOverrideBlocked;
     }
 
     /** Sets the protected-classpath override policy. */
-    public void setProtectedOverrideBlocked(boolean blocked) {
-        this.protectedOverrideBlocked = blocked;
+    public void setProtectedOverrideBlocked(boolean isBlocked) {
+        this.isProtectedOverrideBlocked = isBlocked;
     }
 
     /** Returns the workspace SKILL.md size limit in bytes. */
@@ -49,12 +50,12 @@ public final class SkillConfig {
 
     /** Returns whether Skill bodies are loaded through {@code skill_tool}. */
     public boolean isOnDemandLoading() {
-        return onDemandLoading;
+        return isOnDemandLoading;
     }
 
     /** Sets the on-demand Skill loading mode. */
-    public void setOnDemandLoading(boolean onDemand) {
-        this.onDemandLoading = onDemand;
+    public void setOnDemandLoading(boolean isOnDemand) {
+        this.isOnDemandLoading = isOnDemand;
     }
 
     /** Builds configuration from Java system properties and environment variables. */
@@ -75,7 +76,7 @@ public final class SkillConfig {
         if (protectedBlocked.isPresent()) {
             config.setProtectedOverrideBlocked(protectedBlocked.get());
         }
-        Optional<Integer> maxBytes =
+        OptionalInt maxBytes =
                 intValue(
                         value(
                                 properties,
@@ -83,7 +84,7 @@ public final class SkillConfig {
                                 PROPERTY_WORKSPACE_MAX_BYTES,
                                 "SKILL_WORKSPACE_MAX_BYTES"));
         if (maxBytes.isPresent()) {
-            config.setWorkspaceMaxBytes(maxBytes.get());
+            config.setWorkspaceMaxBytes(maxBytes.getAsInt());
         }
         Optional<Boolean> onDemand =
                 booleanValue(
@@ -119,15 +120,15 @@ public final class SkillConfig {
         };
     }
 
-    private static Optional<Integer> intValue(Optional<String> value) {
+    private static OptionalInt intValue(Optional<String> value) {
         if (value.isEmpty()) {
-            return Optional.empty();
+            return OptionalInt.empty();
         }
         try {
             int parsed = Integer.parseInt(value.get().trim());
-            return parsed > 0 ? Optional.of(parsed) : Optional.empty();
+            return parsed > 0 ? OptionalInt.of(parsed) : OptionalInt.empty();
         } catch (NumberFormatException ignored) {
-            return Optional.empty();
+            return OptionalInt.empty();
         }
     }
 }
