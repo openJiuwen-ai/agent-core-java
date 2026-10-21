@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agentteams.observability;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
@@ -19,8 +21,6 @@ import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Regression test for {@link ObservabilitySetup} flush and shutdown.
@@ -46,7 +46,7 @@ class ObservabilityFlushTimeoutTest {
     private static final int FLUSH_TIMEOUT_MILLIS = 10_000;
 
     @AfterEach
-    void resetSetupState() throws Exception {
+    void resetSetupState() {
         setStaticField("provider", null);
         setStaticField("config", null);
         setStaticField("isInitialized", Boolean.FALSE);
@@ -54,7 +54,7 @@ class ObservabilityFlushTimeoutTest {
 
     @Test
     @DisplayName("forceFlushProvider has delivered the buffered span by the time it returns")
-    void testForceFlushProviderAwaitsExport() throws Exception {
+    void testForceFlushProviderAwaitsExport() {
         SlowExporter exporter = new SlowExporter(EXPORT_DELAY_MILLIS);
         SdkTracerProvider provider = newSlowProvider(exporter);
         setStaticField("provider", provider);
@@ -77,7 +77,7 @@ class ObservabilityFlushTimeoutTest {
 
     @Test
     @DisplayName("shutdownObservability has delivered the buffered span by the time it returns")
-    void testShutdownObservabilityAwaitsExport() throws Exception {
+    void testShutdownObservabilityAwaitsExport() {
         SlowExporter exporter = new SlowExporter(EXPORT_DELAY_MILLIS);
         SdkTracerProvider provider = newSlowProvider(exporter);
         setStaticField("provider", provider);
@@ -116,13 +116,31 @@ class ObservabilityFlushTimeoutTest {
         tracer.spanBuilder("slow_flush_span").startSpan().end();
     }
 
-    private static void setStaticField(String name, Object value) throws Exception {
-        Field field = ObservabilitySetup.class.getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(null, value);
+    /**
+     * Replace a private static field on {@link ObservabilitySetup} for one test.
+     *
+     * <p>Reflection failures are surfaced as an unchecked exception so that test methods do not have
+     * to declare {@link ReflectiveOperationException}.</p>
+     *
+     * @param name  the field name
+     * @param value the value to assign
+     */
+    private static void setStaticField(String name, Object value) {
+        try {
+            Field field = ObservabilitySetup.class.getDeclaredField(name);
+            field.setAccessible(true);
+            field.set(null, value);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("cannot set ObservabilitySetup." + name, e);
+        }
     }
 
-    /** Exporter that takes a fixed time per batch, counting the batches it actually exported. */
+    /**
+     * Exporter that takes a fixed time per batch, counting the batches it actually exported.
+     *
+     * <p>A batch is counted only after its export delay has elapsed, so "counted" is equivalent to
+     * "delivered" for the assertions above.</p>
+     */
     private static final class SlowExporter implements SpanExporter {
         private final long exportDelayMillis;
         private final AtomicInteger exportedBatches = new AtomicInteger();
