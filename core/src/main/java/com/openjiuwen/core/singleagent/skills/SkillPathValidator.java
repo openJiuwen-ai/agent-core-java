@@ -21,7 +21,12 @@ public final class SkillPathValidator {
 
     private SkillPathValidator() {}
 
-    /** Returns whether a Skill-relative path stays inside the Skill directory. */
+    /**
+     * Returns whether a Skill-relative path stays inside the Skill directory.
+     *
+     * @param relativePath path relative to the Skill directory
+     * @return true when the path is non-empty and does not escape the directory
+     */
     public static boolean isSafeRelativePath(String relativePath) {
         if (relativePath == null || relativePath.isBlank()) {
             return false;
@@ -48,7 +53,13 @@ public final class SkillPathValidator {
         }
     }
 
-    /** Resolves a Skill-relative path after rejecting every escape form. */
+    /**
+     * Resolves a Skill-relative path after rejecting every escape form.
+     *
+     * @param skill Skill whose directory is the resolution root
+     * @param relativePath path relative to the Skill directory
+     * @return resolved path, or an empty value when the path is unsafe
+     */
     public static Optional<Path> resolveSafe(Skill skill, String relativePath) {
         if (skill == null || skill.getDirectory() == null || !isSafeRelativePath(relativePath)) {
             return Optional.empty();

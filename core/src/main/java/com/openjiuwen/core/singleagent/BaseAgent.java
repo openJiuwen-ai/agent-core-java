@@ -65,6 +65,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
      * Session state key holding the names of explicitly activated skills.
      */
     public static final String ACTIVE_SKILL_NAMES_STATE_KEY = "active_skill_names";
+
     /**
      * Session state key holding the names of explicitly activated tool groups.
      */
@@ -324,16 +325,41 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         return new SkillUtil(sysOperationId);
     }
 
+    /**
+     * Configures this agent with implementation-specific settings.
+     *
+     * @param config implementation-specific configuration
+     * @return this agent after configuration
+     */
     public abstract BaseAgent configure(Object config);
 
+    /**
+     * Registers a Skill path without replacing an existing Skill.
+     *
+     * @param skillPath Skill file or directory path
+     * @return future completing with true when registration succeeds
+     */
     public CompletionStage<Boolean> registerSkill(String skillPath) {
         return registerSkill(List.of(skillPath));
     }
 
+    /**
+     * Registers a Skill path and controls metadata-name use.
+     *
+     * @param skillPath Skill file or directory path
+     * @param shouldUseMetadataNames whether metadata names override directory names
+     * @return future completing with true when registration succeeds
+     */
     public CompletionStage<Boolean> registerSkill(String skillPath, boolean shouldUseMetadataNames) {
         return registerSkill(List.of(skillPath), shouldUseMetadataNames);
     }
 
+    /**
+     * Registers multiple Skill paths without replacing existing Skills.
+     *
+     * @param skillPaths Skill files or directory paths
+     * @return future completing with true when registration succeeds
+     */
     public CompletionStage<Boolean> registerSkill(List<String> skillPaths) {
         return registerSkill(skillPaths, false);
     }

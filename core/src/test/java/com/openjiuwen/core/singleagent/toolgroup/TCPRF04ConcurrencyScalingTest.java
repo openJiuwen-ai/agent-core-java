@@ -12,7 +12,6 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
 import com.openjiuwen.core.singleagent.BaseAgent;
 
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;

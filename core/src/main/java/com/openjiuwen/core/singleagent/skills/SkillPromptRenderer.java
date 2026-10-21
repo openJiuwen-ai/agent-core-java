@@ -20,7 +20,12 @@ import java.util.Map;
 public final class SkillPromptRenderer {
     private SkillPromptRenderer() {}
 
-    /** Renders safe Skill metadata and omits the SKILL.md body. */
+    /**
+     * Renders safe Skill metadata and omits the SKILL.md body.
+     *
+     * @param skill Skill whose metadata should be rendered
+     * @return metadata lines, or an empty string when the Skill is invalid
+     */
     public static String renderMetadata(Skill skill) {
         if (skill == null || skill.getName() == null || skill.getName().isBlank()) {
             return "";
@@ -43,7 +48,14 @@ public final class SkillPromptRenderer {
         return sb.toString().stripTrailing();
     }
 
-    /** Renders the legacy-compatible prompt line while reusing unified metadata. */
+    /**
+     * Renders the legacy-compatible prompt line while reusing unified metadata.
+     *
+     * @param index Skill position in the prompt
+     * @param skill Skill whose metadata should be rendered
+     * @param isOnDemandLoading whether the Skill body is loaded on demand
+     * @return prompt line, or an empty string when the Skill is invalid
+     */
     public static String renderPromptLine(int index, Skill skill, boolean isOnDemandLoading) {
         String metadata = renderMetadata(skill);
         if (metadata.isEmpty()) {

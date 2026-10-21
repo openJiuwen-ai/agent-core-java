@@ -17,15 +17,20 @@ import java.util.Properties;
 public final class SkillConfig {
     /** Default value for blocking protected-classpath overrides. */
     public static final boolean DEFAULT_IS_PROTECTED_OVERRIDE_BLOCKED = true;
+
     /** Default workspace SKILL.md size limit in bytes. */
     public static final int DEFAULT_WORKSPACE_MAX_BYTES = 262144;
+
     /** Default value for on-demand Skill loading. */
     public static final boolean DEFAULT_IS_ON_DEMAND_LOADING = true;
+
     /** System property for the protected-classpath override policy. */
     public static final String PROPERTY_PROTECTED_OVERRIDE_BLOCKED =
             "skill.protected-override-blocked";
+
     /** System property for the workspace SKILL.md size limit. */
     public static final String PROPERTY_WORKSPACE_MAX_BYTES = "skill.workspace-max-bytes";
+
     /** System property for on-demand Skill loading. */
     public static final String PROPERTY_ON_DEMAND_LOADING = "skill.on-demand-loading";
 

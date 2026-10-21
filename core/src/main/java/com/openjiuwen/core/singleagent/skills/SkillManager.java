@@ -124,11 +124,26 @@ public class SkillManager {
         return isProtectedOverrideBlocked;
     }
 
+    /**
+     * Registers a Skill path without replacing an existing Skill of the same name.
+     *
+     * @param skillPath skill file or directory path
+     * @return registered Skill, or null when no valid Skill is found
+     * @throws IOException if the path cannot be resolved or read
+     */
     public Skill register(Path skillPath) throws IOException {
         List<Skill> registered = register(List.of(skillPath), false);
         return registered.isEmpty() ? null : registered.get(0);
     }
 
+    /**
+     * Registers a Skill path and optionally replaces an existing Skill.
+     *
+     * @param skillPath skill file or directory path
+     * @param shouldOverwrite whether existing Skills may be replaced
+     * @return registered Skills in path order
+     * @throws IOException if the path cannot be resolved or read
+     */
     public List<Skill> register(Path skillPath, boolean shouldOverwrite) throws IOException {
         return register(skillPath, shouldOverwrite, false);
     }
@@ -150,6 +165,14 @@ public class SkillManager {
         return register(List.of(skillPath), shouldOverwrite, shouldUseMetadataName);
     }
 
+    /**
+     * Registers all Skills found in the supplied paths with explicit overwrite control.
+     *
+     * @param skillPaths skill files or directory paths
+     * @param shouldOverwrite whether existing Skills may be replaced
+     * @return registered Skills in path order
+     * @throws IOException if a path cannot be resolved or read
+     */
     public List<Skill> register(List<Path> skillPaths, boolean shouldOverwrite) throws IOException {
         return register(skillPaths, shouldOverwrite, false);
     }
@@ -549,7 +572,11 @@ public class SkillManager {
         return entries;
     }
 
-    /** Get all registered skills in directory traversal order, deduplicated by name. */
+    /**
+     * Gets all registered Skills in directory traversal order, deduplicated by name.
+     *
+     * @return registered Skills in traversal order
+     */
     public List<Skill> getAllInOrder() {
         List<Skill> result = new ArrayList<>();
         Set<String> seenNames = new LinkedHashSet<>();
@@ -569,7 +596,12 @@ public class SkillManager {
         return result;
     }
 
-    /** Find a registered skill by its absolute normalized directory path. */
+    /**
+     * Finds a registered Skill by its absolute normalized directory path.
+     *
+     * @param directoryPath absolute normalized Skill directory path
+     * @return matching Skill, or null when no Skill is registered
+     */
     Skill findSkillByDirectory(String directoryPath) {
         if (directoryPath == null) {
             return null;

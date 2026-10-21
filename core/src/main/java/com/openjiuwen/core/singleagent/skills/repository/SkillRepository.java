@@ -18,9 +18,17 @@ import java.util.List;
  * @since 0.1.17
  */
 public interface SkillRepository {
-    /** Returns the origin layer represented by this repository. */
+    /**
+     * Returns the origin layer represented by this repository.
+     *
+     * @return repository origin layer
+     */
     SkillSource source();
 
-    /** Loads a read-only snapshot of every valid Skill in this layer. */
+    /**
+     * Loads a read-only snapshot of every valid Skill in this layer.
+     *
+     * @return immutable list of valid Skills
+     */
     List<Skill> loadAll();
 }

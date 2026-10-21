@@ -28,12 +28,23 @@ public final class SkillDocumentLoader {
 
     private SkillDocumentLoader() {}
 
-    /** Reads the main document for a resolved Skill. */
+    /**
+     * Reads the main document for a resolved Skill using the default configuration.
+     *
+     * @param skill Skill whose main document should be read
+     * @return document content, or an empty value when it cannot be read
+     */
     public static Optional<String> readMainDocument(Skill skill) {
         return readMainDocument(skill, SkillConfig.fromEnvironment());
     }
 
-    /** Reads the main document with the configured workspace size limit. */
+    /**
+     * Reads the main document with the configured workspace size limit.
+     *
+     * @param skill Skill whose main document should be read
+     * @param config Skill configuration supplying the workspace size limit
+     * @return document content, or an empty value when it cannot be read
+     */
     public static Optional<String> readMainDocument(Skill skill, SkillConfig config) {
         if (skill == null) {
             return Optional.empty();
@@ -61,12 +72,25 @@ public final class SkillDocumentLoader {
         return Optional.empty();
     }
 
-    /** Reads a controlled relative document inside the same Skill directory. */
+    /**
+     * Reads a controlled relative document inside the same Skill directory.
+     *
+     * @param skill Skill containing the relative document
+     * @param relativePath document path relative to the Skill directory
+     * @return document content, or an empty value when it cannot be read safely
+     */
     public static Optional<String> readRelativeDocument(Skill skill, String relativePath) {
         return readRelativeDocument(skill, relativePath, SkillConfig.fromEnvironment());
     }
 
-    /** Reads a controlled relative document with the configured workspace size limit. */
+    /**
+     * Reads a controlled relative document with the configured workspace size limit.
+     *
+     * @param skill Skill containing the relative document
+     * @param relativePath document path relative to the Skill directory
+     * @param config Skill configuration supplying the workspace size limit
+     * @return document content, or an empty value when it cannot be read safely
+     */
     public static Optional<String> readRelativeDocument(
             Skill skill, String relativePath, SkillConfig config) {
         if (skill == null || relativePath == null || relativePath.isBlank()) {
