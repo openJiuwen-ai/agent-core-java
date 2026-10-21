@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.singleagent.toolgroup;
@@ -77,6 +77,8 @@ class TCPRF03RealLlmPerformanceTest {
     private static final Path SUMMARY_LOG = Path.of("target", "tcprf03_real_llm_summary.txt");
     private static final int TOOL_COUNT = 20;
     private static final List<Integer> DEFAULT_CONCURRENCIES = List.of(1, 10, 40);
+    private static final String FULL_MODE = "full";
+    private static final String FILTERED_MODE = "filtered";
     private static final List<Task> TASKS =
             List.of(
                     new Task("Search for today's news headlines.", "tool_search"),
@@ -173,7 +175,6 @@ class TCPRF03RealLlmPerformanceTest {
         List<ToolInfo> fullTools = buildAllTools();
         List<ToolInfo> filteredTools = buildFilteredTools(fullTools);
         assertThat(filteredTools.size()).isLessThan(fullTools.size());
-        List<Sample> samples = new ArrayList<>();
         List<String> summaryLines = new ArrayList<>();
         summaryLines.add("model=" + modelName);
         summaryLines.add("rounds=" + rounds);
@@ -190,8 +191,10 @@ class TCPRF03RealLlmPerformanceTest {
                     + "first_token_ms_avg,first_token_ms_p50,first_token_ms_p95,total_ms_avg,total_ms_p50,"
                     + "total_ms_p95,tool_call_rate");
 
-        for (String mode : List.of("full", "filtered")) {
-            List<ToolInfo> tools = "full".equals(mode) ? fullTools : filteredTools;
+        List<Sample> samples = new ArrayList<>();
+        for (String mode : List.of(FULL_MODE, FILTERED_MODE)) {
+            List<ToolInfo> tools =
+                    FULL_MODE.equals(mode) ? fullTools : filteredTools;
             for (Integer concurrency : concurrencyLevels) {
                 for (int round = 1; round <= rounds; round++) {
                     samples.addAll(runRound(mode, tools, concurrency, round));
@@ -208,17 +211,18 @@ class TCPRF03RealLlmPerformanceTest {
         writeRawSamples(samples);
         summaryLines.add("");
         summaryLines.add("assertion,filtered_avg_prompt_tokens_lt_full");
-        summaryLines.add("full_avg_prompt_tokens=" + averagePromptTokens(samples, "full"));
-        summaryLines.add("filtered_avg_prompt_tokens=" + averagePromptTokens(samples, "filtered"));
+        summaryLines.add(
+                "full_avg_prompt_tokens=" + averagePromptTokens(samples, FULL_MODE));
+        summaryLines.add(
+                "filtered_avg_prompt_tokens=" + averagePromptTokens(samples, FILTERED_MODE));
         writeSummary("REAL LLM CONCURRENCY", summaryLines);
         assertThat(samples).isNotEmpty();
-        assertThat(averagePromptTokens(samples, "filtered"))
-                .isLessThan(averagePromptTokens(samples, "full"));
+        assertThat(averagePromptTokens(samples, FILTERED_MODE))
+                .isLessThan(averagePromptTokens(samples, FULL_MODE));
     }
 
     private List<Sample> runRound(String mode, List<ToolInfo> tools, int concurrency, int round)
             throws IOException, ExecutionException, InterruptedException, TimeoutException {
-        List<Sample> samples = new ArrayList<>();
         AtomicInteger failures = new AtomicInteger();
         int providerParallelism = Math.min(concurrency, maxParallelRequests);
         ExecutorService executor =
@@ -228,8 +232,8 @@ class TCPRF03RealLlmPerformanceTest {
                         0L,
                         TimeUnit.MILLISECONDS,
                         new LinkedBlockingQueue<>());
+        List<Future<Sample>> futures = new ArrayList<>();
         try {
-            List<Future<Sample>> futures = new ArrayList<>();
             for (int requestIndex = 0; requestIndex < concurrency; requestIndex++) {
                 Task task = TASKS.get(requestIndex % TASKS.size());
                 int requestNumber = requestIndex + 1;
@@ -239,20 +243,18 @@ class TCPRF03RealLlmPerformanceTest {
                                         () -> {
                                             try {
                                                 return invokeStreaming(
-                                                        task,
-                                                        tools,
-                                                        mode,
-                                                        concurrency,
-                                                        round,
-                                                        requestNumber);
+                                                        new StreamRequest(
+                                                                task,
+                                                                tools,
+                                                                mode,
+                                                                concurrency,
+                                                                round,
+                                                                requestNumber));
                                             } catch (IOException exception) {
                                                 failures.incrementAndGet();
                                                 throw exception;
                                             }
                                         }));
-            }
-            for (Future<Sample> future : futures) {
-                samples.add(future.get(5, TimeUnit.MINUTES));
             }
         } finally {
             executor.shutdown();
@@ -261,18 +263,16 @@ class TCPRF03RealLlmPerformanceTest {
             }
         }
         assertThat(failures.get()).isZero();
+        List<Sample> samples = new ArrayList<>();
+        for (Future<Sample> future : futures) {
+            samples.add(future.get(5, TimeUnit.MINUTES));
+        }
         assertThat(samples).hasSize(concurrency);
         return samples;
     }
 
-    private Sample invokeStreaming(
-            Task task,
-            List<ToolInfo> tools,
-            String mode,
-            int concurrency,
-            int round,
-            int requestIndex)
-            throws Exception {
+    private Sample invokeStreaming(StreamRequest request) throws Exception {
+        Task task = request.task();
         List<BaseMessage> messages =
                 List.of(
                         new SystemMessage(
@@ -282,7 +282,7 @@ class TCPRF03RealLlmPerformanceTest {
         ModelInvokeOptions options =
                 ModelInvokeOptions.builder()
                         .tools(
-                                tools.stream()
+                                request.tools().stream()
                                         .map(TCPRF03RealLlmPerformanceTest::toOpenAiFormat)
                                         .toList())
                         .temperature(0.0F)
@@ -307,19 +307,28 @@ class TCPRF03RealLlmPerformanceTest {
                 closeable.close();
             }
         }
-        long totalNanos = System.nanoTime() - start;
         UsageMetadata usage = merged == null ? null : merged.getUsageMetadata();
+        long totalNanos = System.nanoTime() - start;
         return new Sample(
-                mode,
-                concurrency,
-                round,
-                requestIndex,
+                request.mode(),
+                request.concurrency(),
+                request.round(),
+                request.requestIndex(),
                 task.expectedTool(),
                 selectedTool(merged),
                 usage == null ? 0 : usage.getInputTokens(),
                 usage == null ? 0 : usage.getOutputTokens(),
                 firstTokenNanos / 1_000_000L,
                 totalNanos / 1_000_000L);
+    }
+
+    private record StreamRequest(
+            Task task,
+            List<ToolInfo> tools,
+            String mode,
+            int concurrency,
+            int round,
+            int requestIndex) {
     }
 
     private static boolean isContentChunk(AssistantMessageChunk chunk) {

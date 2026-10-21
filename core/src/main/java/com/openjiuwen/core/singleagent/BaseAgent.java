@@ -29,6 +29,7 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.singleagent.skills.GitHubTree;
 import com.openjiuwen.core.singleagent.skills.Skill;
+import com.openjiuwen.core.singleagent.skills.SkillConfig;
 import com.openjiuwen.core.singleagent.skills.SkillDocumentLoader;
 import com.openjiuwen.core.singleagent.skills.SkillToolBinding;
 import com.openjiuwen.core.singleagent.skills.SkillToolRegistry;
@@ -193,45 +194,35 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         LocalFunction metaTool =
                 new LocalFunction(
                         metaToolCard,
-                        inputs -> {
-                            Map<String, Object> args = new LinkedHashMap<>();
-                            if (inputs != null) {
-                                inputs.forEach(args::putIfAbsent);
-                            }
-                            Optional<String> skillName = stringArgument(args.get("skill_name"));
-                            Optional<String> skillId = stringArgument(args.get("skill_id"));
-                            Optional<String> skillPath = stringArgument(args.get("skill_path"));
-                            String relativePath =
-                                    String.valueOf(args.getOrDefault("relative_path", "SKILL.md"));
-                            Optional<Skill> skill =
-                                    resolveExplicitOrNamedSkill(skillName, skillId, skillPath);
-                            if (skill.isEmpty()) {
-                                return Map.of("error", "Skill not found: " + skillName);
-                            }
-                            Skill resolvedSkill = skill.get();
-                            com.openjiuwen.core.singleagent.skills.SkillConfig skillConfig =
-                                    skillUtil == null
-                                            ? com.openjiuwen.core.singleagent.skills.SkillConfig
-                                                    .fromEnvironment()
-                                            : skillUtil.getSkillConfig();
-                            java.util.Optional<String> content;
-                            if ("SKILL.md".equalsIgnoreCase(relativePath)) {
-                                content =
-                                        SkillDocumentLoader.readMainDocument(
-                                                resolvedSkill, skillConfig);
-                            } else {
-                                content =
-                                        SkillDocumentLoader.readRelativeDocument(
-                                                resolvedSkill, relativePath, skillConfig);
-                            }
-                            return content.<Object>map(c -> Map.of("content", c))
-                                    .orElseGet(
-                                            () ->
-                                                    Map.of(
-                                                            "error",
-                                                            "Document not found: " + relativePath));
-                        });
+                        this::invokeSkillMetaTool);
         abilityManager.addAbility(metaTool.getCard(), metaTool);
+    }
+
+    private Map<String, Object> invokeSkillMetaTool(Map<String, Object> inputs) {
+        Map<String, Object> args = new LinkedHashMap<>();
+        if (inputs != null) {
+            inputs.forEach(args::putIfAbsent);
+        }
+        Optional<String> skillName = stringArgument(args.get("skill_name"));
+        Optional<String> skillId = stringArgument(args.get("skill_id"));
+        Optional<String> skillPath = stringArgument(args.get("skill_path"));
+        String relativePath = String.valueOf(args.getOrDefault("relative_path", "SKILL.md"));
+        Optional<Skill> skill = resolveExplicitOrNamedSkill(skillName, skillId, skillPath);
+        if (skill.isEmpty()) {
+            return Map.of("error", "Skill not found: " + skillName);
+        }
+        return readSkillDocument(skill.get(), relativePath);
+    }
+
+    private Map<String, Object> readSkillDocument(Skill skill, String relativePath) {
+        SkillConfig skillConfig =
+                skillUtil == null ? SkillConfig.fromEnvironment() : skillUtil.getSkillConfig();
+        Optional<String> content =
+                "SKILL.md".equalsIgnoreCase(relativePath)
+                        ? SkillDocumentLoader.readMainDocument(skill, skillConfig)
+                        : SkillDocumentLoader.readRelativeDocument(skill, relativePath, skillConfig);
+        return content.<Map<String, Object>>map(value -> Map.of("content", value))
+                .orElseGet(() -> Map.of("error", "Document not found: " + relativePath));
     }
 
     private void ensureSkillMetaToolRegistered() {
@@ -244,6 +235,8 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             } else if (!isSkillMetaToolRegistered) {
                 registerSkillMetaTool();
                 isSkillMetaToolRegistered = true;
+            } else {
+                return;
             }
         }
     }
@@ -474,40 +467,45 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             ensureSkillMetaToolRegistered();
             if (bindings != null) {
                 for (SkillToolBinding binding : bindings) {
-                    if (binding == null
-                            || binding.getSkillName() == null
-                            || binding.getSkillName().isBlank()) {
-                        continue;
-                    }
-                    String implicitGroupName = "skill:" + binding.getSkillName();
-                    List<String> toolNames = new ArrayList<>();
-                    List<Tool> skillTools =
-                            skillToolRegistry
-                                    .listToolsByActiveSkill(List.of(binding.getSkillName()))
-                                    .getOrDefault(binding.getSkillName(), List.of());
-                    for (Tool tool : skillTools) {
-                        if (tool != null
-                                && tool.getCard() != null
-                                && tool.getCard().getName() != null
-                                && !tool.getCard().getName().isBlank()) {
-                            toolNames.add(tool.getCard().getName());
-                        }
-                    }
-                    if (!toolNames.isEmpty()) {
-                        toolGroupManager.unregisterToolGroup(implicitGroupName);
-                        ToolGroup implicitGroup =
-                                new ToolGroup(
-                                        implicitGroupName,
-                                        "Implicit group for skill " + binding.getSkillName(),
-                                        toolNames);
-                        toolGroupManager.registerSkillToolGroup(implicitGroup);
-                    }
+                    registerImplicitSkillGroup(binding);
                 }
             }
             return CompletableFuture.completedFuture(true);
         } catch (RuntimeException exception) {
             return CompletableFuture.failedFuture(exception);
         }
+    }
+
+    private void registerImplicitSkillGroup(SkillToolBinding binding) {
+        if (binding == null
+                || binding.getSkillName() == null
+                || binding.getSkillName().isBlank()) {
+            return;
+        }
+        List<String> toolNames = new ArrayList<>();
+        List<Tool> skillTools =
+                skillToolRegistry
+                        .listToolsByActiveSkill(List.of(binding.getSkillName()))
+                        .getOrDefault(binding.getSkillName(), List.of());
+        for (Tool tool : skillTools) {
+            if (tool != null
+                    && tool.getCard() != null
+                    && tool.getCard().getName() != null
+                    && !tool.getCard().getName().isBlank()) {
+                toolNames.add(tool.getCard().getName());
+            }
+        }
+        if (toolNames.isEmpty()) {
+            return;
+        }
+        String implicitGroupName = "skill:" + binding.getSkillName();
+        toolGroupManager.unregisterToolGroup(implicitGroupName);
+        ToolGroup implicitGroup =
+                new ToolGroup(
+                        implicitGroupName,
+                        "Implicit group for skill " + binding.getSkillName(),
+                        toolNames);
+        toolGroupManager.registerSkillToolGroup(implicitGroup);
     }
 
     /**

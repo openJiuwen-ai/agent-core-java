@@ -459,44 +459,7 @@ public class SkillManager {
         for (SkillRepository repository : injectedRepositories) {
             String repositorySource =
                     repository.source() == null ? "unknown" : repository.source().value();
-            for (Skill skill : repository.loadAll()) {
-                if (skill != null && skill.getName() != null && !skill.getName().isBlank()) {
-                    Skill existing = merged.get(skill.getName());
-                    if (existing != null
-                            && existing.isProtectedSkill()
-                            && isProtectedOverrideBlocked) {
-                        Loggers.AGENT.warning(
-                                "SKILL_OVERRIDE_BLOCKED: skill_id={} source={} attempted_source={}"
-                                    + " existing_path={} attempted_path={} protected=true",
-                                skill.getId() != null ? skill.getId() : skill.getName(),
-                                existing.getSource() == null
-                                        ? "unknown"
-                                        : existing.getSource().value(),
-                                repositorySource,
-                                normalizedSkillPath(existing),
-                                normalizedSkillPath(skill));
-                        continue;
-                    }
-                    if (existing != null) {
-                        Loggers.AGENT.info(
-                                "SKILL_OVERRIDE: skill_id={} previous_source={} new_source={}"
-                                    + " path={}",
-                                skill.getId() != null ? skill.getId() : skill.getName(),
-                                existing.getSource() == null
-                                        ? "unknown"
-                                        : existing.getSource().value(),
-                                repositorySource,
-                                normalizedSkillPath(skill));
-                    } else {
-                        Loggers.AGENT.info(
-                                "SKILL_LOAD: skill_id={} source={} path={}",
-                                skill.getId() != null ? skill.getId() : skill.getName(),
-                                repositorySource,
-                                normalizedSkillPath(skill));
-                    }
-                    merged.put(skill.getName(), skill);
-                }
-            }
+            mergeRepositorySkills(merged, repository, repositorySource);
         }
         registry.clear();
         updateAtCache.clear();
@@ -506,6 +469,50 @@ public class SkillManager {
             skillOrder.add(skill.getName());
         }
         Loggers.AGENT.debug("refreshFromRepositories completed, skills count: {}", registry.size());
+    }
+
+    private void mergeRepositorySkills(
+            Map<String, Skill> merged, SkillRepository repository, String repositorySource) {
+        for (Skill skill : repository.loadAll()) {
+            if (skill != null && skill.getName() != null && !skill.getName().isBlank()) {
+                mergeRepositorySkill(merged, skill, repositorySource);
+            }
+        }
+    }
+
+    private void mergeRepositorySkill(
+            Map<String, Skill> merged, Skill skill, String repositorySource) {
+        Skill existing = merged.get(skill.getName());
+        String skillId = skill.getId() == null ? skill.getName() : skill.getId();
+        String existingSource =
+                existing == null || existing.getSource() == null
+                        ? "unknown"
+                        : existing.getSource().value();
+        if (existing == null) {
+            Loggers.AGENT.info(
+                    "SKILL_LOAD: skill_id={} source={} path={}",
+                    skillId,
+                    repositorySource,
+                    normalizedSkillPath(skill));
+        } else if (existing.isProtectedSkill() && isProtectedOverrideBlocked) {
+            Loggers.AGENT.warning(
+                    "SKILL_OVERRIDE_BLOCKED: skill_id={} source={} attempted_source={}"
+                        + " existing_path={} attempted_path={} protected=true",
+                    skillId,
+                    existingSource,
+                    repositorySource,
+                    normalizedSkillPath(existing),
+                    normalizedSkillPath(skill));
+            return;
+        } else {
+            Loggers.AGENT.info(
+                    "SKILL_OVERRIDE: skill_id={} previous_source={} new_source={} path={}",
+                    skillId,
+                    existingSource,
+                    repositorySource,
+                    normalizedSkillPath(skill));
+        }
+        merged.put(skill.getName(), skill);
     }
 
     private static String normalizedSkillPath(Skill skill) {

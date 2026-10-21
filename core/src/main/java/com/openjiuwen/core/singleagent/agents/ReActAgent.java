@@ -1179,12 +1179,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                             InvokeInputs invokeInputs) {
         ExternalResumeValidation validation = validateExternalToolResults(state, externalToolResultsInput(inputs));
         if (!validation.valid()) {
-            Map<String, Object> result = new LinkedHashMap<>(Map.of(
-                    "output", EXTERNAL_TOOL_RESULT_ID_ERROR,
-                    "result_type", "error"
-            ));
-            invokeInputs.setResult(result);
-            return result;
+            return setExternalResumeError(invokeInputs, EXTERNAL_TOOL_RESULT_ID_ERROR);
         }
 
         ToolCall rejectedToolCall = state.getPendingToolCalls().stream()
@@ -1194,13 +1189,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .findFirst()
                 .orElse(null);
         if (rejectedToolCall != null) {
-            Map<String, Object> result = new LinkedHashMap<>(Map.of(
-                    "output", "Tool '" + rejectedToolCall.getName() + "' is not active. "
-                            + "Activate its tool group before resuming execution.",
-                    "result_type", "error"
-            ));
-            invokeInputs.setResult(result);
-            return result;
+            return setExternalResumeError(
+                    invokeInputs,
+                    "Tool '" + rejectedToolCall.getName() + "' is not active. "
+                            + "Activate its tool group before resuming execution.");
         }
 
         AssistantMessage resumeAiMessage = state.getAssistantMessage() == null
@@ -1208,22 +1200,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 : copyAssistantMessage(state.getAssistantMessage());
         ensurePendingAssistantMessagePresent(context, resumeAiMessage, state.getPendingToolCalls());
 
-        List<AbilityManager.ExecutionResult> results = new ArrayList<>();
-        for (ToolCall toolCall : state.getPendingToolCalls()) {
-            if (getAbilityManager().isExternalTool(toolCall.getName())) {
-                ExternalToolResult externalResult = validation.resultsById().get(toolCall.getId());
-                Object value = externalToolMessageValue(externalResult);
-                ToolMessage message = new ToolMessage(AbilityManager.buildToolMessageContent(value),
-                        toolCall.getId(), toolCall.getName());
-                context.addMessages(message).toCompletableFuture().join();
-                results.add(new AbilityManager.ExecutionResult(value, message));
-                continue;
-            }
-            List<AbilityManager.ExecutionResult> executionResults = executeToolCallsAndWriteToolMessages(ctx,
-                    List.of(toolCall), session, context);
-            activateSkillsLoadedByToolCalls(List.of(toolCall), executionResults, session);
-            results.addAll(executionResults);
-        }
+        List<AbilityManager.ExecutionResult> results =
+                executeExternalToolResume(
+                        ctx, context, session, state.getPendingToolCalls(), validation);
         clearExternalToolPendingState(session);
         boolean completed = completeToolExecutionTurn(
                 ctx,
@@ -1238,6 +1217,40 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 ToolExecutionTurnOrigin.EXTERNAL_RESUME
         );
         return completed ? invokeInputs.getResult() : null;
+    }
+
+    private Map<String, Object> setExternalResumeError(InvokeInputs invokeInputs, String output) {
+        Map<String, Object> result = new LinkedHashMap<>(Map.of(
+                "output", output,
+                "result_type", "error"
+        ));
+        invokeInputs.setResult(result);
+        return result;
+    }
+
+    private List<AbilityManager.ExecutionResult> executeExternalToolResume(
+            AgentCallbackContext ctx,
+            ModelContext context,
+            AgentSessionApi session,
+            List<ToolCall> toolCalls,
+            ExternalResumeValidation validation) {
+        List<AbilityManager.ExecutionResult> results = new ArrayList<>();
+        for (ToolCall toolCall : toolCalls) {
+            if (getAbilityManager().isExternalTool(toolCall.getName())) {
+                ExternalToolResult externalResult = validation.resultsById().get(toolCall.getId());
+                Object value = externalToolMessageValue(externalResult);
+                ToolMessage message = new ToolMessage(AbilityManager.buildToolMessageContent(value),
+                        toolCall.getId(), toolCall.getName());
+                context.addMessages(message).toCompletableFuture().join();
+                results.add(new AbilityManager.ExecutionResult(value, message));
+                continue;
+            }
+            List<AbilityManager.ExecutionResult> executionResults = executeToolCallsAndWriteToolMessages(ctx,
+                    List.of(toolCall), session, context);
+            activateSkillsLoadedByToolCalls(List.of(toolCall), executionResults, session);
+            results.addAll(executionResults);
+        }
+        return results;
     }
 
     private enum ToolExecutionTurnOrigin {

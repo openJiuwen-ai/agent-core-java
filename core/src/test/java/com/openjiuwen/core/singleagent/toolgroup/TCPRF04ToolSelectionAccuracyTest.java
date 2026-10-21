@@ -209,33 +209,7 @@ class TCPRF04ToolSelectionAccuracyTest {
     private String invokeAndExtractToolCall(String prompt, List<ToolInfo> tools) {
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
-                List<Map<String, Object>> openAiTools =
-                        tools.stream()
-                                .map(TCPRF04ToolSelectionAccuracyTest::toOpenAiFormat)
-                                .collect(Collectors.toList());
-                List<BaseMessage> messages =
-                        List.of(
-                                new com.openjiuwen.core.foundation.llm.schema.SystemMessage(
-                                        "You are a helpful assistant. Choose the most appropriate"
-                                                + " tool to complete the task."),
-                                new com.openjiuwen.core.foundation.llm.schema.UserMessage(prompt));
-                CompletionStage<AssistantMessage> future =
-                        modelClient.invoke(
-                                messages, ModelInvokeOptions.builder().tools(openAiTools).build());
-                AssistantMessage response = future.toCompletableFuture().get(30, TimeUnit.SECONDS);
-                Map<String, Object> dump = response.modelDump();
-                Object toolCallsObj = dump.get("tool_calls");
-                if (toolCallsObj instanceof List<?> toolCallsList && !toolCallsList.isEmpty()) {
-                    Object firstCall = toolCallsList.get(0);
-                    if (firstCall instanceof Map<?, ?> callMap) {
-                        Object functionObj = callMap.get("function");
-                        if (functionObj instanceof Map<?, ?> functionMap) {
-                            Object nameObj = functionMap.get("name");
-                            return nameObj == null ? "" : nameObj.toString();
-                        }
-                    }
-                }
-                return "";
+                return invokeModelForToolCall(prompt, tools);
             } catch (ExecutionException | InterruptedException | TimeoutException exception) {
                 log(
                         String.format(
@@ -255,6 +229,42 @@ class TCPRF04ToolSelectionAccuracyTest {
             }
         }
         return "";
+    }
+
+    private String invokeModelForToolCall(String prompt, List<ToolInfo> tools)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        List<Map<String, Object>> openAiTools =
+                tools.stream()
+                        .map(TCPRF04ToolSelectionAccuracyTest::toOpenAiFormat)
+                        .collect(Collectors.toList());
+        List<BaseMessage> messages =
+                List.of(
+                        new com.openjiuwen.core.foundation.llm.schema.SystemMessage(
+                                "You are a helpful assistant. Choose the most appropriate"
+                                        + " tool to complete the task."),
+                        new com.openjiuwen.core.foundation.llm.schema.UserMessage(prompt));
+        CompletionStage<AssistantMessage> future =
+                modelClient.invoke(
+                        messages, ModelInvokeOptions.builder().tools(openAiTools).build());
+        AssistantMessage response = future.toCompletableFuture().get(30, TimeUnit.SECONDS);
+        return firstToolCallName(response);
+    }
+
+    private String firstToolCallName(AssistantMessage response) {
+        Object toolCallsObj = response.modelDump().get("tool_calls");
+        if (!(toolCallsObj instanceof List<?> toolCallsList) || toolCallsList.isEmpty()) {
+            return "";
+        }
+        Object firstCall = toolCallsList.get(0);
+        if (!(firstCall instanceof Map<?, ?> callMap)) {
+            return "";
+        }
+        Object functionObj = callMap.get("function");
+        if (!(functionObj instanceof Map<?, ?> functionMap)) {
+            return "";
+        }
+        Object nameObj = functionMap.get("name");
+        return nameObj == null ? "" : nameObj.toString();
     }
 
     private static void log(String message) {

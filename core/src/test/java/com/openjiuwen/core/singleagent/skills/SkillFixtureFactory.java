@@ -19,10 +19,6 @@ import java.util.Objects;
 public final class SkillFixtureFactory {
     private static final String SKILL_FILE_NAME = "SKILL.md";
 
-    /**
-     * Repository types supported by Skill fixtures.
-     *
-     */
     public enum SkillFixtureSource {
         CLASSPATH("classpath"),
         FILESYSTEM("filesystem"),
@@ -34,19 +30,14 @@ public final class SkillFixtureFactory {
             this.directoryName = directoryName;
         }
 
-        /**
-         * Returns the fixture directory name for this source type.
-         *
-         * @return source directory name
-         */
         public String directoryName() {
             return directoryName;
         }
     }
 
-    private SkillFixtureFactory() {}
-
     public record SkillFixture(SkillFixtureSource source, Path skillFile) {}
+
+    private SkillFixtureFactory() {}
 
     /**
      * Writes a Skill fixture beneath the source-specific repository directory.

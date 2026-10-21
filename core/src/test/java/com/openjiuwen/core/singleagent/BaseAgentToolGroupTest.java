@@ -124,7 +124,6 @@ class BaseAgentToolGroupTest {
     @Test
     void skillToolsInExplicitInactiveGroup_remainHidden() {
         TestAgent agent = new TestAgent();
-        MemorySession session = new MemorySession("session-a");
         Tool deleteFile = skillTool("delete_file");
         registerSkill(agent, "CleanupSkill");
         agent.registerSkillTools(
@@ -137,6 +136,7 @@ class BaseAgentToolGroupTest {
         agent.registerToolGroup(
                 new ToolGroup("danger_tools", "Dangerous tools", List.of("delete_file")));
 
+        MemorySession session = new MemorySession("session-a");
         agent.activateSkill("CleanupSkill", session);
 
         assertThat(agent.listEffectiveToolInfo(session))

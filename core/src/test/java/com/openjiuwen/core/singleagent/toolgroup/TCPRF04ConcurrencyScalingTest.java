@@ -10,6 +10,7 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.BaseAgent;
 
 import org.junit.jupiter.api.Test;
@@ -65,52 +66,68 @@ class TCPRF04ConcurrencyScalingTest {
         SessionConcurrencyHarness.runInParallel(
                 concurrency,
                 index -> new TestSession("session-" + index),
-                (index, session) -> {
-                    boolean shouldActivateA = index % 2 == 0;
-                    for (int round = 0; round < roundsPerSession; round++) {
-                        long start = System.nanoTime();
-                        if (shouldActivateA) {
-                            agent.activateToolGroup("group_a", session);
-                        } else {
-                            agent.activateToolGroup("group_b", session);
-                        }
-                        List<String> visible =
-                                agent.listEffectiveToolInfo(session).stream()
-                                        .map(ToolInfo::getName)
-                                        .sorted()
-                                        .toList();
-                        long elapsed = System.nanoTime() - start;
-                        totalNanos.addAndGet(elapsed);
-                        if (shouldActivateA) {
-                            if (visible.size() != 45
-                                    || !visible.contains("tool_0")
-                                    || visible.contains("tool_5")) {
-                                failures.incrementAndGet();
-                            }
-                        } else {
-                            if (visible.size() != 45
-                                    || !visible.contains("tool_5")
-                                    || visible.contains("tool_0")) {
-                                failures.incrementAndGet();
-                            }
-                        }
-
-                        agent.deactivateToolGroup(shouldActivateA ? "group_a" : "group_b", session);
-                        List<String> afterDeactivate =
-                                agent.listEffectiveToolInfo(session).stream()
-                                        .map(ToolInfo::getName)
-                                        .toList();
-                        if (afterDeactivate.size() != 40) {
-                            failures.incrementAndGet();
-                        }
-                    }
-                });
+                (index, session) ->
+                        runSessionRounds(
+                                agent,
+                                index,
+                                session,
+                                roundsPerSession,
+                                failures,
+                                totalNanos));
 
         long avgMicros = totalNanos.get() / (concurrency * roundsPerSession * 2) / 1000;
         System.out.printf(
                 "[ConcScalability] c%d × %d rounds: avg %d µs per toggle+filter, failures=%d%n",
                 concurrency, roundsPerSession, avgMicros, failures.get());
         assertThat(failures.get()).isZero();
+    }
+
+    private static void runSessionRounds(
+            TestAgent agent,
+            int index,
+            AgentSessionApi session,
+            int roundsPerSession,
+            AtomicInteger failures,
+            AtomicLong totalNanos) {
+        boolean shouldActivateA = index % 2 == 0;
+        for (int round = 0; round < roundsPerSession; round++) {
+            long start = System.nanoTime();
+            activateSessionGroup(agent, session, shouldActivateA);
+            List<String> visible = visibleToolNames(agent, session);
+            totalNanos.addAndGet(System.nanoTime() - start);
+            if (hasUnexpectedVisibleTools(visible, shouldActivateA)) {
+                failures.incrementAndGet();
+            }
+            deactivateSessionGroup(agent, session, shouldActivateA);
+            if (visibleToolNames(agent, session).size() != 40) {
+                failures.incrementAndGet();
+            }
+        }
+    }
+
+    private static void activateSessionGroup(
+            TestAgent agent, AgentSessionApi session, boolean shouldActivateA) {
+        agent.activateToolGroup(shouldActivateA ? "group_a" : "group_b", session);
+    }
+
+    private static List<String> visibleToolNames(TestAgent agent, AgentSessionApi session) {
+        return agent.listEffectiveToolInfo(session).stream()
+                .map(ToolInfo::getName)
+                .toList();
+    }
+
+    private static boolean hasUnexpectedVisibleTools(
+            List<String> visible, boolean shouldActivateA) {
+        String activeTool = shouldActivateA ? "tool_0" : "tool_5";
+        String inactiveTool = shouldActivateA ? "tool_5" : "tool_0";
+        return visible.size() != 45
+                || !visible.contains(activeTool)
+                || visible.contains(inactiveTool);
+    }
+
+    private static void deactivateSessionGroup(
+            TestAgent agent, AgentSessionApi session, boolean shouldActivateA) {
+        agent.deactivateToolGroup(shouldActivateA ? "group_a" : "group_b", session);
     }
 
     private static void registerGlobalTool(TestAgent agent, String name) {

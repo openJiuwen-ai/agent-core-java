@@ -33,6 +33,14 @@ public final class ToolGroupTestSupport {
         return toolInfo(name, description, EMPTY_PARAMETERS);
     }
 
+    /**
+     * Creates a function tool description with explicit parameters.
+     *
+     * @param name tool name
+     * @param description tool description
+     * @param parameters tool parameter schema
+     * @return new tool description
+     */
     public static ToolInfo toolInfo(
             String name, String description, Map<String, Object> parameters) {
         return ToolInfo.builder()

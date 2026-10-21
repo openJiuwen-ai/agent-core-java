@@ -34,7 +34,6 @@ class Issue196PerformanceTest {
     @Tag("TC-PRF-02")
     void highFrequencyToggle_maintainsStableState() {
         PerfAgent agent = new PerfAgent();
-        PerfSession session = new PerfSession("perf-session");
         for (int i = 0; i < TOOL_COUNT; i++) {
             registerGlobalTool(agent, "tool_" + i);
         }
@@ -49,6 +48,7 @@ class Issue196PerformanceTest {
                         "Group B",
                         List.of("tool_5", "tool_6", "tool_7", "tool_8", "tool_9")));
 
+        PerfSession session = new PerfSession("perf-session");
         for (int round = 0; round < 100; round++) {
             agent.activateToolGroup("group_a", session);
             List<String> visibleA =
@@ -74,13 +74,11 @@ class Issue196PerformanceTest {
     @Tag("TC-PRF-03")
     void groupedFiltering_reducesToolSchemaCount() {
         PerfAgent unfilteredAgent = new PerfAgent();
-        PerfSession fullSession = new PerfSession("full-session");
         for (int i = 0; i < TOOL_COUNT; i++) {
             registerGlobalTool(unfilteredAgent, "tool_" + i);
         }
 
         PerfAgent filteredAgent = new PerfAgent();
-        PerfSession filteredSession = new PerfSession("filtered-session");
         for (int i = 0; i < TOOL_COUNT; i++) {
             registerGlobalTool(filteredAgent, "tool_" + i);
         }
@@ -90,6 +88,8 @@ class Issue196PerformanceTest {
                         "Focused tools",
                         List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
 
+        PerfSession fullSession = new PerfSession("full-session");
+        PerfSession filteredSession = new PerfSession("filtered-session");
         int fullCount = unfilteredAgent.listEffectiveToolInfo(fullSession).size();
         int filteredCount = filteredAgent.listEffectiveToolInfo(filteredSession).size();
         filteredAgent.activateToolGroup("focused", filteredSession);
@@ -104,13 +104,11 @@ class Issue196PerformanceTest {
     @Test
     void groupedFiltering_reducesEstimatedTokenUsage() {
         PerfAgent unfilteredAgent = new PerfAgent();
-        PerfSession fullSession = new PerfSession("full-token-session");
         for (int i = 0; i < TOOL_COUNT; i++) {
             registerGlobalTool(unfilteredAgent, "tool_" + i);
         }
 
         PerfAgent filteredAgent = new PerfAgent();
-        PerfSession filteredSession = new PerfSession("filtered-token-session");
         for (int i = 0; i < TOOL_COUNT; i++) {
             registerGlobalTool(filteredAgent, "tool_" + i);
         }
@@ -120,6 +118,8 @@ class Issue196PerformanceTest {
                         "Focused tools",
                         List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
 
+        PerfSession fullSession = new PerfSession("full-token-session");
+        PerfSession filteredSession = new PerfSession("filtered-token-session");
         int fullTokens = estimateTokens(unfilteredAgent.listEffectiveToolInfo(fullSession));
         int filteredTokens = estimateTokens(filteredAgent.listEffectiveToolInfo(filteredSession));
 

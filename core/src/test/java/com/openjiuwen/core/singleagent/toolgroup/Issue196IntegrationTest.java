@@ -49,7 +49,6 @@ class Issue196IntegrationTest {
     @Tag("TC-PRF-05")
     void endToEnd_registerActivateFilterRejectSkill() throws Exception {
         IntegrationAgent agent = new IntegrationAgent();
-        MemorySession session = new MemorySession("e2e-session");
 
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
@@ -69,20 +68,13 @@ class Issue196IntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-        assertThat(agent.listEffectiveToolInfo(session))
-                .extracting(ToolInfo::getName)
-                .contains("clock")
-                .contains("skill_tool");
+        MemorySession session = new MemorySession("e2e-session");
+        assertInitialToolInfo(agent, session);
 
         agent.activateToolGroup("research", session);
         session.updateState(Map.of(BaseAgent.ACTIVE_SKILL_NAMES_STATE_KEY, List.of("EnvSkill")));
 
-        List<String> visible =
-                agent.listEffectiveToolInfo(session).stream()
-                        .map(ToolInfo::getName)
-                        .sorted()
-                        .toList();
-        assertThat(visible).contains("clock", "envLookup", "search", "skill_tool");
+        assertActiveToolInfo(agent, session);
 
         ToolCall searchCall = ToolCall.builder().id("c1").name("search").arguments("{}").build();
         List<AbilityManager.ExecutionResult> searchResults =
@@ -90,27 +82,44 @@ class Issue196IntegrationTest {
         assertThat(searchResults.get(0).toolMessage().getContentAsString())
                 .doesNotContain("not active");
 
-        ToolCall dangerCall =
-                ToolCall.builder().id("c2").name("delete_file").arguments("{}").build();
-        List<AbilityManager.ExecutionResult> dangerResults =
-                agent.getAbilityManager().execute(null, dangerCall, session, false);
-        assertThat(dangerResults.get(0).result()).isNull();
-        assertThat(dangerResults.get(0).toolMessage().getContentAsString()).contains("not active");
+        assertInactiveToolRejected(agent, session, "c2", "delete_file");
 
         session.updateState(Map.of(BaseAgent.ACTIVE_SKILL_NAMES_STATE_KEY, List.of()));
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
                 .doesNotContain("envLookup");
 
-        ToolCall skillCall = ToolCall.builder().id("c3").name("envLookup").arguments("{}").build();
-        List<AbilityManager.ExecutionResult> skillResults =
-                agent.getAbilityManager().execute(null, skillCall, session, false);
-        assertThat(skillResults.get(0).toolMessage().getContentAsString()).contains("not active");
+        assertInactiveToolRejected(agent, session, "c3", "envLookup");
 
         agent.deactivateToolGroup("research", session);
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
                 .doesNotContain("search");
+    }
+
+    private void assertInitialToolInfo(IntegrationAgent agent, MemorySession session) {
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .contains("clock")
+                .contains("skill_tool");
+    }
+
+    private void assertActiveToolInfo(IntegrationAgent agent, MemorySession session) {
+        List<String> visible =
+                agent.listEffectiveToolInfo(session).stream()
+                        .map(ToolInfo::getName)
+                        .sorted()
+                        .toList();
+        assertThat(visible).contains("clock", "envLookup", "search", "skill_tool");
+    }
+
+    private void assertInactiveToolRejected(
+            IntegrationAgent agent, MemorySession session, String callId, String toolName) {
+        ToolCall toolCall = ToolCall.builder().id(callId).name(toolName).arguments("{}").build();
+        List<AbilityManager.ExecutionResult> results =
+                agent.getAbilityManager().execute(null, toolCall, session, false);
+        assertThat(results.get(0).result()).isNull();
+        assertThat(results.get(0).toolMessage().getContentAsString()).contains("not active");
     }
 
     @Test
