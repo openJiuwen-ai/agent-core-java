@@ -257,6 +257,8 @@ public final class ToolDecorator {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", new LinkedHashMap<String, Object>());
+        // Map-based callables have no declared parameter names; preserve their input arguments.
+        schema.put("additionalProperties", true);
         return schema;
     }
 

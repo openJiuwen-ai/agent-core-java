@@ -6,6 +6,10 @@ package com.openjiuwen.harness.deepagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.spy;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -28,6 +32,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.mockito.MockedStatic;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -281,6 +286,57 @@ class DeepAgentMcpConcurrentRegistrationTest {
         for (DeepAgent agent : createdAgents) {
             assertThat(agent.getAgent().getAbilityManager().get("facade-lib"))
                     .as("ability entry present for every agent").isPresent();
+        }
+    }
+
+    @Test
+    void sameConfigWinnerIsReusedAfterStaleProbe() throws Exception {
+        installToolMgr(new CountingToolManager());
+        GlobalRegistrySnapshot before = GlobalRegistrySnapshot.take();
+        McpServerConfig winner = facadeConfig("stale-lib", "http://stale");
+        assertThat(resourceMgr.addMcpServer(winner, "stale-owner", null).get(0).isError()).isFalse();
+        registeredServerIds.add("stale-lib");
+        DeepAgent agent = newAgent("stale-agent", facadeConfig("stale-lib", "http://stale"));
+
+        initializeAfterStaleMcpProbe(agent, "stale-lib");
+
+        assertThat(agent.isInitialized()).isTrue();
+        assertThat(totalConnects()).isEqualTo(1);
+        assertThat(resourceMgr.listMcpServers("stale-agent")).extracting(McpServerConfig::getServerId)
+                .containsExactly("stale-lib");
+        assertThat(agent.getAgent().getAbilityManager().get("stale-lib")).isPresent();
+        cleanUpRegisteredState();
+        GlobalRegistrySnapshot.take().assertDeltaZero(before);
+    }
+
+    @Test
+    void conflictingWinnerIsRejectedAfterStaleProbe() throws Exception {
+        installToolMgr(new CountingToolManager());
+        GlobalRegistrySnapshot before = GlobalRegistrySnapshot.take();
+        McpServerConfig winner = facadeConfig("stale-conflict", "http://established");
+        assertThat(resourceMgr.addMcpServer(winner, "stale-owner", null).get(0).isError()).isFalse();
+        registeredServerIds.add("stale-conflict");
+        DeepAgent agent = newAgent("stale-rejected", facadeConfig("stale-conflict", "http://different"));
+
+        assertThatThrownBy(() -> initializeAfterStaleMcpProbe(agent, "stale-conflict"))
+                .isInstanceOf(BaseError.class)
+                .hasMessageContaining("already registered with a different config");
+
+        assertThat(totalConnects()).isEqualTo(1);
+        assertThat(resourceMgr.getMcpServerConfig("stale-conflict").sameConnectionAs(winner)).isTrue();
+        assertThat(resourceMgr.listMcpServers("stale-rejected")).isEmpty();
+        assertThat(agent.getAgent().getAbilityManager().get("stale-conflict")).isEmpty();
+        cleanUpRegisteredState();
+        GlobalRegistrySnapshot.take().assertDeltaZero(before);
+    }
+
+    private void initializeAfterStaleMcpProbe(DeepAgent agent, String serverId) {
+        ResourceMgr observed = spy(resourceMgr);
+        // Reproduce the TOCTOU window without depending on thread scheduling.
+        doReturn(null).doCallRealMethod().when(observed).getMcpServerConfig(serverId);
+        try (MockedStatic<Runner> runner = mockStatic(Runner.class, CALLS_REAL_METHODS)) {
+            runner.when(Runner::resourceMgr).thenReturn(observed);
+            agent.ensureInitialized();
         }
     }
 

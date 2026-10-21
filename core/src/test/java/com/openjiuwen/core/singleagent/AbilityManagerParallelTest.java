@@ -231,7 +231,9 @@ class AbilityManagerParallelTest {
         Runner.resourceMgr().removeTool(name, null, TagMatchStrategy.ALL, true);
         LocalFunction tool = new LocalFunction(
                 ToolCard.builder().id(name).name(name).description(name).inputParams(Map.of(
-                        "type", "object", "properties", Map.of(), "required", List.of()
+                        "type", "object",
+                        "properties", Map.of("file_path", Map.of("type", "string")),
+                        "required", List.of("file_path")
                 )).build(),
                 inputs -> {
                     synchronized (order) {
