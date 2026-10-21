@@ -16,7 +16,6 @@ import java.util.regex.Pattern;
  * @since 0.1.17
  */
 public final class SkillPathValidator {
-
     private static final Pattern WINDOWS_DRIVE = Pattern.compile("^[A-Za-z]:");
     private static final Pattern UNC_PREFIX = Pattern.compile("^\\\\\\\\");
 

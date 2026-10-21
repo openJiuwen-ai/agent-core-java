@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** In-memory {@link ToolInfo} registry used by ToolGroup tests. */
 public final class FakeToolInfoRegistry {
-
     private final Map<String, ToolInfo> toolInfosByName = new ConcurrentHashMap<>();
 
     /**

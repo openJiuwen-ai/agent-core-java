@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 /** Captures the full tool list in {@link ModelCallInputs} before an LLM request. */
 public final class ModelToolsCaptureRail extends AgentRail {
-
     private final Queue<List<Object>> capturedToolLists = new ConcurrentLinkedQueue<>();
 
     @Override

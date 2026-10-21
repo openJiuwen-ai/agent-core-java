@@ -39,7 +39,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Tag("issue196-w2")
 class BaseAgentToolGroupTest {
-
     @TempDir private Path tempDir;
 
     @Test

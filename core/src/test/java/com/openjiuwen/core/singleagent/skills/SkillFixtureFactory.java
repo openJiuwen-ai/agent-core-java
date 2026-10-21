@@ -13,7 +13,6 @@ import java.util.Objects;
 
 /** Creates temporary filesystem or workspace Skill fixtures for repository tests. */
 public final class SkillFixtureFactory {
-
     private static final String SKILL_FILE_NAME = "SKILL.md";
 
     /**

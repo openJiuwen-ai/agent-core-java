@@ -18,7 +18,6 @@ import java.nio.file.Path;
  * @since 0.1.17
  */
 public final class SkillContentValidator {
-
     /**
      * Default maximum size of a workspace-level SKILL.md file.
      *

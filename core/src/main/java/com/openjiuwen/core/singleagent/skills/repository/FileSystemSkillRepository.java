@@ -26,7 +26,6 @@ import java.util.stream.Stream;
  * @since 0.1.17
  */
 public final class FileSystemSkillRepository implements SkillRepository {
-
     private static final String[] SKILL_FILE_NAMES = {"SKILL.md", "Skill.md", "skill.md"};
 
     private final Path root;

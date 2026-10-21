@@ -22,7 +22,6 @@ import java.util.List;
 
 @Tag("issue196-w7")
 class SkillProtectedOverrideTest {
-
     @TempDir private Path tempDir;
 
     @Test

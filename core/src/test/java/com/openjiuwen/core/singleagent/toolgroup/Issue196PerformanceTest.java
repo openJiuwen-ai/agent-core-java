@@ -27,7 +27,6 @@ import java.util.Map;
 @Tag("TC-PRF-02")
 @Tag("TC-PRF-03")
 class Issue196PerformanceTest {
-
     private static final int TOOL_COUNT = 50;
 
     @Test

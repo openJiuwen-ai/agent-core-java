@@ -20,7 +20,6 @@ import java.util.function.IntFunction;
 
 /** Runs isolated session actions in parallel for ToolGroup state tests. */
 public final class SessionConcurrencyHarness {
-
     private static final int THREAD_KEEP_ALIVE_SECONDS = 30;
     private static final int TASK_TIMEOUT_SECONDS = 30;
 

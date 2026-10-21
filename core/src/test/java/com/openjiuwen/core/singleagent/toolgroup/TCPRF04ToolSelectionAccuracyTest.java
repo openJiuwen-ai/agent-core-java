@@ -59,7 +59,6 @@ import java.util.stream.Collectors;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @Timeout(600)
 class TCPRF04ToolSelectionAccuracyTest {
-
     private static final Path LOG_FILE = Path.of("target", "tcprf04_accuracy.log");
 
     private static final int TOOL_COUNT = 20;

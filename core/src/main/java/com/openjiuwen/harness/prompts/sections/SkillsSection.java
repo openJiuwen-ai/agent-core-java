@@ -110,8 +110,7 @@ SKILL.md using skill_tool.
      * @param skillMdPath optional path to the main Skill document
      * @return formatted Skill line
      */
-    public static String buildSkillLine(
-            int index, String skillName, String description, String skillMdPath) {
+    public static String buildSkillLine(int index, String skillName, String description, String skillMdPath) {
         return buildSkillLine(index, skillName, description, skillMdPath, Map.of());
     }
 
@@ -138,16 +137,8 @@ SKILL.md using skill_tool.
                         .append(skillName)
                         .append(": ")
                         .append(description);
-        metadataValue(metadata, "id")
-                .ifPresent(
-                        id -> {
-                            builder.append("\n   ID: ").append(id);
-                        });
-        metadataValue(metadata, "source")
-                .ifPresent(
-                        source -> {
-                            builder.append("\n   Source: ").append(source);
-                        });
+        metadataValue(metadata, "id").ifPresent(id -> builder.append("\n   ID: ").append(id));
+        metadataValue(metadata, "source").ifPresent(source -> builder.append("\n   Source: ").append(source));
         if (skillMdPath != null && !skillMdPath.isEmpty()) {
             builder.append("\n   Path: ").append(skillMdPath);
         }
@@ -230,8 +221,7 @@ SKILL.md using skill_tool.
      * @param mode all or auto_list rendering mode
      * @return Skills prompt section, or empty for an unknown mode
      */
-    public static Optional<PromptSection> buildSkillsSection(
-            String skillLines, String language, String mode) {
+    public static Optional<PromptSection> buildSkillsSection(String skillLines, String language, String mode) {
         String resolvedLanguage = resolveLanguage(language);
         String content;
         if ("all".equals(mode)) {

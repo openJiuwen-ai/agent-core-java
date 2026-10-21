@@ -25,7 +25,6 @@ import java.util.concurrent.atomic.AtomicLong;
 @Tag("issue196-w11")
 @Tag("TC-PRF-01")
 class TCPRF04ConcurrencyScalingTest {
-
     private static final int TOOL_COUNT = 50;
 
     @Test

@@ -14,7 +14,6 @@ import java.util.Properties;
 
 @Tag("issue196-w7")
 class SkillConfigTest {
-
     @Test
     void fromSources_readsSystemPropertiesAndEnvironmentOverrides() {
         Properties properties = new Properties();

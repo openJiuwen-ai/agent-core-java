@@ -14,7 +14,6 @@ import java.util.Set;
 
 /** Shared factory and collection helpers for ToolGroup test cases. */
 public final class ToolGroupTestSupport {
-
     private static final Map<String, Object> EMPTY_PARAMETERS = Map.of();
 
     private ToolGroupTestSupport() {}

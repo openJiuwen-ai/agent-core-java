@@ -18,7 +18,6 @@ import java.util.Map;
  * @since 0.1.17
  */
 public final class SkillPromptRenderer {
-
     private SkillPromptRenderer() {}
 
     /** Renders safe Skill metadata and omits the SKILL.md body. */

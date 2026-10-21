@@ -72,7 +72,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @Timeout(1800)
 class TCPRF03RealLlmPerformanceTest {
-
     private static final Path RAW_LOG = Path.of("target", "tcprf03_real_llm_raw.csv");
     private static final Path SUMMARY_LOG = Path.of("target", "tcprf03_real_llm_summary.txt");
     private static final int TOOL_COUNT = 20;

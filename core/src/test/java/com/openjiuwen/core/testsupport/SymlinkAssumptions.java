@@ -15,7 +15,6 @@ import java.nio.file.Path;
      *
      */
 public final class SymlinkAssumptions {
-
     private SymlinkAssumptions() {}
 
     /**
