@@ -19,6 +19,8 @@ import java.util.Objects;
 public final class SkillFixtureFactory {
     private static final String SKILL_FILE_NAME = "SKILL.md";
 
+    private SkillFixtureFactory() {}
+
     /**
      * Repository types supported by Skill fixtures.
      */
@@ -37,8 +39,6 @@ public final class SkillFixtureFactory {
             return directoryName;
         }
     }
-
-    private SkillFixtureFactory() {}
 
     public record SkillFixture(SkillFixtureSource source, Path skillFile) {}
 
