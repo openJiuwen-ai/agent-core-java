@@ -2591,6 +2591,13 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         invokeStaticRunnerRelease(sessionId);
         cleanupOffloadNamespaces(sessionId, null);
         contextEngine.clearContext(null, sessionId);
+        if (sessionId != null) {
+            // Release the last LLM-bound affinity window: it keeps a shallow
+            // copy of every conversation message reachable after the session
+            // ends, which leaked one ContextWindow per session in
+            // long-running scenarios (reported heap leak root cause).
+            lastAffinityWindows.remove(sessionId);
+        }
     }
 
     public boolean clearContextMessages(String sessionId, String contextId) {
