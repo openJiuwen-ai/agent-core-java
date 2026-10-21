@@ -15,7 +15,6 @@ import java.util.List;
 
 @Tag("issue196-w1")
 class ToolGroupTest {
-
     @Test
     void toolGroup_whenInputCollectionChanges_keepsInternalStateUnchanged() {
         List<String> toolNames = new ArrayList<>(List.of("search", "calculator"));

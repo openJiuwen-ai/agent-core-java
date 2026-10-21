@@ -21,7 +21,6 @@ import java.util.Map;
  * @since 0.1.17
  */
 public final class CompositeSkillRepository implements SkillRepository {
-
     private final List<SkillRepository> repositories;
 
     public CompositeSkillRepository(List<SkillRepository> repositories) {

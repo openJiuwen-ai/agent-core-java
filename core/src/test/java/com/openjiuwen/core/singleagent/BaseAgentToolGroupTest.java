@@ -39,7 +39,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Tag("issue196-w2")
 class BaseAgentToolGroupTest {
-
     @TempDir private Path tempDir;
 
     @Test
@@ -120,8 +119,8 @@ class BaseAgentToolGroupTest {
     @Test
     void skillToolsInExplicitInactiveGroup_remainHidden() {
         TestAgent agent = new TestAgent();
-        MemorySession session = new MemorySession("session-a");
         Tool deleteFile = skillTool("delete_file");
+        MemorySession session = new MemorySession("session-a");
         registerSkill(agent, "CleanupSkill");
         agent.registerSkillTools(
                         SkillToolBinding.builder()

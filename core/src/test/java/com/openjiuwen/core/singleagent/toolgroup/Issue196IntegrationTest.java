@@ -36,7 +36,6 @@ import java.util.Map;
 /** End-to-end integration test for Issue #196: ToolGroup + Skill integration. */
 @Tag("issue196-w10")
 class Issue196IntegrationTest {
-
     @TempDir private Path tempDir;
 
     @Test

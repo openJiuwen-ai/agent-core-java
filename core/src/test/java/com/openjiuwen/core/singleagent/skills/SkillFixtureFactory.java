@@ -13,9 +13,9 @@ import java.util.Objects;
 
 /** Creates temporary filesystem or workspace Skill fixtures for repository tests. */
 public final class SkillFixtureFactory {
-
     private static final String SKILL_FILE_NAME = "SKILL.md";
 
+    /** Repository layer represented by a generated fixture. */
     public enum SkillFixtureSource {
         CLASSPATH("classpath"),
         FILESYSTEM("filesystem"),
@@ -27,6 +27,11 @@ public final class SkillFixtureFactory {
             this.directoryName = directoryName;
         }
 
+        /**
+         * Returns the fixture directory name for this source.
+         *
+         * @return directory name
+         */
         public String directoryName() {
             return directoryName;
         }
@@ -36,6 +41,17 @@ public final class SkillFixtureFactory {
 
     private SkillFixtureFactory() {}
 
+    /**
+     * Writes a fixture under the source-specific repository directory.
+     *
+     * @param temporaryRoot root containing all fixture repositories
+     * @param source repository layer for the fixture
+     * @param skillName Skill name and directory name
+     * @param body Skill document body
+     * @param isProtected whether the Skill is protected
+     * @return fixture source and generated SKILL.md path
+     * @throws IOException when the fixture cannot be written
+     */
     public static SkillFixture writeSkill(
             Path temporaryRoot,
             SkillFixtureSource source,
@@ -51,6 +67,17 @@ public final class SkillFixtureFactory {
         return new SkillFixture(source, skillFile);
     }
 
+    /**
+     * Writes a Skill fixture under a repository root.
+     *
+     * @param repositoryRoot root containing Skill directories
+     * @param skillName Skill name and directory name
+     * @param description front-matter description
+     * @param body Skill document body
+     * @param isProtected whether the Skill is protected
+     * @return generated SKILL.md path
+     * @throws IOException when the fixture cannot be written
+     */
     public static Path writeSkill(
             Path repositoryRoot,
             String skillName,

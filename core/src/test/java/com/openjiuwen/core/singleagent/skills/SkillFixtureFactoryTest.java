@@ -17,42 +17,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 class SkillFixtureFactoryTest {
-
     @TempDir private Path tempDirectory;
 
     @Test
     void writeSkill_whenThreeSourcesRequested_createsDistinctFiles() throws IOException {
-        SkillFixture classpathSkill =
-                SkillFixtureFactory.writeSkill(
-                        tempDirectory,
-                        SkillFixtureSource.CLASSPATH,
-                        "demo",
-                        "classpath body",
-                        false);
-        SkillFixture filesystemSkill =
-                SkillFixtureFactory.writeSkill(
-                        tempDirectory,
-                        SkillFixtureSource.FILESYSTEM,
-                        "demo",
-                        "filesystem body",
-                        false);
-        SkillFixture workspaceSkill =
-                SkillFixtureFactory.writeSkill(
-                        tempDirectory,
-                        SkillFixtureSource.WORKSPACE,
-                        "demo",
-                        "workspace body",
-                        true);
+        assertFixture(SkillFixtureSource.CLASSPATH, "classpath body");
+        assertFixture(SkillFixtureSource.FILESYSTEM, "filesystem body");
+        assertFixture(SkillFixtureSource.WORKSPACE, "workspace body");
+    }
 
-        assertThat(classpathSkill.source()).isEqualTo(SkillFixtureSource.CLASSPATH);
-        assertThat(classpathSkill.skillFile()).exists();
-        assertThat(Files.readString(classpathSkill.skillFile())).contains("classpath body");
-        assertThat(filesystemSkill.source()).isEqualTo(SkillFixtureSource.FILESYSTEM);
-        assertThat(filesystemSkill.skillFile()).exists();
-        assertThat(Files.readString(filesystemSkill.skillFile())).contains("filesystem body");
-        assertThat(workspaceSkill.source()).isEqualTo(SkillFixtureSource.WORKSPACE);
-        assertThat(workspaceSkill.skillFile()).exists();
-        assertThat(Files.readString(workspaceSkill.skillFile())).contains("workspace body");
-        assertThat(Files.readString(workspaceSkill.skillFile())).contains("protected: true");
+    private void assertFixture(SkillFixtureSource source, String body) throws IOException {
+        SkillFixture fixture =
+                SkillFixtureFactory.writeSkill(
+                        tempDirectory, source, "demo", body, source == SkillFixtureSource.WORKSPACE);
+        assertThat(fixture.source()).isEqualTo(source);
+        assertThat(fixture.skillFile()).exists();
+        assertThat(Files.readString(fixture.skillFile())).contains(body);
     }
 }

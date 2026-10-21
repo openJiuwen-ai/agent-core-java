@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Mock LLM client that captures every request for offline model-call tests. */
 public final class CapturingModelClient implements Model.ModelClient {
-
     private final AssistantMessage response;
     private final Queue<List<BaseMessage>> capturedMessageLists = new ConcurrentLinkedQueue<>();
     private final Queue<List<?>> capturedToolLists = new ConcurrentLinkedQueue<>();
@@ -44,18 +43,38 @@ public final class CapturingModelClient implements Model.ModelClient {
         return CompletableFuture.completedFuture(response);
     }
 
+    /**
+     * Returns every captured message list in invoke order.
+     *
+     * @return immutable snapshot of captured message lists
+     */
     public List<List<BaseMessage>> capturedMessageLists() {
         return List.copyOf(capturedMessageLists);
     }
 
+    /**
+     * Returns every captured tool list in invoke order.
+     *
+     * @return immutable snapshot of captured tool lists
+     */
     public List<List<?>> capturedToolLists() {
         return List.copyOf(capturedToolLists);
     }
 
+    /**
+     * Returns the most recently captured tool list.
+     *
+     * @return last captured tool list, or an empty list before an invoke
+     */
     public List<?> lastCapturedToolList() {
         return capturedToolLists.stream().reduce((first, second) -> second).orElseGet(List::of);
     }
 
+    /**
+     * Returns the number of completed invoke requests.
+     *
+     * @return total invoke count
+     */
     public int invokeCount() {
         return invokeCount.get();
     }

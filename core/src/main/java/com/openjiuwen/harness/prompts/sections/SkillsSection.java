@@ -111,7 +111,8 @@ SKILL.md using skill_tool.
      * @return formatted Skill line
      */
     public static String buildSkillLine(
-            int index, String skillName, String description, String skillMdPath) {
+            int index, String skillName, String description, String skillMdPath)
+    {
         return buildSkillLine(index, skillName, description, skillMdPath, Map.of());
     }
 
@@ -130,7 +131,8 @@ SKILL.md using skill_tool.
             String skillName,
             String description,
             String skillMdPath,
-            Map<String, Object> metadata) {
+            Map<String, Object> metadata)
+    {
         StringBuilder builder =
                 new StringBuilder()
                         .append(index)
@@ -140,12 +142,14 @@ SKILL.md using skill_tool.
                         .append(description);
         metadataValue(metadata, "id")
                 .ifPresent(
-                        id -> {
+                        id ->
+                        {
                             builder.append("\n   ID: ").append(id);
                         });
         metadataValue(metadata, "source")
                 .ifPresent(
-                        source -> {
+                        source ->
+                        {
                             builder.append("\n   Source: ").append(source);
                         });
         if (skillMdPath != null && !skillMdPath.isEmpty()) {

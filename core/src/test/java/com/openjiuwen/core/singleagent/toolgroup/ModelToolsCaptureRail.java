@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 /** Captures the full tool list in {@link ModelCallInputs} before an LLM request. */
 public final class ModelToolsCaptureRail extends AgentRail {
-
     private final Queue<List<Object>> capturedToolLists = new ConcurrentLinkedQueue<>();
 
     @Override
@@ -26,14 +25,25 @@ public final class ModelToolsCaptureRail extends AgentRail {
         }
     }
 
+    /**
+     * Returns every captured tool list in call order.
+     *
+     * @return immutable snapshot of captured tool lists
+     */
     public List<List<Object>> capturedToolLists() {
         return List.copyOf(capturedToolLists);
     }
 
+    /**
+     * Returns the most recently captured tool list.
+     *
+     * @return last captured tool list, or an empty list before a model call
+     */
     public List<Object> lastCapturedToolList() {
         return capturedToolLists.stream().reduce((first, second) -> second).orElseGet(List::of);
     }
 
+    /** Discards all captured tool lists. */
     public void clear() {
         capturedToolLists.clear();
     }

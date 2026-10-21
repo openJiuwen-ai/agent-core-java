@@ -24,12 +24,14 @@ import java.util.stream.Collectors;
  * {@code openjiuwen/core/single_agent/skills/skill_util.py}.</p>
  */
 public class SkillUtil {
+    /** Prompt template that directs the model to Skill metadata and skill_tool. */
     public static final String SKILL_PROMPT_CONTENT_ON_DEMAND = """
             To help you better complete tasks, the following skill knowledge is equipped:
             {{skills}}
             You can use the skill_tool meta tool to read the corresponding skill document and obtain the relevant skill.
             """;
 
+    /** Prompt template retained for the legacy read_file Skill workflow. */
     public static final String SKILL_PROMPT_CONTENT_LEGACY = """
             To help you better complete tasks, the following skill knowledge is equipped:
             {{skills}}
