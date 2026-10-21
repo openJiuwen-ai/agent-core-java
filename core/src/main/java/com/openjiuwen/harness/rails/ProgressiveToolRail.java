@@ -7,8 +7,10 @@ package com.openjiuwen.harness.rails;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.harness.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.ProgressiveToolRailSection;
+import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 
 import java.lang.reflect.Field;
@@ -37,6 +39,7 @@ public class ProgressiveToolRail extends DeepAgentRail {
     private final Set<String> metaToolNames = new LinkedHashSet<>();
     private final List<ToolInfo> cachedAllToolInfos = new ArrayList<>();
     private int maxLoadedTools = 12;
+    private SystemPromptBuilder systemPromptBuilder;
 
     public ProgressiveToolRail() {
         this(new DeepAgentConfig());
@@ -50,12 +53,53 @@ public class ProgressiveToolRail extends DeepAgentRail {
         this.maxLoadedTools = this.config.getProgressiveToolMaxLoadedTools();
     }
 
+    /**
+     * Resolve the inner ReAct agent's prompt builder and add the sections;
+     * {@link #beforeInvoke} adds them again if the builder has been replaced since.
+     *
+     * @param agent deep agent
+     */
+    @Override
+    public void init(DeepAgent agent) {
+        super.init(agent);
+        systemPromptBuilder = promptBuilderFrom(agent);
+        addPromptSections(systemPromptBuilder);
+    }
+
+    /**
+     * Removes the prompt sections registered by this rail.
+     *
+     * @param agent deep agent
+     */
+    @Override
+    public void uninit(DeepAgent agent) {
+        if (systemPromptBuilder != null) {
+            systemPromptBuilder.removeSection(SectionName.TOOL_NAVIGATION);
+            systemPromptBuilder.removeSection(SectionName.PROGRESSIVE_TOOL_RULES);
+        }
+        systemPromptBuilder = null;
+    }
+
+    /**
+     * The first model request renders the system prompt before {@code beforeModelCall} runs,
+     * so the sections must already be in place when the invocation starts (e.g. after
+     * {@code ReActAgent.configure()} replaced the prompt builder).
+     *
+     * @param ctx callback context
+     */
+    @Override
+    public void beforeInvoke(CallbackContext ctx) {
+        if (ctx != null) {
+            addPromptSections(promptBuilder(ctx));
+        }
+    }
+
     @Override
     public void beforeModelCall(CallbackContext ctx) {
         if (ctx == null) {
             return;
         }
-        addPromptSections(ctx);
+        addPromptSections(promptBuilder(ctx));
         filterCallableTools(ctx);
     }
 
@@ -83,15 +127,20 @@ public class ProgressiveToolRail extends DeepAgentRail {
         }
     }
 
-    private void addPromptSections(CallbackContext ctx) {
-        SystemPromptBuilder builder = promptBuilder(ctx);
+    /**
+     * Persistent, because ReActAgent clears transient sections at the start of every inner
+     * invocation; {@link #uninit} removes them.
+     *
+     * @param builder prompt builder to receive the sections, may be null
+     */
+    private void addPromptSections(SystemPromptBuilder builder) {
         if (builder == null) {
             return;
         }
-        builder.addSection(ProgressiveToolRailSection.buildMultilingualNavigationSection(
+        builder.addPersistentSection(ProgressiveToolRailSection.buildMultilingualNavigationSection(
                 navigationEntries("cn"),
                 navigationEntries("en")));
-        builder.addSection(ProgressiveToolRailSection.buildMultilingualProgressiveToolRulesSection());
+        builder.addPersistentSection(ProgressiveToolRailSection.buildMultilingualProgressiveToolRulesSection());
     }
 
     private List<String> navigationEntries(String language) {
@@ -157,14 +206,25 @@ public class ProgressiveToolRail extends DeepAgentRail {
         return invokeNoArg(session, "getState", "get_state", key);
     }
 
-    private static SystemPromptBuilder promptBuilder(CallbackContext ctx) {
+    private SystemPromptBuilder promptBuilder(CallbackContext ctx) {
         Object direct = ctx.get("system_prompt_builder");
         if (direct instanceof SystemPromptBuilder builder) {
             return builder;
         }
-        return promptBuilderFrom(ctx.getAgent());
+        // Resolve on every call: ReActAgent.configure() replaces its prompt builder.
+        SystemPromptBuilder current = promptBuilderFrom(ctx.getAgent());
+        if (current != null) {
+            systemPromptBuilder = current;
+        }
+        return systemPromptBuilder;
     }
 
+    /**
+     * The system prompt is rendered by the inner ReAct agent, so look there as well as on the deep agent.
+     *
+     * @param candidate object to resolve the prompt builder from, may be null
+     * @return the resolved prompt builder, or null when none can be found
+     */
     private static SystemPromptBuilder promptBuilderFrom(Object candidate) {
         if (candidate == null) {
             return null;
@@ -174,7 +234,13 @@ public class ProgressiveToolRail extends DeepAgentRail {
             return builder;
         }
         Object fieldValue = readField(candidate, "systemPromptBuilder", "system_prompt_builder", "promptBuilder");
-        return fieldValue instanceof SystemPromptBuilder builder ? builder : null;
+        if (fieldValue instanceof SystemPromptBuilder builder) {
+            return builder;
+        }
+        if (candidate instanceof DeepAgent deepAgent && deepAgent.reactAgent() != candidate) {
+            return promptBuilderFrom(deepAgent.reactAgent());
+        }
+        return null;
     }
 
     private static Object invokeNoArg(Object target, String firstName, String secondName, String argument) {
@@ -197,12 +263,14 @@ public class ProgressiveToolRail extends DeepAgentRail {
             return null;
         }
         for (String name : names) {
-            try {
-                Field field = target.getClass().getDeclaredField(name);
-                field.setAccessible(true);
-                return field.get(target);
-            } catch (ReflectiveOperationException ignored) {
-                // Try the next field spelling.
+            for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+                try {
+                    Field field = type.getDeclaredField(name);
+                    field.setAccessible(true);
+                    return field.get(target);
+                } catch (ReflectiveOperationException ignored) {
+                    // Try the superclass, then the next field spelling.
+                }
             }
         }
         return null;

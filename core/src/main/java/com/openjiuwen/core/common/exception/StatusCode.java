@@ -441,6 +441,14 @@ public enum StatusCode {
     MODEL_RESPONSE_INVALID(181006, "model response is invalid, reason: {error_msg}"),
     MODEL_RESPONSE_TYPE_ERROR(181007, "model response type error, reason: {error_msg}"),
     MODEL_CALL_TIMEOUT(181008, "model call timeout at {phase}, effective timeout {timeout}s, reason: {error_msg}"),
+    MODEL_CALL_RATE_LIMITED(181009, "model call rate limited by provider, reason: {error_msg}; "
+        + "suggestion: wait and retry later or reduce request rate"),
+    MODEL_CALL_QUOTA_EXCEEDED(181010, "model call rejected: insufficient balance or quota, reason: {error_msg}; "
+        + "suggestion: check provider account balance and top up"),
+    MODEL_CALL_AUTH_FAILED(181011, "model call authentication failed permanently, reason: {error_msg}; "
+        + "suggestion: check and replace with a valid API key"),
+    MODEL_CONTEXT_LENGTH_EXCEEDED(181012, "model call rejected: prompt or context too long, reason: {error_msg}; "
+        + "suggestion: shrink context before retrying"),
 
     // Tool Definition and Execution 182000 - 182999
     TOOL_CARD_INVALID(182000, "card is invalid, card={card}, error=''{reason}''"),

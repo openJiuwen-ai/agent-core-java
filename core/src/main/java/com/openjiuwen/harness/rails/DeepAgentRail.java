@@ -13,8 +13,10 @@ import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
@@ -29,6 +31,8 @@ import java.util.function.Consumer;
  * model/tool adapters so outer invoke / task-iteration are not double-fired.</p>
  */
 public abstract class DeepAgentRail extends AgentRail {
+
+    private static final String SESSION_KEY = "session";
 
     private static final Set<String> INPUT_KEYS = Set.of(
             "tool_call", "tool_name", "tool_args", "tool_result", "tool_msg",
@@ -203,6 +207,10 @@ public abstract class DeepAgentRail extends AgentRail {
             if (context.getExtra() != null) {
                 values.putAll(context.getExtra());
             }
+            // Rails read the current session as ctx.get("session") (e.g. progressive tool visibility).
+            if (context.getSession() != null) {
+                values.putIfAbsent(SESSION_KEY, context.getSession());
+            }
         }
         return new CallbackContext(owner, values);
     }
@@ -257,7 +265,7 @@ public abstract class DeepAgentRail extends AgentRail {
         }
         Map<String, Object> extra = ensureExtra(context);
         for (Map.Entry<String, Object> entry : callback.getValues().entrySet()) {
-            if (entry.getValue() == null || INPUT_KEYS.contains(entry.getKey())) {
+            if (entry.getValue() == null || INPUT_KEYS.contains(entry.getKey()) || SESSION_KEY.equals(entry.getKey())) {
                 continue;
             }
             extra.put(entry.getKey(), entry.getValue());
@@ -265,6 +273,7 @@ public abstract class DeepAgentRail extends AgentRail {
         syncDynamicModelId(context, extra);
         applyRejection(extra, callback);
         applyToolCallRewrites(context.getInputs(), callback);
+        applyModelCallRewrites(context.getInputs(), callback);
         applyForceFinish(context, callback);
     }
 
@@ -306,6 +315,22 @@ public abstract class DeepAgentRail extends AgentRail {
         extra.put("rejected", Boolean.TRUE);
         if (callback.getRejectionMessage() != null) {
             extra.put("error", callback.getRejectionMessage());
+        }
+    }
+
+    /**
+     * Write a replaced tool list back to the model request, so tool filtering in
+     * {@code beforeModelCall} (e.g. progressive tool disclosure) takes effect.
+     * Messages are not written back: hooks may put plain strings there, while the
+     * model request requires {@code BaseMessage} elements.
+     */
+    private static void applyModelCallRewrites(Object inputs, CallbackContext callback) {
+        if (!(inputs instanceof ModelCallInputs modelInputs)) {
+            return;
+        }
+        Object tools = callback.get("tools");
+        if (tools instanceof List<?> list && tools != modelInputs.getTools()) {
+            modelInputs.setTools(new ArrayList<>(list));
         }
     }
 

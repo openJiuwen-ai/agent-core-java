@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.foundation.llm;
 
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
+
 import java.time.Duration;
 
 /**
@@ -15,6 +17,7 @@ import java.time.Duration;
  * @param exceptionType exception class that triggered the retry, if applicable
  * @param delay actual delay applied before the retry
  * @param delaySource source used to determine the delay
+ * @param category classified failure category that authorized the retry
  */
 public record ModelRetryEvent(
         int retryCount,
@@ -22,5 +25,6 @@ public record ModelRetryEvent(
         Integer statusCode,
         String exceptionType,
         Duration delay,
-        String delaySource) {
+        String delaySource,
+        ModelErrorCategory category) {
 }

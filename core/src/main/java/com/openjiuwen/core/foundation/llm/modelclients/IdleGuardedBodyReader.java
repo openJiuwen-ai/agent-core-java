@@ -52,7 +52,7 @@ final class IdleGuardedBodyReader {
                 int read;
                 try {
                     read = inputStream.read(buffer);
-                } catch (IdleBoundInputStream.IdleTimeoutIOException idleTimeout) {
+                } catch (IdleTimeoutIOException idleTimeout) {
                     throw ModelTimeoutErrorFactory.idleTimeoutError(
                             idlePhase(body.size()), idleSeconds, isStreaming, idleTimeout);
                 }

@@ -21,7 +21,7 @@ public class LoadToolsTool extends AbstractHarnessTool {
     private final ToolLoader toolLoader;
 
     public LoadToolsTool(ToolLoader toolLoader) {
-        super(toolCard("load_tools", "LoadToolsTool", "Resolve and load selected tools for the current session."));
+        super(toolCard("LoadToolsTool", "load_tools", "Resolve and load selected tools for the current session."));
         this.toolLoader = toolLoader;
     }
 

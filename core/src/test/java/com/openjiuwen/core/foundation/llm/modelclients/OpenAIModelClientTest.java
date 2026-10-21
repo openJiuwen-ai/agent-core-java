@@ -152,7 +152,7 @@ class OpenAIModelClientTest {
                             requestHeadersKwargs(requestHeaders)));
 
             BaseError typed = requireModelError(error);
-            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_AUTH_FAILED);
             assertThat(String.valueOf(typed.getParams().get("error_msg")))
                     .contains("HTTP 403", "safe formal stream failure", "[REDACTED]");
             assertThat(typed.getMessage()).contains("HTTP 403", "safe formal stream failure");
@@ -215,7 +215,7 @@ class OpenAIModelClientTest {
                     .stream("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
 
             BaseError typed = requireModelError(error);
-            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_RATE_LIMITED);
             assertThat(String.valueOf(typed.getParams().get("error_msg")))
                     .contains("HTTP 429", "safe stream failure", "[REDACTED]")
                     .doesNotContain("sk-stream-secret");

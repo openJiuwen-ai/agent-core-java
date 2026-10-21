@@ -19,7 +19,8 @@ DeepAgent 是 openjiuwen Java Harness 层的高阶智能体封装，在核心 `R
   - [4. 权限中断](#4-权限中断禁止用户发起的文件删除)
   - [5. 运行预算](#5-运行预算run-budget)
   - [6. 模型调用超时分层](#6-模型调用超时分层连接--响应头等待--流式空闲)
-  - [7. 多租户隔离](#7-多租户隔离)
+  - [7. 模型调用错误分类与弹性重试](#7-模型调用错误分类与弹性重试)
+  - [8. 多租户隔离](#8-多租户隔离)
 - [Demo 命令速查](#demo-命令速查)
 - [多租户隔离](#多租户隔离)
 - [Stream 并发与线程池](#stream-并发与线程池)
@@ -464,7 +465,45 @@ ModelClientConfig clientConfig = ModelClientConfig.builder()
 
 ---
 
-### 7. 多租户隔离
+### 7. 模型调用错误分类与弹性重试
+
+模型调用失败统一先经错误分类器归约为六类，再由分类结果决定是否重试，不再按客户端族各自为战：
+
+| 分类 | 典型触发 | 处置 |
+|------|------|------|
+| 限流（RATE_LIMITED） | HTTP 429、限流关键词 | 自动重试，优先采纳服务端 `Retry-After` 提示时长 |
+| 临时故障（TEMPORARY） | 5xx、网络抖动、超时、断流 | 自动重试（指数退避） |
+| 欠费（QUOTA_EXCEEDED） | HTTP 402、余额不足 | 不重试，用户可读错误面（181010） |
+| 认证永久失效（AUTH_FAILED） | HTTP 401/403 | 不重试，用户可读错误面（181011） |
+| 上下文超限（CONTEXT_LENGTH_EXCEEDED） | prompt_too_long 类拒绝 | 不重试，干净失败（181012）；自动压缩由后续特性承接 |
+| 用户取消（USER_CANCELLED） | 取消/中断信号 | 绝不重试，恢复 CancellationException 语义干净退出 |
+
+行为要点：
+
+- 一切重试由统一的 `ModelCallRetrier` 发起（OpenAI 族与 SiliconFlow 族行为一致），每次调用共享一份重试预算，**默认最大重试 2 次（旧默认 3 次，属行为变更）**。
+- 流式调用以「首段数据到达」为分界：首段前失败按整次重试；首段后中断不重试（避免重复产出），失败按分类浮出。
+- 熔断只按限流/临时两类计数；欠费/认证/取消不污染熔断。
+- 主循环默认装配分类护栏（与 `ModelBackupRail` 备用切换互斥）：可重试类别在同轮次内再挽留一次，不消耗轮次计数。
+- `maxRetries = 0` 同时关闭包装层重试与护栏挽留。
+
+配置示例：
+
+```java
+ModelClientConfig clientConfig = ModelClientConfig.builder()
+        .clientProvider(ProviderType.OPENAI)
+        .apiKey(apiKey)
+        .apiBase(baseUrl)
+        .maxRetries(2)               // 最大重试次数，缺省 2，0 表示完全关闭重试
+        .retryOnRateLimit(true)      // 限流是否重试，缺省 true（backend map 键 retry_on_rate_limit）
+        .retryOnTemporary(true)      // 临时故障是否重试，缺省 true（backend map 键 retry_on_temporary）
+        .build();
+```
+
+声明了时间预算的任务，重试等待时长会被运行预算（见第 5 节）钳制到剩余预算内；未声明预算的任务不受钳制。
+
+---
+
+### 8. 多租户隔离
 
 DeepAgent 自 `0.1.7` 起支持多租户数据隔离。在 `DeepAgentConfig` 上设置 `enableTenantIsolation(true)` 即进入**严格模式**：每次调用必须携带有效 `TenantContext`，否则 `invoke` / `stream` 在绑定工作区之前直接抛 `IllegalStateException`（`Tenant isolation is enabled but no tenantId was provided`），不会静默回退到默认工作区。
 

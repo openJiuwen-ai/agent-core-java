@@ -22,7 +22,7 @@ public class SearchToolsTool extends AbstractHarnessTool {
     private final TraceAppender traceAppender;
 
     public SearchToolsTool(ToolSearcher toolSearcher, TraceAppender traceAppender) {
-        super(toolCard("search_tools", "SearchToolsTool", "Search candidate tools for progressive tool discovery."));
+        super(toolCard("SearchToolsTool", "search_tools", "Search candidate tools for progressive tool discovery."));
         this.toolSearcher = toolSearcher;
         this.traceAppender = traceAppender;
     }

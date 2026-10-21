@@ -335,26 +335,78 @@ public class TaskPlanningRail extends DeepAgentRail {
             return List.of();
         }
         try {
-            List<com.openjiuwen.harness.tools.TodoItem> loaded = todoStorage.load(sessionId);
-            List<TodoItem> result = new ArrayList<>();
-            for (com.openjiuwen.harness.tools.TodoItem item : loaded) {
-                if (item != null) {
-                    Map<String, Object> map = new LinkedHashMap<>();
-                    map.put("id", item.getId());
-                    map.put("content", item.getContent());
-                    map.put("active_form", item.getActiveForm());
-                    map.put("description", item.getDescription());
-                    if (item.getStatus() != null) {
-                        map.put("status", item.getStatus().name().toLowerCase());
-                    }
-                    map.put("selected_model_id", item.getSelectedModelId());
-                    result.add(TodoItem.fromMap(map));
-                }
-            }
-            return result;
+            return fromStoredTodos(todoStorage.load(sessionId));
         } catch (IOException | RuntimeException e) {
             return List.of();
         }
+    }
+
+    /**
+     * Convert stored todos ({@code harness.tools.TodoItem}) into task todos, keeping every field.
+     */
+    private static List<TodoItem> fromStoredTodos(List<com.openjiuwen.harness.tools.TodoItem> stored) {
+        List<TodoItem> result = new ArrayList<>();
+        if (stored == null) {
+            return result;
+        }
+        for (com.openjiuwen.harness.tools.TodoItem item : stored) {
+            if (item != null) {
+                result.add(new TodoItem(
+                        item.getId(),
+                        item.getContent(),
+                        item.getActiveForm(),
+                        item.getDescription(),
+                        fromStoredStatus(item.getStatus()),
+                        item.getDependsOn(),
+                        item.getResultSummary(),
+                        item.getMetaData(),
+                        item.getSelectedModelId()));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Convert a task todo into its stored form, keeping every field.
+     */
+    private static com.openjiuwen.harness.tools.TodoItem toStoredTodo(TodoItem item) {
+        return com.openjiuwen.harness.tools.TodoItem.builder()
+                .id(item.getId())
+                .content(item.getContent())
+                .activeForm(item.getActiveForm())
+                .description(item.getDescription())
+                .status(toStoredStatus(item.getStatus()))
+                .dependsOn(new ArrayList<>(item.getDependsOn()))
+                .resultSummary(item.getResultSummary())
+                .metaData(item.getMetaData() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(item.getMetaData()))
+                .selectedModelId(item.getSelectedModelId())
+                .build();
+    }
+
+    private static TodoStatus fromStoredStatus(com.openjiuwen.harness.tools.TodoStatus status) {
+        if (status == null) {
+            return TodoStatus.PENDING;
+        }
+        return switch (status) {
+            case IN_PROGRESS -> TodoStatus.IN_PROGRESS;
+            case COMPLETED, DONE -> TodoStatus.COMPLETED;
+            case CANCELLED -> TodoStatus.CANCELLED;
+            case PENDING, TODO -> TodoStatus.PENDING;
+            default -> TodoStatus.PENDING;
+        };
+    }
+
+    private static com.openjiuwen.harness.tools.TodoStatus toStoredStatus(TodoStatus status) {
+        if (status == null) {
+            return com.openjiuwen.harness.tools.TodoStatus.PENDING;
+        }
+        return switch (status) {
+            case IN_PROGRESS -> com.openjiuwen.harness.tools.TodoStatus.IN_PROGRESS;
+            case COMPLETED -> com.openjiuwen.harness.tools.TodoStatus.COMPLETED;
+            case CANCELLED -> com.openjiuwen.harness.tools.TodoStatus.CANCELLED;
+            case PENDING -> com.openjiuwen.harness.tools.TodoStatus.PENDING;
+            default -> com.openjiuwen.harness.tools.TodoStatus.PENDING;
+        };
     }
 
     public FormattedTaskContent formatTaskContent(List<TodoItem> todos) {
@@ -464,22 +516,7 @@ public class TaskPlanningRail extends DeepAgentRail {
         public List<TodoItem> load(Map<String, Object> kwargs) {
             String sessionId = sessionId(kwargs);
             try {
-                List<com.openjiuwen.harness.tools.TodoItem> loaded = storage.load(sessionId);
-                List<TodoItem> result = new ArrayList<>();
-                for (com.openjiuwen.harness.tools.TodoItem item : loaded) {
-                    if (item != null) {
-                        Map<String, Object> map = new LinkedHashMap<>();
-                        map.put("id", item.getId());
-                        map.put("content", item.getContent());
-                        map.put("active_form", item.getActiveForm());
-                        map.put("description", item.getDescription());
-                        if (item.getStatus() != null) {
-                            map.put("status", item.getStatus().name().toLowerCase());
-                        }
-                        result.add(TodoItem.fromMap(map));
-                    }
-                }
-                return result;
+                return fromStoredTodos(storage.load(sessionId));
             } catch (IOException e) {
                 throw new IllegalStateException("Failed to load todos", e);
             }
@@ -493,12 +530,7 @@ public class TaskPlanningRail extends DeepAgentRail {
                 if (todos != null) {
                     for (TodoItem item : todos) {
                         if (item != null) {
-                            mapped.add(com.openjiuwen.harness.tools.TodoItem.builder()
-                                    .id(item.getId())
-                                    .content(item.getContent())
-                                    .activeForm(item.getActiveForm())
-                                    .description(item.getDescription())
-                                    .build());
+                            mapped.add(toStoredTodo(item));
                         }
                     }
                 }
