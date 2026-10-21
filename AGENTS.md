@@ -234,10 +234,12 @@ Before declaring a Java change complete or creating a commit:
 
 ### JiuwenTestJava Smoke Gate
 
-Before creating a commit that changes `src/main/java`, `pom.xml`, or runtime
-resources, run the smoke suite in `/home/jiayang/workspace/jiuwen-test-java`
-against the JAR built from the current `core-java-repo` worktree. Documentation-
-only changes do not require this external smoke gate.
+Before every code delivery or commit, including test-only fixes, run the complete
+smoke suite in the corresponding JiuwenTestJava checkout (here:
+`/home/jiayang/workspace/jiuwen-test-java`) against the JAR built from the current
+`core-java-repo` worktree. Focused tests and a previous delivery's smoke result
+do not replace this gate. Record both revisions, local changes, JAR digest,
+command, environment/fixture provenance, timestamp, and all result counts.
 
 1. Preserve unrelated changes in both repositories. Inspect `git status` in
    `core-java-repo` and `jiuwen-test-java`; never clean, reset, or include
@@ -320,7 +322,7 @@ only changes do not require this external smoke gate.
    in the final report. Investigate every new or unexpected skip; do not treat
    it as a pass merely because Maven exited successfully.
 
-Do not commit or push a runtime change while this gate is failing or its
+Do not commit, push, or declare a code delivery accepted while this gate is failing or its
 environment is incomplete. Report the exact failing cases or missing service
 instead of bypassing, disabling, or weakening the smoke suite.
 
@@ -339,7 +341,27 @@ collection, concurrency, resource-management, serialization, and security
 rules in the applicable category files. Public and protected APIs require
 complete Javadoc, including ordered tags and `@since`.
 
-## More Detail
+## Cross-Repository Failure Triage
+
+- For JiuwenTestJava failures, inspect both Core production behavior and the
+  test repository's fixtures, expectations, and cleanup. Do not assume either
+  repository is correct solely because a test passes alone or a public API exists.
+- Record both Git revisions, the effective Maven dependency version, and the
+  tested JAR digest. Rebuild Core into an isolated Maven repository when comparing
+  fixes; do not replace a shared same-version JAR without explicit agreement.
+- Reproduce order-dependent failures in the same JVM, in both orders and with a
+  recorded random seed. A fresh JVM is a diagnostic control, not the fix.
+- Restore the exact previous state of global factories, including absent entries
+  and case aliases. Use owned resource IDs, assert registration results, and wait
+  for cleanup completion. Never change duplicate-resource rejection to hide leaks.
+- Assert tool payloads at the actual request/response boundary. Do not weaken
+  sensitive logging, depend on full prompt dumps, or replace behavior assertions
+  with generic success checks.
+- Fix each defect in its owning repository and rerun the cross-repository gate
+  against the newly built Core artifact. Report remaining failures and skips
+  separately; focused green tests do not mean the whole suite is green.
+
+## Reference Guides
 
 - Full coding standards (144 rules):
   `.claude/skills/coding-standard-full/SKILL.md`

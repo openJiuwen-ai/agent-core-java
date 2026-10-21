@@ -11,4 +11,13 @@ package com.openjiuwen.core.workflow.component;
  * {@code openjiuwen/core/workflow/components/llm/intent_detection_comp.py}.</p>
  */
 public class IntentDetectionComponent extends BranchComponent {
+    /**
+     * Construct an intent component whose executable owns its trace span.
+     *
+     * @since 0.1.17
+     */
+    public IntentDetectionComponent() {
+        // The executable already owns the intent span; routing must not emit a duplicate.
+        super(false);
+    }
 }

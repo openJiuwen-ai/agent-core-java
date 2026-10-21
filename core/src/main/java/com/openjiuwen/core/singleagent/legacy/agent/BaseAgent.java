@@ -134,9 +134,10 @@ public abstract class BaseAgent {
         for (Object workflow : incomingWorkflows) {
             WorkflowCard workflowCard = resolveWorkflowCard(workflow);
             String key = workflowKey(workflowCard);
-            if (key != null && existingWorkflowKeys.add(key)) {
-                appendObjectToList(agentConfig, "workflows", "getWorkflows", workflowCard);
+            if (key != null && !existingWorkflowKeys.add(key)) {
+                continue;
             }
+            appendObjectToList(agentConfig, "workflows", "getWorkflows", workflowCard);
             workflows.add(workflow);
             registerWorkflow(scopedResourceCard(workflowCard), providerFor(workflow), agentId());
         }

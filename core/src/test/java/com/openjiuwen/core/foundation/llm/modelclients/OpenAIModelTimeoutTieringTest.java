@@ -21,7 +21,9 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.List;
@@ -34,13 +36,13 @@ import java.util.function.Function;
  *
  * @since 2026-10-09
  */
+@Isolated
 class OpenAIModelTimeoutTieringTest {
     private static final double TOLERANCE = 0.0001D;
 
     @BeforeAll
     static void disableCorporateProxy() throws Exception {
-        // The connect-timeout case dials a black-hole address; a configured corporate
-        // proxy would answer 407 instead of letting the TCP connect window expire.
+        // Local transport fixtures must not be redirected through a corporate proxy.
         setEnvReader(name -> null);
     }
 
@@ -58,25 +60,23 @@ class OpenAIModelTimeoutTieringTest {
     }
 
     @Test
-    void connectTimeoutFailsFast() {
-        // Given a client pointing at a black-hole address with a 5s connect window
-        OpenAIModelClient client = client("http://10.255.255.1:81", ModelClientConfig.builder()
-                .maxRetries(0)
-                .connectTimeoutSeconds(5.0D)
-                .build());
+    void connectTimeoutFailsFast() throws IOException {
+        try (SaturatedConnectEndpoint endpoint = SaturatedConnectEndpoint.open()) {
+            OpenAIModelClient client = client(baseConfig(endpoint.apiBase())
+                    .connectTimeoutSeconds(5.0D)
+                    .build());
 
-        // When invoking
-        long started = System.nanoTime();
-        Throwable error = catchThrowable(() -> client.invoke(
-                List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())
-                .toCompletableFuture().join());
-        long elapsedMillis = (System.nanoTime() - started) / 1_000_000L;
+            long started = System.nanoTime();
+            Throwable error = catchThrowable(() -> client.invoke(
+                    List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())
+                    .toCompletableFuture().join());
+            long elapsedMillis = (System.nanoTime() - started) / 1_000_000L;
 
-        // Then the call fails as a connect-phase timeout well before any read window
-        BaseError typed = unwrap(error);
-        assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
-        assertThat(typed.getParams().get("phase")).isEqualTo("BEFORE_CONNECT");
-        assertThat(elapsedMillis).isLessThan(15_000L);
+            BaseError typed = unwrap(error);
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
+            assertThat(typed.getParams().get("phase")).isEqualTo("BEFORE_CONNECT");
+            assertThat(elapsedMillis).isBetween(4_000L, 15_000L);
+        }
     }
 
     @Test
@@ -346,19 +346,6 @@ class OpenAIModelTimeoutTieringTest {
     private static OpenAIModelClient client(ModelClientConfig config) {
         return new OpenAIModelClient(
                 ModelRequestConfig.builder().modelName("gpt-test").build(), config);
-    }
-
-    private static OpenAIModelClient client(String baseUrl, ModelClientConfig config) {
-        ModelClientConfig effective = ModelClientConfig.builder()
-                .clientProvider(ProviderType.OPEN_AI)
-                .apiKey("sk-test")
-                .apiBase(baseUrl)
-                .verifySsl(config.isVerifySsl())
-                .maxRetries(config.getMaxRetries())
-                .connectTimeoutSeconds(config.getConnectTimeoutSeconds())
-                .streamIdleSeconds(config.getStreamIdleSeconds())
-                .build();
-        return client(effective);
     }
 
     private static int drain(Iterator<AssistantMessageChunk> iterator) {

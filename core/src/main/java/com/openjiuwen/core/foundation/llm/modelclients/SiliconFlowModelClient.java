@@ -12,6 +12,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UrlUtils;
+import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -146,7 +147,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 throw new IOException("API returned error " + result.statusCode() + ": " + result.body());
             }
             Map<String, Object> data = parseJsonObject(result.body());
-            Loggers.LLM.info("SiliconFlow API response received. {}", Map.of("response", data));
+            Loggers.LLM.info("SiliconFlow API response received. {}", Map.of("response", logValue(data)));
             AssistantMessage assistantMessage = parseResponse(data, outputParser);
             callTracer(tracerRecordData, singlePayload("llm_response", assistantMessage));
             return assistantMessage;
@@ -154,7 +155,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
             throw exception;
         } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
                 | ClassCastException exception) {
-            Loggers.LLM.error("SiliconFlow API async invoke error. {}", exception.getMessage());
+            Loggers.LLM.error("SiliconFlow API async invoke error. {}", errorLogMessage(exception));
             Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
                     exception, false, modelClientConfig);
             throw timeoutError.orElseGet(() -> ErrorHelper.buildError(
@@ -203,7 +204,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
             throw exception;
         } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
                 | ClassCastException exception) {
-            Loggers.LLM.error("SiliconFlow API async stream error. {}", exception.getMessage());
+            Loggers.LLM.error("SiliconFlow API async stream error. {}", errorLogMessage(exception));
             Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
                     exception, true, modelClientConfig);
             throw timeoutError.orElseGet(() -> ErrorHelper.buildError(
@@ -329,7 +330,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         } catch (JsonProcessingException exception) {
             return null;
         } catch (ClassCastException | IllegalStateException | IndexOutOfBoundsException exception) {
-            Loggers.LLM.warning("Error parsing stream chunk. {}", exception.getMessage());
+            Loggers.LLM.warning("Error parsing stream chunk. {}", errorLogMessage(exception));
             return null;
         }
     }
@@ -459,8 +460,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("model_name", params.get("model"));
         metadata.put("model_provider", modelClientConfig.getClientProvider());
-        metadata.put("messages", params.get("messages"));
-        metadata.put("tools", params.get("tools"));
+        if (!UserConfig.isSensitive()) {
+            metadata.put("messages", params.get("messages"));
+            metadata.put("tools", params.get("tools"));
+        }
         metadata.put("temperature", params.get("temperature"));
         metadata.put("top_p", params.get("top_p"));
         metadata.put("max_tokens", params.get("max_tokens"));
@@ -472,7 +475,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         Loggers.LLM.info("Before parse content with parser. {}", Map.of(
                 "model_name", modelConfig.getModelName(),
                 "model_provider", modelClientConfig.getClientProvider(),
-                "response_content", content,
+                "response_content", logValue(content),
                 "is_stream", false
         ));
         if (parser == null || !isPythonTruthy(content)) {
@@ -480,12 +483,26 @@ public class SiliconFlowModelClient extends BaseModelClient {
         }
         try {
             Object parserContent = parser.<CompletableFuture<Object>>parse(content).join();
-            Loggers.LLM.info("Parser parse success. {}", Map.of("parser_content", parserContent));
+            Loggers.LLM.info("Parser parse success. {}", Map.of("parser_content", logValue(parserContent)));
             return parserContent;
         } catch (RuntimeException exception) {
-            Loggers.LLM.warning("Parser parse error. {}", exception.getMessage());
+            Loggers.LLM.warning("Parser parse error. {}", errorLogMessage(exception));
             return null;
         }
+    }
+
+    private static String logValue(Object value) {
+        if (UserConfig.isSensitive()) {
+            return "[redacted]";
+        }
+        return String.valueOf(value);
+    }
+
+    private static String errorLogMessage(Exception exception) {
+        if (UserConfig.isSensitive()) {
+            return exception.getClass().getSimpleName();
+        }
+        return exception.getMessage();
     }
 
     private List<ToolCall> parseToolCalls(Object rawToolCalls) {
@@ -789,7 +806,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 reader.close();
             } catch (IOException exception) {
                 Loggers.LLM.debug("Failed to close SiliconFlow stream reader. {}",
-                        exception.getMessage());
+                        errorLogMessage(exception));
             }
         }
     }
@@ -831,7 +848,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         accumulatedContent.setLength(0);
                     }
                 } catch (IllegalStateException | IllegalArgumentException | CompletionException exception) {
-                    Loggers.LLM.debug("Stream parser attempt error. {}", exception.getMessage());
+                    Loggers.LLM.debug("Stream parser attempt error. {}", errorLogMessage(exception));
                 }
             }
             return AssistantMessageChunk.builder()

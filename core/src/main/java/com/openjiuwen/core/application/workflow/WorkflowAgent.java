@@ -23,8 +23,6 @@ import com.openjiuwen.core.session.tracer.TraceWorkflowSpan;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Iterator;
 import java.util.ArrayList;
@@ -44,8 +42,6 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/application/workflow_agent/workflow_agent.py}.</p>
  */
 public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agent.WorkflowAgent {
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final WorkflowAgentConfig agentConfig;
     private final AbilityManager abilityManager = new AbilityManager();
@@ -317,7 +313,6 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         }
         Object query = visibleQuery(inputs.get("query"));
         Object agentResponse = extractAgentContextResponse(output);
-        Object workflowResponse = extractWorkflowContextResponse(output);
         if (query != null) {
             addVisibleMessage(context, new UserMessage(String.valueOf(query)));
         }
@@ -325,7 +320,6 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
             addVisibleMessage(context, new AssistantMessage(String.valueOf(agentResponse)));
         }
         pruneVisibleMessages(context);
-        recordWorkflowContextMessages(session, query, workflowResponse);
     }
 
     private static Object visibleQuery(Object query) {
@@ -358,6 +352,10 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
             return null;
         }
         Object data = output.getData();
+        Object interaction = visibleInteraction(data);
+        if (interaction != null) {
+            return interaction;
+        }
         if (data instanceof List<?> list) {
             return list.stream()
                     .map(WorkflowAgent::interactionResponse)
@@ -385,57 +383,10 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         return "";
     }
 
-    private void recordWorkflowContextMessages(AgentSessionApi session, Object query, Object response) {
-        if (session == null) {
-            return;
-        }
-        String workflowId = currentWorkflowId(session);
-        if (workflowId == null || workflowId.isBlank()) {
-            return;
-        }
-        com.openjiuwen.core.context.ModelContext workflowContext = contextFor(workflowId, session);
-        if (workflowContext == null) {
-            return;
-        }
-        if (query != null) {
-            addVisibleMessage(workflowContext, new UserMessage(String.valueOf(query)));
-        }
-        if (response != null) {
-            addVisibleMessage(workflowContext, new AssistantMessage(String.valueOf(response)));
-        }
-        pruneVisibleMessages(workflowContext);
-    }
-
     private com.openjiuwen.core.context.ModelContext contextFor(String contextId, AgentSessionApi session) {
         com.openjiuwen.core.context.ModelContext context =
                 getContextEngine().getContext(contextId, session.getSessionId());
         return context == null ? getContextEngine().createContext(contextId, session) : context;
-    }
-
-    private static Object extractWorkflowContextResponse(ControllerOutput output) {
-        if (output == null) {
-            return null;
-        }
-        Object data = output.getData();
-        if (data instanceof List<?> list) {
-            return list.stream()
-                    .map(WorkflowAgent::interactionResponse)
-                    .filter(java.util.Objects::nonNull)
-                    .findFirst()
-                    .orElse(null);
-        }
-        Map<String, Object> dataMap = output.getDataAsMap();
-        if (dataMap == null) {
-            return null;
-        }
-        Object workflowOutput = dataMap.get("output");
-        if (workflowOutput instanceof com.openjiuwen.core.workflow.WorkflowOutput typedOutput) {
-            if (typedOutput.getState() == WorkflowExecutionState.INPUT_REQUIRED) {
-                return extractResponseValue(typedOutput.getResult());
-            }
-            return compactJson(typedOutput.getResult());
-        }
-        return null;
     }
 
     private static String currentWorkflowId(AgentSessionApi session) {
@@ -482,20 +433,27 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         context.setMessages(new ArrayList<>(messages.subList(messages.size() - maxMessages, messages.size())));
     }
 
-    private static String compactJson(Object value) {
-        try {
-            return OBJECT_MAPPER.writeValueAsString(value);
-        } catch (JsonProcessingException error) {
-            return String.valueOf(value);
-        }
-    }
-
     private static Object interactionResponse(Object item) {
         if (!(item instanceof OutputSchema outputSchema)
                 || !com.openjiuwen.core.common.constants.Constant.INTERACTION.equals(outputSchema.getType())) {
             return null;
         }
         return interactionPayloadField(outputSchema.getPayload(), "value");
+    }
+
+    private static Object visibleInteraction(Object value) {
+        if (value instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            return visibleInteraction(workflowOutput.getResult());
+        }
+        if (value instanceof List<?> chunks) {
+            return chunks.stream().map(WorkflowAgent::visibleInteraction)
+                    .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        }
+        if (value instanceof Map<?, ?> map) {
+            Object interaction = visibleInteraction(map.get("interaction"));
+            return interaction != null ? interaction : visibleInteraction(map.get("output"));
+        }
+        return interactionResponse(value);
     }
 
     private static Object extractResponseValue(Object result) {

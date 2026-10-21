@@ -1092,14 +1092,28 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Adds a new MCP server via ResourceMgr and fails fast on any error result.
+     * Adds a new MCP server, or adopts an equivalent concurrent registration.
+     * Other registration errors remain visible to the caller.
      *
      * @param mcpConfig MCP server config to add
      * @since 0.1.14
      */
     private void addNewPendingMcp(McpServerConfig mcpConfig) {
         List<Result<String>> results = Runner.resourceMgr().addMcpServer(mcpConfig, card.getId(), null);
+        if (results.stream().anyMatch(DeepAgent::isDuplicateMcpRegistration)) {
+            McpServerConfig existing = Runner.resourceMgr().getMcpServerConfig(mcpConfig.getServerId());
+            if (existing != null) {
+                retagExistingPendingMcp(existing, mcpConfig);
+                return;
+            }
+        }
         throwIfAddMcpFailed(results, mcpConfig);
+    }
+
+    private static boolean isDuplicateMcpRegistration(Result<String> result) {
+        // ResourceMgr's legacy duplicate error is distinct from connection/discovery failures.
+        return result.isError() && result.getError() instanceof IllegalArgumentException error
+                && "MCP server id already exists".equals(error.getMessage());
     }
 
     private static void throwIfAddMcpFailed(List<Result<String>> results, McpServerConfig mcpConfig) {

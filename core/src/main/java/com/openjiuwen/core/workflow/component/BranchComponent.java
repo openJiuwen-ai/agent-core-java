@@ -29,9 +29,20 @@ import java.util.function.BooleanSupplier;
  */
 public class BranchComponent extends WorkflowComponent<Object, Map<String, Object>> {
 
-    private final BranchRouter router = new BranchRouter(true);
+    private final BranchRouter router;
 
     public BranchComponent() {
+        this(true);
+    }
+
+    /**
+     * Configure whether routing owns an additional component trace.
+     *
+     * @param shouldReportRouteTrace whether to emit routing trace events
+     * @since 0.1.17
+     */
+    protected BranchComponent(boolean shouldReportRouteTrace) {
+        router = new BranchRouter(shouldReportRouteTrace);
     }
 
     public void addBranch(Object condition, Object target) {
