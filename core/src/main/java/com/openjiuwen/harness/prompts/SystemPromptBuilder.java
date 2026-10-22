@@ -50,7 +50,7 @@ public class SystemPromptBuilder extends com.openjiuwen.core.singleagent.prompts
     }
 
     @Override
-    public String build() {
+    public synchronized String build() {
         if (mode == PromptMode.NONE) {
             return getSection(SectionName.IDENTITY)
                     .map(section -> section.render(getLanguage()))
@@ -64,7 +64,7 @@ public class SystemPromptBuilder extends com.openjiuwen.core.singleagent.prompts
     }
 
     @Override
-    protected List<PromptSection> getSectionsForBuild() {
+    protected synchronized List<PromptSection> getSectionsForBuild() {
         List<PromptSection> sections = new ArrayList<>(super.getSectionsForBuild());
         if (mode == PromptMode.FULL) {
             return sections;
