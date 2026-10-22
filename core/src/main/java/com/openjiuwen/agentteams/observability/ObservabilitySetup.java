@@ -15,6 +15,7 @@ import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.exporter.logging.LoggingSpanExporter;
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
+import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
@@ -30,6 +31,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * TracerProvider lifecycle and initialization for the agent_teams observability module.
@@ -64,6 +66,12 @@ public final class ObservabilitySetup {
 
     private static final String CALLBACK_TRACER_NAME = "openjiuwen.agent_teams.observability";
     private static final String MONITOR_TRACER_NAME = "openjiuwen.agent_teams.observability.monitor";
+
+    /**
+     * Fallback bound (milliseconds) for one flush/shutdown wait when no positive export timeout is
+     * configured, so a caller can never block forever on an unreachable collector.
+     */
+    private static final long DEFAULT_FLUSH_TIMEOUT_MILLIS = 30_000L;
 
     private static SdkTracerProvider provider;
     private static ObservabilityConfig config;
@@ -115,8 +123,7 @@ public final class ObservabilitySetup {
             providerBuilder.addSpanProcessor(SimpleSpanProcessor.create(exporter));
         } else {
             providerBuilder.addSpanProcessor(BatchSpanProcessor.builder(exporter)
-                    .setExporterTimeout(config.getExportTimeoutMs(),
-                            java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .setExporterTimeout(config.getExportTimeoutMs(), TimeUnit.MILLISECONDS)
                     .build());
         }
 
@@ -148,16 +155,22 @@ public final class ObservabilitySetup {
     /**
      * Force flush the TracerProvider to ensure spans are exported.
      *
+     * <p>Waits until the flush finishes or {@code timeoutMillis} elapses, so the caller cannot block
+     * forever when the collector is unreachable. A non-positive {@code timeoutMillis} falls back to
+     * {@link #DEFAULT_FLUSH_TIMEOUT_MILLIS}.</p>
+     *
      * @param timeoutMillis flush timeout in milliseconds
      * @since 0.1.7
      */
     public static void forceFlushProvider(int timeoutMillis) {
-        if (provider != null) {
-            try {
-                provider.forceFlush();
-            } catch (IllegalStateException | SecurityException e) {
-                LOG.warn("otel: force_flush failed - {}", e.getMessage());
-            }
+        SdkTracerProvider current = provider;
+        if (current == null) {
+            return;
+        }
+        try {
+            awaitResult(current.forceFlush(), timeoutMillis, "force_flush");
+        } catch (IllegalStateException | SecurityException e) {
+            LOG.warn("otel: force_flush failed - {}", e.getMessage());
         }
     }
 
@@ -172,13 +185,14 @@ public final class ObservabilitySetup {
      */
     public static synchronized void shutdownObservability() {
         if (provider != null) {
+            SdkTracerProvider current = provider;
             try {
-                provider.forceFlush();
+                awaitResult(current.forceFlush(), flushTimeoutMillis(), "provider force_flush");
             } catch (IllegalStateException | SecurityException e) {
                 LOG.warn("otel: provider force_flush failed - {}", e.getMessage());
             }
             try {
-                provider.shutdown();
+                awaitResult(current.shutdown(), flushTimeoutMillis(), "provider shutdown");
             } catch (IllegalStateException | SecurityException e) {
                 LOG.warn("otel: provider shutdown failed - {}", e.getMessage());
             }
@@ -331,6 +345,56 @@ public final class ObservabilitySetup {
     // ================================================================
     // Internal helpers
     // ================================================================
+
+    /**
+     * Wait for an export result under a bound instead of blocking indefinitely.
+     *
+     * <p>{@code BatchSpanProcessor} completes a flush once its buffer is drained and does not report
+     * per-export failures, so a {@code false} result means "did not finish in time"; the exporter
+     * logs export failures itself.</p>
+     *
+     * @param resultCode    the result to await
+     * @param timeoutMillis the bound in milliseconds; non-positive falls back to the default
+     * @param operation     the operation name used in the warning log
+     */
+    private static void awaitResult(CompletableResultCode resultCode, long timeoutMillis, String operation) {
+        long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : DEFAULT_FLUSH_TIMEOUT_MILLIS;
+        if (!resultCode.join(effectiveTimeout, TimeUnit.MILLISECONDS).isSuccess()) {
+            LOG.warn("otel: {} did not finish within {}ms (collector unreachable?), failure={}",
+                    operation, effectiveTimeout, describeFailure(resultCode));
+        }
+    }
+
+    /**
+     * Return the bound used by {@link #shutdownObservability()} for each flush/shutdown wait.
+     *
+     * @return the configured export timeout, or the default when unavailable
+     */
+    private static long flushTimeoutMillis() {
+        if (config != null && config.getExportTimeoutMs() > 0) {
+            return config.getExportTimeoutMs();
+        }
+        return DEFAULT_FLUSH_TIMEOUT_MILLIS;
+    }
+
+    /**
+     * Return a human readable failure reason for an export result.
+     *
+     * <p>A result that is still running carries no failure, so it is described explicitly
+     * instead of being read through {@code getFailureThrowable()}.</p>
+     *
+     * @param resultCode the result to describe
+     * @return the failure message, {@code "not completed before the timeout"} for an
+     *     unfinished result, or {@code "unknown"} when no message is available
+     */
+    private static String describeFailure(CompletableResultCode resultCode) {
+        if (!resultCode.isDone()) {
+            return "not completed before the timeout";
+        }
+        Throwable failure = resultCode.getFailureThrowable();
+        String message = failure == null ? null : failure.getMessage();
+        return message == null ? "unknown" : message;
+    }
 
     /**
      * Construct the exporter selected by the configuration.
