@@ -1591,6 +1591,10 @@ public class DeepAgent implements AutoCloseable {
         effective.putIfAbsent("conversation_id", session != null && session.getSessionId() != null
                 ? session.getSessionId()
                 : card.getName() + "_session");
+        // Resume rounds bypass the task loop, so bind the loop steering queue explicitly:
+        // steer() enqueues there, and without this binding the resumed round would drain a
+        // fresh empty queue and silently drop steered messages.
+        effective.putIfAbsent("_steering_queue", loopController().getInteractionQueues().steering());
         Map<String, Object> raw = unwrapInvokeResult(invokeResumeRound(effective, session));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("type", "deep_agent_result");
