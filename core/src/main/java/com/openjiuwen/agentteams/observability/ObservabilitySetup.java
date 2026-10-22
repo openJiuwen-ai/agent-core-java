@@ -378,12 +378,19 @@ public final class ObservabilitySetup {
     }
 
     /**
-     * Return a human readable failure reason for a completed result.
+     * Return a human readable failure reason for an export result.
+     *
+     * <p>A result that is still running carries no failure, so it is described explicitly
+     * instead of being read through {@code getFailureThrowable()}.</p>
      *
      * @param resultCode the result to describe
-     * @return the failure message, or {@code "unknown"} when no message is available
+     * @return the failure message, {@code "not completed before the timeout"} for an
+     *     unfinished result, or {@code "unknown"} when no message is available
      */
     private static String describeFailure(CompletableResultCode resultCode) {
+        if (!resultCode.isDone()) {
+            return "not completed before the timeout";
+        }
         Throwable failure = resultCode.getFailureThrowable();
         String message = failure == null ? null : failure.getMessage();
         return message == null ? "unknown" : message;
