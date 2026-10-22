@@ -5,19 +5,21 @@
 package com.openjiuwen.harness.prompts.sections;
 
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's skills section contract in
  * {@code openjiuwen/harness/prompts/sections/skills.py}.
  */
+@Tag("issue196-w9")
 class SkillsSectionTest {
 
     @Test
@@ -25,6 +27,19 @@ class SkillsSectionTest {
         String line = SkillsSection.buildSkillLine(1, "browser", "Inspect pages", "skills/browser/SKILL.md");
 
         assertEquals("1. browser: Inspect pages\n   Path: skills/browser/SKILL.md", line);
+    }
+
+    @Test
+    void buildSkillLineAppendsOptionalIdSourceAndPath() {
+        String line = SkillsSection.buildSkillLine(1, "browser", "Inspect pages",
+                "skills/browser/SKILL.md", Map.of("id", "filesystem/browser", "source", "filesystem"));
+
+        assertEquals(
+                "1. browser: Inspect pages\n"
+                + "   ID: filesystem/browser\n"
+                + "   Source: filesystem\n"
+                + "   Path: skills/browser/SKILL.md",
+                line);
     }
 
     @Test
@@ -47,7 +62,7 @@ class SkillsSectionTest {
 
         assertTrue(content.startsWith("# Skills"));
         assertTrue(content.contains("1. browser: Inspect pages"));
-        assertTrue(content.endsWith("SKILL.md first."));
+        assertTrue(content.contains("SKILL.md with skill_tool first."));
     }
 
     @Test
@@ -68,7 +83,8 @@ class SkillsSectionTest {
 
     @Test
     void buildSkillsSectionCreatesPromptSection() {
-        PromptSection section = SkillsSection.buildSkillsSection("1. browser: Inspect pages", "cn", "all");
+        PromptSection section = SkillsSection.buildSkillsSection("1. browser: Inspect pages", "cn", "all")
+                .orElseThrow();
 
         assertNotNull(section);
         assertEquals(SectionName.SKILLS, section.getName());
@@ -78,6 +94,6 @@ class SkillsSectionTest {
 
     @Test
     void buildSkillsSectionRejectsUnknownMode() {
-        assertNull(SkillsSection.buildSkillsSection("", "cn", "invalid"));
+        assertTrue(SkillsSection.buildSkillsSection("", "cn", "invalid").isEmpty());
     }
 }

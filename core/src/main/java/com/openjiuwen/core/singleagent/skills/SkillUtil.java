@@ -24,14 +24,38 @@ import java.util.stream.Collectors;
  * {@code openjiuwen/core/single_agent/skills/skill_util.py}.</p>
  */
 public class SkillUtil {
-    public static final String SKILL_PROMPT_CONTENT = """
+    /**
+     * Prompt template used when Skill documents are loaded on demand through skill_tool.
+     *
+     */
+    public static final String SKILL_PROMPT_CONTENT_ON_DEMAND = """
+            To help you better complete tasks, the following skill knowledge is equipped:
+            {{skills}}
+            You can use the skill_tool meta tool to read the corresponding skill document and obtain the relevant skill.
+            """;
+
+    /**
+     * Prompt template used when Skill documents are read directly with read_file.
+     *
+     */
+    public static final String SKILL_PROMPT_CONTENT_LEGACY = """
             To help you better complete tasks, the following skill knowledge is equipped:
             {{skills}}
             You can use the read_file tool to read the corresponding SKILL.md file to obtain the relevant skill.
             """;
 
+    /**
+     * Deprecated compatibility alias for the legacy read-file prompt template.
+     *
+     * @deprecated use {@link #SKILL_PROMPT_CONTENT_ON_DEMAND} or
+     *     {@link #SKILL_PROMPT_CONTENT_LEGACY} based on the loading mode.
+     */
+    @Deprecated
+    public static final String SKILL_PROMPT_CONTENT = SKILL_PROMPT_CONTENT_LEGACY;
+
     private final SkillManager skillManager;
     private final RemoteSkillUtil remoteSkillUtil;
+    private SkillConfig skillConfig = SkillConfig.fromEnvironment();
 
     public SkillUtil(String sysOperationId) {
         this.skillManager = new SkillManager(sysOperationId);
@@ -120,27 +144,38 @@ public class SkillUtil {
         return hasSkill();
     }
 
+    public void setSkillConfig(SkillConfig config) {
+        this.skillConfig = config == null ? new SkillConfig() : config;
+        skillManager.setSkillConfig(this.skillConfig);
+    }
+
+    public SkillConfig getSkillConfig() {
+        return skillConfig;
+    }
+
     public String getSkillPrompt() {
+        String loadingInstruction;
+        String templateContent;
+        if (skillConfig.isOnDemandLoading()) {
+            loadingInstruction = "Before attempting any task, use the skill_tool meta tool "
+                    + "to read the relevant skill document (SKILL.md) and follow its workflow.\n";
+            templateContent = SKILL_PROMPT_CONTENT_ON_DEMAND;
+        } else {
+            loadingInstruction = "Before attempting any task, read the relevant skill document (SKILL.md) "
+                    + "using read_file and follow its workflow.\n";
+            templateContent = SKILL_PROMPT_CONTENT_LEGACY;
+        }
         String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
-                + "Before attempting any task, read the relevant skill document (SKILL.md) "
-                + "using read_file and follow its workflow.\n";
+                + loadingInstruction;
         List<String> skillsInfo = new ArrayList<>();
         List<Skill> skills = skillManager.getAll();
         for (int i = 0; i < skills.size(); i++) {
             Skill skill = skills.get(i);
-            StringBuilder line = new StringBuilder()
-                    .append(i).append(".Skill name: ").append(skill.getName())
-                    .append("; Skill description: ").append(skill.getDescription());
-            // Only emit SKILL.md paths inside workspace/cwd/projectRoot (issue #50).
-            String skillMdPath = resolveSkillMdPathForPrompt(skill.getDirectory());
-            if (skillMdPath != null) {
-                line.append("; Skill directory: ").append(skillMdPath);
-            }
-            skillsInfo.add(line.toString());
+            skillsInfo.add(SkillPromptRenderer.renderPromptLine(i, skill, skillConfig.isOnDemandLoading()));
         }
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("skills", skillsInfo.stream().collect(Collectors.joining("\n")));
-        PromptTemplate template = PromptTemplate.builder().content(SKILL_PROMPT_CONTENT).build();
+        PromptTemplate template = PromptTemplate.builder().content(templateContent).build();
         return systemPrompt + "\n" + template.format(values).getContent();
     }
 

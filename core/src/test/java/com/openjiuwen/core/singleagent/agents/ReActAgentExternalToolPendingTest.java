@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.tool.ExternalTool;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.toolgroup.ToolGroup;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -25,6 +26,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -39,6 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@Tag("issue196-w4")
 class ReActAgentExternalToolPendingTest {
     private static final String EXTERNAL_TOOL_NAME = "frontend_read_text_input";
     private static final String NORMAL_TOOL_NAME = "countingTool";
@@ -145,6 +148,39 @@ class ReActAgentExternalToolPendingTest {
         assertThat(session.contextUpdateCount()).isGreaterThan(contextUpdatesBeforeResume);
         assertThat(savedToolMessages(session)).extracting(ToolMessage::getToolCallId)
                 .contains("call-external", "call-normal");
+    }
+
+    @Test
+    void resumeRejectsExternalToolResultsWhenToolGroupIsInactive() {
+        AtomicInteger normalToolInvokes = new AtomicInteger();
+        ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
+        agent.registerToolGroup(new ToolGroup(
+                "external_tools", "External tools", List.of(EXTERNAL_TOOL_NAME)));
+        MemorySession session = new MemorySession("inactive-external-resume-session");
+        agent.invoke(Map.of("query", "read frontend"), session);
+
+        Object result = agent.invoke(Map.of(
+                "external_tool_results", List.of(externalResult("call-external", "from browser"))
+        ), session);
+
+        assertThat(objectMap(result))
+                .containsEntry("result_type", "error")
+                .containsEntry("output", "Tool '" + EXTERNAL_TOOL_NAME + "' is not active. "
+                        + "Activate its tool group before resuming execution.");
+        assertThat(normalToolInvokes).hasValue(0);
+        assertThat(agent.modelCallCount()).isEqualTo(1);
+        assertThat(session.getState(ReActAgent.EXTERNAL_TOOL_PENDING_KEY)).isNotNull();
+
+        agent.activateToolGroup("external_tools", session);
+        Object activatedResult = agent.invoke(Map.of(
+                "external_tool_results", List.of(externalResult("call-external", "from browser"))
+        ), session);
+
+        assertThat(objectMap(activatedResult))
+                .containsEntry("result_type", "answer")
+                .containsEntry("output", "final answer");
+        assertThat(normalToolInvokes).hasValue(1);
+        assertThat(session.getState(ReActAgent.EXTERNAL_TOOL_PENDING_KEY)).isNull();
     }
 
     @Test

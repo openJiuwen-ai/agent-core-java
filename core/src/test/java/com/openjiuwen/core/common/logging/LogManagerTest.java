@@ -248,7 +248,8 @@ class LogManagerTest {
     void testAllLogLevels() {
         initializeWithTestFactory();
 
-        TestLogger logger = (TestLogger) LogManager.getLogger("common");
+        TestLogger logger = new TestLogger("common", Map.of());
+        LogManager.registerLogger("common", logger);
         logger.debug("Debug level message");
         logger.info("Info level message");
         logger.warning("Warning level message");

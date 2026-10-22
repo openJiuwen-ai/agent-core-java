@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.testsupport.SymlinkAssumptions;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -46,10 +48,13 @@ class LocalObjectStorageClientTest {
         LocalObjectStorageClient client = new LocalObjectStorageClient(root);
 
         assertThrows(IllegalArgumentException.class, () -> client.createBucket("../outside", null));
-        assertThrows(IllegalArgumentException.class, () -> client.createBucket("nested/bucket", null));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class, () -> client.createBucket("nested/bucket", null));
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> client.uploadFile("safe-bucket", "../outside.txt", source));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> client.uploadFile("safe-bucket", "nested/object.txt", source));
 
         assertFalse(Files.exists(tempDir.resolve("outside")));
@@ -58,6 +63,7 @@ class LocalObjectStorageClientTest {
 
     @Test
     void rejectsSymbolicLinksOutsideStorageRoot() throws Exception {
+        SymlinkAssumptions.assumeCreationSupported(tempDir);
         Path root = Files.createDirectories(tempDir.resolve("storage"));
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
         Path source = tempDir.resolve("source.txt");
@@ -71,7 +77,8 @@ class LocalObjectStorageClientTest {
         Path outsideFile = outside.resolve("escaped.txt");
         Files.writeString(outsideFile, "outside");
         Files.createSymbolicLink(safeBucket.resolve("linked-object"), outsideFile);
-        assertThrows(SecurityException.class,
+        assertThrows(
+                SecurityException.class,
                 () -> client.uploadFile("safe-bucket", "linked-object", source));
         assertTrue(Files.exists(outsideFile));
     }

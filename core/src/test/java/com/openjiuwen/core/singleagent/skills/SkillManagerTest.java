@@ -20,6 +20,7 @@ import com.openjiuwen.core.sysop.result.SearchFilesResult;
 import com.openjiuwen.core.sysop.result.UploadFileResult;
 import com.openjiuwen.core.sysop.result.UploadFileStreamResult;
 import com.openjiuwen.core.sysop.result.WriteFileResult;
+import com.openjiuwen.core.testsupport.SymlinkAssumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -200,6 +201,7 @@ class SkillManagerTest {
 
     @Test
     void rejectRegisterOutsideTrustedSkillsRoot(@TempDir Path tempDir) throws Exception {
+        SymlinkAssumptions.assumeCreationSupported(tempDir);
         Path skillsRoot = Files.createDirectories(tempDir.resolve("skills"));
         Path outsideSkill = Files.createDirectories(tempDir.resolve("outside-skill"));
         Files.writeString(outsideSkill.resolve("SKILL.md"), "---\ndescription: Outside skill\n---");

@@ -36,7 +36,8 @@
 
 | 页面 | 关注点 | 主要依据 | 说明 |
 | --- | --- | --- | --- |
-| [Agent Skills](Agent%20Skills.md) | 本地技能、远程技能、技能注册与提示词拼装 | `singleagent.skills`、`examples/skill_create`、`examples/skill_use` | 聚焦 Java 当前技能系统。 |
+| [Agent Skills](Agent%20Skills.md) | 本地/远程技能、三级仓库、按需加载与提示词拼装 | `singleagent.skills`、`examples/skill_create`、`examples/skill_use` | 聚焦 Java 当前技能系统。 |
+| [ToolGroup](ToolGroup.md) | 具名工具组、session 启停与 prompt/执行层过滤 | `operator.toolgroup`、`examples/toolgroup` | 控制当前会话可用的工具范围。 |
 | [系统操作](系统操作.md) | `SysOperation`、本地/沙箱模式、结果模型 | `com.openjiuwen.core.sysop` | 解释系统操作门面和运行模式。 |
 | [技能与系统操作](技能与系统操作.md) | 技能与 sysop 的组合关系 | `singleagent.skills`、`sysop`、`examples/skill_use` | 强调工具适配与运行边界。 |
 | [生成和优化提示词](生成和优化提示词.md) | 运行时 prompt 与离线生成/优化工具的边界 | `foundation.prompt`、相关扩展能力 | 会与 `基础功能/填充提示词模板` 做明确分工。 |
