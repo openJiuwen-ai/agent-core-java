@@ -287,7 +287,13 @@ public final class BrowserRuntimeConfig {
             return "";
         }
         String value = env.get(key);
-        return value == null ? "" : value.trim();
+        if (value != null && !value.isBlank()) {
+            return value.trim();
+        }
+        // BrowserMoveEnv.loadRepoDotenv() cannot mutate the process environment;
+        // it stores .env entries as system properties. Read them here so the
+        // repo .env keeps working (Python parity: load_dotenv writes os.environ).
+        return System.getProperty(key, "").trim();
     }
 
     private static String firstNonBlank(String... values) {
