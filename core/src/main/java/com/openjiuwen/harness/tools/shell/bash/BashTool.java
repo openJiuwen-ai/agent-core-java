@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.tools.shell.bash;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
@@ -32,6 +33,7 @@ public class BashTool extends AbstractHarnessTool {
     private static final int DEFAULT_MAX_TIMEOUT_SECONDS = 3600;
     private static final int DEFAULT_MAX_OUTPUT_CHARS = 20000;
     private static final int MIN_MAX_OUTPUT_CHARS = 200;
+    private static final double CALL_TIMEOUT_HEADROOM_SECONDS = 30.0D;
 
     private final PermissionConfig permission;
     private final List<String> commandAllowlist;
@@ -49,7 +51,7 @@ public class BashTool extends AbstractHarnessTool {
     }
 
     public BashTool(PermissionMode permissionMode, List<String> denyPatterns, List<String> allowPatterns, List<String> commandAllowlist) {
-        super(toolCard("bash", "BashTool", "Run a bash command."));
+        super(bashCard());
         permission = new PermissionConfig();
         permission.setMode(permissionMode);
         permission.setDenyPatterns(PermissionConfig.compilePatterns(denyPatterns));
@@ -312,6 +314,17 @@ public class BashTool extends AbstractHarnessTool {
         }
         Object first = inputs.get(firstKey);
         return first == null ? inputs.get(secondKey) : first;
+    }
+
+    private static ToolCard bashCard() {
+        ToolCard card = toolCard("bash", "BashTool", "Run a bash command.");
+        Map<String, Object> resilience = new LinkedHashMap<>();
+        resilience.put("timeout_s", intSystemProperty("BASH_TOOL_MAX_TIMEOUT_SECONDS", DEFAULT_MAX_TIMEOUT_SECONDS)
+                + CALL_TIMEOUT_HEADROOM_SECONDS);
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("resilience", resilience);
+        card.setProperties(properties);
+        return card;
     }
 
     private static int resolveTimeout(Object rawValue) {

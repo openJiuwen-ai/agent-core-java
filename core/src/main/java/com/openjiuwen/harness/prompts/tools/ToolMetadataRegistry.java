@@ -48,6 +48,7 @@ public final class ToolMetadataRegistry {
         registerBuiltinProvider(new TodoPromptToolProviders.TodoCreateMetadataProvider());
         registerBuiltinProvider(new TodoPromptToolProviders.TodoListMetadataProvider());
         registerBuiltinProvider(new TodoPromptToolProviders.TodoModifyMetadataProvider());
+        registerBuiltinProvider(new TodoPromptToolProviders.TodoGetMetadataProvider());
         registerBuiltinProvider(new ImageOCRMetadataProvider());
         registerBuiltinProvider(new VisualQuestionAnsweringMetadataProvider());
         registerBuiltinProvider(new AudioPromptToolProviders.AudioTranscriptionMetadataProvider());

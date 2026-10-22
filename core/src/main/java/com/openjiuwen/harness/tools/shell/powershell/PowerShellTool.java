@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.tools.shell.powershell;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.BaseShellOperation;
 import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.core.sysop.SysOperation;
@@ -16,6 +17,7 @@ import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.tools.shell.bash.BashTool;
 
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +33,7 @@ public class PowerShellTool extends AbstractHarnessTool {
     private static final int DEFAULT_MAX_TIMEOUT_SECONDS = 3600;
     private static final int DEFAULT_MAX_OUTPUT_CHARS = 20000;
     private static final int MIN_MAX_OUTPUT_CHARS = 200;
+    private static final double CALL_TIMEOUT_HEADROOM_SECONDS = 30.0D;
 
     private final SysOperation operation;
     private final PermissionConfig permission;
@@ -56,7 +59,7 @@ public class PowerShellTool extends AbstractHarnessTool {
             List<String> allowPatterns,
             String agentId
     ) {
-        super(toolCard("powershell", "powershell", "Run a PowerShell command."));
+        super(powerShellCard());
         this.operation = operation;
         this.permission = new PermissionConfig();
         this.permission.setMode(permissionMode == null ? PermissionMode.AUTO : permissionMode);
@@ -188,6 +191,17 @@ public class PowerShellTool extends AbstractHarnessTool {
         }
         Object firstValue = inputs.get(first);
         return firstValue == null ? inputs.get(second) : firstValue;
+    }
+
+    private static ToolCard powerShellCard() {
+        ToolCard card = toolCard("powershell", "powershell", "Run a PowerShell command.");
+        Map<String, Object> resilience = new LinkedHashMap<>();
+        resilience.put("timeout_s", intSystemProperty("POWER_SHELL_TOOL_MAX_TIMEOUT_SECONDS",
+                DEFAULT_MAX_TIMEOUT_SECONDS) + CALL_TIMEOUT_HEADROOM_SECONDS);
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("resilience", resilience);
+        card.setProperties(properties);
+        return card;
     }
 
     private static int resolveTimeout(Object rawValue) {

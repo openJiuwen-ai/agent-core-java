@@ -1338,6 +1338,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             resumeContext.setExecuteToolCall((callbackContext, calls, activeSession, activeContext) -> {
                 List<AbilityManager.ExecutionResult> executionResults = executeToolCall(callbackContext, calls,
                         activeSession, activeContext);
+                // Streaming resumes need the tool result chunk to pair with the confirmed tool
+                // call chunk; the helper no-ops unless the invocation is streaming.
+                writeToolResultOutputs(callbackContext, activeSession, calls, executionResults);
                 return executionResults.stream().map(AbilityManager.ExecutionResult::result).toList();
             });
             return hitlHandler.handleResume(resumeContext);
