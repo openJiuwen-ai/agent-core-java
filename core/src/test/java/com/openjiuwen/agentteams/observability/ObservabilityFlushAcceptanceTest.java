@@ -141,8 +141,8 @@ class ObservabilityFlushAcceptanceTest {
     }
 
     private static byte[] decodeIfGzipped(byte[] body) throws IOException {
-        boolean gzipped = body.length > 2 && (body[0] & 0xFF) == 0x1F && (body[1] & 0xFF) == 0x8B;
-        if (!gzipped) {
+        boolean isGzipped = body.length > 2 && (body[0] & 0xFF) == 0x1F && (body[1] & 0xFF) == 0x8B;
+        if (!isGzipped) {
             return body;
         }
         try (InputStream gzip = new GZIPInputStream(new ByteArrayInputStream(body))) {

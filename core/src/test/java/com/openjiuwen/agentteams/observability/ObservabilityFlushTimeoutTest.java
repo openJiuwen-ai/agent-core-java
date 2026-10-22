@@ -154,7 +154,7 @@ class ObservabilityFlushTimeoutTest {
             try {
                 Thread.sleep(exportDelayMillis);
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                // 慢导出桩不涉及中断协作语义：被中断即视为本次导出失败
                 return CompletableResultCode.ofFailure();
             }
             exportedBatches.incrementAndGet();
