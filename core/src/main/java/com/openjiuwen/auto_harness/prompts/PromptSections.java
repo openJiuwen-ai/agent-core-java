@@ -7,6 +7,7 @@ package com.openjiuwen.auto_harness.prompts;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,14 +24,27 @@ import java.util.Map;
 public final class PromptSections {
 
     private static final String IDENTITY_PATH = "identity.md";
+    private static final String PROMPTS_RESOURCE_ROOT = "openjiuwen/auto_harness/prompts/";
 
     private PromptSections() {
     }
 
     public static String loadIdentity(String promptsDir) {
-        Path identityPath = Path.of(promptsDir, IDENTITY_PATH);
-        try {
-            return Files.readString(identityPath, StandardCharsets.UTF_8);
+        Path promptsPath = Path.of(promptsDir);
+        if (Files.isDirectory(promptsPath)) {
+            try {
+                return Files.readString(promptsPath.resolve(IDENTITY_PATH), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                return "";
+            }
+        }
+        // 打成 jar 后提示词目录不再以文件系统形式存在，回退到 classpath 资源。
+        ClassLoader classLoader = PromptSections.class.getClassLoader();
+        try (InputStream stream = classLoader.getResourceAsStream(PROMPTS_RESOURCE_ROOT + IDENTITY_PATH)) {
+            if (stream == null) {
+                return "";
+            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             return "";
         }
