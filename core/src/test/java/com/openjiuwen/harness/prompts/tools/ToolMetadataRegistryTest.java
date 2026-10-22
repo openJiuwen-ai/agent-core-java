@@ -236,6 +236,19 @@ class ToolMetadataRegistryTest {
         return result;
     }
 
+    @Test
+    void todoGetIsRegisteredWithRequiredIdParam() {
+        // Given the builtin registry (todo_get used to fall back to an empty schema)
+
+        // When resolving todo_get metadata
+        Map<String, Object> params = ToolMetadataRegistry.getToolInputParams("todo_get", "cn");
+
+        // Then the card declares the required id parameter instead of an empty schema
+        assertThat(ToolMetadataRegistry.getToolDescription("todo_get", "cn")).isNotBlank();
+        assertThat(params.get("required")).isEqualTo(List.of("id"));
+        assertThat(params.get("properties")).isInstanceOf(Map.class);
+    }
+
     private static class ValidProvider implements ToolMetadataProvider {
         @Override
         public String getName() {
