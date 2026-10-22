@@ -4,6 +4,12 @@
 
 package com.openjiuwen.core.session.internal;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.config.Config;
@@ -11,13 +17,8 @@ import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.tracer.Tracer;
-import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import org.junit.jupiter.api.Test;
 
 /**
  * Focused tests for internal workflow sessions.
@@ -26,6 +27,35 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  * {@code openjiuwen/core/session/internal/workflow.py}.</p>
  */
 class WorkflowSessionInternalTest {
+
+    @Test
+    void nestedWorkflowNodesRetainFullExecutablePath() {
+        WorkflowSession root = new WorkflowSession("main-workflow");
+        NodeSession first = new NodeSession(root, "nest1", "workflow");
+        WorkflowSession child = WorkflowSession.nested(first, "child-workflow");
+        NodeSession second = new NodeSession(child, "nest2", "workflow");
+        WorkflowSession grandchild = WorkflowSession.nested(second, "grandchild-workflow");
+        NodeSession message = new NodeSession(grandchild, "msg1", "message");
+
+        assertEquals("nest1", second.parentId());
+        assertEquals("nest1.nest2", second.executableId());
+        assertEquals("nest1.nest2", message.parentId());
+        assertEquals("nest1.nest2.msg1", message.executableId());
+        assertEquals("grandchild-workflow", message.workflowId());
+        assertEquals("main-workflow", message.mainWorkflowId());
+        assertEquals(2, message.workflowNestingDepth());
+        assertSame(root.config(), message.config());
+    }
+
+    @Test
+    void nestedWorkflowWithoutNodeParentKeepsRootNodePath() {
+        WorkflowSession root = new WorkflowSession("main-workflow");
+        WorkflowSession child = WorkflowSession.nested(root, "child-workflow");
+        NodeSession node = new NodeSession(child, "node-a");
+
+        assertEquals("", node.parentId());
+        assertEquals("node-a", node.executableId());
+    }
 
     @Test
     void rootWorkflowSessionUsesPythonUuidHexShapeAndDefaults() {
