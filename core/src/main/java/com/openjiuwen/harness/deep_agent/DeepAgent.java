@@ -1879,8 +1879,10 @@ public class DeepAgent implements AutoCloseable {
         try {
             Map<String, Object> result = withDeepAgentInvokeLifecycle(normalized,
                     () -> runSingleRoundInvokeStreaming(normalized, effectiveSession, session));
-            // Inner chunks (including a re-interrupt interaction) were forwarded while streaming.
-            writeTopLevelStreamResult(effectiveSession, 0, result, true);
+            // Inner chunks (including a re-interrupt interaction) were forwarded while streaming,
+            // but only on the ReActAgent branch; the synchronous fallback forwards nothing, so its
+            // interrupt state must still be written at the top level.
+            writeTopLevelStreamResult(effectiveSession, 0, result, reactAgent() instanceof ReActAgent);
         } catch (Error error) {
             writeStreamError(effectiveSession, 0, error);
         } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException

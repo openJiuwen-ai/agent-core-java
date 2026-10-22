@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.deepagent;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -22,11 +24,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Streaming resume regression: a resume input on stream() must run in the background and
@@ -60,8 +62,10 @@ class DeepAgentStreamingResumeTest {
         // Then the first inner chunk arrives while the inner round is still blocked
         assertThat(chunks.hasNext()).isTrue();
         Object first = chunks.next();
-        assertThat(first).isInstanceOf(OutputSchema.class);
-        assertThat(((OutputSchema) first).getType()).isEqualTo("tool_call");
+        if (!(first instanceof OutputSchema firstSchema)) {
+            throw new AssertionError("first chunk must be an OutputSchema");
+        }
+        assertThat(firstSchema.getType()).isEqualTo("tool_call");
         assertThat(inner.isRoundDone()).isFalse();
         assertThat(inner.isStreamUsed()).isTrue();
         assertThat(inner.isInvokeUsed()).isFalse();
@@ -107,7 +111,36 @@ class DeepAgentStreamingResumeTest {
                 .anyMatch(chunk -> "answer".equals(chunk.getType()))).isFalse();
     }
 
-    private static DeepAgent newAgent(ReActAgent inner) {
+    @Test
+    void streamedResumeWithNonReactInnerStillSurfacesInterrupt() {
+        // Given a POJO inner agent (no streaming channel) whose resume returns an interrupt
+        InterruptingPojoAgent inner = new InterruptingPojoAgent();
+        agent = newAgent(inner);
+        OutputSchema interaction = new OutputSchema(InterruptConstants.INTERACTION, 0, Map.of(
+                "tool_name", "write",
+                "message", "Please approve or reject?"));
+        inner.respondWith(Map.of(
+                "result_type", "interrupt",
+                "interrupt_ids", List.of("write-call-1"),
+                "state", List.of(interaction)));
+
+        // When the resume invocation streams (fallback keeps synchronous semantics)
+        List<Object> all = new ArrayList<>();
+        agent.stream(Map.of(
+                        "query", resumeQuery(),
+                        "conversation_id", UUID.randomUUID().toString()), null, List.of(StreamMode.OUTPUT))
+                .forEachRemaining(all::add);
+
+        // Then the interaction chunk still reaches the client exactly once via the top level
+        long interactions = all.stream()
+                .filter(OutputSchema.class::isInstance)
+                .map(OutputSchema.class::cast)
+                .filter(chunk -> InterruptConstants.INTERACTION.equals(chunk.getType()))
+                .count();
+        assertThat(interactions).isEqualTo(1);
+    }
+
+    private static DeepAgent newAgent(Object inner) {
         DeepAgent configuredAgent = new DeepAgent(CARD);
         DeepAgentConfig config = new DeepAgentConfig();
         config.setEnableTaskLoop(true);
@@ -120,6 +153,26 @@ class DeepAgentStreamingResumeTest {
         InteractiveInput query = new InteractiveInput();
         query.update("write-call-1", Map.of("approved", true));
         return query;
+    }
+
+    private static final class InterruptingPojoAgent {
+        private volatile Map<String, Object> response = Map.of("output", "done", "result_type", "answer");
+
+        void respondWith(Map<String, Object> result) {
+            this.response = result;
+        }
+
+        /**
+         * Returns the scripted response for the resume invocation.
+         *
+         * @param inputs invocation inputs
+         * @param session session owning the resumed execution
+         * @return scripted result
+         * @since 0.1.17
+         */
+        public CompletionStage<Map<String, Object>> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+            return CompletableFuture.completedFuture(response);
+        }
     }
 
     private static final class ScriptedReactAgent extends ReActAgent {

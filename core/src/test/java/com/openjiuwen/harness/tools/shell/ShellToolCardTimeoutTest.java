@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.tools.shell;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.harness.tools.shell.bash.BashTool;
 import com.openjiuwen.harness.tools.shell.powershell.PowerShellTool;
@@ -12,14 +14,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Shell tool cards must declare {@code resilience.timeout_s} above the tool's own maximum
  * timeout, so the outer call timeout does not cut off commands the tool itself still allows.
  */
 class ShellToolCardTimeoutTest {
-
     @Test
     void bashCardDeclaresCallTimeoutAboveToolMaxTimeout() {
         // Given a bash tool card

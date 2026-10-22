@@ -239,7 +239,6 @@ class ToolMetadataRegistryTest {
     @Test
     void todoGetIsRegisteredWithRequiredIdParam() {
         // Given the builtin registry (todo_get used to fall back to an empty schema)
-
         // When resolving todo_get metadata
         Map<String, Object> params = ToolMetadataRegistry.getToolInputParams("todo_get", "cn");
 
