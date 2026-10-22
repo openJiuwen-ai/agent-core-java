@@ -57,6 +57,7 @@ import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.Cwd;
@@ -1770,6 +1771,9 @@ public class DeepAgent implements AutoCloseable {
         if (config.isEnableTaskLoop() && !resumeInput) {
             return streamTaskLoop(normalized, effectiveSession, session);
         }
+        if (resumeInput) {
+            return streamResume(normalized, effectiveSession, session);
+        }
         return streamInvokeOnce(normalized, effectiveSession, session);
     }
 
@@ -1811,7 +1815,7 @@ public class DeepAgent implements AutoCloseable {
                     normalized,
                     () -> runTaskLoop(normalized, effectiveSession)
             );
-            writeTopLevelStreamResult(effectiveSession, 0, result);
+            writeTopLevelStreamResult(effectiveSession, 0, result, true);
         } catch (Error error) {
             writeStreamError(effectiveSession, 0, error);
         } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
@@ -1832,7 +1836,7 @@ public class DeepAgent implements AutoCloseable {
         List<Object> outputs = new ArrayList<>();
         try {
             Map<String, Object> result = invokeWithLifecycle(normalized, effectiveSession);
-            writeTopLevelStreamResult(effectiveSession, outputs.size(), result);
+            writeTopLevelStreamResult(effectiveSession, outputs.size(), result, false);
         } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException | IllegalStateException
                 | UnsupportedOperationException | ClassCastException | NullPointerException
                 | IndexOutOfBoundsException | NoSuchElementException | RejectedExecutionException
@@ -1846,6 +1850,80 @@ public class DeepAgent implements AutoCloseable {
             outputs.add(iterator.next());
         }
         return outputs.iterator();
+    }
+
+    private java.util.Iterator<Object> streamResume(
+            Map<String, Object> normalized,
+            DeepAgentSession effectiveSession,
+            AgentSessionApi session
+    ) {
+        try {
+            STREAM_EXECUTOR.execute(() -> runStreamResume(normalized, effectiveSession, session));
+        } catch (RejectedExecutionException ex) {
+            // Pool saturated: surface the error on the stream, then close it like streamTaskLoop.
+            writeStreamError(effectiveSession, 0, ex);
+            finishStreamSession(effectiveSession, session);
+        }
+        return effectiveSession.streamIterator();
+    }
+
+    private void runStreamResume(
+            Map<String, Object> normalized,
+            DeepAgentSession effectiveSession,
+            AgentSessionApi session
+    ) {
+        try {
+            Map<String, Object> result = withDeepAgentInvokeLifecycle(normalized,
+                    () -> runSingleRoundInvokeStreaming(normalized, effectiveSession, session));
+            // Inner chunks (including a re-interrupt interaction) were forwarded while streaming.
+            writeTopLevelStreamResult(effectiveSession, 0, result, true);
+        } catch (Error error) {
+            writeStreamError(effectiveSession, 0, error);
+        } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
+                | IllegalStateException | UnsupportedOperationException | ClassCastException
+                | NullPointerException | IndexOutOfBoundsException | NoSuchElementException
+                | RejectedExecutionException | UncheckedIOException | SecurityException error) {
+            writeStreamError(effectiveSession, 0, error);
+        } finally {
+            finishStreamSession(effectiveSession, session);
+        }
+    }
+
+    private Map<String, Object> runSingleRoundInvokeStreaming(
+            Map<String, Object> normalized,
+            DeepAgentSession effectiveSession,
+            AgentSessionApi session
+    ) {
+        if (!(reactAgent() instanceof ReActAgent)) {
+            // Non-ReAct inner agents (test doubles) expose no streaming channel: keep the
+            // synchronous resume semantics for them. Run against the effective session so the
+            // finally-stage state copy-back matches the non-streaming resume path.
+            return runSingleRoundInvoke(normalized, effectiveSession);
+        }
+        Map<String, Object> effective = new LinkedHashMap<>();
+        if (normalized != null) {
+            effective.putAll(normalized);
+        }
+        effective.putIfAbsent("query", "");
+        effective.putIfAbsent("conversation_id", session != null && session.getSessionId() != null
+                ? session.getSessionId()
+                : card.getName() + "_session");
+        // Resume bypasses the task loop, so bind the loop steering queue explicitly: steer()
+        // enqueues there and the resumed round must drain the same queue.
+        effective.putIfAbsent("_steering_queue", loopController().getInteractionQueues().steering());
+        Map<String, Object> raw = unwrapInvokeResult(invokeInnerRoundStreaming(effective, effectiveSession));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("type", "deep_agent_result");
+        result.put("agent_name", card.getName());
+        result.put("mode", currentMode == null ? AgentMode.NORMAL.name().toLowerCase(Locale.ROOT)
+                : currentMode.name().toLowerCase(Locale.ROOT));
+        result.put("workspace", workspaceRootString());
+        result.put("inputs", normalized);
+        result.put("input", normalized);
+        if (raw != null) {
+            result.putAll(raw);
+        }
+        return result;
     }
 
     private void writeStreamError(AgentSessionApi session, int index, Throwable error) {
@@ -2773,12 +2851,18 @@ public class DeepAgent implements AutoCloseable {
         }
     }
 
-    private void writeTopLevelStreamResult(AgentSessionApi session, int index, Map<String, Object> result) {
+    private void writeTopLevelStreamResult(AgentSessionApi session, int index, Map<String, Object> result,
+            boolean isInteractionForwarded) {
         if (session == null) {
             return;
         }
         if (result != null && "interrupt".equals(String.valueOf(result.get("result_type")))
                 && result.get("state") instanceof List<?> states) {
+            if (isInteractionForwarded) {
+                // The interaction chunk already went out with the forwarded inner stream;
+                // writing it again would deliver the same interrupt twice.
+                return;
+            }
             for (Object state : states) {
                 if (state instanceof OutputSchema outputSchema) {
                     session.writeStream(outputSchema);
@@ -2843,7 +2927,8 @@ public class DeepAgent implements AutoCloseable {
         for (int i = streamItems.size() - 1; i >= 0; i--) {
             Object item = streamItems.get(i);
             if (item instanceof OutputSchema outputSchema) {
-                if ("__interaction__".equals(outputSchema.getType())) {
+                if ("__interaction__".equals(outputSchema.getType())
+                        || InterruptConstants.INTERACTION.equals(outputSchema.getType())) {
                     Map<String, Object> interrupt = new LinkedHashMap<>();
                     interrupt.put("output", "");
                     interrupt.put("result_type", "interrupt");
@@ -2868,7 +2953,8 @@ public class DeepAgent implements AutoCloseable {
         List<Object> normalized = new ArrayList<>();
         for (Object item : streamItems) {
             if (item instanceof OutputSchema outputSchema) {
-                if ("__interaction__".equals(outputSchema.getType())) {
+                if ("__interaction__".equals(outputSchema.getType())
+                        || InterruptConstants.INTERACTION.equals(outputSchema.getType())) {
                     normalized.add(outputSchema);
                     continue;
                 }
