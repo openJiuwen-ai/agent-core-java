@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -79,12 +80,37 @@ class DeepAgentStreamingResumeStateTest {
         assertCheckpoint(sessionId, "second", null);
     }
 
+    @Test
+    void resumeBindsLoopSteeringQueueSoSteeredMessagesReachInnerRound() {
+        // Given a steered message enqueued while no task loop round is active
+        QueueRecordingReactAgent inner = new QueueRecordingReactAgent();
+        agent = newAgent(inner);
+        agent.steer("please conclude first", null);
+
+        // When a resume invocation runs (resume inputs bypass the task loop)
+        String sessionId = UUID.randomUUID().toString();
+        InteractiveInput query = new InteractiveInput();
+        query.update("write-call-1", Map.of("approved", true));
+        agent.invoke(Map.of("query", query, "conversation_id", sessionId));
+
+        // Then the inner round received the loop steering queue carrying the steered message
+        Object bound = inner.lastInputs().get("_steering_queue");
+        if (!(bound instanceof Queue<?> queue)) {
+            throw new AssertionError("resume inputs must carry the loop steering queue");
+        }
+        assertThat(queue.stream().anyMatch("please conclude first"::equals)).isTrue();
+    }
+
     private static DeepAgent newAgent() {
+        return newAgent(new ResumingReactAgent());
+    }
+
+    private static DeepAgent newAgent(Object reactAgent) {
         DeepAgent configuredAgent = new DeepAgent(CARD);
         DeepAgentConfig config = new DeepAgentConfig();
         config.setEnableTaskLoop(true);
         configuredAgent.configure(config);
-        configuredAgent.setReactAgent(new ResumingReactAgent(), true);
+        configuredAgent.setReactAgent(reactAgent, true);
         return configuredAgent;
     }
 
@@ -109,6 +135,33 @@ class DeepAgentStreamingResumeStateTest {
         restored.preRun(Map.of());
         assertThat(restored.getState("completed")).isEqualTo(completed);
         assertThat(restored.getState("pending")).isEqualTo(pending);
+    }
+
+    private static final class QueueRecordingReactAgent {
+        private volatile Map<String, Object> lastInputs = Map.of();
+
+        /**
+         * Records the invocation inputs and completes with a canned answer.
+         *
+         * @param inputs invocation inputs
+         * @param session session owning the resumed execution
+         * @return completed answer
+         * @since 0.1.17
+         */
+        public CompletionStage<Map<String, Object>> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+            lastInputs = new LinkedHashMap<>(inputs);
+            return CompletableFuture.completedFuture(Map.of("output", "resumed", "result_type", "answer"));
+        }
+
+        /**
+         * Returns the last recorded invocation inputs.
+         *
+         * @return recorded inputs, empty when never invoked
+         * @since 0.1.17
+         */
+        public Map<String, Object> lastInputs() {
+            return lastInputs;
+        }
     }
 
     private static final class ResumingReactAgent {

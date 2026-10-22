@@ -64,7 +64,8 @@ class DeepAgentInterruptResumeSystemMissingTest {
         assertThat(reactAgent.writeInvokeCount()).isEqualTo(1);
         assertThat(reactAgent.calls()).hasSize(2);
         assertThat(reactAgent.calls().get(1).inputs().get("query")).isSameAs(interactiveInput);
-        assertThat(reactAgent.calls().get(1).inputs()).doesNotContainKeys("is_follow_up", "_steering_queue");
+        assertThat(reactAgent.calls().get(1).inputs()).doesNotContainKey("is_follow_up");
+        assertThat(reactAgent.calls().get(1).inputs()).containsKey("_steering_queue");
     }
 
     private static DeepAgent agent(InterruptingReactAgent reactAgent) {
