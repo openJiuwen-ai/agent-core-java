@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.tracerotel;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 
@@ -13,6 +14,7 @@ import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.exporter.logging.LoggingSpanExporter;
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
+import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
@@ -20,8 +22,13 @@ import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * OTel tracer provider initialization.
@@ -36,11 +43,28 @@ import java.util.Map;
  * TracerProvider, so {@link OtelAgentHandler} / {@link OtelWorkflowHandler} work
  * correctly without relying on global state.</p>
  *
+ * <p>Retains the built provider so buffered spans can still be exported when the process exits:
+ * {@link #forceFlushOtelTracer()} and {@link #shutdownOtelTracer()} wait (bounded) for the export
+ * to complete, and {@link #initOtelTracer(OtelTracerConfig)} registers a one-time JVM shutdown
+ * hook that flushes and shuts the provider down. Without such a flush handle, spans still
+ * buffered in a {@code BatchSpanProcessor} are lost at JVM exit.</p>
+ *
  * <p>Mirrors Python's {@code openjiuwen.extensions.tracer_otel.setup}.</p>
  *
  * @since 0.1.7
  */
 public final class OtelTracerSetup {
+    /** Upper bound (seconds) for one flush/shutdown wait, so JVM exit cannot hang forever. */
+    private static final long FLUSH_TIMEOUT_SECONDS = 30L;
+
+    private static final Logger LOG = LoggerFactory.getLogger(OtelTracerSetup.class);
+
+    /** Guards the one-time registration of the JVM shutdown hook. */
+    private static final AtomicBoolean SHUTDOWN_HOOK_REGISTERED = new AtomicBoolean(false);
+
+    /** Provider built by the latest {@link #initOtelTracer(OtelTracerConfig)} call; cleared on shutdown. */
+    private static volatile SdkTracerProvider provider;
+
     private OtelTracerSetup() {
     }
 
@@ -89,12 +113,117 @@ public final class OtelTracerSetup {
                     null, null);
         }
 
-        SdkTracerProvider provider = providerBuilder.build();
+        SdkTracerProvider builtProvider = providerBuilder.build();
+        provider = builtProvider;
+        registerShutdownHook();
 
         // Intentionally NOT calling GlobalOpenTelemetry.setTracerProvider() here.
         // tracerotel handlers hold a direct tracer reference, so global provider state
         // is not needed. This avoids conflicts with agent_teams.observability.init_observability().
-        return provider.get(config.getTracerName());
+        return builtProvider.get(config.getTracerName());
+    }
+
+    /**
+     * Flush spans still buffered by the provider built in {@link #initOtelTracer(OtelTracerConfig)}.
+     *
+     * <p>Waits until the flush finishes or the 30s flush timeout elapses, so a caller
+     * (including the JVM shutdown hook) cannot block forever when the collector is unreachable.</p>
+     *
+     * <p>{@code BatchSpanProcessor} completes its flush result once the buffer is drained and does
+     * not report per-export failures, so {@code false} means "did not finish in time"; export
+     * failures are logged by the exporter itself.</p>
+     *
+     * @return {@code true} when the flush finished, or when no provider exists
+     * @since 0.1.17
+     */
+    public static boolean forceFlushOtelTracer() {
+        SdkTracerProvider current = provider;
+        if (current == null) {
+            return true;
+        }
+        try {
+            return awaitExport(current.forceFlush(), "force flush");
+        } catch (IllegalStateException | SecurityException e) {
+            LOG.warn("otel: tracerotel force flush failed - {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Flush and shut down the provider built in {@link #initOtelTracer(OtelTracerConfig)}.
+     *
+     * <p>{@code SdkTracerProvider.shutdown()} already flushes every {@code SpanProcessor}, so no
+     * separate {@code forceFlush()} is issued. The provider reference is cleared before waiting, so
+     * concurrent and repeated calls return immediately instead of shutting down twice.</p>
+     *
+     * <p>{@code BatchSpanProcessor} reports success once its worker stops, so {@code false} means
+     * "did not finish in time"; per-export failures are logged by the exporter itself.</p>
+     *
+     * @return {@code true} when the provider shutdown finished, or when no provider exists
+     * @since 0.1.17
+     */
+    public static synchronized boolean shutdownOtelTracer() {
+        SdkTracerProvider current = provider;
+        if (current == null) {
+            return true;
+        }
+        provider = null;
+        try {
+            return awaitExport(current.shutdown(), "shutdown");
+        } catch (IllegalStateException | SecurityException e) {
+            LOG.warn("otel: tracerotel shutdown failed - {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Register the one-time JVM shutdown hook that flushes and shuts the provider down.
+     *
+     * @since 0.1.17
+     */
+    private static void registerShutdownHook() {
+        if (SHUTDOWN_HOOK_REGISTERED.compareAndSet(false, true)) {
+            // 复用统一线程入口：线程命名与未捕获异常日志由该入口负责
+            Runtime.getRuntime().addShutdownHook(OpenJiuwenExecutors.newThread(
+                    OtelTracerSetup::shutdownOtelTracer, "otel-tracer-shutdown", false));
+        }
+    }
+
+    /**
+     * Wait for an export result with the bounded flush timeout.
+     *
+     * @param resultCode export result returned by the provider
+     * @param operation operation name used in the warning message
+     * @return {@code true} when the export finished successfully
+     * @since 0.1.17
+     */
+    private static boolean awaitExport(CompletableResultCode resultCode, String operation) {
+        if (resultCode.join(FLUSH_TIMEOUT_SECONDS, TimeUnit.SECONDS).isSuccess()) {
+            return true;
+        }
+        LOG.warn("otel: tracerotel {} did not finish within {}s (collector unreachable?), failure={}",
+                operation, FLUSH_TIMEOUT_SECONDS, describeFailure(resultCode));
+        return false;
+    }
+
+    /**
+     * Describe an export failure for logging.
+     *
+     * <p>A result that is still running carries no failure, so it is described explicitly
+     * instead of being read through {@code getFailureThrowable()}.</p>
+     *
+     * @param resultCode export result returned by the provider
+     * @return the failure message, {@code "not completed before the timeout"} for an unfinished
+     *     result, or {@code "unknown"} when the export timed out without a cause
+     * @since 0.1.17
+     */
+    private static String describeFailure(CompletableResultCode resultCode) {
+        if (!resultCode.isDone()) {
+            return "not completed before the timeout";
+        }
+        Throwable failure = resultCode.getFailureThrowable();
+        String message = failure == null ? null : failure.getMessage();
+        return message == null ? "unknown" : message;
     }
 
     /**
