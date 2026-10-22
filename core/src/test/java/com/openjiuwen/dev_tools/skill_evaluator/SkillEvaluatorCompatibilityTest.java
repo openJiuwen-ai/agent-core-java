@@ -5,6 +5,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import com.openjiuwen.core.testsupport.SymlinkAssumptions;
+
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
@@ -57,6 +59,7 @@ class SkillEvaluatorCompatibilityTest {
     @Test
     @DisplayName("目标技能路径必须 canonicalize 到 SKILLS_DIR 内")
     void targetSkillMustResolveWithinConfiguredSkillsRoot(@TempDir Path tempDir) throws IOException {
+        SymlinkAssumptions.assumeCreationSupported(tempDir);
         Path skillsRoot = Files.createDirectories(tempDir.resolve("skills"));
         Path safeSkill = Files.createDirectories(skillsRoot.resolve("safe-skill"));
         Files.writeString(safeSkill.resolve("SKILL.md"), "---\ndescription: Safe skill\n---");

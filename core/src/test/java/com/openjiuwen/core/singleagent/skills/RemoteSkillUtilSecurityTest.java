@@ -7,6 +7,8 @@ package com.openjiuwen.core.singleagent.skills;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.openjiuwen.core.testsupport.SymlinkAssumptions;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,26 +33,33 @@ class RemoteSkillUtilSecurityTest {
     void rejectsAbsoluteAndParentTraversalPaths() throws Exception {
         Path baseDir = Files.createDirectories(tempDir.resolve("skills"));
 
-        assertThrows(SecurityException.class,
+        assertThrows(
+                SecurityException.class,
                 () -> RemoteSkillUtil.resolveSafeTarget(baseDir, "../escaped.md"));
-        assertThrows(SecurityException.class,
-                () -> RemoteSkillUtil.resolveSafeTarget(baseDir, tempDir.resolve("absolute.md").toString()));
+        assertThrows(
+                SecurityException.class,
+                () ->
+                        RemoteSkillUtil.resolveSafeTarget(
+                                baseDir, tempDir.resolve("absolute.md").toString()));
     }
 
     @Test
     void rejectsSymbolicLinksOutsideBaseDirectory() throws Exception {
+        SymlinkAssumptions.assumeCreationSupported(tempDir);
         Path baseDir = Files.createDirectories(tempDir.resolve("skills"));
         Path outsideDir = Files.createDirectories(tempDir.resolve("outside"));
         Files.createSymbolicLink(baseDir.resolve("linked"), outsideDir);
 
-        assertThrows(SecurityException.class,
+        assertThrows(
+                SecurityException.class,
                 () -> RemoteSkillUtil.resolveSafeTarget(baseDir, "linked/escaped.md"));
 
         Path skillDir = Files.createDirectories(baseDir.resolve("safe"));
         Path outsideFile = outsideDir.resolve("outside.md");
         Files.writeString(outsideFile, "outside");
         Files.createSymbolicLink(skillDir.resolve("SKILL.md"), outsideFile);
-        assertThrows(SecurityException.class,
+        assertThrows(
+                SecurityException.class,
                 () -> RemoteSkillUtil.resolveSafeTarget(baseDir, "safe/SKILL.md"));
     }
 }

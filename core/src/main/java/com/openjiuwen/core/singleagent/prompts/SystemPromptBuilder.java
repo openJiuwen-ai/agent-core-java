@@ -71,15 +71,33 @@ public class SystemPromptBuilder {
         return new LinkedHashMap<>(sections);
     }
 
-    public boolean hasSection(String name) {
+    /**
+     * Checks whether a section with the given name exists in this builder.
+     *
+     * @param name the section name to check, may be {@code null}
+     * @return {@code true} if a section with the given name is present, {@code false} otherwise
+     */
+    public synchronized boolean hasSection(String name) {
         return sections.containsKey(name);
     }
 
-    public Optional<PromptSection> getSection(String name) {
+    /**
+     * Retrieves the section with the given name, if present.
+     *
+     * @param name the section name to look up, may be {@code null}
+     * @return an {@code Optional} containing the matching {@link PromptSection}, or empty if not found
+     */
+    public synchronized Optional<PromptSection> getSection(String name) {
         return Optional.ofNullable(sections.get(name));
     }
 
-    public String build() {
+    /**
+     * Builds the final system prompt string by sorting sections by priority,
+     * rendering each in the current language, and joining non-blank parts with double newlines.
+     *
+     * @return the assembled system prompt string
+     */
+    public synchronized String build() {
         List<PromptSection> sortedSections = new ArrayList<>(getSectionsForBuild());
         sortedSections.sort(Comparator.comparingInt(PromptSection::getPriority));
         return sortedSections.stream()
@@ -88,7 +106,13 @@ public class SystemPromptBuilder {
                 .collect(Collectors.joining("\n\n"));
     }
 
-    protected List<PromptSection> getSectionsForBuild() {
+    /**
+     * Returns a defensive copy of all sections currently in this builder,
+     * used internally by {@link #build()}.
+     *
+     * @return a new list containing all current sections
+     */
+    protected synchronized List<PromptSection> getSectionsForBuild() {
         return new ArrayList<>(sections.values());
     }
 

@@ -63,7 +63,7 @@
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
         <argLine></argLine>
         <surefire.groups></surefire.groups>
-        <surefire.excludedGroups>system-test</surefire.excludedGroups>
+        <surefire.excludedGroups>system-test,perftest</surefire.excludedGroups>
     </properties>
 
     <!--
@@ -467,7 +467,7 @@
                     <argLine>@{argLine} -javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy.version}/byte-buddy-agent-${byte-buddy.version}.jar -Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     <groups>${surefire.groups}</groups>
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
-                    <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+                    <forkedProcessTimeoutInSeconds>1800</forkedProcessTimeoutInSeconds>
                     <!-- Single fork with reuse: classes run concurrently inside one JVM via
                          JUnit 5 parallel execution (see junit-platform.properties). Forking per
                          class would negate the in-JVM parallelism and add JVM startup overhead

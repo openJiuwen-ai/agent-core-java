@@ -12,6 +12,7 @@ import com.openjiuwen.harness.tools.skills.ListSkillTool;
 import com.openjiuwen.harness.tools.skills.SkillDescriptor;
 
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.function.Executable;
 
@@ -34,6 +35,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
  *
  * <p>Mirrors Python's {@code tests/unit_tests/harness/test_skill_rail.py}.</p>
  */
+@Tag("issue196-w9")
 class SkillUseRailPythonParityTest {
 
     private static final String SOURCE = "tests/unit_tests/harness/test_skill_rail.py";
@@ -43,6 +45,8 @@ class SkillUseRailPythonParityTest {
         return List.of(
                 caseOf("test_skill_rail_all_mode_loads_skills_on_before_invoke",
                         SkillUseRailPythonParityTest::allModeLoadsSkillsOnBeforeInvoke),
+                caseOf("issue196_local_skill_load_parses_front_matter_metadata",
+                        SkillUseRailPythonParityTest::localSkillLoadParsesFrontMatterMetadata),
                 caseOf("test_skill_rail_all_mode_injects_skill_prompt",
                         SkillUseRailPythonParityTest::allModeInjectsSkillPrompt),
                 caseOf("test_skill_rail_filters_enabled_and_disabled_skills",
@@ -85,6 +89,16 @@ class SkillUseRailPythonParityTest {
         rail.beforeInvoke(ctx());
 
         assertThat(skillNames(rail.getSkillsMeta())).containsExactly("invoice-parser", "xlsx-writer");
+        SkillDescriptor invoiceParser = rail.getSkillsMeta().stream()
+                .filter(skill -> "invoice-parser".equals(skill.name()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(invoiceParser.metadata())
+                .containsEntry("source", "filesystem")
+                .containsEntry("id", "filesystem/invoice-parser");
+        assertThat(rail.buildSkillPrompt("en", SkillUseRail.SKILL_MODE_ALL, null))
+                .contains("ID: filesystem/invoice-parser")
+                .contains("Source: filesystem");
     }
 
     private static void allModeInjectsSkillPrompt() throws IOException {
@@ -102,8 +116,37 @@ class SkillUseRailPythonParityTest {
                 .contains("invoice-parser")
                 .contains("xlsx-writer")
                 .contains("Parse invoice pdf files")
+                .doesNotContain("Skill body")
                 .contains("Write xlsx reports")
                 .doesNotContain("list_skill");
+    }
+
+    private static void localSkillLoadParsesFrontMatterMetadata() throws IOException {
+        Path skillsRoot = tempDir("skill-rail-front-matter");
+        Path skillDir = Files.createDirectories(skillsRoot.resolve("documented"));
+        Files.writeString(skillDir.resolve("SKILL.md"), """
+                ---
+                name: Documented Skill
+                description: Parses front matter metadata.
+                id: custom-document-id
+                source: workspace
+                protected: true
+                ---
+
+                # Skill
+                """, StandardCharsets.UTF_8);
+        SkillUseRail rail = allModeRail(skillsRoot);
+
+        rail.beforeInvoke(ctx());
+
+        SkillDescriptor skill = rail.getSkillsMeta().stream()
+                .filter(item -> "Documented Skill".equals(item.name()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(skill.metadata())
+                .containsEntry("source", "workspace")
+                .containsEntry("id", "custom-document-id")
+                .containsEntry("protected", true);
     }
 
     private static void filtersEnabledAndDisabledSkills() throws IOException {
@@ -152,7 +195,7 @@ class SkillUseRailPythonParityTest {
         String content = section(ctx).render("en");
         assertThat(content)
                 .contains("list_skill")
-                .contains("read_file")
+                .contains("skill_tool")
                 .contains("code")
                 .contains("bash")
                 .doesNotContain("invoice-parser");

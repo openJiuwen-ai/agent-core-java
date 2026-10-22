@@ -15,6 +15,7 @@ import com.openjiuwen.core.singleagent.skills.SkillToolBinding;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -32,6 +33,7 @@ import java.util.concurrent.CompletionStage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@Tag("issue196-w9")
 class BaseAgentSkillToolBindingTest {
     @TempDir
     private Path tempDir;
@@ -51,6 +53,28 @@ class BaseAgentSkillToolBindingTest {
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
                 .doesNotContain("envLookupTool");
+    }
+
+    @Test
+    void registerSkillWithoutBoundToolsRegistersMetaTool() {
+        TestAgent agent = new TestAgent();
+        registerSkill(agent, "PromptOnlySkill");
+        MemorySession session = new MemorySession("prompt-only");
+
+        assertThat(agent.getAbilityManager().getTools()).containsKey("skill_tool");
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .contains("skill_tool");
+    }
+
+    @Test
+    void replacingAbilityManagerReRegistersMetaTool() {
+        TestAgent agent = new TestAgent();
+        registerSkill(agent, "ReplacedManagerSkill");
+
+        agent.setAbilityManager(new AbilityManager(agent.getCard().getId()));
+
+        assertThat(agent.getAbilityManager().getTools()).containsKey("skill_tool");
     }
 
     @Test
@@ -75,7 +99,7 @@ class BaseAgentSkillToolBindingTest {
         assertThat(agent.findActiveSkillTool("secondTool", session)).containsSame(second);
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
-                .containsExactly("firstTool", "secondTool");
+                .contains("firstTool", "secondTool", "skill_tool");
     }
 
     @Test

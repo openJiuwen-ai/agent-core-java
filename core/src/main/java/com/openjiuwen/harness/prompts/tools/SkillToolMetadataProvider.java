@@ -28,12 +28,20 @@ public final class SkillToolMetadataProvider implements ToolMetadataProvider {
                 "type", "string",
                 "description", "技能的名称"
         ));
-        cnProperties.put("relative_file_path", Map.of(
+        cnProperties.put("skill_id", Map.of(
                 "type", "string",
-                "description", "可选。查看技能目录中指定路径（relative_file_path）下的特定文件。留空则查看主 SKILL.md 文件。"
+                "description", "可选。显式指定稳定 Skill id，用于选择非默认层。"
+        ));
+        cnProperties.put("skill_path", Map.of(
+                "type", "string",
+                "description", "可选。显式指定受信任仓库内的 Skill 目录或 SKILL.md 路径。"
+        ));
+        cnProperties.put("relative_path", Map.of(
+                "type", "string",
+                "description", "可选。查看技能目录中指定路径（relative_path）下的特定文件。留空则查看主 SKILL.md 文件。"
         ));
         cnSchema.put("properties", cnProperties);
-        cnSchema.put("required", List.of("skill_name"));
+        cnSchema.put("required", List.of());
         INPUT_PARAMS.put("cn", cnSchema);
 
         Map<String, Object> enSchema = new LinkedHashMap<>();
@@ -43,13 +51,22 @@ public final class SkillToolMetadataProvider implements ToolMetadataProvider {
                 "type", "string",
                 "description", "Name of the skill"
         ));
-        enProperties.put("relative_file_path", Map.of(
+        enProperties.put("skill_id", Map.of(
                 "type", "string",
-                "description", "Optional. Views a specific file within the skill directory at the relative_file_path. "
-                        + "Leave blank to view the main SKILL.md file."
+                "description", "Optional stable Skill id. Use this to explicitly select a non-default Skill layer."
+        ));
+        enProperties.put("skill_path", Map.of(
+                "type", "string",
+                "description", "Optional Skill directory or SKILL.md path. It must resolve "
+                        + "inside a trusted registered repository."
+        ));
+        enProperties.put("relative_path", Map.of(
+                "type", "string",
+                "description", "Optional. Views a specific file within the skill directory"
+                        + " at the relative_path. Leave blank to view the main SKILL.md file."
         ));
         enSchema.put("properties", enProperties);
-        enSchema.put("required", List.of("skill_name"));
+        enSchema.put("required", List.of());
         INPUT_PARAMS.put("en", enSchema);
     }
 

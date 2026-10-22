@@ -1,6 +1,7 @@
 package com.openjiuwen.core.common.logging;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LoggingBackendDecouplingTest {
 
     @Test
+    @Timeout(180)
     void productionSourcesDoNotReferenceLogbackImplementation() {
         Path mainSources = Path.of("src/main/java");
         List<Path> logbackReferences = findLogbackReferences(mainSources);

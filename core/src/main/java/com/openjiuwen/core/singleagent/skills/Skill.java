@@ -22,6 +22,9 @@ public class Skill {
     private String description;
     private Path directory;
     private long updateAt;
+    private SkillSource source;
+    private String id;
+    private boolean isProtectedSkill;
 
     public Skill() {
     }
@@ -46,6 +49,15 @@ public class Skill {
         if (updateAt > 0) {
             result.put("update_at", updateAt);
         }
+        if (source != null) {
+            result.put("source", source.value());
+        }
+        if (id != null && !id.isBlank()) {
+            result.put("id", id);
+        }
+        if (isProtectedSkill) {
+            result.put("protected", true);
+        }
         return result;
     }
 
@@ -55,7 +67,12 @@ public class Skill {
 
     @Override
     public String toString() {
-        return "Skill: " + name + "\nDescription: " + description + "\nDirectory: " + directory;
+        return "Skill: " + name
+                + "\nDescription: " + description
+                + "\nDirectory: " + directory
+                + "\nSource: " + (source == null ? null : source.value())
+                + "\nId: " + id
+                + "\nProtected: " + isProtectedSkill;
     }
 
     public String repr() {
@@ -94,5 +111,29 @@ public class Skill {
 
     public void setUpdateAt(long updateAt) {
         this.updateAt = updateAt;
+    }
+
+    public SkillSource getSource() {
+        return source;
+    }
+
+    public void setSource(SkillSource source) {
+        this.source = source;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public boolean isProtectedSkill() {
+        return isProtectedSkill;
+    }
+
+    public void setProtectedSkill(boolean isProtectedSkill) {
+        this.isProtectedSkill = isProtectedSkill;
     }
 }

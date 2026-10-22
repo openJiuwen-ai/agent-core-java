@@ -1182,12 +1182,20 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                             InvokeInputs invokeInputs) {
         ExternalResumeValidation validation = validateExternalToolResults(state, externalToolResultsInput(inputs));
         if (!validation.valid()) {
-            Map<String, Object> result = new LinkedHashMap<>(Map.of(
-                    "output", EXTERNAL_TOOL_RESULT_ID_ERROR,
-                    "result_type", "error"
-            ));
-            invokeInputs.setResult(result);
-            return result;
+            return setExternalResumeError(invokeInputs, EXTERNAL_TOOL_RESULT_ID_ERROR);
+        }
+
+        ToolCall rejectedToolCall = state.getPendingToolCalls().stream()
+                .filter(toolCall -> getAbilityManager().isExternalTool(toolCall.getName()))
+                .filter(toolCall -> !getAbilityManager()
+                        .isToolAvailableForExecution(toolCall.getName(), session))
+                .findFirst()
+                .orElse(null);
+        if (rejectedToolCall != null) {
+            return setExternalResumeError(
+                    invokeInputs,
+                    "Tool '" + rejectedToolCall.getName() + "' is not active. "
+                            + "Activate its tool group before resuming execution.");
         }
 
         AssistantMessage resumeAiMessage = state.getAssistantMessage() == null
@@ -1195,22 +1203,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 : copyAssistantMessage(state.getAssistantMessage());
         ensurePendingAssistantMessagePresent(context, resumeAiMessage, state.getPendingToolCalls());
 
-        List<AbilityManager.ExecutionResult> results = new ArrayList<>();
-        for (ToolCall toolCall : state.getPendingToolCalls()) {
-            if (getAbilityManager().isExternalTool(toolCall.getName())) {
-                ExternalToolResult externalResult = validation.resultsById().get(toolCall.getId());
-                Object value = externalToolMessageValue(externalResult);
-                ToolMessage message = new ToolMessage(AbilityManager.buildToolMessageContent(value),
-                        toolCall.getId(), toolCall.getName());
-                context.addMessages(message).toCompletableFuture().join();
-                results.add(new AbilityManager.ExecutionResult(value, message));
-                continue;
-            }
-            List<AbilityManager.ExecutionResult> executionResults = executeToolCallsAndWriteToolMessages(ctx,
-                    List.of(toolCall), session, context);
-            activateSkillsLoadedByToolCalls(List.of(toolCall), executionResults, session);
-            results.addAll(executionResults);
-        }
+        List<AbilityManager.ExecutionResult> results =
+                executeExternalToolResume(
+                        ctx, context, session, state.getPendingToolCalls(), validation);
         clearExternalToolPendingState(session);
         boolean completed = completeToolExecutionTurn(
                 ctx,
@@ -1225,6 +1220,40 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 ToolExecutionTurnOrigin.EXTERNAL_RESUME
         );
         return completed ? invokeInputs.getResult() : null;
+    }
+
+    private Map<String, Object> setExternalResumeError(InvokeInputs invokeInputs, String output) {
+        Map<String, Object> result = new LinkedHashMap<>(Map.of(
+                "output", output,
+                "result_type", "error"
+        ));
+        invokeInputs.setResult(result);
+        return result;
+    }
+
+    private List<AbilityManager.ExecutionResult> executeExternalToolResume(
+            AgentCallbackContext ctx,
+            ModelContext context,
+            AgentSessionApi session,
+            List<ToolCall> toolCalls,
+            ExternalResumeValidation validation) {
+        List<AbilityManager.ExecutionResult> results = new ArrayList<>();
+        for (ToolCall toolCall : toolCalls) {
+            if (getAbilityManager().isExternalTool(toolCall.getName())) {
+                ExternalToolResult externalResult = validation.resultsById().get(toolCall.getId());
+                Object value = externalToolMessageValue(externalResult);
+                ToolMessage message = new ToolMessage(AbilityManager.buildToolMessageContent(value),
+                        toolCall.getId(), toolCall.getName());
+                context.addMessages(message).toCompletableFuture().join();
+                results.add(new AbilityManager.ExecutionResult(value, message));
+                continue;
+            }
+            List<AbilityManager.ExecutionResult> executionResults = executeToolCallsAndWriteToolMessages(ctx,
+                    List.of(toolCall), session, context);
+            activateSkillsLoadedByToolCalls(List.of(toolCall), executionResults, session);
+            results.addAll(executionResults);
+        }
+        return results;
     }
 
     private enum ToolExecutionTurnOrigin {
@@ -2597,6 +2626,35 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         invokeStaticRunnerRelease(sessionId);
         cleanupOffloadNamespaces(sessionId, null);
         contextEngine.clearContext(null, sessionId);
+        if (sessionId != null) {
+            // Release the last LLM-bound affinity window: it keeps a shallow
+            // copy of every conversation message reachable after the session
+            // ends, which leaked one ContextWindow per session in
+            // long-running scenarios (reported heap leak root cause).
+            lastAffinityWindows.remove(sessionId);
+        }
+    }
+
+    /**
+     * Release the per-session affinity window (the heap-leak fix entry) plus
+     * the context engine state, WITHOUT the checkpointer {@code release}
+     * side-effect of {@link #clearSession(String)}.
+     *
+     * <p>Some teardown paths (e.g. DeepAgent task-loop shutdown) run while the
+     * session may still be resumed later (interrupt-resume, follow-up rounds);
+     * dropping the checkpointer's agent store there breaks subsequent
+     * invocations with "agent store not found". Callers that truly end the
+     * session must use {@link #clearSession(String)}.</p>
+     *
+     * @param sessionId session whose in-memory runtime state should be released
+     * @since 0.1.17
+     */
+    public void releaseSessionRuntime(String sessionId) {
+        cleanupOffloadNamespaces(sessionId, null);
+        contextEngine.clearContext(null, sessionId);
+        if (sessionId != null) {
+            lastAffinityWindows.remove(sessionId);
+        }
     }
 
     public boolean clearContextMessages(String sessionId, String contextId) {
@@ -3302,11 +3360,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static void copyRemainingExtras(Map<?, ?> inputs, AgentCallbackContext ctx) {
         Map<String, Object> extra = ctx.getExtra();
         for (Map.Entry<?, ?> entry : inputs.entrySet()) {
-            Object keyObj = entry.getKey();
-            if (!(keyObj instanceof String)) {
+            if (!(entry.getKey() instanceof String key)) {
                 continue;
             }
-            String key = (String) keyObj;
             if (!"query".equals(key) && !"conversation_id".equals(key)
                     && !"user_id".equals(key) && !"_streaming".equals(key)
                     && !"_steering_queue".equals(key) && entry.getValue() != null) {

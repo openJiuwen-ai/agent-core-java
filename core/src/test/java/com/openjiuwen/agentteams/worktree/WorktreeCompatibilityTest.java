@@ -4,8 +4,7 @@ package com.openjiuwen.agentteams.worktree;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.openjiuwen.agentteams.messager.InProcessMessager;
-import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
+import com.openjiuwen.core.testsupport.SymlinkAssumptions;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -226,8 +225,7 @@ class WorktreeCompatibilityTest {
 
     @Test
     void remoteHandlerShouldRejectExistsPathsOutsideAllowedRoot() throws Exception {
-        // Symlink creation requires elevated privileges on Windows that aren't
-        // available to the typical test runner; skip there.
+        SymlinkAssumptions.assumeCreationSupported(tempDir);
         Path allowedRoot = Files.createDirectories(tempDir.resolve("allowed-worktrees"));
         Path safeWorktree = Files.createDirectories(allowedRoot.resolve("safe"));
         Path outsideWorktree = Files.createDirectories(tempDir.resolve("outside-worktree"));
