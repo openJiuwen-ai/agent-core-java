@@ -75,8 +75,8 @@ class BaseModelClientCompatibilityTest {
             return buildHttpClient(1.0);
         }
 
-        private Map<String, Object> buildParamsForTest(Object messages, boolean stream, Map<String, Object> kwargs) {
-            return buildRequestParams(messages, null, null, null, null, null, null, stream, kwargs);
+        private Map<String, Object> buildParamsForTest(Object messages, boolean isStream, Map<String, Object> kwargs) {
+            return buildRequestParams(messages, null, null, null, null, null, null, isStream, kwargs);
         }
 
         @Override
