@@ -184,7 +184,10 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
         // Drop prior outputs for this node, then set LOOP_ID.
         // Do not setOutputs(full IO snapshot): that merges sibling nodes (start/inputs)
         // into the loop payload and breaks End("${loop}") output contracts.
-        cleanPriorNodeOutputs(session, loopNodeId);
+        WorkflowStateCollection loopState = WorkflowSessionSupport.stateCollection(session);
+        if (loopState == null || loopState.get(Constant.INDEX) == null) {
+            cleanPriorNodeOutputs(session, loopNodeId);
+        }
         WorkflowSessionSupport.setOutputs(session, Map.of(Constant.LOOP_ID, loopNodeId));
         SessionStateAccess state = session == null ? null : session.state();
         if (state != null) {
@@ -211,9 +214,11 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
         Object result = WorkflowSessionSupport.getOutputs(nodeSession, nodeId);
         WorkflowCommitState commitState = WorkflowSessionSupport.workflowState(nodeSession);
         if (commitState != null && nodeId != null && !nodeId.isBlank()) {
+            String outputId = nodeSession instanceof WorkflowRuntimeSession runtime
+                    ? runtime.executableId() : nodeId;
             Map<String, Object> cleanup = new LinkedHashMap<>();
-            cleanup.put(nodeId, null);
-            commitState.getIoState().updateById(nodeId, cleanup);
+            cleanup.put(outputId, null);
+            commitState.getIoState().updateById(outputId, cleanup);
         }
         return result;
     }
@@ -287,6 +292,13 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
             } else if (finishIndex == index) {
                 callback.call(LoopCallback.END_ROUND, nodeSession, index + 1);
             }
+        }
+        if (!continueLoop) {
+            // Clear raw body outputs before OUT_LOOP publishes aggregates with potentially identical keys.
+            clearNestedLoopBodyOutputs();
+            commitNodeSession();
+        }
+        for (LoopCallback callback : callbacks) {
             if (continueLoop) {
                 callback.call(LoopCallback.START_ROUND, nodeSession);
             } else {
@@ -301,15 +313,9 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
         stateReset.put(BROKEN, false);
         state.update(stateReset);
         postBody.setFinishIndex(-1);
-        WorkflowStateCollection parentState = parentStateCollection();
-        if (parentState != null) {
-            Map<String, Object> postBodyReset = new LinkedHashMap<>();
-            postBodyReset.put(POST_BODY_NODE_ID, null);
-            parentState.update(postBodyReset);
-        }
-        // Body nodes write under loop via dotted executableId (loop.bodyNode). Null-clear them
-        // together with INDEX in one setOutputs so End("${loop}") sees only callback outputs.
-        clearNestedLoopBodyOutputs();
+        Map<String, Object> postBodyReset = new LinkedHashMap<>();
+        postBodyReset.put(POST_BODY_NODE_ID, null);
+        state.update(postBodyReset);
         commitNodeSession();
     }
 
@@ -337,13 +343,6 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
             }
         }
         WorkflowSessionSupport.setOutputs(nodeSession, cleanup);
-    }
-
-    private WorkflowStateCollection parentStateCollection() {
-        if (!(nodeSession instanceof WorkflowRuntimeSession runtimeSession)) {
-            return null;
-        }
-        return WorkflowSessionSupport.stateCollection(runtimeSession.parent());
     }
 
     private void commitNodeSession() {

@@ -8,8 +8,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.constants.TaskType;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.controller.legacy.task.Task;
 import com.openjiuwen.core.controller.legacy.task.TaskInput;
 import com.openjiuwen.core.controller.legacy.task.TaskStatus;
@@ -24,6 +27,8 @@ import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
@@ -31,7 +36,8 @@ import com.openjiuwen.core.session.stream.CustomSchema;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.TraceSchema;
-import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.tracer.TraceAgentSpan;
+import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
@@ -50,7 +56,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 /**
@@ -180,11 +188,12 @@ public class WorkflowController {
             AgentSessionApi activeSession,
             List<StreamMode> streamModes) {
         Object session = workflowSession(activeSession);
+        ModelContext modelContext = workflowContext(workflow, activeSession).orElse(null);
         if (streamModes == null) {
-            return workflow.invoke(workflowInputs, session, null);
+            return workflow.invoke(workflowInputs, session, modelContext);
         }
         List<StreamMode> modes = streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes;
-        Iterator<? extends Object> stream = workflow.stream(workflowInputs, session, null, modes);
+        Iterator<? extends Object> stream = workflow.stream(workflowInputs, session, modelContext, modes);
         List<Object> chunks = new ArrayList<>();
         boolean hasInteraction = false;
         Object finalResult = null;
@@ -216,8 +225,28 @@ public class WorkflowController {
 
     private static void writeAgentStream(AgentSessionApi activeSession, Object chunk) {
         if (activeSession != null) {
-            activeSession.writeStream(chunk);
+            if (chunk instanceof OutputSchema output && "custom".equals(output.getType())
+                    && output.getPayload() instanceof Map<?, ?> properties) {
+                activeSession.writeStream(new CustomSchema(mapValue(properties)));
+                return;
+            }
+            Object value = chunk;
+            if (chunk instanceof com.openjiuwen.core.workflow.WorkflowChunk workflowChunk
+                    && workflowChunk.getPayload() instanceof CustomSchema custom) {
+                value = custom;
+            }
+            activeSession.writeStream(value);
         }
+    }
+
+    private Optional<ModelContext> workflowContext(Workflow workflow, AgentSessionApi activeSession) {
+        if (!(contextEngine instanceof ContextEngine engine) || activeSession == null) {
+            return Optional.empty();
+        }
+        String contextId = workflow.getCard().getId() + "_" + workflow.getCard().getVersion();
+        ModelContext context = engine.getContext(contextId, activeSession.getSessionId());
+        return Optional.ofNullable(context)
+                .or(() -> Optional.ofNullable(engine.createContext(contextId, activeSession)));
     }
 
     private Event eventFromInputs(Map<String, Object> inputs) {
@@ -290,6 +319,11 @@ public class WorkflowController {
     private SessionPort sessionPort(AgentSessionApi activeSession) {
         return new SessionPort() {
             @Override
+            public Optional<AgentSessionApi> agentSession() {
+                return Optional.ofNullable(activeSession);
+            }
+
+            @Override
             public String getSessionId() {
                 return activeSession == null ? "" : activeSession.getSessionId();
             }
@@ -315,7 +349,7 @@ public class WorkflowController {
         Iterator<? extends Object> iterator = workflow.stream(
                 effectiveInputs,
                 workflowSession(activeSession),
-                null,
+                workflowContext(workflow, activeSession).orElse(null),
                 streamModes == null ? List.of(StreamMode.OUTPUT) : streamModes);
         return new Iterator<>() {
             @Override
@@ -519,7 +553,7 @@ public class WorkflowController {
         List<WorkflowSchema> workflows = agentConfig.getWorkflows();
         try {
             if (workflowDetector == null) {
-                WorkflowSchema detected = detectWorkflowWithAgentModel(event, workflows);
+                WorkflowSchema detected = detectWorkflowWithAgentModel(event, workflows, activeSession);
                 if (detected != null) {
                     return detected;
                 }
@@ -547,7 +581,8 @@ public class WorkflowController {
         }
     }
 
-    private WorkflowSchema detectWorkflowWithAgentModel(Event event, List<WorkflowSchema> candidates) {
+    private WorkflowSchema detectWorkflowWithAgentModel(Event event, List<WorkflowSchema> candidates,
+                                                        SessionPort activeSession) {
         ModelConfig modelConfig = agentModelConfig();
         if (modelConfig == null || modelConfig.getModelInfo() == null || candidates == null || candidates.isEmpty()) {
             return null;
@@ -575,10 +610,10 @@ public class WorkflowController {
                 .extraFields(extraFields)
                 .build();
         Model model = new Model(clientConfig, requestConfig);
-        AssistantMessage message = model.invoke(intentDetectionMessages(event, candidates),
+        AssistantMessage message = invokeTracedModel(model, intentDetectionMessages(event, candidates, activeSession),
                 ModelInvokeOptions.builder()
                         .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
-                        .build()).toCompletableFuture().join();
+                        .build(), activeSession);
         IntentModelResult result = parseIntentModelResult(message == null ? "" : message.getContentAsString());
         detectedWorkflowArguments = result.arguments();
         int selected = result.selected();
@@ -594,7 +629,40 @@ public class WorkflowController {
         return agentConfig == null ? null : agentConfig.getModel();
     }
 
-    private List<BaseMessage> intentDetectionMessages(Event event, List<WorkflowSchema> candidates) {
+    private AssistantMessage invokeTracedModel(Model model, List<BaseMessage> messages,
+                                               ModelInvokeOptions options, SessionPort activeSession) {
+        AgentSessionApi candidate = activeSession == null ? null : activeSession.agentSession().orElse(null);
+        if (!(candidate instanceof AgentSession session)) {
+            return model.invoke(messages, options).toCompletableFuture().join();
+        }
+        Tracer tracer = session.getInner().tracer();
+        TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(session.getInner().span());
+        tracer.trigger(Tracer.TRACE_AGENT, "on_llm_start", Map.of("span", span,
+                "inputs", Map.of("messages", messages),
+                "instance_info", Map.of("class_name", "Model", "type", "llm")));
+        Consumer<Map<String, Object>> record = data -> {
+            Map<String, Object> payload = new LinkedHashMap<>(data);
+            payload.put("span", span);
+            tracer.trigger(Tracer.TRACE_AGENT, "on_llm_request", payload);
+        };
+        Map<String, Object> extra = new LinkedHashMap<>(options.getExtraFields());
+        extra.put("tracer_record_data", record);
+        try {
+            AssistantMessage result = model.invoke(messages, options.toBuilder().extraFields(extra).build())
+                    .toCompletableFuture().join();
+            Map<String, Object> completed = new LinkedHashMap<>();
+            completed.put("span", span);
+            completed.put("outputs", result);
+            tracer.trigger(Tracer.TRACE_AGENT, "on_llm_end", completed);
+            return result;
+        } catch (BaseError | CompletionException | IllegalArgumentException | IllegalStateException error) {
+            tracer.trigger(Tracer.TRACE_AGENT, "on_llm_error", Map.of("span", span, "error", error));
+            throw error;
+        }
+    }
+
+    private List<BaseMessage> intentDetectionMessages(Event event, List<WorkflowSchema> candidates,
+                                                      SessionPort activeSession) {
         StringBuilder categoryText = new StringBuilder("分类0: 未知意图");
         for (int i = 0; i < candidates.size(); i++) {
             WorkflowSchema workflow = candidates.get(i);
@@ -613,8 +681,26 @@ public class WorkflowController {
                 + "请根据上述要求判断用户输入意图分类，输出要求如下：\n"
                 + "直接以JSON格式输出分类ID，不进行任何解释。JSON格式如下：\n"
                 + "{\"result\": int}\n\n当前输入：\n" + query;
-        String userPrompt = "用户与助手的对话历史：\n\n当前输入：\n" + query;
+        String userPrompt = "用户与助手的对话历史：\n" + intentHistory(activeSession) + "\n当前输入：\n" + query;
         return List.of(new SystemMessage(systemPrompt), new UserMessage(userPrompt));
+    }
+
+    private String intentHistory(SessionPort activeSession) {
+        if (!(contextEngine instanceof ContextEngine engine) || activeSession == null) {
+            return "";
+        }
+        ModelContext context = engine.getContext(null, activeSession.getSessionId());
+        if (context == null) {
+            return "";
+        }
+        StringBuilder history = new StringBuilder();
+        for (BaseMessage message : context.getMessages()) {
+            if ("user".equals(message.getRole()) || "assistant".equals(message.getRole())) {
+                history.append("user".equals(message.getRole()) ? "用户: " : "助手: ")
+                        .append(message.getContentAsString()).append('\n');
+            }
+        }
+        return history.toString();
     }
 
     private IntentModelResult parseIntentModelResult(String output) {
@@ -725,6 +811,7 @@ public class WorkflowController {
         if (event != null && event.getContent() != null && event.getContent().getExtensions() != null) {
             userData.putAll(event.getContent().getExtensions());
         }
+        userData.remove("conversation_id");
         Map<String, Object> filteredInputs = filterWorkflowInputs(schema, userData);
 
         Task task = new Task();
@@ -1311,6 +1398,16 @@ public class WorkflowController {
      * {@code openjiuwen/core/application/workflow_agent/workflow_controller.py}.
      */
     public interface SessionPort {
+        /**
+         * Expose the session for model tracing when this port wraps a runtime session.
+         *
+         * @return the backing session, or empty for state-only ports
+         * @since 0.1.17
+         */
+        default Optional<AgentSessionApi> agentSession() {
+            return Optional.empty();
+        }
+
         String getSessionId();
 
         Object getState(String key);

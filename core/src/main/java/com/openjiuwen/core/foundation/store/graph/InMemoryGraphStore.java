@@ -14,6 +14,7 @@ import com.openjiuwen.core.foundation.store.query.RangeExpr;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,9 +47,9 @@ public final class InMemoryGraphStore implements GraphStore {
     public InMemoryGraphStore(GraphConfig config) {
         this.config = config;
         this.embedder = config.getEmbeddingModel();
-        collections.put(ENTITY_COLLECTION, new ConcurrentHashMap<>());
-        collections.put(RELATION_COLLECTION, new ConcurrentHashMap<>());
-        collections.put(EPISODE_COLLECTION, new ConcurrentHashMap<>());
+        collections.put(ENTITY_COLLECTION, newCollection());
+        collections.put(RELATION_COLLECTION, newCollection());
+        collections.put(EPISODE_COLLECTION, newCollection());
     }
 
     public static InMemoryGraphStore fromConfig(GraphConfig config) {
@@ -228,7 +229,13 @@ public final class InMemoryGraphStore implements GraphStore {
 
     private Map<String, Map<String, Object>> collection(String collection) {
         return collections.computeIfAbsent(normalizeCollection(collection),
-                ignored -> new ConcurrentHashMap<>());
+                ignored -> newCollection());
+    }
+
+    private static Map<String, Map<String, Object>> newCollection() {
+        // Equal-score rows must have a stable order before applying top-K.
+        // Iteration is guarded by the collection monitor in query/search/add operations.
+        return Collections.synchronizedMap(new LinkedHashMap<>());
     }
 
     private List<Map<String, Object>> searchRows(String collection, int limit, QueryExpr filterExpr) {

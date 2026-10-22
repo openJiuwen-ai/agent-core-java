@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.foundation.prompt;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -33,6 +35,9 @@ import java.util.Map;
 @Builder
 public class PromptTemplate {
 
+    private static final ObjectMapper MESSAGE_MAPPER = new ObjectMapper()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
     @Builder.Default
     private String name = "";
 
@@ -47,9 +52,40 @@ public class PromptTemplate {
 
     public PromptTemplate(String name, Object content, String placeholderPrefix, String placeholderSuffix) {
         this.name = name == null ? "" : name;
-        this.content = content == null ? "" : content;
+        this.content = normalizeContent(content);
         this.placeholderPrefix = placeholderPrefix == null ? "{{" : placeholderPrefix;
         this.placeholderSuffix = placeholderSuffix == null ? "}}" : placeholderSuffix;
+    }
+
+    private static Object normalizeContent(Object content) {
+        if (content == null) {
+            return "";
+        }
+        if (content instanceof String) {
+            return content;
+        }
+        if (!(content instanceof List<?> messages)) {
+            throw invalidPromptTemplateType();
+        }
+        if (messages.stream().allMatch(BaseMessage.class::isInstance)) {
+            return content;
+        }
+        return messages.stream().map(PromptTemplate::normalizeMessage).toList();
+    }
+
+    private static BaseMessage normalizeMessage(Object value) {
+        if (value instanceof BaseMessage message) {
+            return message;
+        }
+        if (!(value instanceof Map<?, ?> map) || !(map.get("role") instanceof String)) {
+            throw invalidPromptTemplateType();
+        }
+        try {
+            return MESSAGE_MAPPER.convertValue(map, BaseMessage.class);
+        } catch (IllegalArgumentException error) {
+            throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID,
+                    null, null, error, Map.of("error_msg", "invalid message mapping"));
+        }
     }
 
     /**
