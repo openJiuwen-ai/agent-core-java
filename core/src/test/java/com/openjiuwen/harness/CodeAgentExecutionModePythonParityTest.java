@@ -91,16 +91,16 @@ class CodeAgentExecutionModePythonParityTest {
         RejectResult resumedAnswer = resumeAnswer(askUserRail, askFeature, interrupt, "需要", "是否需要天气模块？");
         assertThat(resumedAnswer.toolResult()).asString().contains("需要");
 
-        trace.record("read_file", Map.of("path", relativePlanPath(planPath)));
+        trace.record("read_file", Map.of("file_path", relativePlanPath(planPath)));
         ToolOutput read = output(new FilesystemTools.ReadFileTool(tempDir.toString())
-                .invoke(Map.of("path", relativePlanPath(planPath)), Map.of("session", session)));
+                .invoke(Map.of("file_path", relativePlanPath(planPath)), Map.of("session", session)));
         assertThat(read.isSuccess()).isTrue();
         assertThat(read.getData()).asString().contains("先确认城市");
 
-        trace.record("write_file", Map.of("path", relativePlanPath(planPath)));
+        trace.record("write_file", Map.of("file_path", relativePlanPath(planPath)));
         ToolOutput write = output(new FilesystemTools.WriteFileTool(tempDir.toString())
                 .invoke(Map.of(
-                        "path", relativePlanPath(planPath),
+                        "file_path", relativePlanPath(planPath),
                         "content", "# 更新后计划\n- 展示北京\n- 增加天气模块"
                 ), Map.of("session", session)));
 

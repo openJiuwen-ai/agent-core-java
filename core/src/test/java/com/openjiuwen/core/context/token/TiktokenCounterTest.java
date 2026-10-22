@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.context.token;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -14,8 +16,6 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Focused parity tests for {@link TiktokenCounter}.

@@ -11,11 +11,35 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.offload.api.OffloadCatalog;
+import com.openjiuwen.core.context.offload.api.OffloadCatalogImpl;
+import com.openjiuwen.core.context.offload.api.OffloadService;
+import com.openjiuwen.core.context.offload.api.OffloadServiceImpl;
+import com.openjiuwen.core.context.offload.api.OffloadStore;
+import com.openjiuwen.core.context.offload.cleanup.OffloadJanitor;
+import com.openjiuwen.core.context.offload.cleanup.SessionOffloadGate;
+import com.openjiuwen.core.context.offload.model.OffloadBackend;
+import com.openjiuwen.core.context.offload.model.OffloadConfig;
+import com.openjiuwen.core.context.offload.model.OffloadNamespace;
+import com.openjiuwen.core.context.offload.store.CompositeOffloadStore;
+import com.openjiuwen.core.context.offload.store.FileOffloadStore;
+import com.openjiuwen.core.context.offload.store.MemoryOffloadStore;
+import com.openjiuwen.core.context.offload.store.RedisOffloadStore;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
+import com.openjiuwen.core.foundation.llm.multimodal.ContentBlock;
+import com.openjiuwen.core.foundation.llm.multimodal.DefaultMultimodalContentNormalizer;
+import com.openjiuwen.core.foundation.llm.multimodal.ImageMaterialProvider;
+import com.openjiuwen.core.foundation.llm.multimodal.MaterialAccessConfig;
+import com.openjiuwen.core.foundation.llm.multimodal.MaterialAccessContext;
+import com.openjiuwen.core.foundation.llm.multimodal.MultimodalContentNormalizer;
+import com.openjiuwen.core.foundation.llm.multimodal.MultimodalContentResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -35,7 +59,18 @@ import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
+import com.openjiuwen.core.session.checkpointer.step.KvStepJournal;
+import com.openjiuwen.core.session.checkpointer.step.PolicyEvaluator;
+import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepJournal;
+import com.openjiuwen.core.session.checkpointer.step.StepSignalContext;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -55,6 +90,7 @@ import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentTerminationReason;
+import com.openjiuwen.core.singleagent.rail.ClassifiedModelFailureRail;
 import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
@@ -65,6 +101,9 @@ import com.openjiuwen.core.singleagent.skills.SkillUtil;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.harness.task_loop.LoopQueues;
+import com.openjiuwen.harness.tools.multimodal.FileSystemImageAssetStore;
+import com.openjiuwen.harness.tools.multimodal.LocalImageMaterialProvider;
+import com.openjiuwen.harness.tools.multimodal.MaterialAccessContexts;
 import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.io.UncheckedIOException;
@@ -89,6 +128,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
@@ -97,7 +137,7 @@ import java.util.logging.Logger;
  * <p>Mirrors Python's {@code ReActAgent} in
  * {@code openjiuwen/core/single_agent/agents/react_agent.py}.</p>
  */
-public class ReActAgent extends BaseAgent {
+public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(ReActAgent.class.getName());
 
     public static final String IDENTITY_SECTION = "identity";
@@ -114,6 +154,9 @@ public class ReActAgent extends BaseAgent {
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
+
+    /** Stateless normalizer shared by all structured multimodal entry inputs. */
+    private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
     private static final String EXTERNAL_TOOL_RESULT_ID_ERROR =
             "External tool results must contain exactly all pending tool_call_id values";
     private static final String EXTERNAL_TOOL_RESULTS_REQUIRED_ERROR =
@@ -127,13 +170,27 @@ public class ReActAgent extends BaseAgent {
     private volatile ContextEngine contextEngine;
     private ContextEngineConfig appliedContextEngineConfig;
     private volatile Model llm;
+    private volatile ImageMaterialProvider materialProvider;
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
     private final com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook kvCacheModelCallHook =
             new com.openjiuwen.core.singleagent.kvcache.KVCacheModelCallHook();
 
+    /** Shared v2 offload pipeline; {@code null} until {@link #initContext} enables it. */
+    private volatile OffloadService offloadService;
+
+    /** Background reaper for offloaded payloads; non-null iff the pipeline is running. */
+    private volatile OffloadJanitor offloadJanitor;
+
     /** Previous LLM-bound window per session, used for affinity window-diff eviction. */
     private final ConcurrentHashMap<String, ContextWindow> lastAffinityWindows = new ConcurrentHashMap<>();
+
+    /** Step boundary trigger coordinating policy evaluation, cursor persistence, and audit. */
+    private volatile StepCheckpointTrigger stepCheckpointTrigger =
+            new StepCheckpointTrigger(
+                    null,
+                    null,
+                    StepCheckpointPolicy.STEP_AUTO);
 
     public ReActAgent(AgentCard card) {
         super(card);
@@ -145,6 +202,7 @@ public class ReActAgent extends BaseAgent {
         this.hitlHandler = new ToolInterruptHandler(this);
         getAbilityManager().setContextEngine(contextEngine);
         initMemoryScope();
+        registerInstanceRail(new ClassifiedModelFailureRail()).toCompletableFuture().join();
     }
 
     private void initMemoryScope() {
@@ -830,6 +888,7 @@ public class ReActAgent extends BaseAgent {
                 return Optional.of(path);
             }
         } catch (IllegalArgumentException ignored) {
+            // expected: no action needed
         }
         return Optional.empty();
     }
@@ -1430,6 +1489,114 @@ public class ReActAgent extends BaseAgent {
         return String.valueOf(userInput);
     }
 
+    /**
+     * Normalize one user input into ordered multimodal content blocks.
+     *
+     * <p>Companion of {@link #extractUserText(Object)}: the text extractor
+     * keeps its original semantics for {@code _original_query} and other text
+     * usages, while this method exposes the normalized block view required by
+     * the multimodal contract. Both coexist.</p>
+     *
+     * @param userInput string, content block list, structured message map or
+     *                  {@link BaseMessage}; may be {@code null}
+     * @return immutable ordered blocks, never {@code null}
+     * @throws com.openjiuwen.core.common.exception.BaseError with
+     *         {@code details.reason=CONTENT_INVALID} when the structure
+     *         violates the content block contract
+     * @since 0.1.17
+     */
+    public List<ContentBlock> extractUserContentBlocks(Object userInput) {
+        return MULTIMODAL_NORMALIZER.normalize(userInput);
+    }
+
+    /**
+     * Inject the image material provider used to resolve structured entry input.
+     *
+     * <p>Material resolution is an injected capability, not a static utility:
+     * the contract lives on the message side while this default implementation
+     * lives in the image domain of the harness.</p>
+     *
+     * @param materialProvider provider instance; {@code null} restores the
+     *                         framework default built per request
+     * @since 0.1.17
+     */
+    public void setMaterialProvider(ImageMaterialProvider materialProvider) {
+        this.materialProvider = materialProvider;
+    }
+
+    /**
+     * Return the injected image material provider.
+     *
+     * @return injected provider, or {@code null} when the default applies
+     * @since 0.1.17
+     */
+    public ImageMaterialProvider getMaterialProvider() {
+        return materialProvider;
+    }
+
+    private boolean isMultimodalContentInput(Object inputs, Object userInput) {
+        return inputs instanceof List
+                || inputs instanceof BaseMessage
+                || MultimodalContentNormalizer.isMultimodalContent(userInput);
+    }
+
+    private String extractOriginalQueryText(Object inputs, Object userInput) {
+        if (!isMultimodalContentInput(inputs, userInput)) {
+            return extractUserText(userInput);
+        }
+        StringBuilder text = new StringBuilder();
+        for (ContentBlock block : MULTIMODAL_NORMALIZER.normalize(userInput)) {
+            if (block instanceof ContentBlock.Text textBlock) {
+                if (text.length() > 0) {
+                    text.append('\n');
+                }
+                text.append(textBlock.text());
+            }
+        }
+        return text.toString();
+    }
+
+    private UserMessage buildEntryUserMessage(Object inputs, Object userInput) {
+        if (!isMultimodalContentInput(inputs, userInput)) {
+            return new UserMessage(extractUserText(userInput));
+        }
+        MaterialAccessConfig materialAccess = config.getMaterialAccess();
+        MaterialAccessContext access = MaterialAccessContexts.fromConfig(materialAccess);
+        List<ContentBlock> blocks = MULTIMODAL_NORMALIZER.normalize(userInput);
+        Loggers.AGENT.debug("structured multimodal input accepted, blocks={}", blocks.size());
+        String imageDetail = materialAccess == null ? null : materialAccess.getImageDetail();
+        MultimodalContentResolver resolver =
+                new MultimodalContentResolver(resolveMaterialProvider(access), imageDetail);
+        MultimodalContentResolver.ResolutionResult result = resolver.resolve(blocks, access);
+        UserMessage message = new UserMessage();
+        message.setContent(result.contentParts());
+        attachEntryMultimodalMetadata(message, result);
+        return message;
+    }
+
+    private void attachEntryMultimodalMetadata(UserMessage message,
+                                               MultimodalContentResolver.ResolutionResult result) {
+        if (result.itemErrors().isEmpty() && result.provenance().isEmpty()) {
+            return;
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (!result.itemErrors().isEmpty()) {
+            metadata.put("multimodal_item_errors", result.itemErrors());
+        }
+        if (!result.provenance().isEmpty()) {
+            metadata.put("multimodal_provenance", result.provenance());
+        }
+        message.setMetadata(metadata);
+    }
+
+    private ImageMaterialProvider resolveMaterialProvider(MaterialAccessContext access) {
+        ImageMaterialProvider injected = materialProvider;
+        if (injected != null) {
+            return injected;
+        }
+        return new LocalImageMaterialProvider(new FileSystemImageAssetStore(Path.of(access.assetRoot())));
+    }
+
     public InteractiveInput buildInteractiveInput(Object userQuery, List<String> componentIds) {
         if (userQuery instanceof InteractiveInput interactiveInput) {
             Set<String> providedIds = new HashSet<>(interactiveInput.getUserInputs().keySet());
@@ -1458,6 +1625,7 @@ public class ReActAgent extends BaseAgent {
         ContextEngine activeContextEngine = refreshContextEngineIfNeeded();
         ModelContext context = activeContextEngine.createContext(null, session, config.getContextProcessors(), null,
                 null);
+        bindOffloadPipeline(context, session);
         ModelContext.ToolPort contextReloader = context.reloaderTool();
         if (appliedContextEngineConfig.isEnableReload()) {
             Tool reloader = asSessionReloader(contextReloader);
@@ -1480,6 +1648,162 @@ public class ReActAgent extends BaseAgent {
             return new ReloaderAbility(reloader);
         }
         return null;
+    }
+
+    /**
+     * Wires the Context Offload v2 pipeline into a freshly created context
+     * (架构文档 §2.2, T-P0-05). Legacy mode stays untouched when
+     * {@code enable_offload} is false.
+     *
+     * <p>Assembly order matters: build the store chain first, then the
+     * service, and bind the context before the processors so a concurrent
+     * save never observes a half-wired pipeline.</p>
+     */
+    private void bindOffloadPipeline(ModelContext context, AgentSessionApi session) {
+        ContextEngineConfig engineConfig = appliedContextEngineConfig;
+        if (engineConfig == null || !engineConfig.isEnableOffload() || !(context instanceof SessionModelContext smc)) {
+            return;
+        }
+        if (smc.getOffloadService() != null) {
+            // Context reuse (engine pool): already bound — keep the single shared pipeline.
+            return;
+        }
+        try {
+            OffloadConfig offloadConfig = engineConfig.getOffload() == null
+                    ? new OffloadConfig()
+                    : engineConfig.getOffload();
+            CompositeOffloadStore compositeStore = buildCompositeStore(offloadConfig);
+            OffloadCatalog catalog = new OffloadCatalogImpl();
+            OffloadService service = new OffloadServiceImpl(catalog, compositeStore,
+                    new SessionOffloadGate(), offloadConfig);
+            Supplier<OffloadNamespace> namespaceSupplier = () -> OffloadNamespace.of("",
+                    session == null ? smc.sessionId() : session.getSessionId(), smc.contextId());
+            smc.bindOffloadService(service, namespaceSupplier);
+            for (MessageOffloader offloader : findOffloaders(smc)) {
+                syncProtectionConfig(offloader, offloadConfig);
+                offloader.setOffloadService(service, namespaceSupplier);
+            }
+            this.offloadService = service;
+            startOffloadJanitor(catalog, compositeStore, service, offloadConfig);
+            Loggers.AGENT.info("Context offload v2 pipeline bound, session={}", namespaceSupplier.get());
+        } catch (RuntimeException ex) {
+            // Intentional: agent loop must not propagate exceptions to the model
+            // Offload is an enhancement, never a hard dependency: degrade to legacy mode.
+            Loggers.AGENT.warning("Context offload v2 pipeline binding failed, falling back to legacy mode: "
+                    + ex.getMessage());
+        }
+    }
+
+    /**
+     * Builds the backend chain honoring primary/fallback/final_fallback with
+     * the canonical FILE → REDIS → MEMORY default (架构文档 §3.4).
+     */
+    private static CompositeOffloadStore buildCompositeStore(OffloadConfig offloadConfig) {
+        LinkedHashMap<OffloadBackend, OffloadStore> chain = new LinkedHashMap<>();
+        addBackendToChain(chain, offloadConfig.getPrimaryBackend(), offloadConfig);
+        addBackendToChain(chain, offloadConfig.getFallbackBackend(), offloadConfig);
+        addBackendToChain(chain, offloadConfig.getFinalFallback(), offloadConfig);
+        return new CompositeOffloadStore(chain);
+    }
+
+    private static void addBackendToChain(LinkedHashMap<OffloadBackend, OffloadStore> chain,
+                                          OffloadBackend backend, OffloadConfig offloadConfig) {
+        if (backend == null || backend == OffloadBackend.COMPOSITE || chain.containsKey(backend)) {
+            return;
+        }
+        switch (backend) {
+            case FILESYSTEM -> chain.put(backend, new FileOffloadStore(resolveWorkspaceRoot(offloadConfig),
+                    offloadConfig.isEnableFileLock()));
+            case REDIS -> {
+                if (offloadConfig.getRedis() != null) {
+                    chain.put(backend, new RedisOffloadStore(offloadConfig.getRedis()));
+                }
+            }
+            case MEMORY -> chain.put(backend, new MemoryOffloadStore());
+            default -> Loggers.AGENT.info("Offload backend not part of a concrete chain, skipped: {}", backend);
+        }
+    }
+
+    private static java.nio.file.Path resolveWorkspaceRoot(OffloadConfig offloadConfig) {
+        String configured = offloadConfig.getWorkspaceRoot();
+        if (configured != null && !configured.isBlank()) {
+            return java.nio.file.Path.of(configured);
+        }
+        return java.nio.file.Path.of(System.getProperty("user.dir"), "offload");
+    }
+
+    /**
+     * Finds every offloader processor instance (MessageOffloader and its
+     * {@code ToolResultBudgetProcessor} subclass) carried by the context.
+     */
+    private static List<MessageOffloader> findOffloaders(SessionModelContext smc) {
+        List<MessageOffloader> offloaders = new ArrayList<>();
+        for (SessionModelContext.ContextProcessorPort processor : smc.getProcessors()) {
+            if (processor instanceof MessageOffloader offloader) {
+                offloaders.add(offloader);
+            }
+        }
+        return offloaders;
+    }
+
+    /**
+     * V-3 单一配置源: the pipeline-level {@code OffloadConfig} overrides the
+     * processor defaults for the shared protection window so
+     * {@code recent_message_protection_count} / {@code protected_tool_names}
+     * configured on {@code enableOffload.offload} take effect (they were dead
+     * settings before). Explicit non-default processor values are preserved.
+     */
+    private static void syncProtectionConfig(MessageOffloader offloader, OffloadConfig offloadConfig) {
+        if (offloadConfig == null) {
+            return;
+        }
+        MessageOffloaderConfig target = offloader.getConfig();
+        if (target == null) {
+            return;
+        }
+        if (offloadConfig.getRecentMessageProtectionCount() != 5) {
+            target.setRecentMessageProtectionCount(offloadConfig.getRecentMessageProtectionCount());
+        }
+        List<String> pipelineTools = offloadConfig.getProtectedToolNames();
+        List<String> defaultTools = List.of("reload_original_context_messages");
+        if (pipelineTools != null && !pipelineTools.equals(defaultTools)) {
+            target.setProtectedToolNames(pipelineTools);
+        }
+    }
+
+    /**
+     * Starts one shared janitor per agent; the singleton guards make restarts
+     * (e.g. after {@code refreshContextEngineIfNeeded}) no-ops.
+     */
+    private void startOffloadJanitor(OffloadCatalog catalog, CompositeOffloadStore store,
+                                     OffloadService service, OffloadConfig offloadConfig) {
+        if (offloadJanitor != null) {
+            return;
+        }
+        synchronized (this) {
+            if (offloadJanitor == null) {
+                OffloadJanitor janitor = new OffloadJanitor(catalog, store, service, offloadConfig);
+                janitor.start();
+                this.offloadJanitor = janitor;
+            }
+        }
+    }
+
+    /**
+     * Releases agent-scoped resources: stops the offload janitor daemon
+     * (D-3 资源回收). Idempotent; the agent stays usable for reads after
+     * close, only the background reaping stops.
+     */
+    @Override
+    public void close() {
+        OffloadJanitor janitor = this.offloadJanitor;
+        if (janitor != null) {
+            janitor.close();
+        }
+    }
+
+    public OffloadService getOffloadService() {
+        return offloadService;
     }
 
     private static final class ReloaderAbility extends Tool {
@@ -1527,19 +1851,44 @@ public class ReActAgent extends BaseAgent {
         return invoke(inputs, apiSession);
     }
 
+    /**
+     * Run one agent invocation.
+     *
+     * <p>Accepted input shapes: a {@code Map} carrying {@code query} (the
+     * query value may itself be a string, a multimodal content block list, a
+     * structured message with {@code content}, or a {@link BaseMessage}), a
+     * plain string, a multimodal content block list, or a {@link BaseMessage}
+     * instance. Structured shapes share one dispatch point with the streaming
+     * entry because {@code stream} delegates here.</p>
+     *
+     * @param inputs agent input; see the accepted shapes above
+     * @param session target session; {@code null} creates a temporary one
+     * @param kwargs extra invoke options such as {@code _streaming}
+     * @return invocation result map, never {@code null}
+     * @throws IllegalArgumentException when the input shape is not accepted
+     * @throws com.openjiuwen.core.common.exception.BaseError with
+     *         {@code details.reason} such as {@code CONTENT_INVALID} or
+     *         {@code SOURCE_UNRESOLVED} when structured input violates the
+     *         multimodal contract; parsing never falls back to stringifying
+     * @since 0.1.17
+     */
     public Object invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
-        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
+        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String)
+                && !(inputs instanceof List) && !(inputs instanceof BaseMessage))) {
             throw new IllegalArgumentException("Input must be Map with 'query' or String");
         }
         Object query;
         String conversationId = null;
+        StepCheckpointPolicy invokePolicyOverride = null;
         if (inputs instanceof Map<?, ?> map) {
             query = map.containsKey("query") ? map.get("query") : "";
             Object conversation = map.get("conversation_id");
             conversationId = conversation == null ? null : String.valueOf(conversation);
+            invokePolicyOverride = StepCheckpointPolicy.fromString(map.get("step_checkpoint_policy"));
         } else {
             query = inputs;
         }
+        bindStepCheckpointTrigger(session, invokePolicyOverride);
 
         boolean needCleanup = false;
         AgentSessionApi activeSession = session;
@@ -1560,6 +1909,107 @@ public class ReActAgent extends BaseAgent {
                 conversationId,
                 kwargs
         );
+    }
+
+    /**
+     * Bind the step checkpoint trigger to the current invocation: wire the
+     * session's checkpointer, a journal when the KV store is available, and
+     * the effective policy resolved from the agent-level default and the
+     * per-invocation override.
+     *
+     * @param session invocation session, may be null
+     * @param invokeOverride per-invocation policy override; null means "not overridden"
+     */
+    private void bindStepCheckpointTrigger(AgentSessionApi session, StepCheckpointPolicy invokeOverride) {
+        Checkpointer checkpointer = resolveCheckpointer(session);
+        StepJournal journal = resolveStepJournal(checkpointer);
+        StepCheckpointPolicy effectivePolicy = new PolicyEvaluator()
+                .resolve(config.getStepCheckpointPolicy(), invokeOverride);
+        stepCheckpointTrigger = new StepCheckpointTrigger(checkpointer, journal, effectivePolicy,
+                new PolicyEvaluator());
+    }
+
+    private Checkpointer resolveCheckpointer(AgentSessionApi session) {
+        if (session instanceof AgentSession typedSession && typedSession.getInner() != null
+                && typedSession.getInner().checkpointer() != null) {
+            return typedSession.getInner().checkpointer();
+        }
+        return null;
+    }
+
+    private StepJournal resolveStepJournal(Checkpointer checkpointer) {
+        if (checkpointer instanceof PersistenceCheckpointer persistence) {
+            return new KvStepJournal(persistence.kvStore());
+        }
+        return null;
+    }
+
+    /**
+     * Unwrap the product session to the internal {@link BaseSession} expected
+     * by the checkpointer step entry points.
+     *
+     * @param session invocation session, may be null
+     * @return the internal session, or null when unavailable
+     */
+    private static BaseSession typedBaseSession(AgentSessionApi session) {
+        if (session instanceof AgentSession typedSession) {
+            return typedSession.getInner();
+        }
+        if (session instanceof BaseSession baseSession) {
+            return baseSession;
+        }
+        return null;
+    }
+
+    /**
+     * Build the AUTO signal context for the current invocation.
+     *
+     * @param session invocation session, may be null
+     * @return signal context populated with tool count and HITL capability
+     */
+    private StepSignalContext stepSignals(AgentSessionApi session) {
+        List<ToolInfo> tools = listEffectiveToolInfo(session);
+        boolean hasInteractiveCapability = tools.stream()
+                .anyMatch(tool -> "ask_user".equals(tool.getName()));
+        return new StepSignalContext(
+                "",
+                false,
+                hasInteractiveCapability,
+                tools.size(),
+                stepCheckpointTrigger.observedSteps(),
+                0L);
+    }
+
+    /**
+     * Join tool call names for cursor step-name recording.
+     *
+     * @param toolCalls tool calls of the finished step, may be null
+     * @return comma-joined names, empty when no calls
+     */
+    private static String toolCallNames(List<ToolCall> toolCalls) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return "";
+        }
+        List<String> names = new ArrayList<>(toolCalls.size());
+        for (ToolCall toolCall : toolCalls) {
+            names.add(toolCall.getName() == null ? "" : toolCall.getName());
+        }
+        return String.join(",", names);
+    }
+
+    /**
+     * Duration of the current ReAct iteration in millis, derived from the
+     * loop start timestamp recorded by the callback context.
+     *
+     * @param ctx callback context of the running invocation
+     * @return elapsed millis since the iteration started; 0 when unknown
+     */
+    private static long iterationDurationMillis(AgentCallbackContext ctx) {
+        Object startedAt = ctx == null ? null : ctx.getExtra().get("_iteration_started_at_millis");
+        if (!(startedAt instanceof Number number)) {
+            return 0L;
+        }
+        return Math.max(0L, System.currentTimeMillis() - number.longValue());
     }
 
     public Object innerInvoke(AgentSessionApi session, Object inputs, Object query, boolean needCleanup,
@@ -1648,7 +2098,7 @@ public class ReActAgent extends BaseAgent {
             } else if (externalResume) {
                 ctx.getExtra().put("_original_query", externalPending.getOriginalQuery());
             } else {
-                ctx.getExtra().put("_original_query", extractUserText(userInput));
+                ctx.getExtra().put("_original_query", extractOriginalQueryText(inputs, userInput));
             }
 
             ModelContext context = initContext(session);
@@ -1675,7 +2125,7 @@ public class ReActAgent extends BaseAgent {
                     startIteration = popInt(ctx.getExtra(), InterruptConstants.RESUME_START_ITERATION_KEY, 0);
                 } else if (interruptionState instanceof InterruptionState workflowState) {
                     ctx.enterIteration(workflowState.getIteration());
-                    context.addMessages(new UserMessage(extractUserText(userInput))).toCompletableFuture().join();
+                    context.addMessages(buildEntryUserMessage(inputs, userInput)).toCompletableFuture().join();
                     Object resumeResult = handleResume(interruptionState, userInput, ctx, context, session,
                             invokeInputs);
                     if (resumeResult == null) {
@@ -1683,13 +2133,14 @@ public class ReActAgent extends BaseAgent {
                     }
                 }
             } else {
-                context.addMessages(new UserMessage(extractUserText(userInput))).toCompletableFuture().join();
+                context.addMessages(buildEntryUserMessage(inputs, userInput)).toCompletableFuture().join();
             }
 
             if (invokeInputs.getResult() == null) {
                 for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
                     ctx.enterIteration(iteration);
                     int iterationNumber = iteration + 1;
+                    ctx.getExtra().put("_iteration_started_at_millis", System.currentTimeMillis());
                     Loggers.AGENT.info("ReAct iteration {}/{} started",
                             iterationNumber, ctx.getMaxIterations());
                     try {
@@ -1775,6 +2226,12 @@ public class ReActAgent extends BaseAgent {
                                 ToolExecutionTurnOrigin.NORMAL_TOOL_LOOP)) {
                             break;
                         }
+                        stepCheckpointTrigger.stepCompleted(
+                                typedBaseSession(session),
+                                null,
+                                stepSignals(session),
+                                new StepBoundary("TOOL_CALL", toolCallNames(toolCalls), StepStatus.COMPLETED,
+                                        iterationDurationMillis(ctx)));
                     } catch (RuntimeException exception) {
                         iterationFailureLogged = true;
                         Loggers.AGENT.exception(
@@ -2135,18 +2592,50 @@ public class ReActAgent extends BaseAgent {
 
     public void clearSession(String sessionId) {
         invokeStaticRunnerRelease(sessionId);
+        cleanupOffloadNamespaces(sessionId, null);
         contextEngine.clearContext(null, sessionId);
     }
 
     public boolean clearContextMessages(String sessionId, String contextId) {
         String effectiveSessionId = sessionId == null ? ContextEngine.DEFAULT_SESSION_ID : sessionId;
         String effectiveContextId = contextId == null ? ContextEngine.DEFAULT_CONTEXT_ID : contextId;
+        cleanupOffloadNamespaces(effectiveSessionId, effectiveContextId);
         ModelContext context = contextEngine.getContext(effectiveContextId, effectiveSessionId);
         if (context == null) {
             return false;
         }
         context.clearMessages(false).toCompletableFuture().join();
         return true;
+    }
+
+    /**
+     * AC-4-10 session 结束清理: removes every offload entry owned by the
+     * cleared session contexts before the contexts themselves go away.
+     * Best-effort — cleanup failures never block context clearing
+     * (offload is an enhancement, 共享约定 13).
+     */
+    private void cleanupOffloadNamespaces(String sessionId, String contextId) {
+        OffloadService service = this.offloadService;
+        if (service == null || sessionId == null) {
+            return;
+        }
+        try {
+            OffloadNamespace namespace = OffloadNamespace.of("", sessionId,
+                    contextId == null ? "" : contextId);
+            service.deleteNamespace(namespace);
+            if (contextId == null) {
+                // Whole-session sweep: also cover the context-scoped
+                // namespaces created per contextId by the binding supplier.
+                for (ModelContext context : contextEngine.getContexts(sessionId)) {
+                    if (context instanceof SessionModelContext smc && smc.getOffloadService() == service) {
+                        service.deleteNamespace(OffloadNamespace.of("", sessionId, smc.contextId()));
+                    }
+                }
+            }
+        } catch (RuntimeException ex) {
+            // Intentional: agent loop must not propagate exceptions to the model
+            Loggers.AGENT.debug("Offload namespace cleanup skipped: {}", ex.getMessage());
+        }
     }
 
     @Override
@@ -2196,7 +2685,9 @@ public class ReActAgent extends BaseAgent {
                 .contextWindowTokens(source.getContextWindowTokens())
                 .modelName(source.getModelName())
                 .enableOpenrouterModelContextWindowTokens(source.isEnableOpenrouterModelContextWindowTokens())
-                .openrouterRequestTimeout(source.getOpenrouterRequestTimeout());
+                .openrouterRequestTimeout(source.getOpenrouterRequestTimeout())
+                .enableOffload(source.isEnableOffload())
+                .offload(source.getOffload());
         Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
         if (modelWindowTokens != null) {
             snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
@@ -2317,7 +2808,10 @@ public class ReActAgent extends BaseAgent {
             } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
                     | IllegalStateException | NullPointerException | ClassCastException
                     | UnsupportedOperationException | UncheckedIOException exception) {
-                if (!streamAttempt.hasReceivedChunks() && hasIoCause(exception) && attempt < maxRetries) {
+                boolean isClassified = exception instanceof BaseError
+                        && ModelCallClassification.of(exception).isPresent();
+                if (!isClassified && !streamAttempt.hasReceivedChunks() && hasIoCause(exception)
+                        && attempt < maxRetries) {
                     Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
                             + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
                             + exception.getMessage());

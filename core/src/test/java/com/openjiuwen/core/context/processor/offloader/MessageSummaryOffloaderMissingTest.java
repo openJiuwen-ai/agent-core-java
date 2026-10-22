@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.context.processor.offloader;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
@@ -15,6 +18,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -22,9 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Missing supplemental parity tests for adaptive message-summary offloading.

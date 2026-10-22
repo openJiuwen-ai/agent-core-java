@@ -21,7 +21,9 @@ import java.util.Map;
  * <p>Resolution order for every key (mirrors the system-test support class):
  * <ol>
  *   <li>environment variable (e.g. {@code API_BASE}, {@code REDIS_HOST})</li>
- *   <li>{@code examples/apiconfig.json} (file system, then classpath)</li>
+ *   <li>{@code apiconfig.json} (explicit file via system property / env, then
+ *       working-directory candidates, then the classpath copy under
+ *       {@code src/main/resources})</li>
  *   <li>hard-coded default (Redis host/port only)</li>
  * </ol>
  * LLM keys have no default and throw when missing; Redis keys default to
@@ -102,8 +104,7 @@ public final class DeepAgentExampleConfigLoader {
         return 6379;
     }
 
-    private static String getRequired(String key) {
-        String env = System.getenv(key);
+    private static String getRequired(String key) {        String env = System.getenv(key);
         if (env != null && !env.isBlank()) {
             return env;
         }
@@ -111,7 +112,9 @@ public final class DeepAgentExampleConfigLoader {
         if (value == null || value.isBlank()) {
             throw new IllegalStateException(
                     "Missing required config '" + key + "'. Set it as an environment variable "
-                            + "or in examples/apiconfig.json.");
+                            + "or fill it in apiconfig.json (classpath resource under "
+                            + "src/main/resources, or an explicit file via the "
+                            + "'openjiuwen.example.config' system property / 'OPENJIUWEN_API_CONFIG' env).");
         }
         return value;
     }

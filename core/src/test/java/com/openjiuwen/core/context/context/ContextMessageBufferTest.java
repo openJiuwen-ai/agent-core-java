@@ -4,12 +4,13 @@
 
 package com.openjiuwen.core.context.context;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Focused parity tests for context message buffering.

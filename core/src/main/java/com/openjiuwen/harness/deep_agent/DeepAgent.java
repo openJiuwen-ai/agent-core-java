@@ -44,6 +44,10 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -241,6 +245,13 @@ public class DeepAgent implements AutoCloseable {
     private com.openjiuwen.harness.schema.CompletionPromiseEvaluator completionPromiseEvaluator;
     private boolean isExplicitCompletionPolicy;
 
+    /** Step boundary trigger coordinating policy evaluation, cursor persistence, and audit. */
+    private StepCheckpointTrigger stepCheckpointTrigger =
+            new StepCheckpointTrigger(
+                    null,
+                    null,
+                    StepCheckpointPolicy.STEP_AUTO);
+
     public DeepAgent() {
         this(null, null, null);
     }
@@ -419,7 +430,7 @@ public class DeepAgent implements AutoCloseable {
                     .clientProvider(provider)
                     .apiKey(apiKey)
                     .apiBase(apiBase)
-                    .maxRetries(intOrDefault(firstPresent(backendMap, new String[] {"max_retries", "maxRetries"}), 3))
+                    .maxRetries(intOrDefault(firstPresent(backendMap, new String[] {"max_retries", "maxRetries"}), 2))
                     .verifySsl(booleanOrDefault(
                             firstPresent(backendMap, new String[] {"verify_ssl", "verifySsl"}),
                             true))
@@ -430,6 +441,7 @@ public class DeepAgent implements AutoCloseable {
                 clientConfigBuilder.timeout(doubleOrDefault(legacyTimeout, 60.0));
             }
             applyTieredTimeoutKeys(clientConfigBuilder, backendMap);
+            applyRetrySwitchKeys(clientConfigBuilder, backendMap);
             ModelClientConfig clientConfig = clientConfigBuilder.build();
             runtimeConfig.setModelClientConfig(clientConfig);
             runtimeConfig.setModelProvider(provider);
@@ -453,6 +465,20 @@ public class DeepAgent implements AutoCloseable {
             clientConfigBuilder.streamIdleSeconds(
                     ModelClientConfig.validateStreamIdleSeconds(
                             doubleOrDefault(streamIdleSeconds, 600.0)));
+        }
+    }
+
+    private static void applyRetrySwitchKeys(ModelClientConfig.ModelClientConfigBuilder clientConfigBuilder,
+            Map<?, ?> backendMap) {
+        Object retryOnRateLimit = firstPresent(backendMap,
+                new String[] {"retry_on_rate_limit", "retryOnRateLimit"});
+        if (retryOnRateLimit != null) {
+            clientConfigBuilder.retryOnRateLimit(booleanOrDefault(retryOnRateLimit, true));
+        }
+        Object retryOnTemporary = firstPresent(backendMap,
+                new String[] {"retry_on_temporary", "retryOnTemporary"});
+        if (retryOnTemporary != null) {
+            clientConfigBuilder.retryOnTemporary(booleanOrDefault(retryOnTemporary, true));
         }
     }
 
@@ -2308,6 +2334,7 @@ public class DeepAgent implements AutoCloseable {
                 coordinator.incrementIteration();
                 coordinator.addTokenUsage(resolveTokenUsage(roundResult));
                 coordinator.setLastResult(roundResult);
+                recordTaskLoopStepBoundary(session, roundResult, "round-" + (rounds.size()));
                 if (isExplicitCompletionPolicy) {
                     updateCompletionPromise(coordinator, roundResult);
                     if (!coordinator.shouldContinue()) {
@@ -3972,6 +3999,33 @@ public class DeepAgent implements AutoCloseable {
         }
         DeepAgentState target = Objects.requireNonNullElseGet(state, DeepAgentState::new);
         agentSession.updateState(Map.of(DeepAgentState.SESSION_STATE_KEY, target.toSessionMap()));
+    }
+
+    /**
+     * Record one DeepAgent task-loop round boundary: the round result type
+     * decides the step status, the trigger handles policy, cursor persistence,
+     * and audit.
+     *
+     * @param session loop session, may be null to no-op
+     * @param roundResult result map of the finished round
+     * @param stepName round label used in the cursor and journal
+     */
+    private void recordTaskLoopStepBoundary(AgentSessionApi session, Map<String, Object> roundResult,
+                                            String stepName) {
+        if (session == null) {
+            return;
+        }
+        Object resultType = roundResult == null ? null : roundResult.get("result_type");
+        boolean hasInterrupt = "interrupt".equals(String.valueOf(resultType));
+        StepStatus status = hasInterrupt ? StepStatus.RUNNING : StepStatus.COMPLETED;
+        BaseSession baseSession = session instanceof AgentSession typedSession
+                ? typedSession.getInner()
+                : null;
+        if (baseSession == null) {
+            return;
+        }
+        stepCheckpointTrigger.stepCompleted(baseSession, null, null,
+                new StepBoundary("PHASE", stepName, status, 0L));
     }
 
     public void clearState(Object session, boolean clearPersisted) {

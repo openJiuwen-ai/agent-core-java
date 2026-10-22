@@ -8,11 +8,20 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.common.security.UserConfig;
+import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
+import com.openjiuwen.core.foundation.llm.classification.ErrorBodyParser;
+import com.openjiuwen.core.foundation.llm.classification.FirstSegmentRetryIterator;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetryPolicy;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorClassifiers;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorFacts;
+import com.openjiuwen.core.foundation.llm.classification.RetryContext;
+import com.openjiuwen.core.foundation.llm.modelclients.errors.ErrorResponseBodySanitizer;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -30,9 +39,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -47,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -70,8 +82,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
         registerClientClass(SiliconFlowModelClient.class);
     }
 
+    private final ModelCallRetrier retrier;
+
     public SiliconFlowModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
-        super(modelConfig, modelClientConfig);
+        this(modelConfig, modelClientConfig, new ModelCallRetrier());
     }
 
     @SuppressWarnings("unchecked")
@@ -80,6 +94,12 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 (ModelRequestConfig) kwargs.get("model_config"),
                 (ModelClientConfig) kwargs.get("model_client_config")
         );
+    }
+
+    SiliconFlowModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            ModelCallRetrier retrier) {
+        super(modelConfig, modelClientConfig);
+        this.retrier = retrier;
     }
 
     @Override
@@ -142,29 +162,26 @@ public class SiliconFlowModelClient extends BaseModelClient {
         try {
             callTracer(tracerRecordData, singlePayload("llm_params", params));
             Loggers.LLM.info("LLM request params ready. {}", requestLogMetadata(params, false));
-            HttpResult result = postJson(params, timeout);
-            if (result.statusCode() >= 400) {
-                throw new IOException("API returned error " + result.statusCode() + ": " + result.body());
-            }
-            Map<String, Object> data = parseJsonObject(result.body());
-            Loggers.LLM.info("SiliconFlow API response received. {}", Map.of("response", logValue(data)));
+            RetryContext retryContext = new RetryContext(ModelCallRetryPolicy.from(modelClientConfig));
+            Map<String, Object> data = retrier.execute(retryContext, () -> {
+                HttpResult result = postJson(params, timeout);
+                ensureClassifiedSuccess(result.statusCode(), result.body(), false);
+                ensureNoEmbeddedError(result.body(), false);
+                Map<String, Object> parsed = parseJsonObject(result.body());
+                Loggers.LLM.info("SiliconFlow API response received. {}", Map.of("response", logValue(parsed)));
+                return parsed;
+            }, null);
             AssistantMessage assistantMessage = parseResponse(data, outputParser);
             callTracer(tracerRecordData, singlePayload("llm_response", assistantMessage));
             return assistantMessage;
         } catch (BaseError exception) {
             throw exception;
-        } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
+        } catch (CancellationException cancellation) {
+            throw cancellation;
+        } catch (IOException | IllegalStateException | IllegalArgumentException
                 | ClassCastException exception) {
             Loggers.LLM.error("SiliconFlow API async invoke error. {}", errorLogMessage(exception));
-            Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
-                    exception, false, modelClientConfig);
-            throw timeoutError.orElseGet(() -> ErrorHelper.buildError(
-                    StatusCode.MODEL_CALL_FAILED,
-                    null,
-                    null,
-                    exception,
-                    Map.of("error_msg", "siliconFlow API async invoke error: " + exception.getMessage())
-            ));
+            throw classifyTransportFailure(exception, false);
         }
     }
 
@@ -196,24 +213,18 @@ public class SiliconFlowModelClient extends BaseModelClient {
         try {
             callTracer(tracerRecordData, singlePayload("llm_params", params));
             Loggers.LLM.info("LLM request params ready. {}", requestLogMetadata(params, true));
-            Iterator<AssistantMessageChunk> iterator = outputParser != null
+            Iterator<AssistantMessageChunk> raw = outputParser != null
                     ? streamWithParser(params, outputParser, timeout)
                     : streamResponse(params, timeout);
-            return new TracingCollectingIterator(iterator, tracerRecordData);
+            return new TracingCollectingIterator(raw, tracerRecordData);
         } catch (BaseError exception) {
             throw exception;
-        } catch (IOException | InterruptedException | IllegalStateException | IllegalArgumentException
+        } catch (CancellationException cancellation) {
+            throw cancellation;
+        } catch (IOException | IllegalStateException | IllegalArgumentException
                 | ClassCastException exception) {
             Loggers.LLM.error("SiliconFlow API async stream error. {}", errorLogMessage(exception));
-            Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
-                    exception, true, modelClientConfig);
-            throw timeoutError.orElseGet(() -> ErrorHelper.buildError(
-                    StatusCode.MODEL_CALL_FAILED,
-                    null,
-                    null,
-                    exception,
-                    Map.of("error_msg", "siliconFlow API async stream error: " + exception.getMessage())
-            ));
+            throw classifyTransportFailure(exception, true);
         }
     }
 
@@ -255,10 +266,91 @@ public class SiliconFlowModelClient extends BaseModelClient {
         return null;
     }
 
+    private SiliconFlowSseIterator openSseIterator(Map<String, Object> params, Float timeout)
+            throws IOException, InterruptedException {
+        double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
+        HttpResponse<InputStream> response = postStream(params, idleSeconds);
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String body = IdleGuardedBodyReader.readFully(response.body(), idleSeconds, true);
+            throw classifiedHttpError(response.statusCode(), body, true);
+        }
+        return new SiliconFlowSseIterator(response.body(), idleSeconds);
+    }
+
+    private void ensureClassifiedSuccess(int statusCode, String body, boolean isStream) {
+        if (statusCode >= 200 && statusCode < 300) {
+            return;
+        }
+        throw classifiedHttpError(statusCode, body, isStream);
+    }
+
+    private void ensureNoEmbeddedError(String body, boolean isStream) {
+        if (!ErrorBodyParser.hasErrorObject(body)) {
+            return;
+        }
+        throw classifiedHttpError(null, body, isStream);
+    }
+
+    private BaseError classifiedHttpError(Integer statusCode, String body, boolean isStream) {
+        ErrorResponseBodySanitizer.SanitizedBody sanitized =
+                ErrorResponseBodySanitizer.sanitize(body == null ? "" : body);
+        ModelErrorFacts.Builder factsBuilder = ModelErrorFacts.Builder.create()
+                .httpStatus(statusCode)
+                .errorBody(sanitized.body())
+                .stream(isStream);
+        Optional<ErrorBodyParser.ParsedError> parsed = ErrorBodyParser.parse(sanitized.body());
+        if (parsed.isPresent()) {
+            ErrorBodyParser.ParsedError error = parsed.get();
+            factsBuilder.errorCode(error.code()).errorType(error.type()).errorMessage(error.message());
+        }
+        ModelErrorFacts facts = factsBuilder.build();
+        ModelCallClassification classification =
+                ModelErrorClassifiers.defaultClassifier().classify(facts);
+        String message = statusCode == null
+                ? "embedded error in success response: " + sanitized.body()
+                : "API returned error " + statusCode + ": " + sanitized.body();
+        return ClassifiedModelErrors.toError(classification, facts, message, null);
+    }
+
+    private BaseError classifyTransportFailure(Exception exception, boolean isStream) {
+        ModelErrorFacts facts = ModelErrorFacts.ofThrowable(exception, isStream);
+        ModelCallClassification classification =
+                ModelErrorClassifiers.defaultClassifier().classify(facts);
+        if (classification.category() == ModelErrorCategory.USER_CANCELLED) {
+            throw ClassifiedModelErrors.toCancellation("model call cancelled");
+        }
+        Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromSendException(
+                exception, isStream, modelClientConfig);
+        if (timeoutError.isPresent()) {
+            return timeoutError.get();
+        }
+        return ClassifiedModelErrors.toError(classification, facts,
+                "siliconFlow API transport failure: " + exception.getMessage(), exception);
+    }
+
+    private final class SiliconFlowStreamHandle
+            implements ModelCallRetrier.StreamHandle<AssistantMessageChunk> {
+        private final SiliconFlowSseIterator delegate;
+
+        private SiliconFlowStreamHandle(SiliconFlowSseIterator delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> iterator() {
+            return delegate;
+        }
+
+        @Override
+        public void closeQuietly() {
+            delegate.close();
+        }
+    }
+
     protected Iterator<AssistantMessageChunk> streamWithParser(
             Map<String, Object> params,
             BaseOutputParser outputParser,
-            Float timeout) throws IOException, InterruptedException {
+            Float timeout) throws IOException {
         return new ParserApplyingIterator(streamResponse(params, timeout), outputParser);
     }
 
@@ -283,14 +375,12 @@ public class SiliconFlowModelClient extends BaseModelClient {
     }
 
     protected Iterator<AssistantMessageChunk> streamResponse(Map<String, Object> params, Float timeout)
-            throws IOException, InterruptedException {
-        double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
-        HttpResponse<InputStream> response = postStream(params, idleSeconds);
-        if (response.statusCode() >= 400) {
-            String body = IdleGuardedBodyReader.readFully(response.body(), idleSeconds, true);
-            throw new IOException("API returned error " + response.statusCode() + ": " + body);
-        }
-        return new SiliconFlowSseIterator(response.body(), idleSeconds);
+            throws IOException {
+        RetryContext retryContext = new RetryContext(ModelCallRetryPolicy.from(modelClientConfig));
+        ModelCallRetrier.StreamAttempt<AssistantMessageChunk> streamAttempt =
+                () -> new SiliconFlowStreamHandle(openSseIterator(params, timeout));
+        return new FirstSegmentRetryIterator<>(retryContext, streamAttempt,
+                retrier.openStream(retryContext, streamAttempt, null), retrier, null);
     }
 
     protected AssistantMessageChunk parseStreamChunk(String line) {
@@ -707,6 +797,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         private final double idleSeconds;
         private AssistantMessageChunk nextChunk;
         private boolean isFirstSegmentReceived;
+        private boolean isEffectiveFirstSegmentReceived;
         private boolean isDone;
         private boolean isClosed;
 
@@ -757,12 +848,17 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         continue;
                     }
                     isFirstSegmentReceived = true;
-                    if ("[DONE]".equals(line.substring("data:".length()).strip())) {
+                    String data = line.substring("data:".length()).strip();
+                    if (!data.contains("choices") && ErrorBodyParser.hasErrorObject(data)) {
+                        throw errorFrameException(data);
+                    }
+                    if ("[DONE]".equals(data)) {
                         break;
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(line);
                     if (chunk != null) {
                         shouldKeepOpen = true;
+                        isEffectiveFirstSegmentReceived = true;
                         return Optional.of(chunk);
                     }
                 }
@@ -771,14 +867,12 @@ public class SiliconFlowModelClient extends BaseModelClient {
             } catch (IOException exception) {
                 finish();
                 throwIfIdleTimeout(exception);
-                throw ErrorHelper.buildError(
-                        StatusCode.MODEL_CALL_FAILED,
-                        null,
-                        null,
-                        exception,
-                        Map.of("error_msg",
-                                "siliconFlow API stream read failure: " + exception.getMessage())
-                );
+                if (exception instanceof InterruptedIOException
+                        && !(exception instanceof SocketTimeoutException)) {
+                    // SocketTimeoutException is a read timeout, not a cancellation.
+                    throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
+                }
+                throw classifiedStreamFailure(exception);
             } finally {
                 if (!shouldKeepOpen) {
                     close();
@@ -792,13 +886,44 @@ public class SiliconFlowModelClient extends BaseModelClient {
         }
 
         private void throwIfIdleTimeout(IOException exception) {
-            if (exception instanceof IdleBoundInputStream.IdleTimeoutIOException idleTimeout) {
+            if (exception instanceof IdleTimeoutIOException idleTimeout) {
                 throw ModelTimeoutErrorFactory.idleTimeoutError(
                         isFirstSegmentReceived
                                 ? TimeoutPhase.AFTER_FIRST_SEGMENT
                                 : TimeoutPhase.BEFORE_FIRST_SEGMENT,
                         idleTimeout.idleSeconds(), true, exception);
             }
+        }
+
+        private BaseError classifiedStreamFailure(IOException exception) {
+            ModelErrorFacts facts = ModelErrorFacts.Builder.create()
+                    .throwable(exception)
+                    .stream(true)
+                    .firstSegmentReceived(isEffectiveFirstSegmentReceived)
+                    .build();
+            ModelCallClassification classification =
+                    ModelErrorClassifiers.defaultClassifier().classify(facts);
+            return ClassifiedModelErrors.toError(classification, facts,
+                    "siliconFlow API stream read failure: " + exception.getMessage(), exception);
+        }
+
+        private BaseError errorFrameException(String data) {
+            ErrorResponseBodySanitizer.SanitizedBody sanitized =
+                    ErrorResponseBodySanitizer.sanitize(data);
+            ModelErrorFacts.Builder factsBuilder = ModelErrorFacts.Builder.create()
+                    .errorBody(sanitized.body())
+                    .stream(true)
+                    .firstSegmentReceived(isEffectiveFirstSegmentReceived);
+            Optional<ErrorBodyParser.ParsedError> parsed = ErrorBodyParser.parse(sanitized.body());
+            if (parsed.isPresent()) {
+                ErrorBodyParser.ParsedError error = parsed.get();
+                factsBuilder.errorCode(error.code()).errorType(error.type()).errorMessage(error.message());
+            }
+            ModelErrorFacts facts = factsBuilder.build();
+            ModelCallClassification classification =
+                    ModelErrorClassifiers.defaultClassifier().classify(facts);
+            return ClassifiedModelErrors.toError(classification, facts,
+                    "stream error frame: " + sanitized.body(), null);
         }
 
         private void closeReaderQuietly() {

@@ -11,6 +11,7 @@
 | [知识检索](知识检索.md) | 知识库、索引、检索与重排 | `com.openjiuwen.retrieval`、`examples/retrieval` | 以 Java retrieval API 和示例入口为准。 |
 | [记忆引擎](记忆引擎.md) | 长期记忆、作用域配置、记忆检索 | `com.openjiuwen.memory` | 结合 memory 根包与管理子包理解。 |
 | [上下文引擎](上下文引擎.md) | `ContextEngine`、上下文窗口、处理器与状态 | `com.openjiuwen.core.context`、`examples/context_evolver` | 覆盖上下文生命周期与配置入口。 |
+| [Context卸载与装载](Context卸载与装载.md) | Offload 触发条件、存储后端与降级链、reload 工具、配置项、存储布局与清理 | `com.openjiuwen.core.context.offload`、`examples/deep_agent/ContextOffloadExample` | 面向使用者的卸载/装载功能指南，配置与行为以实际代码为准。 |
 | [安全护栏 Guardrail](安全护栏Guardrail.md) | 风险分析、回调事件与阻断策略 | `com.openjiuwen.core.security.guardrail` | 当前以公开源码和根包 README 为准。 |
 | [多租户数据隔离](多租户数据隔离.md) | 租户上下文、工作区/KV/Skill 隔离与清理 | `com.openjiuwen.core.multitenant` | 以多租户开关、传入入口与资源隔离边界为准。 |
 

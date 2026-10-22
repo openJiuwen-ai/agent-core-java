@@ -8,6 +8,7 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -38,7 +39,8 @@ class ReActAgentModelRetryOutputTest {
                 429,
                 null,
                 Duration.ofMillis(1250),
-                "retry_after"
+                "retry_after",
+                ModelErrorCategory.RATE_LIMITED
         ));
         ReActAgent agent = agentWith(client);
 
@@ -75,7 +77,8 @@ class ReActAgentModelRetryOutputTest {
                 null,
                 "java.io.IOException",
                 Duration.ofMillis(80),
-                "backoff"
+                "backoff",
+                ModelErrorCategory.TEMPORARY
         ));
         ReActAgent agent = agentWith(client);
 

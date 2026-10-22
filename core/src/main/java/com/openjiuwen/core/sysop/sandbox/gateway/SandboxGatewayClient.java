@@ -10,9 +10,14 @@ import com.openjiuwen.core.sysop.config.GatewayInvokeRequest;
 import com.openjiuwen.core.sysop.config.SandboxCreateRequest;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Flow;
 
 /**
@@ -24,9 +29,14 @@ import java.util.concurrent.Flow;
  */
 public class SandboxGatewayClient {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(SandboxGatewayClient.class);
+
     private final SandboxGatewayConfig config;
     private final String isolationKey;
     private final SandboxGateway gateway;
+
+    private volatile String cachedSandboxId;
+    private volatile CompletableFuture<SandboxEndpoint> endpointFuture;
 
     public SandboxGatewayClient(SandboxGatewayConfig config, String isolationKey, SandboxGateway gateway) {
         this.config = config;
@@ -62,23 +72,66 @@ public class SandboxGatewayClient {
     }
 
     public CompletableFuture<SandboxEndpoint> getEndpoint() {
-        SandboxCreateRequest request = SandboxCreateRequest.builder()
-                .isolationKey(isolationKey)
-                .config(config)
-                .build();
-        return gateway.getSandbox(request).thenApply(response -> {
-            raiseIfFailed(response);
-            Object endpoint = response.data();
-            if (endpoint instanceof SandboxEndpoint sandboxEndpoint) {
-                return sandboxEndpoint;
+        if (endpointFuture == null) {
+            synchronized (this) {
+                if (endpointFuture == null) {
+                    SandboxCreateRequest request = SandboxCreateRequest.builder()
+                            .isolationKey(isolationKey)
+                            .config(config)
+                            .build();
+                    endpointFuture = gateway.getSandbox(request).thenApply(response -> {
+                        raiseIfFailed(response);
+                        Object endpoint = response.data();
+                        if (endpoint instanceof SandboxEndpoint sandboxEndpoint) {
+                            return sandboxEndpoint;
+                        }
+                        if (endpoint instanceof Map<?, ?> rawMap) {
+                            String baseUrl = readMapString(rawMap, "baseUrl", "base_url");
+                            String sandboxId = readMapString(rawMap, "sandboxId", "sandbox_id");
+                            return new SandboxEndpoint(baseUrl, sandboxId);
+                        }
+                        throw new IllegalArgumentException(
+                            "Invalid endpoint payload: " + endpoint.getClass().getSimpleName());
+                    });
+                }
             }
-            if (endpoint instanceof Map<?, ?> rawMap) {
-                String baseUrl = readMapString(rawMap, "baseUrl", "base_url");
-                String sandboxId = readMapString(rawMap, "sandboxId", "sandbox_id");
-                return new SandboxEndpoint(baseUrl, sandboxId);
+        }
+        return endpointFuture;
+    }
+
+    /**
+     * Returns the sandbox id for the current isolation key, with non-blocking first-call
+     * behavior and degraded fallback during rebuild failures.
+     *
+     * <p>Critical fixes:
+     * <ul>
+     *   <li>C-1: isDone() pre-check avoids blocking first span creation (was 5-10s)
+     *   <li>C-2: Cached old id provides fallback during rebuild failures (was permanent null)
+     * </ul>
+     *
+     * @return the current sandbox id, or null if sandbox not yet initialized
+     * @since 0.1.14
+     */
+    public String getSandboxId() {
+        try {
+            CompletableFuture<SandboxEndpoint> future = getEndpoint();
+
+            // C-1 fix: avoid blocking span creation (first call returns null in 0ms)
+            if (!future.isDone()) {
+                return cachedSandboxId;
             }
-            throw new IllegalArgumentException("Invalid endpoint payload: " + endpoint.getClass().getSimpleName());
-        });
+
+            SandboxEndpoint endpoint = future.join();
+            String currentId = endpoint.sandboxId();
+
+            cachedSandboxId = currentId;
+            return currentId;
+        } catch (CompletionException | CancellationException exception) {
+            // C-2 fix: return cached old sandboxId as degradation fallback
+            LOGGER.warn("Failed to query sandbox id, using cached fallback: {}",
+                cachedSandboxId, exception);
+            return cachedSandboxId;
+        }
     }
 
     public static CompletableFuture<Void> release(String isolationKey) {

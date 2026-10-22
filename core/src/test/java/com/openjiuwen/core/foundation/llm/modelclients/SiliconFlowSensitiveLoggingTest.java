@@ -10,6 +10,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
@@ -82,21 +86,73 @@ class SiliconFlowSensitiveLoggingTest {
     }
 
     @Test
-    void failureHidesResponseBodyInLogsButRetainsCause() {
+    void failureHidesResponseBodyInLogsButRetainsClassification() {
         StubClient client = new StubClient();
-        client.status = 400;
+        client.status = 401;
         assertThatThrownBy(() -> client.invoke(PRIVATE_TEXT, null, null, null, null, null,
-                null, null, null, Map.of())).isInstanceOf(BaseError.class).hasMessageContaining(PRIVATE_TEXT);
-        assertThat(logs.text()).contains("async invoke error", "IOException").doesNotContain(PRIVATE_TEXT);
+                null, null, null, Map.of())).isInstanceOf(BaseError.class).hasMessageContaining(PRIVATE_TEXT)
+                .satisfies(error -> assertThat(ModelCallClassification.of(error)).hasValueSatisfying(
+                        classification -> assertThat(classification.category())
+                                .isEqualTo(ModelErrorCategory.AUTH_FAILED)));
+        assertThat(client.calls).isEqualTo(1);
+        assertThat(logs.text()).contains("LLM request params ready").doesNotContain(PRIVATE_TEXT);
     }
 
     @Test
     void streamFailureHidesResponseBody() {
         StubClient client = new StubClient();
-        client.status = 400;
+        client.status = 401;
         assertThatThrownBy(() -> client.stream(PRIVATE_TEXT, null, null, null, null, null,
-                null, null, null, Map.of())).isInstanceOf(BaseError.class);
-        assertThat(logs.text()).contains("async stream error").doesNotContain(PRIVATE_TEXT);
+                null, null, null, Map.of())).isInstanceOf(BaseError.class)
+                .satisfies(error -> assertThat(ModelCallClassification.of(error)).hasValueSatisfying(
+                        classification -> assertThat(classification.category())
+                                .isEqualTo(ModelErrorCategory.AUTH_FAILED)));
+        assertThat(client.calls).isEqualTo(1);
+        assertThat(logs.text()).contains("LLM request params ready").doesNotContain(PRIVATE_TEXT);
+    }
+
+    @Test
+    void invokeTransportFailureHidesPayloadAndPreservesCause() {
+        StubClient client = new StubClient();
+        client.failure = new IOException(PRIVATE_TEXT);
+        assertThatThrownBy(() -> client.invoke(PRIVATE_TEXT, null, null, null, null, null,
+                null, null, null, Map.of())).isInstanceOf(BaseError.class).hasCause(client.failure);
+        assertThat(logs.text()).contains("async invoke error", "IOException").doesNotContain(PRIVATE_TEXT);
+    }
+
+    @Test
+    void streamTransportFailureHidesPayloadAndPreservesCause() {
+        StubClient client = new StubClient();
+        client.failure = new IOException(PRIVATE_TEXT);
+        assertThatThrownBy(() -> client.stream(PRIVATE_TEXT, null, null, null, null, null,
+                null, null, null, Map.of())).isInstanceOf(BaseError.class).hasCause(client.failure);
+        assertThat(logs.text()).contains("async stream error", "IOException").doesNotContain(PRIVATE_TEXT);
+    }
+
+    @Test
+    void retriedInvokeHidesPayloadButReturnsAnswer() {
+        StubClient client = new StubClient(1);
+        client.firstStatus = 429;
+        AssistantMessage answer = client.invoke(PRIVATE_TEXT, null, null, null, null, null,
+                null, new EchoParser(), null, Map.of());
+        assertThat(answer.getContent()).isEqualTo(PRIVATE_TEXT);
+        assertThat(answer.getParserContent()).isEqualTo(PRIVATE_TEXT);
+        assertThat(client.calls).isEqualTo(2);
+        assertThat(logs.text()).contains("Model call will retry", "RATE_LIMITED", "API response received")
+                .doesNotContain(PRIVATE_TEXT, "fake-api-key");
+    }
+
+    @Test
+    void retriedStreamHidesPayloadButPreservesChunks() {
+        StubClient client = new StubClient(1);
+        client.firstStatus = 429;
+        Iterator<AssistantMessageChunk> chunks = client.stream(PRIVATE_TEXT, null, null, null, null, null,
+                null, null, null, Map.of());
+        assertThat(chunks.next().getContent()).isEqualTo(PRIVATE_TEXT);
+        assertThat(chunks.hasNext()).isFalse();
+        assertThat(client.calls).isEqualTo(2);
+        assertThat(logs.text()).contains("Model call will retry", "RATE_LIMITED")
+                .doesNotContain(PRIVATE_TEXT, "fake-api-key");
     }
 
     @Test
@@ -141,25 +197,48 @@ class SiliconFlowSensitiveLoggingTest {
 
     private static final class StubClient extends SiliconFlowModelClient {
         private int status = 200;
+        private int firstStatus = 200;
+        private int calls;
+        private IOException failure;
         private Map<String, Object> payload = Map.of();
 
         private StubClient() {
+            this(0);
+        }
+
+        private StubClient(int maxRetries) {
             super(ModelRequestConfig.builder().modelName("test-model").build(),
                     ModelClientConfig.builder().clientProvider("SiliconFlow").apiKey("fake-api-key")
-                            .apiBase("http://127.0.0.1:1/v1").build());
+                            .apiBase("http://127.0.0.1:1/v1").maxRetries(maxRetries).build(),
+                    new ModelCallRetrier(delay -> {
+                        // Retry attempts are synchronous; elapsed backoff time is not under test.
+                    }, () -> 0.0D));
         }
 
         @Override
-        protected HttpResult postJson(Map<String, Object> request, Float timeout) {
+        protected HttpResult postJson(Map<String, Object> request, Float timeout) throws IOException {
             payload = request;
-            return new HttpResult(status, "{\"choices\":[{\"message\":{\"content\":\"" + PRIVATE_TEXT + "\"}}]}");
+            return new HttpResult(nextStatus(),
+                    "{\"choices\":[{\"message\":{\"content\":\"" + PRIVATE_TEXT + "\"}}]}");
         }
 
         @Override
-        protected HttpResponse<InputStream> postStream(Map<String, Object> request, double idleSeconds) {
+        protected HttpResponse<InputStream> postStream(Map<String, Object> request, double idleSeconds)
+                throws IOException {
             payload = request;
-            return TieredTimeoutStubServer.fakeStreamingResponse(status, List.of(
+            return TieredTimeoutStubServer.fakeStreamingResponse(nextStatus(), List.of(
                     "data: {\"choices\":[{\"delta\":{\"content\":\"" + PRIVATE_TEXT + "\"}}]}", "data: [DONE]"));
+        }
+
+        private int nextStatus() throws IOException {
+            calls++;
+            if (failure != null) {
+                throw failure;
+            }
+            if (calls == 1 && firstStatus != 200) {
+                return firstStatus;
+            }
+            return status;
         }
     }
 

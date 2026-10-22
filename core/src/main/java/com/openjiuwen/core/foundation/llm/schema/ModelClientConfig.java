@@ -36,7 +36,8 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ModelClientConfig {
+public class ModelClientConfig {
+
     /**
      * Default per-call timeout in seconds applied when the configuration does not declare one;
      * legacy-timeout explicitness checks also compare against this value.
@@ -80,8 +81,14 @@ public class ModelClientConfig {
     @EqualsAndHashCode.Exclude
     private boolean isTimeoutExplicit;
 
-    @JsonProperty("max_retries")
-    private int maxRetries = 3;
+    @JsonIgnore
+    private int maxRetries = 2;
+
+    @JsonProperty("retry_on_rate_limit")
+    private boolean isRetryOnRateLimit = true;
+
+    @JsonProperty("retry_on_temporary")
+    private boolean isRetryOnTemporary = true;
 
     @JsonProperty("verify_ssl")
     private boolean verifySsl = true;
@@ -106,7 +113,7 @@ public class ModelClientConfig {
         this.apiBase = apiBase;
         this.timeout = validatePositiveTimeout(timeout);
         this.isTimeoutExplicit = isNonDefaultLegacyTimeout(timeout);
-        this.maxRetries = maxRetries;
+        this.maxRetries = validateMaxRetries(maxRetries);
         this.verifySsl = verifySsl;
         this.sslCert = sslCert;
         this.customHeaders = customHeaders;
@@ -216,8 +223,42 @@ public class ModelClientConfig {
                 .compareTo(java.math.BigDecimal.valueOf(DEFAULT_TIMEOUT_SECONDS)) != 0;
     }
 
+    /**
+     * Returns the max retry count.
+     *
+     * @return max retry count
+     * @since 2026-10-19
+     */
+    @JsonProperty("max_retries")
     public int getMaxRetries() {
         return maxRetries;
+    }
+
+    /**
+     * Sets the max retry count with validation. Bound by Jackson, so negative
+     * configured values are rejected during deserialization.
+     *
+     * @param maxRetries retry count, must be >= 0
+     * @since 2026-10-19
+     */
+    @JsonProperty("max_retries")
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = validateMaxRetries(maxRetries);
+    }
+
+    /**
+     * Validates a configured max retry count.
+     *
+     * @param retries candidate value
+     * @return the same value when valid
+     * @throws IllegalArgumentException when the value is negative
+     * @since 2026-10-19
+     */
+    public static int validateMaxRetries(int retries) {
+        if (retries < 0) {
+            throw new IllegalArgumentException("maxRetries must be >= 0, got: " + retries);
+        }
+        return retries;
     }
 
     public boolean isVerifySsl() {
@@ -323,7 +364,9 @@ public class ModelClientConfig {
         private Double connectTimeoutSeconds;
         private Double streamIdleSeconds;
         private boolean isTimeoutExplicit;
-        private int maxRetries = 3;
+        private int maxRetries = 2;
+        private boolean isRetryOnRateLimit = true;
+        private boolean isRetryOnTemporary = true;
         private boolean verifySsl = true;
         private String sslCert;
         private Map<String, Object> customHeaders = new LinkedHashMap<>();
@@ -388,8 +431,39 @@ public class ModelClientConfig {
             return this;
         }
 
+        /**
+         * Sets the max retry count with validation.
+         *
+         * @param maxRetries retry count, must be >= 0
+         * @return this builder
+         * @since 2026-10-19
+         */
         public ModelClientConfigBuilder maxRetries(int maxRetries) {
-            this.maxRetries = maxRetries;
+            this.maxRetries = validateMaxRetries(maxRetries);
+            return this;
+        }
+
+        /**
+         * Sets whether rate limited failures are retried.
+         *
+         * @param isRetryOnRateLimit retry switch for the rate limited category
+         * @return this builder
+         * @since 2026-10-19
+         */
+        public ModelClientConfigBuilder retryOnRateLimit(boolean isRetryOnRateLimit) {
+            this.isRetryOnRateLimit = isRetryOnRateLimit;
+            return this;
+        }
+
+        /**
+         * Sets whether temporary failures are retried.
+         *
+         * @param isRetryOnTemporary retry switch for the temporary category
+         * @return this builder
+         * @since 2026-10-19
+         */
+        public ModelClientConfigBuilder retryOnTemporary(boolean isRetryOnTemporary) {
+            this.isRetryOnTemporary = isRetryOnTemporary;
             return this;
         }
 
@@ -444,7 +518,9 @@ public class ModelClientConfig {
                     ? null
                     : validateStreamIdleSeconds(streamIdleSeconds);
             config.isTimeoutExplicit = isTimeoutExplicit;
-            config.maxRetries = maxRetries;
+            config.maxRetries = validateMaxRetries(maxRetries);
+            config.isRetryOnRateLimit = isRetryOnRateLimit;
+            config.isRetryOnTemporary = isRetryOnTemporary;
             config.verifySsl = verifySsl;
             config.sslCert = sslCert;
             config.customHeaders = customHeaders == null ? null : new LinkedHashMap<>(customHeaders);
@@ -519,9 +595,42 @@ public class ModelClientConfig {
             return this;
         }
 
+        /**
+         * Sets the max retry count with validation.
+         *
+         * @param maxRetries retry count, must be >= 0
+         * @return this builder
+         * @since 2026-10-19
+         */
         @Override
         public Builder maxRetries(int maxRetries) {
             super.maxRetries(maxRetries);
+            return this;
+        }
+
+        /**
+         * Sets whether rate limited failures are retried.
+         *
+         * @param isRetryOnRateLimit retry switch for the rate limited category
+         * @return this builder
+         * @since 2026-10-19
+         */
+        @Override
+        public Builder retryOnRateLimit(boolean isRetryOnRateLimit) {
+            super.retryOnRateLimit(isRetryOnRateLimit);
+            return this;
+        }
+
+        /**
+         * Sets whether temporary failures are retried.
+         *
+         * @param isRetryOnTemporary retry switch for the temporary category
+         * @return this builder
+         * @since 2026-10-19
+         */
+        @Override
+        public Builder retryOnTemporary(boolean isRetryOnTemporary) {
+            super.retryOnTemporary(isRetryOnTemporary);
             return this;
         }
 

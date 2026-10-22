@@ -4,12 +4,16 @@
 
 package com.openjiuwen.core.foundation.llm;
 
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
+
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.UnknownHostException;
 import java.net.http.HttpConnectTimeoutException;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -82,19 +86,31 @@ public final class ModelCircuitBreaker {
     }
 
     /**
-     * Record a failed LLM call. Only connect-level failures trip the breaker.
+     * Record a failed LLM call. When the failure carries a classification, the
+     * classification decides: rate limited and temporary failures trip the
+     * breaker; permanent 4xx categories and cancellations never do. Unclassified
+     * failures fall back to the legacy connect-failure heuristic.
      *
      * @param error failure cause
      * @since 0.1.14
      */
     public void onFailure(Throwable error) {
-        if (!isConnectFailure(error)) {
+        if (!shouldCount(error)) {
             return;
         }
         int count = consecutiveFailures.incrementAndGet();
         if (count >= failureThreshold) {
             openUntilMillis.set(System.currentTimeMillis() + openDurationMillis);
         }
+    }
+
+    private static boolean shouldCount(Throwable error) {
+        Optional<ModelCallClassification> classification = ModelCallClassification.of(error);
+        if (classification.isPresent()) {
+            ModelErrorCategory category = classification.get().category();
+            return category == ModelErrorCategory.RATE_LIMITED || category == ModelErrorCategory.TEMPORARY;
+        }
+        return isConnectFailure(error);
     }
 
     /**

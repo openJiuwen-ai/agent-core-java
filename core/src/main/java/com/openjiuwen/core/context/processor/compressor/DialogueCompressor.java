@@ -8,6 +8,8 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.offload.api.OffloadException;
+import com.openjiuwen.core.context.offload.api.OffloadService;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -26,6 +28,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -38,9 +42,12 @@ import java.util.concurrent.CompletionStage;
 public class DialogueCompressor extends ContextProcessor {
     public static final String DIALOGUE_MEMORY_BLOCK_MARKER = "[DIALOGUE_MEMORY_BLOCK]";
 
+    /** Pin/TTL window for compression-time offload protection (C4/C5, 5 minutes). */
+    static final java.time.Duration PIN_DURATION = java.time.Duration.ofMinutes(5);
+
     private static final String DEFAULT_COMPRESSION_PROMPT = """
             You are a **Task Data Preservation Expert** focused on compressing historical ReAct blocks with high fidelity.
-            
+
             Your output will replace only the explicitly listed target ReAct blocks.
             Compress ONLY the listed target blocks and return valid JSON only.
             Use this exact schema:
@@ -53,6 +60,18 @@ public class DialogueCompressor extends ContextProcessor {
               ]
             }
             Target length for each block summary: <= {compression_target_tokens} tokens.
+
+            Structured preservation requirements (MUST be honored inside every summary;
+            these sections keep task context alive after compression):
+            - [ANALYSIS PROGRESS]: the analysis state reached so far — hypotheses being tested,
+              approaches already tried and their outcomes, open questions.
+            - [PENDING TASKS]: every unfinished task or unfulfilled user requirement, verbatim
+              key constraints (file paths, IDs, exact parameter names, version numbers).
+            - [OFFLOAD MARKERS]: copy EVERY [[OFFLOAD: ...]] token appearing in the block
+              EXACTLY as-is, never rewrite, truncate or drop them. They are reload addresses
+              for offloaded original content; losing one makes that content unrecoverable.
+            - [KEY REFERENCES]: file paths, document IDs, URLs and commands that appeared
+              in the block and may be needed later.
             """;
 
     static {
@@ -109,12 +128,22 @@ public class DialogueCompressor extends ContextProcessor {
         if (targets.isEmpty()) {
             return noOp(incoming);
         }
-        AssistantMessage response = invokeMultiBlockCompression(context, contextMessages, targets);
+        List<String> pinnedHandles = pinOffloadEntriesForCompression(context, targets);
+        AssistantMessage response;
+        try {
+            response = invokeMultiBlockCompression(context, contextMessages, targets);
+        } finally {
+            unpinOffloadEntriesAfterCompression(context, pinnedHandles);
+        }
         if (response == null) {
             return noOp(incoming);
         }
         ReplacementBuildResult jsonResult = buildJsonReplacements(context, targets, response.getParserContent());
         if (!jsonResult.replacements().isEmpty()) {
+            // C4/C6: per replaced block, handles still referenced by the
+            // summary get a TTL extension, vanished ones (orphans) get their
+            // TTL capped for fast reclaim.
+            settleReplacementOffloadHandles(context, jsonResult.replacements());
             List<BaseMessage> updatedMessages = applyReplacements(contextMessages, jsonResult.replacements());
             ContextEvent event = new ContextEvent(
                     processorType(),
@@ -127,6 +156,7 @@ public class DialogueCompressor extends ContextProcessor {
         if (!isValidBlocksPayload(response.getParserContent())) {
             Replacement fallback = buildFallbackReplacement(context, targets, response.getContentAsString());
             if (fallback != null) {
+                settleReplacementOffloadHandles(context, List.of(fallback));
                 List<BaseMessage> updatedMessages = applyReplacements(contextMessages, List.of(fallback));
                 List<Integer> modifiedIndices = indexRange(fallback.startIndex(), fallback.endIndex());
                 ContextEvent event = new ContextEvent(
@@ -428,12 +458,13 @@ public class DialogueCompressor extends ContextProcessor {
             if (summary == null || summary.isBlank()) {
                 continue;
             }
-            BaseMessage replacementMessage = buildMemoryMessage(summary);
+            BaseMessage replacementMessage = buildMemoryMessage(preserveOffloadMarkers(target.messages(), summary));
             List<BaseMessage> replacementMessages = List.of(replacementMessage);
             if (!hasCompressionBenefit(context, target.messages(), replacementMessages)) {
                 continue;
             }
-            replacements.add(new Replacement(target.startIndex(), target.endIndex(), replacementMessages));
+            replacements.add(new Replacement(target.startIndex(), target.endIndex(), replacementMessages,
+                    OffloadMarkerUtils.extractHandlesFromFramework(target.messages())));
             modifiedIndices.addAll(indexRange(target.startIndex(), target.endIndex()));
         }
         return new ReplacementBuildResult(replacements, modifiedIndices);
@@ -455,15 +486,132 @@ public class DialogueCompressor extends ContextProcessor {
         for (CompressTarget target : targets) {
             originalMessages.addAll(target.messages());
         }
-        List<BaseMessage> replacementMessages = List.of(buildMemoryMessage(cleanSummary));
+        List<BaseMessage> replacementMessages = List.of(
+                buildMemoryMessage(preserveOffloadMarkers(originalMessages, cleanSummary)));
         if (!hasCompressionBenefit(context, originalMessages, replacementMessages)) {
             return null;
         }
-        return new Replacement(startIndex, endIndex, replacementMessages);
+        return new Replacement(startIndex, endIndex, replacementMessages,
+                OffloadMarkerUtils.extractHandlesFromFramework(originalMessages));
     }
 
     private BaseMessage buildMemoryMessage(String summary) {
         return new UserMessage(wrapMemoryBlock(summary.strip()));
+    }
+
+    /**
+     * Pins every offload entry referenced inside the compression scope for
+     * the LLM call duration (架构文档 §7.10 C5): a compression round can take
+     * tens of seconds and a concurrent Janitor TTL sweep would otherwise
+     * delete entries whose markers the summary is about to preserve.
+     *
+     * @return handles actually pinned (empty when v2 offload is not wired)
+     */
+    private List<String> pinOffloadEntriesForCompression(SessionModelContext context,
+                                                         List<CompressTarget> targets) {
+        OffloadService service = context == null ? null : context.getOffloadService();
+        if (service == null) {
+            return List.of();
+        }
+        List<String> handles = new ArrayList<>();
+        for (CompressTarget target : targets) {
+            for (String handle : OffloadMarkerUtils.extractHandlesFromFramework(target.messages())) {
+                try {
+                    // C5: 5-minute pin window covers a worst-case compression round.
+                    service.pin(handle, PIN_DURATION);
+                    handles.add(handle);
+                } catch (OffloadException ex) {
+                    // Intentional: compressor must survive exceptions to keep the conversation flowing
+                    // Missing/expired entries must not abort compression (best-effort).
+                    Loggers.CONTEXT_ENGINE.debug("[{}] pin skipped for handle {}: {}",
+                            processorType(), handle, ex.getMessage());
+                }
+            }
+        }
+        if (!handles.isEmpty()) {
+            Loggers.CONTEXT_ENGINE.info("[{}] pinned {} offload entries during compression",
+                    processorType(), handles.size());
+        }
+        return handles;
+    }
+
+    /**
+     * Releases the pins taken by {@link #pinOffloadEntriesForCompression}.
+     * C4 keeps a {@link #PIN_DURATION} safety margin before release so a
+     * reload triggered right after compression still finds its entry.
+     */
+    private void unpinOffloadEntriesAfterCompression(SessionModelContext context, List<String> handles) {
+        OffloadService service = context == null ? null : context.getOffloadService();
+        if (service == null || handles == null || handles.isEmpty()) {
+            return;
+        }
+        for (String handle : handles) {
+            try {
+                service.unpin(handle);
+            } catch (OffloadException ex) {
+                // Intentional: compressor must survive exceptions to keep the conversation flowing
+                Loggers.CONTEXT_ENGINE.debug("[{}] unpin skipped for handle {}: {}",
+                        processorType(), handle, ex.getMessage());
+            }
+        }
+    }
+
+    /**
+     * C4 + C6 settlement, per replaced block: handles of the replaced block
+     * that are still referenced by its summary get their TTL extended (C4 —
+     * the original must stay reachable); handles that vanished from the
+     * summary are orphan-suspects (C6) and get their TTL capped at the
+     * configured orphan window. Settlement is deliberately scoped to the
+     * replacements actually applied: blocks the LLM skipped (no summary)
+     * keep their messages inline, so their handles are still live and must
+     * not be treated as orphans. {@code OffloadService.capOrphanTtl} is a
+     * no-op when the orphan TTL is disabled ({@code 0}) or pinned.
+     */
+    private void settleReplacementOffloadHandles(SessionModelContext context, List<Replacement> replacements) {
+        OffloadService service = context == null ? null : context.getOffloadService();
+        if (service == null || replacements == null || replacements.isEmpty()) {
+            return;
+        }
+        for (Replacement replacement : replacements) {
+            if (replacement.blockHandles().isEmpty()) {
+                continue;
+            }
+            Set<String> referenced = OffloadMarkerUtils.extractHandles(
+                    CompressorUtils.messageToText(replacement.replacementMessages().get(0)));
+            for (String handle : replacement.blockHandles()) {
+                try {
+                    if (referenced.contains(handle)) {
+                        service.extendTtl(handle, PIN_DURATION);
+                    } else {
+                        service.capOrphanTtl(handle);
+                    }
+                } catch (OffloadException ex) {
+                    // Intentional: compressor must survive exceptions to keep the conversation flowing
+                    Loggers.CONTEXT_ENGINE.debug("[{}] offload settlement skipped for handle {}: {}",
+                            processorType(), handle, ex.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * Protocol A post-processing (架构文档 §7.10 C1): verifies the LLM summary
+     * kept every {@code [[OFFLOAD: ...]]} handle from the compressed block and
+     * repairs lost ones by appending a deterministic marker appendix (no
+     * second LLM call). Handles are the only reload addresses for offloaded
+     * content; dropping one turns the entry into an unreachable orphan.
+     */
+    private static String preserveOffloadMarkers(List<BaseMessage> blockMessages, String summary) {
+        List<String> lostHandles = OffloadMarkerUtils.findLostHandles(
+                blockMessages.stream().map(OffloadMarkerUtils::asLike).flatMap(Optional::stream).toList(), summary);
+        if (lostHandles.isEmpty()) {
+            return summary;
+        }
+        Loggers.CONTEXT_ENGINE.warn(
+                "[{}] compression lost {} offload marker(s) {}; repaired via appendix",
+                "DialogueCompressor", lostHandles.size(), lostHandles);
+        return summary + OffloadMarkerUtils.markerAppendix(
+                blockMessages.stream().map(OffloadMarkerUtils::asLike).flatMap(Optional::stream).toList());
     }
 
     private static String extractCompactSummaryFromReplacements(List<Replacement> replacements) {
@@ -545,7 +693,14 @@ public class DialogueCompressor extends ContextProcessor {
                          int blockMessageCount) {
     }
 
-    private record Replacement(int startIndex, int endIndex, List<BaseMessage> replacementMessages) {
+    /**
+     * One applied replacement: the replaced index range, its summary
+     * message(s), and the offload handles that lived in the replaced block
+     * (C4/C6 settlement input — handles still cited by the summary extend
+     * their TTL, the rest are orphan-capped).
+     */
+    private record Replacement(int startIndex, int endIndex, List<BaseMessage> replacementMessages,
+            Set<String> blockHandles) {
     }
 
     private record ReplacementBuildResult(List<Replacement> replacements, List<Integer> modifiedIndices) {

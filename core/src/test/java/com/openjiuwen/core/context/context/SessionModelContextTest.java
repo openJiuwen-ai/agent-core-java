@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.context.context;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -11,15 +13,17 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Focused parity tests for session model context behavior.
@@ -137,12 +141,106 @@ class SessionModelContextTest {
         SessionModelContext context = new SessionModelContext("ctx", "session", config);
         context.offloadMessages("handle-1", List.of(new BaseMessage("user", "offloaded")));
 
-        SessionModelContext.ReloaderTool tool = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawTool = context.reloaderTool();
+        SessionModelContext.ReloaderTool tool =
+                rawTool instanceof SessionModelContext.ReloaderTool t ? t : null;
         String reloaded = tool.reloadOriginalContextMessages("handle-1", "in_memory");
 
         assertThat(tool.name()).isEqualTo("reload_original_context_messages");
         assertThat(reloaded).contains("reload messages with handle=handle-1");
         assertThat(reloaded).contains("offloaded");
+    }
+
+    @Test
+    void reloaderToolPaginatesWithOffsetAndLimit() {
+        // T18 / AC-4-11: offset/limit slice the payload; message numbering
+        // continues from offset so the model can keep its place.
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext context = new SessionModelContext("ctx", "session", config);
+        context.offloadMessages("handle-page", List.of(
+                new BaseMessage("user", "m1"),
+                new BaseMessage("assistant", "m2"),
+                new BaseMessage("user", "m3"),
+                new BaseMessage("assistant", "m4")));
+
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawTool = context.reloaderTool();
+        SessionModelContext.ReloaderTool tool =
+                rawTool instanceof SessionModelContext.ReloaderTool t ? t : null;
+        String page = tool.reloadOriginalContextMessages("handle-page", "in_memory", 2, 2);
+
+        assertThat(page).contains("offset=2");
+        assertThat(page).contains("m3").contains("m4");
+        assertThat(page).doesNotContain("m1").doesNotContain("m2");
+        assertThat(page).contains("message 3:").contains("message 4:");
+        assertThat(page).contains(SessionModelContext.OFFLOAD_DONE_METADATA_KEY + "=true");
+    }
+
+    @Test
+    void reloaderToolPaginationViaInvokeArguments() {
+        // invoke() path: offset/limit may arrive as strings from model JSON.
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext context = new SessionModelContext("ctx", "session", config);
+        context.offloadMessages("handle-invoke", List.of(
+                new BaseMessage("user", "a1"),
+                new BaseMessage("assistant", "a2"),
+                new BaseMessage("user", "a3")));
+
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawTool = context.reloaderTool();
+        SessionModelContext.ReloaderTool tool =
+                rawTool instanceof SessionModelContext.ReloaderTool t ? t : null;
+        Object result = tool.invoke(Map.of(
+                "offload_handle", "handle-invoke",
+                "offload_type", "in_memory",
+                "offset", "1",
+                "limit", 1));
+
+        assertThat(result).isInstanceOf(String.class);
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        String page = result instanceof String s ? s : null;
+        // Content asserts are quoted: bare substrings like "a1" can collide
+        // with the hex context-message ids rendered in the dump.
+        assertThat(page).contains("\"a2\"");
+        assertThat(page).doesNotContain("\"a1\"").doesNotContain("\"a3\"");
+    }
+
+    @Test
+    void reloaderToolOffsetBeyondPayloadFallsBackToTrailingWindow() {
+        // 空载荷保护：offset 越界时回退到尾部窗口，模型不会拿到空结果。
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext context = new SessionModelContext("ctx", "session", config);
+        context.offloadMessages("handle-far", List.of(
+                new BaseMessage("user", "b1"),
+                new BaseMessage("assistant", "b2")));
+
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawTool = context.reloaderTool();
+        SessionModelContext.ReloaderTool tool =
+                rawTool instanceof SessionModelContext.ReloaderTool t ? t : null;
+        String page = tool.reloadOriginalContextMessages("handle-far", "in_memory", 50, 2);
+
+        assertThat(page).contains("b1").contains("b2");
+    }
+
+    @Test
+    void reloaderToolZeroOffsetZeroLimitKeepsFullPayload() {
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext context = new SessionModelContext("ctx", "session", config);
+        context.offloadMessages("handle-full", List.of(
+                new BaseMessage("user", "c1"),
+                new BaseMessage("assistant", "c2"),
+                new BaseMessage("user", "c3")));
+
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawTool = context.reloaderTool();
+        SessionModelContext.ReloaderTool tool =
+                rawTool instanceof SessionModelContext.ReloaderTool t ? t : null;
+        String full = tool.reloadOriginalContextMessages("handle-full", "in_memory", 0, 0);
+
+        assertThat(full).contains("c1").contains("c2").contains("c3");
+        assertThat(full).doesNotContain("offset=");
     }
 
     @Test
@@ -156,8 +254,69 @@ class SessionModelContextTest {
         restored.loadState(Map.of("ctx", source.saveState()));
 
         assertThat(restored.getMessages(null, true)).extracting(BaseMessage::getContent).containsExactly("persisted");
-        SessionModelContext.ReloaderTool tool = (SessionModelContext.ReloaderTool) restored.reloaderTool();
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawTool = restored.reloaderTool();
+        SessionModelContext.ReloaderTool tool =
+                rawTool instanceof SessionModelContext.ReloaderTool t ? t : null;
         assertThat(tool.reloadOriginalContextMessages("handle-2", "in_memory")).contains("stored");
+    }
+
+    @Test
+    void saveAndLoadStatePreservesUserMultimodalListContent() {
+        UserMessage multimodal = new UserMessage();
+        List<Map<String, Object>> parts = new ArrayList<>();
+        Map<String, Object> textPart = new LinkedHashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", "look at this");
+        Map<String, Object> imagePart = new LinkedHashMap<>();
+        imagePart.put("type", "image_url");
+        imagePart.put("image_url", new LinkedHashMap<>(Map.of("url", "data:image/png;base64,aaa")));
+        parts.add(textPart);
+        parts.add(imagePart);
+        multimodal.setContent(parts);
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext source = new SessionModelContext("ctx", "session", config);
+        source.addMessages(List.of(multimodal)).toCompletableFuture().join();
+
+        SessionModelContext restored = new SessionModelContext("ctx", "session", config);
+        restored.loadState(Map.of("ctx", source.saveState()));
+
+        List<BaseMessage> messages = restored.getMessages(null, true);
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).getContent()).isInstanceOf(List.class);
+        List<?> restoredParts = (List<?>) messages.get(0).getContent();
+        assertThat(restoredParts).hasSize(2);
+        assertThat(asMap(restoredParts.get(0)))
+                .containsEntry("type", "text")
+                .containsEntry("text", "look at this");
+        assertThat(asMap(restoredParts.get(1))).containsEntry("type", "image_url");
+    }
+
+    @Test
+    void saveAndLoadStatePreservesStructuredMapContent() {
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext source = new SessionModelContext("ctx", "session", config);
+        UserMessage structured = new UserMessage();
+        Map<String, Object> mapContent = new LinkedHashMap<>();
+        mapContent.put("type", "text");
+        mapContent.put("text", "structured map");
+        structured.setContent(mapContent);
+        source.addMessages(List.of(structured)).toCompletableFuture().join();
+
+        SessionModelContext restored = new SessionModelContext("ctx", "session", config);
+        restored.loadState(Map.of("ctx", source.saveState()));
+
+        List<BaseMessage> messages = restored.getMessages(null, true);
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).getContent()).isInstanceOf(Map.class);
+        assertThat(asMap(messages.get(0).getContent()))
+                .containsEntry("type", "text")
+                .containsEntry("text", "structured map");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return (Map<String, Object>) value;
     }
 
     @Test

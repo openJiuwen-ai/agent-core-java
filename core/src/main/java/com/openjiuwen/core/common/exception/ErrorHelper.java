@@ -84,6 +84,7 @@ public final class ErrorHelper {
             case "RunnerError" -> new RunnerError(status, msg, details, cause, params);
             case "GraphError" -> new GraphError(status, msg, details, cause, params);
             case "ModelError" -> new ModelError(status, msg, details, cause, params);
+            case "PermanentModelError" -> new PermanentModelError(status, msg, details, cause, params);
             case "ToolError" -> new ToolError(status, msg, details, cause, null, params);
             case "ContextError" -> new ContextError(status, msg, details, cause, params);
             case "ToolchainError" -> new ToolchainError(status, msg, details, cause, params);

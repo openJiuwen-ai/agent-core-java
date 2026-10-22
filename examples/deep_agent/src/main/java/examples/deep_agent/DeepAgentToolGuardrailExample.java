@@ -111,7 +111,7 @@ public final class DeepAgentToolGuardrailExample {
      * @param args unused
      * @throws Exception if the example fails
      */
-    public static void main(String[] args) throws Exception {
+    public static void run(String[] args) throws Exception {
         System.out.println("=== DeepAgent 工具护栏示例（ALLOW / DENY / ASK / file_guard）===");
 
         Path workspacePath = Files.createTempDirectory("deep-agent-guardrail-");

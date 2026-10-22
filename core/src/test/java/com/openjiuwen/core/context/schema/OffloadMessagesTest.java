@@ -4,17 +4,18 @@
 
 package com.openjiuwen.core.context.schema;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
 
 /**
  * Verifies translated offload message schema behavior.

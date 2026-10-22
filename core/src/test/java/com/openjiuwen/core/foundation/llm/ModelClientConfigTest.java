@@ -149,14 +149,14 @@ class ModelClientConfigTest {
         }
 
         @Test
-        @DisplayName("Config default maxRetries is 3")
+        @DisplayName("Config default maxRetries is 2")
         void testConfigDefaultMaxRetries() {
             ModelClientConfig cfg = ModelClientConfig.builder()
                     .clientProvider(ProviderType.OPEN_AI.getValue())
                     .apiKey("sk-test")
                     .apiBase("http://localhost")
                     .build();
-            assertEquals(3, cfg.getMaxRetries());
+            assertEquals(2, cfg.getMaxRetries());
         }
 
         @Test

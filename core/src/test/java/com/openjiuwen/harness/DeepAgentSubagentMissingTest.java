@@ -218,16 +218,16 @@ class DeepAgentSubagentMissingTest {
         Tool readFile = new FilesystemTools.ReadFileTool(tempDir.toString());
 
         ToolOutput writeAlpha = invoke(toolCalls, writeFile, Map.of(
-                "path", "todo_alpha.txt",
+                "file_path", "todo_alpha.txt",
                 "content", "准备数据\n实现功能\n验证结果"
         ));
         ToolOutput writeBeta = invoke(toolCalls, writeFile, Map.of(
-                "path", "todo_beta.txt",
+                "file_path", "todo_beta.txt",
                 "content", "发布版本\n回滚预案"
         ));
         ToolOutput listed = invoke(toolCalls, listFiles, Map.of("path", "."));
-        ToolOutput alpha = invoke(toolCalls, readFile, Map.of("path", "todo_alpha.txt"));
-        ToolOutput beta = invoke(toolCalls, readFile, Map.of("path", "todo_beta.txt"));
+        ToolOutput alpha = invoke(toolCalls, readFile, Map.of("file_path", "todo_alpha.txt"));
+        ToolOutput beta = invoke(toolCalls, readFile, Map.of("file_path", "todo_beta.txt"));
 
         assertThat(writeAlpha.isSuccess()).isTrue();
         assertThat(writeBeta.isSuccess()).isTrue();

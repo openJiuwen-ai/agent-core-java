@@ -61,7 +61,7 @@ public final class DeepAgentRedisExample {
     private DeepAgentRedisExample() {
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void run(String[] args) throws Exception {
         Path workspacePath = Files.createTempDirectory("deep-agent-redis-");
         JedisPooled jedisPooled = null;
         DeepAgent deepAgent = null;
@@ -88,7 +88,7 @@ public final class DeepAgentRedisExample {
             System.out.println("[3] RedisCheckpointer 已注册为默认 checkpointer (与 Todo 共享同一 RedisStore)");
 
             // Clean any leftover keys from previous runs.
-            sharedRedisStore.deleteByPrefix(TENANT_ID + ":", null);
+            sharedRedisStore.deleteByPrefix(TENANT_ID + ":", null).join();
 
             // 4. Build the DeepAgent. The kvStoreConfig passes the SAME jedisPooled
             //    through the `redis_client` field so RedisKVStoreProvider reuses it
@@ -157,7 +157,7 @@ public final class DeepAgentRedisExample {
             if (jedisPooled != null) {
                 try {
                     RedisStore cleanupStore = new RedisStore(jedisPooled);
-                    cleanupStore.deleteByPrefix(TENANT_ID + ":", null);
+                    cleanupStore.deleteByPrefix(TENANT_ID + ":", null).join();
                 } catch (Exception ignored) {
                     // best-effort
                 }
@@ -219,7 +219,7 @@ public final class DeepAgentRedisExample {
         System.out.println("[7] 验证 Redis 持久化 (" + TENANT_ID + ": 前缀):");
         Map<String, Object> allKeys;
         try {
-            allKeys = redisStore.getByPrefix(TENANT_ID + ":");
+            allKeys = redisStore.getByPrefix(TENANT_ID + ":").join();
         } catch (Exception e) {
             System.out.println("[7] 读取 Redis 失败: " + e.getMessage());
             return;

@@ -9,6 +9,10 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.ModelError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorClassifiers;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorFacts;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -531,9 +535,19 @@ public class DashScopeModelClient extends BaseModelClient {
     private static void ensureOkResponse(Map<String, Object> response, String operation) {
         Object statusCode = firstNonNull(response.get("status_code"), response.get("statusCode"));
         if (statusCode instanceof Number number && number.intValue() != 200) {
-            throw modelCallError("DashScope " + operation + " failed. HTTP status: "
-                    + number.intValue() + ", Error code: " + response.get("code")
-                    + ", Error message: " + response.get("message"));
+            String code = response.get("code") == null ? null : String.valueOf(response.get("code"));
+            String message = response.get("message") == null ? null : String.valueOf(response.get("message"));
+            ModelErrorFacts facts = ModelErrorFacts.Builder.create()
+                    .httpStatus(number.intValue())
+                    .errorCode(code)
+                    .errorMessage(message)
+                    .stream(false)
+                    .build();
+            ModelCallClassification classification =
+                    ModelErrorClassifiers.defaultClassifier().classify(facts);
+            throw ClassifiedModelErrors.toError(classification, facts, "DashScope " + operation
+                    + " failed. HTTP status: " + number.intValue() + ", Error code: " + code
+                    + ", Error message: " + message, null);
         }
     }
 

@@ -71,6 +71,7 @@ public final class StatusMapping {
             Map.entry("RunnerError", RunnerError::new),
             Map.entry("GraphError", GraphError::new),
             Map.entry("ModelError", ModelError::new),
+            Map.entry("PermanentModelError", PermanentModelError::new),
             Map.entry("ToolError", status -> new ToolError(status)),
             Map.entry("ContextError", ContextError::new),
             Map.entry("ToolchainError", ToolchainError::new),
@@ -93,6 +94,11 @@ public final class StatusMapping {
         putIfExists(overrides, "MODEL_INVOKE_PARAM_ERROR", "ModelError");
         putIfExists(overrides, "MODEL_CLIENT_CONFIG_INVALID", "ModelError");
         putIfExists(overrides, "MODEL_RESPONSE_TYPE_ERROR", "ValidationError");
+        putIfExists(overrides, "MODEL_CALL_TIMEOUT", "ModelError");
+        putIfExists(overrides, "MODEL_CALL_RATE_LIMITED", "ModelError");
+        putIfExists(overrides, "MODEL_CALL_QUOTA_EXCEEDED", "PermanentModelError");
+        putIfExists(overrides, "MODEL_CALL_AUTH_FAILED", "PermanentModelError");
+        putIfExists(overrides, "MODEL_CONTEXT_LENGTH_EXCEEDED", "PermanentModelError");
         putIfExists(overrides, "TOOL_EXECUTION_ERROR", "ToolError");
         putIfExists(overrides, "TOOL_NOT_FOUND_ERROR", "ValidationError");
         putIfExists(overrides, "AGENT_TEAM_EXECUTION_ERROR", "AgentError");
