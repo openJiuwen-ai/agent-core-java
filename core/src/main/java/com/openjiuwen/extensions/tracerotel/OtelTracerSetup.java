@@ -209,11 +209,18 @@ public final class OtelTracerSetup {
     /**
      * Describe an export failure for logging.
      *
+     * <p>A result that is still running carries no failure, so it is described explicitly
+     * instead of being read through {@code getFailureThrowable()}.</p>
+     *
      * @param resultCode export result returned by the provider
-     * @return the failure message, or {@code "unknown"} when the export timed out without a cause
+     * @return the failure message, {@code "not completed before the timeout"} for an unfinished
+     *     result, or {@code "unknown"} when the export timed out without a cause
      * @since 0.1.17
      */
     private static String describeFailure(CompletableResultCode resultCode) {
+        if (!resultCode.isDone()) {
+            return "not completed before the timeout";
+        }
         Throwable failure = resultCode.getFailureThrowable();
         String message = failure == null ? null : failure.getMessage();
         return message == null ? "unknown" : message;
