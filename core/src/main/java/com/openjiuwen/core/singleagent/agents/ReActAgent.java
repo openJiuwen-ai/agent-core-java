@@ -149,6 +149,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     /** Chunk size (characters) when wrapping non-stream responses as stream chunks. */
     private static final int STREAM_CHUNK_SIZE = 200;
 
+    private static final int MAX_CAUSE_CHAIN_DEPTH = 32;
+
     /** JDK 17: bounded platform pool; JDK 21+: virtual thread per task. */
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
@@ -2545,11 +2547,27 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         session.writeStream(new OutputSchema(
                 "answer",
                 0,
-                new LinkedHashMap<>(Map.of(
-                        "output", Objects.toString(result.get("output"), ""),
-                        "result_type", Objects.toString(resultType, "")
-                ))
+                toAnswerPayload(result)
         ));
+    }
+
+    /**
+     * Builds the wire payload for a final answer chunk, preserving the structured failure
+     * descriptor when the invoke result carries one.
+     *
+     * @param result invoke result map
+     * @return answer payload with output, result type, and an optional failure entry
+     * @since 0.1.17
+     */
+    static Map<String, Object> toAnswerPayload(Map<String, Object> result) {
+        Map<String, Object> payload = new LinkedHashMap<>(Map.of(
+                "output", Objects.toString(result.get("output"), ""),
+                "result_type", Objects.toString(result.get("result_type"), "")
+        ));
+        if (result.get("failure") instanceof Map<?, ?> failure) {
+            payload.put("failure", failure);
+        }
+        return payload;
     }
 
     @Override
@@ -3552,11 +3570,51 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return result;
     }
 
-    private static Map<String, Object> buildErrorResult(RuntimeException exception) {
-        return new LinkedHashMap<>(Map.of(
+    /**
+     * Builds the error result written to the stream when a streaming invoke fails. When the
+     * failure chain carries a {@link BaseError}, its stable code, numeric code, and recoverable
+     * flag are attached as a structured failure entry so remote adapters can reconstruct a
+     * programmatic failure descriptor instead of parsing the flattened output text.
+     *
+     * @param exception streaming failure
+     * @return error result map with output, result type, and an optional failure entry
+     * @since 0.1.17
+     */
+    static Map<String, Object> buildErrorResult(RuntimeException exception) {
+        Map<String, Object> result = new LinkedHashMap<>(Map.of(
                 "output", describeStreamThrowable(exception),
                 "result_type", "error"
         ));
+        findBaseError(exception).ifPresent(baseError -> result.put("failure", buildFailurePayload(baseError)));
+        return result;
+    }
+
+    /**
+     * Finds the first {@link BaseError} in the cause chain.
+     *
+     * @param throwable throwable to inspect
+     * @return the first base error in the cause chain, or empty when none exists
+     * @since 0.1.17
+     */
+    static Optional<BaseError> findBaseError(Throwable throwable) {
+        Throwable current = throwable;
+        int depth = 0;
+        while (current != null && depth < MAX_CAUSE_CHAIN_DEPTH) {
+            if (current instanceof BaseError baseError) {
+                return Optional.of(baseError);
+            }
+            current = current.getCause();
+            depth++;
+        }
+        return Optional.empty();
+    }
+
+    private static Map<String, Object> buildFailurePayload(BaseError baseError) {
+        Map<String, Object> failure = new LinkedHashMap<>();
+        failure.put("code", baseError.getStatus() == null ? "AGENT_CORE_ERROR" : baseError.getStatus().name());
+        failure.put("numericCode", baseError.getCode());
+        failure.put("retryable", baseError.isRecoverable());
+        return failure;
     }
 
     private static String exceptionMessage(RuntimeException exception) {
