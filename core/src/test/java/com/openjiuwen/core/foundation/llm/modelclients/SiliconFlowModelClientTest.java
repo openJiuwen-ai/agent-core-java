@@ -216,6 +216,67 @@ class SiliconFlowModelClientTest {
     }
 
     @Test
+    void streamingRequestShouldAskGatewayToReturnUsageInLastChunk() {
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        client.nextStreamLines = List.of("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}", "data: [DONE]");
+
+        iteratorToList(client.stream(
+                "hello",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new LinkedHashMap<>()
+        ));
+
+        assertThat(client.lastPayload)
+                .containsEntry("stream", true)
+                .containsEntry("stream_options", Map.of("include_usage", true));
+    }
+
+    @Test
+    void nonStreamingRequestShouldNotAddStreamUsageOption() {
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        client.nextJson = """
+                {"choices": [{"message": {"content": "ok"}}]}
+                """;
+
+        client.invoke("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+        assertThat(client.lastPayload)
+                .containsEntry("stream", false)
+                .doesNotContainKey("stream_options");
+    }
+
+    @Test
+    void streamingRequestShouldPreserveConfiguredStreamOptions() {
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        client.nextStreamLines = List.of("data: [DONE]");
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("stream_options", Map.of("custom_flag", true));
+
+        iteratorToList(client.stream(
+                "hello",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                kwargs
+        ));
+
+        assertThat(client.lastPayload.get("stream_options"))
+                .isEqualTo(Map.of("custom_flag", true, "include_usage", true));
+    }
+
+    @Test
     void generationMethodsMirrorPythonPassByReturningNull() {
         RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
 
