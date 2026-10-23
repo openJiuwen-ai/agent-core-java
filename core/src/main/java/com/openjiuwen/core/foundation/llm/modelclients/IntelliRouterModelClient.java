@@ -398,9 +398,13 @@ public class IntelliRouterModelClient extends BaseModelClient {
             Map<String, Object> delta = asMap(choices.get(0).get("delta"));
             content = delta == null ? "" : orEmpty(delta.get("content"));
         }
+        Map<String, Object> usage = asMap(chunk == null ? null : chunk.get("usage"));
+        if (usage == null) {
+            return AssistantMessageChunk.builder().content(content).build();
+        }
         return AssistantMessageChunk.builder()
                 .content(content)
-                .usageMetadata(convertUsage(chunk == null ? null : chunk.get("usage")))
+                .usageMetadata(toUsageMetadata(usage))
                 .build();
     }
 
@@ -410,15 +414,11 @@ public class IntelliRouterModelClient extends BaseModelClient {
      * <p>A gateway asked for {@code stream_options.include_usage} reports token usage in a trailing frame whose
      * {@code choices} is empty, so the usage must be carried even when the frame has no content.</p>
      *
-     * @param usageValue raw {@code usage} value of the frame
-     * @return parsed usage, or null when the frame carries none
+     * @param usage raw {@code usage} value of the frame, never null
+     * @return parsed usage
      * @since 0.1.17
      */
-    private UsageMetadata convertUsage(Object usageValue) {
-        Map<String, Object> usage = asMap(usageValue);
-        if (usage == null) {
-            return null;
-        }
+    private UsageMetadata toUsageMetadata(Map<String, Object> usage) {
         return UsageMetadata.builder()
                 .modelName(modelConfig.getModelName())
                 .inputTokens(intValue(usage.get("prompt_tokens")))
