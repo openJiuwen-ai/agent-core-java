@@ -343,7 +343,12 @@ final class AioProviderSupport {
                 throw new IllegalArgumentException("AIO provider requires endpoint.base_url");
             }
             this.requestTimeout = Duration.ofSeconds(Math.max(1L, timeoutSeconds));
-            this.httpClient = HttpClient.newBuilder().connectTimeout(DEFAULT_CONNECT_TIMEOUT).build();
+            // Sandbox gateways are plain HTTP/1.1; the JDK default (HTTP/2) would attempt an
+            // h2c upgrade on every fresh cleartext connection, which HTTP/1.1-only servers reject.
+            this.httpClient = HttpClient.newBuilder()
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .connectTimeout(DEFAULT_CONNECT_TIMEOUT)
+                    .build();
         }
 
         JsonNode postJson(String path, Map<String, Object> payload) throws IOException, InterruptedException {
