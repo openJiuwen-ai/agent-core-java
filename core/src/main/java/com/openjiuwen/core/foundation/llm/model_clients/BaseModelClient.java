@@ -390,7 +390,39 @@ public abstract class BaseModelClient {
             }
         }
 
+        if (stream) {
+            ensureStreamUsageOption(params);
+        }
+
         return params;
+    }
+
+    /**
+     * Ensure a streaming request asks the gateway to report token usage.
+     * <p>
+     * OpenAI-compatible gateways omit {@code usage} from streaming chunks unless the request carries
+     * {@code stream_options.include_usage=true}. Merge the option without overriding a value the caller
+     * already configured.
+     *
+     * @param params effective request parameters
+     * @since 0.1.16
+     */
+    private static void ensureStreamUsageOption(Map<String, Object> params) {
+        Object existingOptions = params.get("stream_options");
+        if (existingOptions == null) {
+            params.put("stream_options", new LinkedHashMap<>(Map.of("include_usage", true)));
+            return;
+        }
+        if (!(existingOptions instanceof Map<?, ?> rawOptions)) {
+            return;
+        }
+
+        Map<String, Object> options = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawOptions.entrySet()) {
+            options.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        options.putIfAbsent("include_usage", true);
+        params.put("stream_options", options);
     }
 
     // ==================== Abstract Methods ====================

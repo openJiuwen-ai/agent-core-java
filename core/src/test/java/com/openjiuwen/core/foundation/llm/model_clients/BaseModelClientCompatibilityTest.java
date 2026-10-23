@@ -17,18 +17,53 @@ import org.junit.jupiter.api.Test;
 
 import java.net.http.HttpClient;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 class BaseModelClientCompatibilityTest {
     @Test
     void builtHttpClientShouldPreferHttp11LikePythonHttpxDefault() {
-        InspectableModelClient client =
-            new InspectableModelClient(ModelRequestConfig.builder().modelName("demo-model").build(),
-                    ModelClientConfig.builder().clientProvider("OpenAI").apiKey("test-key")
-                            .apiBase("https://example.com/v1").verifySsl(false).build());
+        InspectableModelClient client = newInspectableModelClient();
 
         assertThat(client.buildForTest().version()).isEqualTo(HttpClient.Version.HTTP_1_1);
+    }
+
+    @Test
+    void streamingRequestShouldAskGatewayToReturnUsageInLastChunk() {
+        InspectableModelClient client = newInspectableModelClient();
+
+        Map<String, Object> params = client.buildParamsForTest("hello", true, null);
+
+        assertThat(params.get("stream")).isEqualTo(true);
+        assertThat(params.get("stream_options")).isEqualTo(Map.of("include_usage", true));
+    }
+
+    @Test
+    void nonStreamingRequestShouldNotAddStreamUsageOption() {
+        InspectableModelClient client = newInspectableModelClient();
+
+        Map<String, Object> params = client.buildParamsForTest("hello", false, null);
+
+        assertThat(params.get("stream")).isEqualTo(false);
+        assertThat(params).doesNotContainKey("stream_options");
+    }
+
+    @Test
+    void streamingRequestShouldPreserveConfiguredStreamOptions() {
+        InspectableModelClient client = newInspectableModelClient();
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("stream_options", Map.of("custom_flag", true));
+
+        Map<String, Object> params = client.buildParamsForTest("hello", true, kwargs);
+
+        assertThat(params.get("stream_options")).isEqualTo(Map.of("custom_flag", true, "include_usage", true));
+    }
+
+    private static InspectableModelClient newInspectableModelClient() {
+        return new InspectableModelClient(ModelRequestConfig.builder().modelName("demo-model").build(),
+                ModelClientConfig.builder().clientProvider("OpenAI").apiKey("test-key")
+                        .apiBase("https://example.com/v1").verifySsl(false).build());
     }
 
     private static final class InspectableModelClient extends BaseModelClient {
@@ -38,6 +73,10 @@ class BaseModelClientCompatibilityTest {
 
         private HttpClient buildForTest() {
             return buildHttpClient(1.0);
+        }
+
+        private Map<String, Object> buildParamsForTest(Object messages, boolean isStream, Map<String, Object> kwargs) {
+            return buildRequestParams(messages, null, null, null, null, null, null, isStream, kwargs);
         }
 
         @Override
