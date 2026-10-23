@@ -727,7 +727,10 @@ final class JiuwenBoxProviderSupport {
             Map<String, String> authHeaders) {
             this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
             this.timeoutSeconds = timeoutSeconds <= 0 ? 30.0d : timeoutSeconds;
+            // Sandbox services are plain HTTP/1.1; the JDK default (HTTP/2) would attempt an
+            // h2c upgrade on every fresh cleartext connection, which HTTP/1.1-only servers reject.
             this.httpClient = injectedClient != null ? injectedClient : HttpClient.newBuilder()
+                    .version(HttpClient.Version.HTTP_1_1)
                     .connectTimeout(Duration.ofSeconds(30))
                     .build();
             this.authHeaders = authHeaders != null ? Map.copyOf(authHeaders) : Map.of();
