@@ -403,7 +403,8 @@ public class SiliconFlowModelClient extends BaseModelClient {
             String reasoningContent = asString(delta.get("reasoning_content"));
             List<ToolCall> toolCalls = parseToolCalls(delta.get("tool_calls"));
             UsageMetadata usageMetadata = parseUsageMetadata(chunkData.get("usage"), false);
-            if (!isPythonTruthy(content) && !isPythonTruthy(reasoningContent) && toolCalls.isEmpty()) {
+            if (!isPythonTruthy(content) && !isPythonTruthy(reasoningContent) && toolCalls.isEmpty()
+                    && usageMetadata == null) {
                 return null;
             }
 

@@ -18,6 +18,7 @@ import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import org.slf4j.Logger;
@@ -397,7 +398,37 @@ public class IntelliRouterModelClient extends BaseModelClient {
             Map<String, Object> delta = asMap(choices.get(0).get("delta"));
             content = delta == null ? "" : orEmpty(delta.get("content"));
         }
-        return AssistantMessageChunk.builder().content(content).build();
+        return AssistantMessageChunk.builder()
+                .content(content)
+                .usageMetadata(convertUsage(chunk == null ? null : chunk.get("usage")))
+                .build();
+    }
+
+    /**
+     * Converts the {@code usage} object of one stream frame.
+     *
+     * <p>A gateway asked for {@code stream_options.include_usage} reports token usage in a trailing frame whose
+     * {@code choices} is empty, so the usage must be carried even when the frame has no content.</p>
+     *
+     * @param usageValue raw {@code usage} value of the frame
+     * @return parsed usage, or null when the frame carries none
+     * @since 0.1.17
+     */
+    private UsageMetadata convertUsage(Object usageValue) {
+        Map<String, Object> usage = asMap(usageValue);
+        if (usage == null) {
+            return null;
+        }
+        return UsageMetadata.builder()
+                .modelName(modelConfig.getModelName())
+                .inputTokens(intValue(usage.get("prompt_tokens")))
+                .outputTokens(intValue(usage.get("completion_tokens")))
+                .totalTokens(intValue(usage.get("total_tokens")))
+                .build();
+    }
+
+    private static int intValue(Object value) {
+        return value instanceof Number number ? number.intValue() : 0;
     }
 
     private List<ToolCall> convertToolCalls(List<Map<String, Object>> rawToolCalls) {

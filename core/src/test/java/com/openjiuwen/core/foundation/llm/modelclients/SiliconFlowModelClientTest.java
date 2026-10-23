@@ -277,6 +277,39 @@ class SiliconFlowModelClientTest {
     }
 
     @Test
+    void usageOnlyTailChunkIsNotDiscardedFromStream() {
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        client.nextStreamLines = List.of(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"finish_reason\":\"stop\"}]}",
+                "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":6,\"total_tokens\":11}}",
+                "data: [DONE]"
+        );
+        RecordingTracer tracer = new RecordingTracer();
+
+        List<AssistantMessageChunk> chunks = iteratorToList(client.stream(
+                "hello",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Map.of("tracer_record_data", tracer)
+        ));
+
+        assertThat(chunks).hasSize(2);
+        assertThat(chunks.get(1).getUsageMetadata()).isNotNull();
+        assertThat(chunks.get(1).getUsageMetadata().getTotalTokens()).isEqualTo(11);
+        AssistantMessageChunk finalMessage = (AssistantMessageChunk) tracer.records.get(1).get("llm_response");
+        assertThat(finalMessage.getContent()).isEqualTo("Hello");
+        assertThat(finalMessage.getFinishReason()).isEqualTo("stop");
+        assertThat(finalMessage.getUsageMetadata()).isNotNull();
+        assertThat(finalMessage.getUsageMetadata().getTotalTokens()).isEqualTo(11);
+    }
+
+    @Test
     void generationMethodsMirrorPythonPassByReturningNull() {
         RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
 

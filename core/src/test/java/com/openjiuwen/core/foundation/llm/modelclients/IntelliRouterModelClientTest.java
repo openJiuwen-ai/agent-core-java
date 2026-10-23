@@ -364,6 +364,27 @@ class IntelliRouterModelClientTest {
     }
 
     @Test
+    void streamPassesUsageFromUsageOnlyTailChunk() throws Exception {
+        RecordingRouter router = RecordingRouter.withChunks(List.of(
+                Map.of("choices", List.of(Map.of("delta", Map.of("content", "Hello")))),
+                Map.of("choices", List.of(),
+                        "usage", Map.of("prompt_tokens", 2, "completion_tokens", 3, "total_tokens", 5))
+        ));
+        IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(), router);
+
+        Iterator<AssistantMessageChunk> iterator = client.stream("Hi", null, null, null, null,
+                null, null, null, null, null);
+        List<AssistantMessageChunk> chunks = new ArrayList<>();
+        iterator.forEachRemaining(chunks::add);
+
+        assertThat(chunks).hasSize(2);
+        assertThat(chunks.get(1).getUsageMetadata()).isNotNull();
+        assertThat(chunks.get(1).getUsageMetadata().getTotalTokens()).isEqualTo(5);
+        assertThat(chunks.get(1).getUsageMetadata().getInputTokens()).isEqualTo(2);
+        assertThat(chunks.get(1).getUsageMetadata().getOutputTokens()).isEqualTo(3);
+    }
+
+    @Test
     void streamUsesRouterStreamCompletionAndConvertsChunks() throws Exception {
         RecordingRouter router = RecordingRouter.withChunks(List.of(
                 Map.of("choices", List.of(Map.of("delta", Map.of("content", "a")))),
