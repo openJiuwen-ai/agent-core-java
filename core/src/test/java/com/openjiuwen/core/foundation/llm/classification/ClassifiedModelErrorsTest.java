@@ -15,9 +15,9 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LogManager;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 
-import java.util.concurrent.CancellationException;
-
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.CancellationException;
 
 /**
  * UT-E: classified error surface elements, user readable messages, and

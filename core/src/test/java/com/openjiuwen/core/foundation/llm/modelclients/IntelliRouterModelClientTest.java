@@ -641,7 +641,7 @@ class IntelliRouterModelClientTest {
     @Test
     void invokeRouterIdleTimeoutKeepsMeasuredWindow() {
         IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
-                new ThrowingRouter(new RuntimeException("router stalled", new IdleTimeoutIOException(42.0D))));
+                new ThrowingRouter<>(new RuntimeException("router stalled", new IdleTimeoutIOException(42.0D))));
 
         assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
                 .isInstanceOfSatisfying(BaseError.class, error -> {
@@ -657,7 +657,7 @@ class IntelliRouterModelClientTest {
     @Test
     void streamEstablishmentTimeoutCarriesStreamFlag() {
         IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
-                new ThrowingRouter(new java.net.SocketTimeoutException("read timed out")));
+                new ThrowingRouter<>(new java.net.SocketTimeoutException("read timed out")));
 
         assertThatThrownBy(() -> client.stream("hello", null, null, null, null, null, null, null, null, null))
                 .isInstanceOfSatisfying(BaseError.class, error -> {
@@ -672,7 +672,7 @@ class IntelliRouterModelClientTest {
     @Test
     void invokeRouterPlainFailureKeepsClassifiedSurface() {
         IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
-                new ThrowingRouter(new IllegalStateException("router exploded")));
+                new ThrowingRouter<>(new IllegalStateException("router exploded")));
 
         assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
                 .isInstanceOfSatisfying(BaseError.class, error -> {
@@ -686,7 +686,7 @@ class IntelliRouterModelClientTest {
     @Test
     void invokeRouterSocketTimeoutSurfacesTieredContract() {
         IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
-                new ThrowingRouter(new java.net.SocketTimeoutException("read timed out")));
+                new ThrowingRouter<>(new java.net.SocketTimeoutException("read timed out")));
 
         assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
                 .isInstanceOfSatisfying(BaseError.class, error -> {
@@ -705,7 +705,7 @@ class IntelliRouterModelClientTest {
     @Test
     void invokeRuntimeWrappedTimeoutIsClassified() {
         IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
-                new ThrowingRouter(new RuntimeException("router call failed",
+                new ThrowingRouter<>(new RuntimeException("router call failed",
                         new java.net.SocketTimeoutException("connect timed out"))));
 
         assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
@@ -716,7 +716,7 @@ class IntelliRouterModelClientTest {
     @Test
     void invokeRouterCancellationSurfacesCancellationException() {
         IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
-                new ThrowingRouter(new RuntimeException("router call aborted",
+                new ThrowingRouter<>(new RuntimeException("router call aborted",
                         new java.util.concurrent.CancellationException("client aborted"))));
 
         assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
@@ -724,10 +724,11 @@ class IntelliRouterModelClientTest {
                 .hasMessage("intelli_router invoke cancelled");
     }
 
-    private static final class ThrowingRouter implements IntelliRouterModelClient.ReliableRouter {
-        private final Exception failure;
+    private static final class ThrowingRouter<T extends Exception>
+            implements IntelliRouterModelClient.ReliableRouter {
+        private final T failure;
 
-        private ThrowingRouter(Exception failure) {
+        private ThrowingRouter(T failure) {
             this.failure = failure;
         }
 
@@ -735,7 +736,7 @@ class IntelliRouterModelClientTest {
         public Map<String, Object> completion(
                 String model,
                 List<Map<String, Object>> messages,
-                Map<String, Object> requestParams) throws Exception {
+                Map<String, Object> requestParams) throws T {
             throw failure;
         }
 
@@ -743,7 +744,7 @@ class IntelliRouterModelClientTest {
         public Iterator<Map<String, Object>> streamCompletion(
                 String model,
                 List<Map<String, Object>> messages,
-                Map<String, Object> requestParams) throws Exception {
+                Map<String, Object> requestParams) throws T {
             throw failure;
         }
     }

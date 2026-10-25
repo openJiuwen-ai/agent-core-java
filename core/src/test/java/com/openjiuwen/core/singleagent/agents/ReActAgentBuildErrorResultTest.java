@@ -10,16 +10,16 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ModelError;
 import com.openjiuwen.core.common.exception.StatusCode;
 
+import org.junit.jupiter.api.Test;
+
 import java.util.Map;
 import java.util.Optional;
-import org.junit.jupiter.api.Test;
 
 /**
  * Covers the structured failure entry attached to streaming error results so remote
  * adapters can rebuild a failure descriptor without parsing the flattened output text.
  */
 class ReActAgentBuildErrorResultTest {
-
     @Test
     void baseErrorCarriesStructuredFailureEntry() {
         ModelError error = new ModelError(StatusCode.MODEL_CALL_TIMEOUT);

@@ -59,7 +59,7 @@ public final class IntelliRouterClientConfig {
             Map<String, Object> strategyKwargs,
             boolean enableHealthCheck,
             double healthCheckInterval,
-            boolean verifySsl,
+            boolean isVerifySsl,
             Double connectTimeoutSeconds,
             Double streamIdleSeconds) {
         this.deployments = copyMapList(deployments);
@@ -69,7 +69,7 @@ public final class IntelliRouterClientConfig {
         this.strategyKwargs = copyMap(strategyKwargs);
         this.enableHealthCheck = enableHealthCheck;
         this.healthCheckInterval = healthCheckInterval;
-        this.verifySsl = verifySsl;
+        this.verifySsl = isVerifySsl;
         this.connectTimeoutSeconds = connectTimeoutSeconds;
         this.streamIdleSeconds = streamIdleSeconds;
     }
