@@ -27,6 +27,7 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -43,6 +44,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Alibaba Cloud DashScope model client.
@@ -726,6 +728,9 @@ public class DashScopeModelClient extends BaseModelClient {
      * {@code openjiuwen/core/foundation/llm/model_clients/dashscope_model_client.py}.
      */
     private static final class HttpDashScopeTransport implements DashScopeTransport {
+        // Compiled once: stripTrailingSlashes runs on every transport call.
+        private static final Pattern TRAILING_SLASH_PATTERN = Pattern.compile("/+$");
+
         @Override
         @SuppressWarnings("unchecked")
         public Map<String, Object> call(
@@ -753,11 +758,21 @@ public class DashScopeModelClient extends BaseModelClient {
                     }
                 });
             }
+            HttpRequest request = requestBuilder
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                    .build();
             HttpClient client = createDashScopeHttpClient(clientConfig);
             double idleSeconds = ModelTimeoutResolver.resolveStreamIdleSeconds(clientConfig);
-            HttpResponse<InputStream> response = client.send(
-                    requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build(),
-                    IdleBoundInputStream.bodyHandler(idleSeconds));
+            HttpResponse<InputStream> response;
+            try {
+                response = client.send(request, IdleBoundInputStream.bodyHandler(idleSeconds));
+            } catch (IOException exception) {
+                if (!ModelHttpClients.evictIfDead(client, exception)) {
+                    throw exception;
+                }
+                response = createDashScopeHttpClient(clientConfig)
+                        .send(request, IdleBoundInputStream.bodyHandler(idleSeconds));
+            }
             String responseBody = IdleGuardedBodyReader.readFully(response.body(), idleSeconds, false);
             Map<String, Object> responseMap = OBJECT_MAPPER.readValue(responseBody, Map.class);
             responseMap.putIfAbsent("http_status", response.statusCode());
@@ -768,7 +783,7 @@ public class DashScopeModelClient extends BaseModelClient {
             if (value == null) {
                 return "";
             }
-            return value.replaceAll("/+$", "");
+            return TRAILING_SLASH_PATTERN.matcher(value).replaceAll("");
         }
     }
 

@@ -224,7 +224,6 @@ class JiuwenBoxProvidersTest {
     }
 
     private static final class MockJiuwenBoxState {
-
         private final Map<String, Map<String, byte[]>> sandboxFiles = new ConcurrentHashMap<>();
         private final AtomicInteger createCalls = new AtomicInteger();
         private final AtomicInteger execCalls = new AtomicInteger();
