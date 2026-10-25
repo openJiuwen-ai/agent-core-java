@@ -15,19 +15,28 @@ import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
 import com.openjiuwen.core.foundation.llm.ModelCircuitBreakerSnapshot;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.sun.net.httpserver.HttpServer;
 
+import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
+import java.net.Authenticator;
+import java.net.CookieHandler;
 import java.net.InetSocketAddress;
+import java.net.ProxySelector;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -35,6 +44,12 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 
 /**
  * UT-S: streaming first-segment retry boundary and error frame surfacing on
@@ -42,6 +57,7 @@ import java.util.Map;
  *
  * @since 2026-10-19
  */
+@Isolated
 class ModelCallRetryFlowTest {
     @Test
     void exhaustedRetriesCountOnceAndFastFailPreservesSnapshot() throws Exception {
@@ -232,6 +248,60 @@ class ModelCallRetryFlowTest {
         }
     }
 
+    @Test
+    void invoke_officialSignalDeath_rebuildsFieldAndSurfacesWithoutResend() throws Exception {
+        // Given a field client that always fails with the JDK's official selector-dead signal,
+        // When invoking, Then the field is rebuilt, the failure surfaces with zero wire
+        // traffic (no in-call resend — the official signal can fire post-write), and the next
+        // call recovers on the rebuilt client
+        ModelHttpClients.clearSharedClientsForTesting();
+        try (StubServer server = new StubServer()
+            .enqueue(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"recovered\"}}]}")) {
+            OpenAIModelClient noRetry = client(server, 0, new ModelCircuitBreaker());
+            FailingHttpClient dead = new FailingHttpClient("selector manager closed");
+            noRetry.replaceHttpClientForTesting(dead);
+
+            assertThatThrownBy(() -> noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThat(server.requests).isEmpty();
+            assertThat(noRetry.httpClientForTesting()).isNotSameAs(dead);
+
+            AssistantMessage recovered = noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(recovered.getContentAsString()).isEqualTo("recovered");
+            assertThat(server.requests).hasSize(1);
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
+    void invoke_unrecognizedFailure_keepsFieldClientWithoutResend() throws Exception {
+        // Given a field client failing with an unrecognized wording (ALIVE verdict), When
+        // invoking twice, Then the field client stays in place (no rebuild) and failures
+        // surface with zero wire traffic
+        ModelHttpClients.clearSharedClientsForTesting();
+        try (StubServer server = new StubServer()
+            .enqueue(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ignored\"}}]}")) {
+            OpenAIModelClient noRetry = client(server, 0, new ModelCircuitBreaker());
+            FailingHttpClient alive = new FailingHttpClient("connection reset by peer");
+            noRetry.replaceHttpClientForTesting(alive);
+
+            assertThatThrownBy(() -> noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThatThrownBy(() -> noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThat(noRetry.httpClientForTesting()).isSameAs(alive);
+            assertThat(server.requests).isEmpty();
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
     private static OpenAIModelClient client(StubServer server) {
         return client(server, 2, new ModelCircuitBreaker());
     }
@@ -274,6 +344,81 @@ class ModelCallRetryFlowTest {
             body.append("data: ").append(frame).append("\n\n");
         }
         return body.toString();
+    }
+
+    // A client whose sends always fail with the given wording, so OAI hook tests can drive
+    // the eviction/rebuild path: "selector manager closed" exercises the official-signal
+    // path, any other wording exercises the ALIVE verdict (no rebuild).
+    private static final class FailingHttpClient extends HttpClient {
+        private final String failureMessage;
+
+        private FailingHttpClient(String failureMessage) {
+            this.failureMessage = failureMessage;
+        }
+
+        @Override
+        public Optional<CookieHandler> cookieHandler() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Duration> connectTimeout() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Redirect followRedirects() {
+            return Redirect.NEVER;
+        }
+
+        @Override
+        public Optional<ProxySelector> proxy() {
+            return Optional.empty();
+        }
+
+        @Override
+        public SSLContext sslContext() {
+            return null;
+        }
+
+        @Override
+        public SSLParameters sslParameters() {
+            return new SSLParameters();
+        }
+
+        @Override
+        public Optional<Authenticator> authenticator() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Version version() {
+            return Version.HTTP_1_1;
+        }
+
+        @Override
+        public Optional<Executor> executor() {
+            return Optional.empty();
+        }
+
+        @Override
+        public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
+                throws IOException {
+            throw new IOException(failureMessage);
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler,
+                HttpResponse.PushPromiseHandler<T> pushPromiseHandler) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static final class StubServer implements AutoCloseable {
