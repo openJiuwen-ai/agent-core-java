@@ -5,10 +5,17 @@
 package com.openjiuwen.core.foundation.llm.classification;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.PermanentModelError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.LogManager;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+
+import java.util.concurrent.CancellationException;
 
 import org.junit.jupiter.api.Test;
 
@@ -60,6 +67,21 @@ class ClassifiedModelErrorsTest {
     void toError_detailsAreSerializable() {
         BaseError error = build(429, true);
         assertThat(error.getDetails()).isInstanceOf(java.io.Serializable.class);
+    }
+
+    @Test
+    void toCancellation_emitsStructuredLogAnchor() {
+        LoggerProtocol previous = LogManager.getLogger("llm");
+        LoggerProtocol capturing = mock(LoggerProtocol.class);
+        LogManager.registerLogger("llm", capturing);
+        try {
+            CancellationException cancellation = ClassifiedModelErrors.toCancellation("model call cancelled");
+
+            assertThat(cancellation).hasMessage("model call cancelled");
+            verify(capturing).info(eq("event=model_call_cancelled, reason={}"), eq("model call cancelled"));
+        } finally {
+            LogManager.registerLogger("llm", previous);
+        }
     }
 
     private static BaseError build(int status, boolean isRetryableIgnored) {

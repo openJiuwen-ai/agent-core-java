@@ -10,6 +10,11 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorClassifiers;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorFacts;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -32,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -109,9 +115,12 @@ public class IntelliRouterModelClient extends BaseModelClient {
             Map<String, Object> response = router.completion(modelName, convertedMessages, requestParams);
             return convertResponse(response, outputParser);
         } catch (RuntimeException exception) {
-            throw exception;
+            if (exception instanceof BaseError) {
+                throw exception;
+            }
+            throw intelliRouterCallError("invoke", exception, modelClientConfig);
         } catch (Exception exception) {
-            throw intelliRouterCallError("invoke", exception);
+            throw intelliRouterCallError("invoke", exception, modelClientConfig);
         }
     }
 
@@ -142,9 +151,12 @@ public class IntelliRouterModelClient extends BaseModelClient {
                     kwargs);
             return new ChunkIterator(router.streamCompletion(modelName, convertedMessages, requestParams));
         } catch (RuntimeException exception) {
-            throw exception;
+            if (exception instanceof BaseError) {
+                throw exception;
+            }
+            throw intelliRouterCallError("stream", exception, modelClientConfig);
         } catch (Exception exception) {
-            throw intelliRouterCallError("stream", exception);
+            throw intelliRouterCallError("stream", exception, modelClientConfig);
         }
     }
 
@@ -198,14 +210,21 @@ public class IntelliRouterModelClient extends BaseModelClient {
         );
     }
 
-    private static BaseError intelliRouterCallError(String operation, Exception exception) {
+    private static BaseError intelliRouterCallError(String operation, Exception exception,
+            ModelClientConfig config) {
+        boolean isStream = "stream".equals(operation);
+        ModelErrorFacts facts = ModelErrorFacts.ofThrowable(exception, isStream);
+        ModelCallClassification classification = ModelErrorClassifiers.defaultClassifier().classify(facts);
+        if (classification.category() == ModelErrorCategory.USER_CANCELLED) {
+            throw ClassifiedModelErrors.toCancellation("intelli_router " + operation + " cancelled");
+        }
+        Optional<BaseError> timeoutError = ModelTimeoutErrorFactory.fromDelegatedTransportException(
+                exception, isStream, config);
+        if (timeoutError.isPresent()) {
+            return timeoutError.get();
+        }
         String message = "IntelliRouter " + operation + " failed: " + exception.getMessage();
-        return ErrorHelper.buildError(
-                StatusCode.MODEL_CALL_FAILED,
-                null,
-                null,
-                exception,
-                Map.of("error_msg", message));
+        return ClassifiedModelErrors.toError(classification, facts, message, exception);
     }
 
     static String makeRouterKey(IntelliRouterClientConfig config) {
@@ -218,7 +237,9 @@ public class IntelliRouterModelClient extends BaseModelClient {
                 + "|" + config.getTimeout()
                 + "|" + config.isEnableHealthCheck()
                 + "|" + config.getHealthCheckInterval()
-                + "|" + config.isVerifySsl();
+                + "|" + config.isVerifySsl()
+                + "|" + config.getConnectTimeoutSeconds()
+                + "|" + config.getStreamIdleSeconds();
         return md5(raw);
     }
 

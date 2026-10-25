@@ -35,6 +35,8 @@ public final class IntelliRouterClientConfig {
     private final boolean enableHealthCheck;
     private final double healthCheckInterval;
     private final boolean verifySsl;
+    private final Double connectTimeoutSeconds;
+    private final Double streamIdleSeconds;
 
     public IntelliRouterClientConfig(
             List<Map<String, Object>> deployments,
@@ -45,6 +47,21 @@ public final class IntelliRouterClientConfig {
             boolean enableHealthCheck,
             double healthCheckInterval,
             boolean verifySsl) {
+        this(deployments, strategy, numRetries, timeout, strategyKwargs, enableHealthCheck,
+                healthCheckInterval, verifySsl, null, null);
+    }
+
+    IntelliRouterClientConfig(
+            List<Map<String, Object>> deployments,
+            String strategy,
+            int numRetries,
+            double timeout,
+            Map<String, Object> strategyKwargs,
+            boolean enableHealthCheck,
+            double healthCheckInterval,
+            boolean verifySsl,
+            Double connectTimeoutSeconds,
+            Double streamIdleSeconds) {
         this.deployments = copyMapList(deployments);
         this.strategy = strategy == null ? "simple-shuffle" : strategy;
         this.numRetries = numRetries;
@@ -53,10 +70,15 @@ public final class IntelliRouterClientConfig {
         this.enableHealthCheck = enableHealthCheck;
         this.healthCheckInterval = healthCheckInterval;
         this.verifySsl = verifySsl;
+        this.connectTimeoutSeconds = connectTimeoutSeconds;
+        this.streamIdleSeconds = streamIdleSeconds;
     }
 
     /**
-     * Extract IntelliRouter-specific fields from Python-compatible extra fields.
+     * Extract IntelliRouter-specific fields from Python-compatible extra fields. The top-level
+     * {@code connectTimeoutSeconds} / {@code streamIdleSeconds} of the model client config are
+     * carried through so router drivers can enforce the unified tiered timeout contract instead
+     * of the fields being silently ignored on this channel.
      *
      * @param config model client config carrying {@code intelli_router_*} entries
      * @return typed IntelliRouter config
@@ -73,7 +95,9 @@ public final class IntelliRouterClientConfig {
                 asMap(extra.get(STRATEGY_KWARGS_KEY)),
                 asBoolean(extra.get(ENABLE_HEALTH_CHECK_KEY), false),
                 asDouble(extra.get(HEALTH_CHECK_INTERVAL_KEY), 300.0D),
-                config == null || config.isVerifySsl()
+                config == null || config.isVerifySsl(),
+                config == null ? null : config.getConnectTimeoutSeconds(),
+                config == null ? null : config.getStreamIdleSeconds()
         );
     }
 
@@ -107,6 +131,24 @@ public final class IntelliRouterClientConfig {
 
     public boolean isVerifySsl() {
         return verifySsl;
+    }
+
+    /**
+     * Returns the top-level connect timeout carried from the model client config.
+     *
+     * @return connect timeout in seconds, or null when not configured
+     */
+    public Double getConnectTimeoutSeconds() {
+        return connectTimeoutSeconds;
+    }
+
+    /**
+     * Returns the top-level stream idle timeout carried from the model client config.
+     *
+     * @return stream idle timeout in seconds, or null when not configured
+     */
+    public Double getStreamIdleSeconds() {
+        return streamIdleSeconds;
     }
 
     private static List<Map<String, Object>> asMapList(Object value) {
