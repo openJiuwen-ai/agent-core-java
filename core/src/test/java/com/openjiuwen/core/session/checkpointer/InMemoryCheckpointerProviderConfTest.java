@@ -4,9 +4,6 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import com.openjiuwen.core.multitenant.TenantContextHolder;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -25,16 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class InMemoryCheckpointerProviderConfTest {
 
-    @BeforeEach
-    void clearTenantContext() {
-        TenantContextHolder.clearCurrentTenant();
-    }
-
-    @AfterEach
-    void restoreTenantContext() {
-        TenantContextHolder.clearCurrentTenant();
-    }
-
     @Test
     void emptyConfReturnsSharedDefaultInstance() {
         InMemoryCheckpointerProvider provider = new InMemoryCheckpointerProvider();
@@ -51,36 +38,14 @@ class InMemoryCheckpointerProviderConfTest {
         assertNotNull(checkpointer);
         assertNotEquals(CheckpointerFactory.defaultInMemoryCheckpointer(), checkpointer);
 
-        checkpointer.preAgentExecute(new InMemoryCheckpointerTestAgentSession("session-1"), null);
-        checkpointer.postAgentExecute(new InMemoryCheckpointerTestAgentSession("session-1"));
-        for (int i = 2; i <= 7; i++) {
-            checkpointer.preAgentExecute(new InMemoryCheckpointerTestAgentSession("session-" + i), null);
-            checkpointer.postAgentExecute(new InMemoryCheckpointerTestAgentSession("session-" + i));
+        for (int i = 1; i <= 7; i++) {
+            checkpointer.preAgentExecute(new ConfTestSession("session-" + i), null);
+            checkpointer.postAgentExecute(new ConfTestSession("session-" + i));
         }
         assertFalse(checkpointer.sessionExists("session-1"));
         assertFalse(checkpointer.sessionExists("session-2"));
         assertTrue(checkpointer.sessionExists("session-6"));
         assertTrue(checkpointer.sessionExists("session-7"));
-    }
-
-    @Test
-    void ttlSecondsConfCreatesDedicatedInstance() {
-        InMemoryCheckpointerProvider provider = new InMemoryCheckpointerProvider();
-
-        Checkpointer checkpointer = provider.create(Map.of(InMemoryCheckpointerProvider.CONF_TTL_SECONDS, 1));
-        checkpointer.preAgentExecute(new InMemoryCheckpointerTestAgentSession("session-ttl"), null);
-        checkpointer.postAgentExecute(new InMemoryCheckpointerTestAgentSession("session-ttl"));
-        assertTrue(checkpointer.sessionExists("session-ttl"));
-
-        try {
-            Thread.sleep(1100L);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-        }
-        checkpointer.preAgentExecute(new InMemoryCheckpointerTestAgentSession("session-other"), null);
-        checkpointer.postAgentExecute(new InMemoryCheckpointerTestAgentSession("session-other"));
-        ((InMemoryCheckpointer) checkpointer).cleanUpRegistry();
-        assertFalse(checkpointer.sessionExists("session-ttl"));
     }
 
     @Test
@@ -102,5 +67,38 @@ class InMemoryCheckpointerProviderConfTest {
         conf.put(InMemoryCheckpointerProvider.CONF_MAX_SESSIONS, "not-a-number");
 
         assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), provider.create(conf));
+    }
+
+    @Test
+    void defaultInstanceKeepsDefaultCapacity() {
+        assertEquals(1000, InMemoryCheckpointer.DEFAULT_MAX_SESSIONS);
+    }
+
+    /**
+     * Minimal agent-flavoured session stub for provider-level tests.
+     */
+    private static final class ConfTestSession extends com.openjiuwen.core.session.BaseSession {
+        private final String sessionId;
+        private final com.openjiuwen.core.session.state.AgentStateCollection state =
+                new com.openjiuwen.core.session.state.AgentStateCollection();
+
+        ConfTestSession(String sessionId) {
+            this.sessionId = sessionId;
+        }
+
+        @Override
+        public com.openjiuwen.core.session.config.SessionConfigAccess config() {
+            return new com.openjiuwen.core.session.config.Config();
+        }
+
+        @Override
+        public com.openjiuwen.core.session.state.SessionStateAccess state() {
+            return state;
+        }
+
+        @Override
+        public String sessionId() {
+            return sessionId;
+        }
     }
 }

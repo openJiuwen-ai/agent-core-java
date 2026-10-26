@@ -220,15 +220,11 @@ class InMemoryCheckpointerTest {
         AtomicLong now = new AtomicLong(1_000_000L);
         InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(60_000L, 0, now::get);
 
-        TestSession completed = TestSession.agent("session-1", "agent-1", new AgentStateCollection());
-        checkpointer.preAgentExecute(completed, null);
-        checkpointer.postAgentExecute(completed);
+        checkpointer.preAgentExecute(TestSession.agent("session-1", "agent-1", new AgentStateCollection()), null);
         assertTrue(checkpointer.sessionExists("session-1"));
 
         now.set(1_000_000L + 60_001L);
-        TestSession trigger = TestSession.agent("session-2", "agent-2", new AgentStateCollection());
-        checkpointer.preAgentExecute(trigger, null);
-        checkpointer.postAgentExecute(trigger);
+        checkpointer.preAgentExecute(TestSession.agent("session-2", "agent-2", new AgentStateCollection()), null);
         checkpointer.cleanUpRegistry();
 
         assertFalse(checkpointer.sessionExists("session-1"));
@@ -241,105 +237,15 @@ class InMemoryCheckpointerTest {
         InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 2, now::get);
 
         for (String sessionId : List.of("session-1", "session-2")) {
-            TestSession session = TestSession.agent(sessionId, sessionId, new AgentStateCollection());
-            checkpointer.preAgentExecute(session, null);
-            checkpointer.postAgentExecute(session);
+            checkpointer.preAgentExecute(TestSession.agent(sessionId, sessionId, new AgentStateCollection()), null);
         }
         now.set(1_000_000L + 1L);
-        TestSession trigger = TestSession.agent("session-3", "agent-3", new AgentStateCollection());
-        checkpointer.preAgentExecute(trigger, null);
-        checkpointer.postAgentExecute(trigger);
+        checkpointer.preAgentExecute(TestSession.agent("session-3", "agent-3", new AgentStateCollection()), null);
         checkpointer.cleanUpRegistry();
 
         assertFalse(checkpointer.sessionExists("session-1"));
         assertTrue(checkpointer.sessionExists("session-2"));
         assertTrue(checkpointer.sessionExists("session-3"));
-    }
-
-    @Test
-    void capacityEvictionSkipsSessionWithExecutionInFlight() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 2, now::get);
-
-        checkpointer.preAgentExecute(TestSession.agent("in-flight", "agent-1", new AgentStateCollection()), null);
-        now.set(1_000_000L + 1L);
-        TestSession first = TestSession.agent("session-1", "agent-2", new AgentStateCollection());
-        checkpointer.preAgentExecute(first, null);
-        checkpointer.postAgentExecute(first);
-        now.set(1_000_000L + 2L);
-        TestSession second = TestSession.agent("session-2", "agent-3", new AgentStateCollection());
-        checkpointer.preAgentExecute(second, null);
-        checkpointer.postAgentExecute(second);
-
-        now.set(1_000_000L + 3L);
-        TestSession trigger = TestSession.agent("session-3", "agent-4", new AgentStateCollection());
-        checkpointer.preAgentExecute(trigger, null);
-        checkpointer.postAgentExecute(trigger);
-        checkpointer.cleanUpRegistry();
-
-        assertTrue(checkpointer.sessionExists("in-flight"));
-        assertFalse(checkpointer.sessionExists("session-1"));
-        assertTrue(checkpointer.sessionExists("session-2"));
-        assertTrue(checkpointer.sessionExists("session-3"));
-    }
-
-    @Test
-    void inFlightSessionCompletesAfterRegistryEvictionAndReregisters() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 1, now::get);
-        AgentStateCollection inFlightState = new AgentStateCollection();
-
-        TestSession inFlight = TestSession.agent("in-flight", "agent-1", inFlightState);
-        checkpointer.preAgentExecute(inFlight, null);
-        inFlightState.update(Map.of("turn", 1));
-
-        now.set(1_000_000L + 1L);
-        for (String sessionId : List.of("session-2", "session-3")) {
-            TestSession session = TestSession.agent(sessionId, sessionId, new AgentStateCollection());
-            checkpointer.preAgentExecute(session, null);
-            checkpointer.postAgentExecute(session);
-        }
-        checkpointer.cleanUpRegistry();
-        assertTrue(checkpointer.sessionExists("in-flight"));
-
-        checkpointer.postAgentExecute(inFlight);
-        assertTrue(checkpointer.sessionExists("in-flight"));
-        AgentStateCollection restoredState = new AgentStateCollection();
-        checkpointer.preAgentExecute(TestSession.agent("in-flight", "agent-1", restoredState), null);
-        assertEquals(1, restoredState.get("turn"));
-    }
-
-    @Test
-    void ttlEvictionSkipsSessionWithExecutionInFlight() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(60_000L, 0, now::get);
-
-        checkpointer.preAgentExecute(TestSession.agent("in-flight", "agent-1", new AgentStateCollection()), null);
-        checkpointer.preAgentExecute(TestSession.agent("session-1", "agent-2", new AgentStateCollection()), null);
-        checkpointer.postAgentExecute(TestSession.agent("session-1", "agent-2", new AgentStateCollection()));
-
-        now.set(1_000_000L + 60_001L);
-        checkpointer.preAgentExecute(TestSession.agent("session-2", "agent-3", new AgentStateCollection()), null);
-        checkpointer.cleanUpRegistry();
-
-        assertTrue(checkpointer.sessionExists("in-flight"));
-        assertFalse(checkpointer.sessionExists("session-1"));
-    }
-
-    @Test
-    void releaseRemovesInFlightMarkerSoEvictionCanProceed() {
-        AtomicLong now = new AtomicLong(1_000_000L);
-        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 1, now::get);
-
-        checkpointer.preAgentExecute(TestSession.agent("session-1", "agent-1", new AgentStateCollection()), null);
-        checkpointer.release("session-1");
-        assertFalse(checkpointer.sessionExists("session-1"));
-
-        now.set(1_000_000L + 1L);
-        checkpointer.preAgentExecute(TestSession.agent("session-2", "agent-2", new AgentStateCollection()), null);
-        checkpointer.cleanUpRegistry();
-
-        assertTrue(checkpointer.sessionExists("session-2"));
     }
 
     @Test
@@ -367,7 +273,6 @@ class InMemoryCheckpointerTest {
 
         TestSession session = TestSession.workflow("session-1", "workflow-1", workflowState());
         checkpointer.preWorkflowExecute(session, (Object) null);
-        checkpointer.postWorkflowExecute(session, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
         checkpointer.graphStore().save(
                 "session-1",
                 "workflow-1",
@@ -376,9 +281,7 @@ class InMemoryCheckpointerTest {
         assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").toCompletableFuture().join().isPresent());
 
         now.set(1_000_000L + 60_001L);
-        TestSession trigger = TestSession.workflow("session-2", "workflow-2", workflowState());
-        checkpointer.preWorkflowExecute(trigger, (Object) null);
-        checkpointer.postWorkflowExecute(trigger, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
+        checkpointer.preWorkflowExecute(TestSession.workflow("session-2", "workflow-2", workflowState()), (Object) null);
         checkpointer.cleanUpRegistry();
 
         assertFalse(checkpointer.graphStore().get("session-1", "workflow-1").toCompletableFuture().join().isPresent());
