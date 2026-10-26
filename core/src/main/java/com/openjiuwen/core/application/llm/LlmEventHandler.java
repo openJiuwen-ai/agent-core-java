@@ -396,7 +396,11 @@ public class LlmEventHandler extends EventHandler {
         task.setStatus(TaskStatus.WORKING);
 
         Object inputs = getTaskArguments(task);
-        Object result = Runner.runWorkflow(workflowId, inputs, session, context, Map.of())
+        ModelContext workflowContext = appContextEngine.getContext(workflowId, session.getSessionId());
+        if (workflowContext == null) {
+            workflowContext = appContextEngine.createContext(workflowId, session);
+        }
+        Object result = Runner.runWorkflow(workflowId, inputs, session, workflowContext, Map.of())
                 .toCompletableFuture()
                 .join();
 

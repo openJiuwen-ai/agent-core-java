@@ -515,7 +515,6 @@ public class Workflow {
                     WorkflowExecutionState.COMPLETED);
             return finishWorkflowInvoke(framework, output);
         }
-        boolean implicitDefaultSession = session == null && defaultCard;
         session = defaultWorkflowSessionIfMissing(session);
         validateSession(session);
         Object validatedInputs = validateInputs(inputs, skipInputsValidate);
@@ -527,6 +526,7 @@ public class Workflow {
                 ? streamModes
                 : List.of(StreamMode.OUTPUT);
         WorkflowRuntimeSession workflowSession = createWorkflowSession(session, effectiveStreamModes);
+        workflowSession.setInvokeStreamBridgeEnabled(true);
         long executeTimeoutMs = resolveTimeoutMillis(workflowSession, SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
 
         try {
@@ -549,9 +549,10 @@ public class Workflow {
                                 WorkflowExecutionState.INPUT_REQUIRED);
                     }
                     Object result;
+                    boolean isImplicitDefaultSession = request.session() == null && defaultCard;
                     if (containsCustomSchema(visibleOutputChunks)) {
                         Object finalResult = WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
-                        finalResult = normalizeImplicitDefaultWorkflowResult(finalResult, implicitDefaultSession);
+                        finalResult = normalizeImplicitDefaultWorkflowResult(finalResult, isImplicitDefaultSession);
                         finalResult = normalizeInteractiveLoopEnvelopeIndexes(finalResult);
                         List<Object> completedChunks = new ArrayList<>(visibleOutputChunks);
                         completedChunks.add(new OutputSchema("workflow_final", 0, finalResult));
@@ -560,7 +561,7 @@ public class Workflow {
                         result = isStreaming
                                 ? stableCompletedOutputChunks(visibleOutputChunks)
                                 : WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
-                        result = normalizeImplicitDefaultWorkflowResult(result, implicitDefaultSession);
+                        result = normalizeImplicitDefaultWorkflowResult(result, isImplicitDefaultSession);
                         result = normalizeInteractiveLoopEnvelopeIndexes(result);
                     }
                     return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);
@@ -696,6 +697,7 @@ public class Workflow {
         final Object executionInputs = validatedInputs;
         final ModelContext executionContext = context;
         WorkflowRuntimeSession workflowSession = createWorkflowSession(session, streamModes);
+        workflowSession.setInvokeStreamBridgeEnabled(false);
         long firstFrameTimeoutMs = resolveTimeoutMillis(
                 workflowSession, SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT);
         long frameTimeoutMs = resolveTimeoutMillis(
@@ -883,7 +885,7 @@ public class Workflow {
                             "timeout", formatTimeoutSeconds(configuredTimeoutMs),
                             "reason", "");
                 }
-                if (deadlineReached) {
+                if (deadlineReached || (executeTimeoutMs > 0 && configuredTimeoutMs >= executeTimeoutMs)) {
                     executionTimedOut.set(true);
                     return buildWorkflowExecutionTimeout(executeTimeoutText);
                 }

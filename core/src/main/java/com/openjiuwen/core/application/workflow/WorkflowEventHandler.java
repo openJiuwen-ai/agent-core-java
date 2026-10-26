@@ -309,8 +309,10 @@ public class WorkflowEventHandler extends EventHandler {
             }
 
             // Execute workflow with streaming
-            ModelContext context = appContextEngine.createContext(workflowId, agentSession.getInner());
-            addUserMessageToWorkflowContext(context, getDisplayContent(event));
+            ModelContext context = appContextEngine.getContext(workflowId, session.getSessionId());
+            if (context == null) {
+                context = appContextEngine.createContext(workflowId, agentSession.getInner());
+            }
             Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(
                     workflow, inputs, workflowSession, context, resolveWorkflowStreamModes(session), null)
                     .toCompletableFuture().join();
@@ -342,10 +344,6 @@ public class WorkflowEventHandler extends EventHandler {
             }
 
             addAssistantMessageToAgentContext(session, buildAssistantContent(chunks));
-            addAssistantMessageToWorkflowContext(
-                    context,
-                    buildWorkflowAssistantContent(chunks, finalResult, hasInteraction)
-            );
 
             // Process result
             if (hasInteraction) {
@@ -1111,23 +1109,6 @@ public class WorkflowEventHandler extends EventHandler {
         return contentParts.toString();
     }
 
-    private String buildWorkflowAssistantContent(List<Object> chunks, Object finalResult, boolean hasInteraction) {
-        if (hasInteraction) {
-            return buildAssistantContent(chunks);
-        }
-        if (finalResult == null) {
-            return buildAssistantContent(chunks);
-        }
-        if (finalResult instanceof String text) {
-            return text;
-        }
-        try {
-            return OBJECT_MAPPER.writeValueAsString(finalResult);
-        } catch (Exception ignored) {
-            return String.valueOf(finalResult);
-        }
-    }
-
     private List<WorkflowSchema> uniqueWorkflows(List<WorkflowSchema> workflows) {
         if (workflows == null || workflows.isEmpty()) {
             return List.of();
@@ -1155,20 +1136,6 @@ public class WorkflowEventHandler extends EventHandler {
             return;
         }
         addMessageToContext(getOrCreateAgentContext(session), new AssistantMessage(content), true);
-    }
-
-    private void addUserMessageToWorkflowContext(ModelContext workflowContext, String content) {
-        if (content == null || content.isBlank()) {
-            return;
-        }
-        addMessageToContext(workflowContext, new UserMessage(content), true);
-    }
-
-    private void addAssistantMessageToWorkflowContext(ModelContext workflowContext, String content) {
-        if (content == null) {
-            return;
-        }
-        addMessageToContext(workflowContext, new AssistantMessage(content), true);
     }
 
     private ModelContext getOrCreateAgentContext(AgentSessionApi session) {

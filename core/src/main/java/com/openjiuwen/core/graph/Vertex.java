@@ -1326,7 +1326,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         if (session.state() instanceof WorkflowCommitState commitState) {
             CommitStateLike ioState = commitState.getIoState();
             if (ioState != null) {
-                ioState.updateById(nodeId, Map.of(nodeId, output));
+                String outputNodeId = effectiveOutputNodeId();
+                Map<String, Object> values = new java.util.LinkedHashMap<>();
+                values.put(outputNodeId, output);
+                ioState.updateById(outputNodeId, values);
+                ioState.commit(outputNodeId);
                 return;
             }
         }
