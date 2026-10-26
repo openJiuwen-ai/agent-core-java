@@ -596,6 +596,159 @@ class IntelliRouterModelClientTest {
                 });
     }
 
+    @Test
+    void topLevelTieredTimeoutsAreCarriedIntoRouterConfig() {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.INTELLI_ROUTER)
+                .connectTimeoutSeconds(10.0D)
+                .streamIdleSeconds(600.0D)
+                .build();
+
+        IntelliRouterClientConfig routerConfig = IntelliRouterClientConfig.fromModelClientConfig(clientConfig);
+
+        assertThat(routerConfig.getConnectTimeoutSeconds()).isEqualTo(10.0D);
+        assertThat(routerConfig.getStreamIdleSeconds()).isEqualTo(600.0D);
+    }
+
+    @Test
+    void topLevelTieredTimeoutsDefaultToNullWhenUnset() {
+        IntelliRouterClientConfig routerConfig = IntelliRouterClientConfig.fromModelClientConfig(
+                intelliRouterConfig());
+
+        assertThat(routerConfig.getConnectTimeoutSeconds()).isNull();
+        assertThat(routerConfig.getStreamIdleSeconds()).isNull();
+    }
+
+    @Test
+    void routerKeySeparatesTieredTimeoutConfigs() {
+        Map<String, Object> extraFields = new LinkedHashMap<>(intelliRouterConfig().getExtraFields());
+        ModelClientConfig withTimeouts = ModelClientConfig.builder()
+                .clientProvider(ProviderType.INTELLI_ROUTER)
+                .verifySsl(false)
+                .extraFields(extraFields)
+                .connectTimeoutSeconds(10.0D)
+                .streamIdleSeconds(600.0D)
+                .build();
+
+        String firstKey = IntelliRouterModelClient.makeRouterKey(
+                IntelliRouterClientConfig.fromModelClientConfig(intelliRouterConfig()));
+        String secondKey = IntelliRouterModelClient.makeRouterKey(
+                IntelliRouterClientConfig.fromModelClientConfig(withTimeouts));
+
+        assertThat(secondKey).isNotEqualTo(firstKey);
+    }
+
+    @Test
+    void invokeRouterIdleTimeoutKeepsMeasuredWindow() {
+        IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
+                new ThrowingRouter<>(new RuntimeException("router stalled", new IdleTimeoutIOException(42.0D))));
+
+        assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
+                .isInstanceOfSatisfying(BaseError.class, error -> {
+                    assertThat(error.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
+                    assertThat(error.getDetails()).isInstanceOfSatisfying(Map.class, details -> {
+                        assertThat(details).containsEntry("phase", "BEFORE_FIRST_SEGMENT");
+                        assertThat(details).containsEntry("layer", "stream_idle");
+                        assertThat(details).containsEntry("timeout_seconds", 42.0D);
+                    });
+                });
+    }
+
+    @Test
+    void streamEstablishmentTimeoutCarriesStreamFlag() {
+        IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
+                new ThrowingRouter<>(new java.net.SocketTimeoutException("read timed out")));
+
+        assertThatThrownBy(() -> client.stream("hello", null, null, null, null, null, null, null, null, null))
+                .isInstanceOfSatisfying(BaseError.class, error -> {
+                    assertThat(error.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
+                    assertThat(error.getDetails()).isInstanceOfSatisfying(Map.class, details -> {
+                        assertThat(details).containsEntry("phase", "BEFORE_FIRST_SEGMENT");
+                        assertThat(details).containsEntry("stream", true);
+                    });
+                });
+    }
+
+    @Test
+    void invokeRouterPlainFailureKeepsClassifiedSurface() {
+        IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
+                new ThrowingRouter<>(new IllegalStateException("router exploded")));
+
+        assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
+                .isInstanceOfSatisfying(BaseError.class, error -> {
+                    assertThat(error.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+                    assertThat(
+                            com.openjiuwen.core.foundation.llm.classification.ModelCallClassification.of(error))
+                            .isPresent();
+                });
+    }
+
+    @Test
+    void invokeRouterSocketTimeoutSurfacesTieredContract() {
+        IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
+                new ThrowingRouter<>(new java.net.SocketTimeoutException("read timed out")));
+
+        assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
+                .isInstanceOfSatisfying(BaseError.class, error -> {
+                    assertThat(error.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
+                    assertThat(error.getCode()).isEqualTo(181008);
+                    assertThat(error.isRecoverable()).isTrue();
+                    assertThat(error.getDetails()).isInstanceOfSatisfying(Map.class, details -> {
+                        assertThat(details).containsEntry("phase", "BEFORE_FIRST_SEGMENT");
+                        assertThat(details).containsEntry("layer", "header_wait");
+                        assertThat(details).containsEntry("stream", false);
+                        assertThat(details).containsKey("timeout_seconds");
+                    });
+                });
+    }
+
+    @Test
+    void invokeRuntimeWrappedTimeoutIsClassified() {
+        IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
+                new ThrowingRouter<>(new RuntimeException("router call failed",
+                        new java.net.SocketTimeoutException("connect timed out"))));
+
+        assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
+                .isInstanceOfSatisfying(BaseError.class, error ->
+                        assertThat(error.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT));
+    }
+
+    @Test
+    void invokeRouterCancellationSurfacesCancellationException() {
+        IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(),
+                new ThrowingRouter<>(new RuntimeException("router call aborted",
+                        new java.util.concurrent.CancellationException("client aborted"))));
+
+        assertThatThrownBy(() -> client.invoke("hello", null, null, null, null, null, null, null, null, null))
+                .isInstanceOf(java.util.concurrent.CancellationException.class)
+                .hasMessage("intelli_router invoke cancelled");
+    }
+
+    private static final class ThrowingRouter<T extends Exception>
+            implements IntelliRouterModelClient.ReliableRouter {
+        private final T failure;
+
+        private ThrowingRouter(T failure) {
+            this.failure = failure;
+        }
+
+        @Override
+        public Map<String, Object> completion(
+                String model,
+                List<Map<String, Object>> messages,
+                Map<String, Object> requestParams) throws T {
+            throw failure;
+        }
+
+        @Override
+        public Iterator<Map<String, Object>> streamCompletion(
+                String model,
+                List<Map<String, Object>> messages,
+                Map<String, Object> requestParams) throws T {
+            throw failure;
+        }
+    }
+
     private static ModelRequestConfig requestConfig() {
         return ModelRequestConfig.builder()
                 .modelName("configured-model")

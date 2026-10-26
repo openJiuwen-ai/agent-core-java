@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.llm.classification;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -46,12 +47,15 @@ public final class ClassifiedModelErrors {
 
     /**
      * Restores cancellation semantics for a failure classified as user
-     * cancelled, replacing the usual failure surface.
+     * cancelled, replacing the usual failure surface. A structured log anchor
+     * ({@code event=model_call_cancelled}) is emitted so cancellation remains
+     * observable alongside the timeout and classified-error surfaces.
      *
      * @param reason human readable cancellation reason, must not be null
      * @return a cancellation exception carrying the reason
      */
     public static CancellationException toCancellation(String reason) {
+        Loggers.LLM.info("event=model_call_cancelled, reason={}", reason);
         return new CancellationException(reason);
     }
 
