@@ -31,11 +31,11 @@ class ModelCircuitBreakerClassificationTest {
         breaker.onFailure(classifiedHttp(429));
         breaker.onFailure(classifiedHttp(402));
         breaker.onFailure(classifiedHttp(401));
-        assertThat(breaker.snapshot().open()).isFalse();
+        assertThat(breaker.snapshot().isOpen()).isFalse();
         assertThat(breaker.snapshot().consecutiveFailures()).isEqualTo(1);
 
         breaker.onFailure(classifiedHttp(503));
-        assertThat(breaker.snapshot().open()).isTrue();
+        assertThat(breaker.snapshot().isOpen()).isTrue();
     }
 
     @Test
@@ -49,7 +49,7 @@ class ModelCircuitBreakerClassificationTest {
         ModelCallClassification classification =
             new RuleBasedModelErrorClassifier().classify(facts);
         breaker.onFailure(ClassifiedModelErrors.toError(classification, facts, "too long", null));
-        assertThat(breaker.snapshot().open()).isFalse();
+        assertThat(breaker.snapshot().isOpen()).isFalse();
         assertThat(breaker.snapshot().consecutiveFailures()).isEqualTo(1);
     }
 
@@ -62,7 +62,7 @@ class ModelCircuitBreakerClassificationTest {
         ModelErrorFacts facts = ModelErrorFacts.Builder.create().build();
         BaseError cancel = ClassifiedModelErrors.toError(classification, facts, "cancelled", null);
         breaker.onFailure(cancel);
-        assertThat(breaker.snapshot().open()).isFalse();
+        assertThat(breaker.snapshot().isOpen()).isFalse();
         assertThat(breaker.snapshot().consecutiveFailures()).isEqualTo(1);
     }
 

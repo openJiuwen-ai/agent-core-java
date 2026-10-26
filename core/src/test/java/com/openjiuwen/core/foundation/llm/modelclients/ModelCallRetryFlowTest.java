@@ -87,13 +87,13 @@ class ModelCallRetryFlowTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void configuredFacadeAndCompatibleAliasExposeLiveSnapshot(boolean compatibleAlias) throws Exception {
+    void configuredFacadeAndCompatibleAliasExposeLiveSnapshot(boolean isCompatibleAlias) throws Exception {
         try (StubServer server = new StubServer().enqueue(503, errorFrame("service unavailable"))) {
             ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName("gpt-test").build();
             ModelClientConfig clientConfig = ModelClientConfig.builder()
                 .clientProvider(ProviderType.OPEN_AI).apiKey("sk-test").apiBase(server.baseUrl())
                 .verifySsl(false).maxRetries(0).build();
-            Model model = compatibleAlias
+            Model model = isCompatibleAlias
                 ? new Model(new OpenAiCompatibleModelClient(requestConfig, clientConfig))
                 : new Model(clientConfig, requestConfig);
 

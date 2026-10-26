@@ -21,10 +21,10 @@ class ModelCircuitBreakerTest {
 
         breaker.onFailure(new ConnectException("Failed to connect to host"));
         breaker.onFailure(new ConnectException("Failed to connect to host"));
-        assertThat(breaker.snapshot().open()).isFalse();
+        assertThat(breaker.snapshot().isOpen()).isFalse();
 
         breaker.onFailure(new ConnectException("Failed to connect to host"));
-        assertThat(breaker.snapshot().open()).isTrue();
+        assertThat(breaker.snapshot().isOpen()).isTrue();
 
         assertThatThrownBy(breaker::beforeCall).isInstanceOf(IOException.class)
                 .hasMessageContaining("circuit breaker open");
@@ -35,7 +35,7 @@ class ModelCircuitBreakerTest {
         ModelCircuitBreaker breaker = new ModelCircuitBreaker(2, 60_000L);
         breaker.onFailure(new SocketTimeoutException("read timed out"));
         breaker.onFailure(new SocketTimeoutException("read timed out"));
-        assertThat(breaker.snapshot().open()).isFalse();
+        assertThat(breaker.snapshot().isOpen()).isFalse();
         assertThat(breaker.snapshot().consecutiveFailures()).isZero();
     }
 }

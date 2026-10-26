@@ -52,7 +52,7 @@ public class Model
 
 ```java
 model.getCircuitBreakerSnapshot().ifPresent(snapshot -> {
-    System.out.println("open=" + snapshot.open());
+    System.out.println("open=" + snapshot.isOpen());
     System.out.println("consecutiveFailures=" + snapshot.consecutiveFailures());
 });
 ```
@@ -61,7 +61,7 @@ model.getCircuitBreakerSnapshot().ifPresent(snapshot -> {
 
 | 字段 | 含义 |
 | --- | --- |
-| `boolean open` | 采样时是否处于快速失败窗口。窗口到期后为 `false`，没有独立的 HALF_OPEN 状态。 |
+| `boolean isOpen` | 采样时是否处于快速失败窗口。窗口到期后为 `false`，没有独立的 HALF_OPEN 状态。 |
 | `int consecutiveFailures` | 自最近一次成功以来累计的计入熔断的失败数。成功清零，忽略的错误和窗口到期均不清零。 |
 
 已分类的限流（如 HTTP 429）和临时错误（如 HTTP 503）计入失败；未分类错误沿用连接错误判断。
