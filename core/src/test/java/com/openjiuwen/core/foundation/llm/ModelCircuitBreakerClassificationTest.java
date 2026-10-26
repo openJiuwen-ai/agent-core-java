@@ -31,16 +31,17 @@ class ModelCircuitBreakerClassificationTest {
         breaker.onFailure(classifiedHttp(429));
         breaker.onFailure(classifiedHttp(402));
         breaker.onFailure(classifiedHttp(401));
-        assertThat(breaker.isOpen()).isFalse();
-        assertThat(breaker.consecutiveFailures()).isEqualTo(1);
+        assertThat(breaker.snapshot().open()).isFalse();
+        assertThat(breaker.snapshot().consecutiveFailures()).isEqualTo(1);
 
         breaker.onFailure(classifiedHttp(503));
-        assertThat(breaker.isOpen()).isTrue();
+        assertThat(breaker.snapshot().open()).isTrue();
     }
 
     @Test
     void onFailure_contextLengthExceeded_notCounted() {
-        ModelCircuitBreaker breaker = new ModelCircuitBreaker(1, 60_000L);
+        ModelCircuitBreaker breaker = new ModelCircuitBreaker(2, 60_000L);
+        breaker.onFailure(new java.net.ConnectException("connection refused"));
         ModelErrorFacts facts = ModelErrorFacts.Builder.create()
             .errorCode("context_length_exceeded")
             .errorMessage("context_length_exceeded")
@@ -48,26 +49,21 @@ class ModelCircuitBreakerClassificationTest {
         ModelCallClassification classification =
             new RuleBasedModelErrorClassifier().classify(facts);
         breaker.onFailure(ClassifiedModelErrors.toError(classification, facts, "too long", null));
-        assertThat(breaker.isOpen()).isFalse();
+        assertThat(breaker.snapshot().open()).isFalse();
+        assertThat(breaker.snapshot().consecutiveFailures()).isEqualTo(1);
     }
 
     @Test
     void onFailure_cancellationShaped_notCounted() {
-        ModelCircuitBreaker breaker = new ModelCircuitBreaker(1, 60_000L);
+        ModelCircuitBreaker breaker = new ModelCircuitBreaker(2, 60_000L);
+        breaker.onFailure(new java.net.ConnectException("connection refused"));
         ModelCallClassification classification =
             new ModelCallClassification(ModelErrorCategory.USER_CANCELLED, false, null);
         ModelErrorFacts facts = ModelErrorFacts.Builder.create().build();
         BaseError cancel = ClassifiedModelErrors.toError(classification, facts, "cancelled", null);
         breaker.onFailure(cancel);
-        assertThat(breaker.isOpen()).isFalse();
-        assertThat(breaker.consecutiveFailures()).isEqualTo(0);
-    }
-
-    @Test
-    void onFailure_unclassifiedFallsBackToConnectHeuristic() {
-        ModelCircuitBreaker breaker = new ModelCircuitBreaker(1, 60_000L);
-        breaker.onFailure(new java.net.ConnectException("connection refused"));
-        assertThat(breaker.isOpen()).isTrue();
+        assertThat(breaker.snapshot().open()).isFalse();
+        assertThat(breaker.snapshot().consecutiveFailures()).isEqualTo(1);
     }
 
     private static BaseError classifiedHttp(int status) {

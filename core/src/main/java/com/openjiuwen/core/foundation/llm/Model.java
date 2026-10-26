@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -90,6 +91,17 @@ public class Model {
      */
     public interface ModelClient {
         CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options);
+
+        /**
+         * Read this client's circuit breaker state when observation is supported.
+         *
+         * @return an immutable diagnostic sample, or empty when observation is
+         *     unsupported or unavailable; empty does not imply the absence of a breaker
+         * @since 0.1.17
+         */
+        default Optional<ModelCircuitBreakerSnapshot> getCircuitBreakerSnapshot() {
+            return Optional.empty();
+        }
 
         default Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             throw new IllegalStateException("Model client lacks stream support");
@@ -575,6 +587,20 @@ public class Model {
 
     public ModelClientConfig getModelClientConfig() {
         return modelClientConfig;
+    }
+
+    /**
+     * Read the underlying client's circuit breaker state when observation is supported.
+     *
+     * <p>Snapshot fields are sampled independently during concurrent calls. This
+     * method exposes no breaker controls.</p>
+     *
+     * @return an immutable diagnostic sample, or empty when observation is
+     *     unsupported or unavailable; empty does not imply the absence of a breaker
+     * @since 0.1.17
+     */
+    public Optional<ModelCircuitBreakerSnapshot> getCircuitBreakerSnapshot() {
+        return client.getCircuitBreakerSnapshot();
     }
 
     private static ModelClient createModelClient(ModelClientConfig clientConfig, ModelRequestConfig modelConfig) {
