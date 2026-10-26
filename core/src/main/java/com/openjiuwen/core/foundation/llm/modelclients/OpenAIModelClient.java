@@ -123,7 +123,7 @@ public class OpenAIModelClient extends BaseModelClient
     private static final String RETRY_LISTENER_KWARG = "__openjiuwen_retry_listener";
     private static final String REQUEST_HEADERS_KWARG = "__openjiuwen_request_headers";
 
-    private final HttpClient httpClient;
+    private volatile HttpClient httpClient;
     private final ModelCallRetrier retrier;
     private final Map<String, String> baseHeaders;
 
@@ -1356,10 +1356,14 @@ public class OpenAIModelClient extends BaseModelClient
     private <T> HttpResponse<T> sendGenerationRequest(String path, Float timeout, String authorization,
             Map<String, String> requestHeaders, HttpResponse.BodyHandler<T> bodyHandler)
             throws IOException, InterruptedException {
+        HttpClient sender = httpClient;
         try {
-            return httpClient.send(buildGetRequest(modelClientConfig.getApiBase(), path, timeout,
+            return sender.send(buildGetRequest(modelClientConfig.getApiBase(), path, timeout,
                     authorization, requestHeaders), bodyHandler);
         } catch (IOException exception) {
+            if (ModelHttpClients.evictIfDead(sender, exception)) {
+                httpClient = createHttpClient(modelClientConfig);
+            }
             String fallbackApiBase = localFixtureFallbackApiBase(exception);
             if (fallbackApiBase == null) {
                 throw exception;
@@ -1649,12 +1653,16 @@ public class OpenAIModelClient extends BaseModelClient
             int retryCount,
             double idleSeconds) throws IOException, InterruptedException {
         HttpResponse<InputStream> response;
+        HttpClient sender = httpClient;
         try {
-            response = httpClient.send(
+            response = sender.send(
                     buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
                     IdleBoundInputStream.bodyHandler(idleSeconds)
             );
         } catch (IOException exception) {
+            if (ModelHttpClients.evictIfDead(sender, exception)) {
+                httpClient = createHttpClient(modelClientConfig);
+            }
             String fallbackApiBase = localFixtureFallbackApiBase(exception);
             if (fallbackApiBase == null) {
                 throw exception;
