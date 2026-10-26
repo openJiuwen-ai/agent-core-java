@@ -4,11 +4,6 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import org.junit.jupiter.api.Test;
-
-import java.util.HashMap;
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -16,12 +11,22 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.config.Config;
+import com.openjiuwen.core.session.config.SessionConfigAccess;
+import com.openjiuwen.core.session.state.AgentStateCollection;
+import com.openjiuwen.core.session.state.SessionStateAccess;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Tests {@link InMemoryCheckpointerProvider} configuration parsing: max-sessions,
  * ttl-seconds, default-instance fallback, and string-typed values.
  */
 class InMemoryCheckpointerProviderConfTest {
-
     @Test
     void emptyConfReturnsSharedDefaultInstance() {
         InMemoryCheckpointerProvider provider = new InMemoryCheckpointerProvider();
@@ -77,22 +82,21 @@ class InMemoryCheckpointerProviderConfTest {
     /**
      * Minimal agent-flavoured session stub for provider-level tests.
      */
-    private static final class ConfTestSession extends com.openjiuwen.core.session.BaseSession {
+    private static final class ConfTestSession extends BaseSession {
         private final String sessionId;
-        private final com.openjiuwen.core.session.state.AgentStateCollection state =
-                new com.openjiuwen.core.session.state.AgentStateCollection();
+        private final AgentStateCollection state = new AgentStateCollection();
 
         ConfTestSession(String sessionId) {
             this.sessionId = sessionId;
         }
 
         @Override
-        public com.openjiuwen.core.session.config.SessionConfigAccess config() {
-            return new com.openjiuwen.core.session.config.Config();
+        public SessionConfigAccess config() {
+            return new Config();
         }
 
         @Override
-        public com.openjiuwen.core.session.state.SessionStateAccess state() {
+        public SessionStateAccess state() {
             return state;
         }
 
