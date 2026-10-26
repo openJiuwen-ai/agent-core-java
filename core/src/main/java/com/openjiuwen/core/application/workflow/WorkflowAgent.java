@@ -176,7 +176,14 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         // Always go through invokeController so INPUT_REQUIRED persists interrupted_tasks even when
         // no LLM model is configured (legacy super.stream -> WorkflowController.stream skips that).
         logLegacyModelParams();
-        InvocationResult invocation = invokeController(inputMap, session, streamModes);
+        AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
+        AgentSessionApi activeSession = createdSession == null ? session : createdSession;
+        InvocationResult invocation;
+        try {
+            invocation = invokeController(inputMap, activeSession, streamModes, createdSession);
+        } catch (RuntimeException failure) {
+            return activeSession.streamIterator(failure);
+        }
         recordContextMessages(inputMap, invocation.output(), invocation.session());
         List<Object> chunks = streamChunksView(invocation);
         return chunks.iterator();
@@ -488,22 +495,17 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
     }
 
     private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi session) {
-        return invokeController(inputMap, session, null);
+        AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
+        return invokeController(inputMap, createdSession == null ? session : createdSession, null, createdSession);
     }
 
-    private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi session,
-                                              List<StreamMode> streamModes) {
-        AgentSession createdSession = null;
-        AgentSessionApi activeSession = session;
-        if (activeSession == null) {
-            createdSession = createCompatibilitySession(inputMap);
-            activeSession = createdSession;
-        }
+    private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi activeSession,
+                                              List<StreamMode> streamModes, AgentSession createdSession) {
         activeSession.updateState(Map.of("__workflow_interaction_outputs__", new ArrayList<>()));
         Map<String, Object> submittedInteractions = submittedInteractionInputs(inputMap, activeSession);
         AgentSession captureSession = activeSession instanceof AgentSession agentSession ? agentSession : null;
-        Object result = getController() instanceof com.openjiuwen.core.application.workflow_agent.WorkflowController controller
-                && streamModes != null
+        Object result = getController() instanceof
+                com.openjiuwen.core.application.workflow_agent.WorkflowController controller && streamModes != null
                 ? controller.invoke(inputMap, activeSession, streamModes).toCompletableFuture().join()
                 : super.invoke(inputMap, activeSession).toCompletableFuture().join();
         ControllerOutput output = toControllerOutput(result);

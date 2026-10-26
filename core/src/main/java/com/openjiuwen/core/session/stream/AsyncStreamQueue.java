@@ -8,6 +8,8 @@ import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.events.LogEventType;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -162,6 +164,15 @@ public class AsyncStreamQueue {
 
     public void close() {
         close(DEFAULT_CLOSE_TIMEOUT_MS);
+    }
+
+    List<Object> drain() {
+        List<Object> items = new ArrayList<>();
+        streamQueue.drainTo(items);
+        for (int index = 0; index < items.size(); index++) {
+            taskDone();
+        }
+        return items;
     }
 
     public void close(long timeoutMs) {

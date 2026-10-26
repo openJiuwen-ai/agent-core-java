@@ -69,36 +69,34 @@ public class StreamWriterManager {
     }
 
     public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean needClose, Consumer<Object> consumer) {
-        boolean isFirstFrame = true;
-        while (true) {
-            Object data;
-            if (isFirstFrame) {
-                data = receiveOrThrow(firstFrameTimeoutMs, true);
-                isFirstFrame = false;
-            } else {
-                data = receiveOrThrow(timeoutMs, false);
-            }
-
-            if (StreamEmitter.END_FRAME.equals(data)) {
-                if (needClose) {
-                    // Close-drain timeout is bounded by the queue's own 5s default, not
-                    // the inter-frame wait: draining an empty queue must never inherit
-                    // the (much longer) frame-interval budget.
-                    streamEmitter.getStreamQueue().close(AsyncStreamQueue.DEFAULT_CLOSE_TIMEOUT_MS);
-                }
-                break;
-            }
-
-            logStreamData(data);
-            consumer.accept(data);
-        }
+        streamIterator(firstFrameTimeoutMs, timeoutMs, needClose).forEachRemaining(consumer);
     }
 
     public Iterator<Object> streamIterator() {
         return streamIterator(DEFAULT_FRAME_TIMEOUT, DEFAULT_FRAME_TIMEOUT, true);
     }
 
+    /**
+     * Drain a completed producer's buffered output before reporting its original failure.
+     * No terminal frame is enqueued: the bounded queue may already be full.
+     *
+     * @param failure original producer failure
+     * @return iterator that reports the failure once after buffered output
+     */
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        List<Object> buffered = streamEmitter.getStreamQueue().drain();
+        streamEmitter.getStreamQueue().close();
+        streamEmitter.close();
+        buffered.removeIf(StreamEmitter.END_FRAME::equals);
+        return streamIterator(DEFAULT_FRAME_TIMEOUT, DEFAULT_FRAME_TIMEOUT, false, buffered.iterator(), failure);
+    }
+
     public Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean needClose) {
+        return streamIterator(firstFrameTimeoutMs, timeoutMs, needClose, null, null);
+    }
+
+    private Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean needClose,
+                                            Iterator<Object> buffered, RuntimeException failure) {
         return new Iterator<>() {
             private boolean firstFrame = true;
             private boolean done;
@@ -112,16 +110,22 @@ public class StreamWriterManager {
                 if (nextItem != null) {
                     return true;
                 }
-                nextItem = receiveOrThrow(firstFrame ? firstFrameTimeoutMs : timeoutMs, firstFrame);
+                if (buffered == null) {
+                    nextItem = receiveOrThrow(firstFrame ? firstFrameTimeoutMs : timeoutMs, firstFrame);
+                } else {
+                    nextItem = buffered.hasNext() ? buffered.next() : StreamEmitter.END_FRAME;
+                }
                 firstFrame = false;
                 if (StreamEmitter.END_FRAME.equals(nextItem)) {
                     if (needClose) {
-                        // See streamOutput(): close-drain uses the queue's own 5s
-                        // default instead of inheriting the frame-interval timeout.
+                        // Draining an empty queue must not inherit the frame-interval timeout.
                         streamEmitter.getStreamQueue().close(AsyncStreamQueue.DEFAULT_CLOSE_TIMEOUT_MS);
                     }
                     done = true;
                     nextItem = null;
+                    if (failure != null) {
+                        throw failure;
+                    }
                     return false;
                 }
                 logStreamData(nextItem);
