@@ -13,6 +13,7 @@ import com.google.common.cache.RemovalNotification;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.InMemoryStore;
 import com.openjiuwen.core.graph.store.Store;
@@ -47,8 +48,11 @@ import java.util.function.LongSupplier;
  * combined TTL + capacity policy backed by a Guava {@link Cache}: entries not
  * written within the TTL (default 7 days, aligned with the Redis checkpointer's
  * {@code default_ttl}) are expired, and when the number of tracked sessions
- * exceeds the capacity limit (default 100) the least recently written sessions
- * are evicted first.</p>
+ * exceeds the capacity limit (default 1000) the least recently written sessions
+ * are evicted first. Sessions with an execution in progress (between
+ * {@code preAgentExecute} and {@code postAgentExecute}) are never evicted: the
+ * registry entry may be released, but their checkpoint state is kept until the
+ * execution finishes and re-registers the session.</p>
  *
  * <p>Eviction is lazy: Guava expires entries during cache maintenance that runs
  * on read and write activity, not on a background timer.</p>
@@ -62,7 +66,7 @@ public class InMemoryCheckpointer extends Checkpointer {
     static final long DEFAULT_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000;
 
     /** Default maximum number of tracked sessions before least-recently-written eviction. */
-    static final int DEFAULT_MAX_SESSIONS = 100;
+    static final int DEFAULT_MAX_SESSIONS = 1000;
 
     private final Map<String, AgentStorage> agentStores = new ConcurrentHashMap<>();
     private final Map<String, AgentTeamStorage> agentTeamStores = new ConcurrentHashMap<>();
@@ -74,6 +78,7 @@ public class InMemoryCheckpointer extends Checkpointer {
     private final int maxSessions;
     private final LongSupplier clock;
     private final Cache<String, Boolean> sessionRegistry;
+    private final Set<String> inFlightSessions = ConcurrentHashMap.newKeySet();
 
     public InMemoryCheckpointer() {
         this(DEFAULT_TTL_MILLIS, DEFAULT_MAX_SESSIONS, System::currentTimeMillis);
@@ -124,6 +129,7 @@ public class InMemoryCheckpointer extends Checkpointer {
     @Override
     public void preAgentExecute(BaseSession session, Object inputs) {
         String sessionId = tenantAwareSessionId(session.sessionId());
+        inFlightSessions.add(sessionId);
         AgentStorage agentStorage = agentStores.computeIfAbsent(sessionId, ignored -> new AgentStorage());
         agentStorage.recover(session);
         touchSession(sessionId);
@@ -134,7 +140,9 @@ public class InMemoryCheckpointer extends Checkpointer {
 
     @Override
     public void interruptAgentExecute(BaseSession session) {
-        AgentStorage agentStorage = agentStores.get(tenantAwareSessionId(session.sessionId()));
+        String sessionId = tenantAwareSessionId(session.sessionId());
+        inFlightSessions.remove(sessionId);
+        AgentStorage agentStorage = agentStores.get(sessionId);
         if (agentStorage == null) {
             throw ErrorHelper.buildError(
                     StatusCode.CHECKPOINTER_INTERRUPT_AGENT_ERROR,
@@ -146,13 +154,15 @@ public class InMemoryCheckpointer extends Checkpointer {
                     "agent store not found"
             );
         }
-        touchSession(tenantAwareSessionId(session.sessionId()));
+        touchSession(sessionId);
         agentStorage.save(session);
     }
 
     @Override
     public void postAgentExecute(BaseSession session) {
-        AgentStorage agentStorage = agentStores.get(tenantAwareSessionId(session.sessionId()));
+        String sessionId = tenantAwareSessionId(session.sessionId());
+        inFlightSessions.remove(sessionId);
+        AgentStorage agentStorage = agentStores.get(sessionId);
         if (agentStorage == null) {
             throw ErrorHelper.buildError(
                     StatusCode.CHECKPOINTER_POST_AGENT_EXECUTION_ERROR,
@@ -164,13 +174,14 @@ public class InMemoryCheckpointer extends Checkpointer {
                     "agent store not found"
             );
         }
-        touchSession(tenantAwareSessionId(session.sessionId()));
+        touchSession(sessionId);
         agentStorage.save(session);
     }
 
     @Override
     public void preAgentTeamExecute(BaseSession session, Object inputs) {
         String sessionId = tenantAwareSessionId(session.sessionId());
+        inFlightSessions.add(sessionId);
         AgentTeamStorage teamStorage = agentTeamStores.computeIfAbsent(sessionId, ignored -> new AgentTeamStorage());
         teamStorage.recover(session);
         touchSession(sessionId);
@@ -181,7 +192,9 @@ public class InMemoryCheckpointer extends Checkpointer {
 
     @Override
     public void postAgentTeamExecute(BaseSession session) {
-        AgentTeamStorage teamStorage = agentTeamStores.get(tenantAwareSessionId(session.sessionId()));
+        String sessionId = tenantAwareSessionId(session.sessionId());
+        inFlightSessions.remove(sessionId);
+        AgentTeamStorage teamStorage = agentTeamStores.get(sessionId);
         if (teamStorage == null) {
             throw ErrorHelper.buildError(
                     StatusCode.CHECKPOINTER_POST_AGENT_EXECUTION_ERROR,
@@ -193,7 +206,7 @@ public class InMemoryCheckpointer extends Checkpointer {
                     "agent team store not found"
             );
         }
-        touchSession(tenantAwareSessionId(session.sessionId()));
+        touchSession(sessionId);
         teamStorage.save(session);
     }
 
@@ -210,6 +223,7 @@ public class InMemoryCheckpointer extends Checkpointer {
     @Override
     public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
         String sessionId = tenantAwareSessionId(session.sessionId());
+        inFlightSessions.remove(sessionId);
         String workflowId = Checkpointer.workflowId(session);
         WorkflowStorage workflowStorage = workflowStores.get(sessionId);
         if (exception != null) {
@@ -297,6 +311,7 @@ public class InMemoryCheckpointer extends Checkpointer {
             }
             return;
         }
+        inFlightSessions.remove(tid);
         unregisterSession(tid);
 
         Set<String> workflowIds = sessionToWorkflowIds.get(tid);
@@ -324,6 +339,7 @@ public class InMemoryCheckpointer extends Checkpointer {
     private void prepareWorkflowExecute(BaseSession session, InteractiveInput inputs) {
         String sessionId = tenantAwareSessionId(session.sessionId());
         String workflowId = Checkpointer.workflowId(session);
+        inFlightSessions.add(sessionId);
         WorkflowStorage workflowStorage = workflowStores.computeIfAbsent(sessionId, ignored -> new WorkflowStorage());
         sessionToWorkflowIds.computeIfAbsent(sessionId, ignored -> ConcurrentHashMap.newKeySet());
         touchSession(sessionId);
@@ -354,6 +370,7 @@ public class InMemoryCheckpointer extends Checkpointer {
 
     private void saveWorkflowCheckpoint(String sessionId, String workflowId, BaseSession session) {
         touchSession(sessionId);
+        inFlightSessions.remove(sessionId);
         WorkflowStorage workflowStorage = Objects.requireNonNull(workflowStores.get(sessionId), "workflowStorage");
         workflowStorage.save(session);
         sessionToWorkflowIds.computeIfAbsent(sessionId, ignored -> ConcurrentHashMap.newKeySet()).add(workflowId);
@@ -400,9 +417,18 @@ public class InMemoryCheckpointer extends Checkpointer {
     /**
      * Remove all checkpoint state for a session evicted by the TTL or capacity policy.
      *
+     * <p>Sessions with an execution in progress are skipped: their registry entry has already
+     * been released by the Guava cache, but the checkpoint state is kept so the running
+     * execution can complete and re-register the session via the next write.</p>
+     *
      * @param tid tenant-aware session id
      */
     private void evictSession(String tid) {
+        if (inFlightSessions.contains(tid)) {
+            Loggers.SESSION.warning(
+                    "In-memory checkpointer skipped evicting in-flight session: session_id={}", tid);
+            return;
+        }
         sessionToWorkflowIds.remove(tid);
         graphStore.delete(tid, null).toCompletableFuture().join();
         String rawSessionId = stripTenantPrefix(tid);
