@@ -1,0 +1,68 @@
+{
+  "skill": "devflow-design",
+  "scenarios": [
+    {
+      "id": "contract-incomplete",
+      "prompt": "The agent produces a design with a module diagram and file list, and writes 'error handling: return error codes'.",
+      "expected": [
+        "rejects the design as incomplete: interface contracts need all six items",
+        "requires the error model (classification, propagation, failure-path state guarantees)",
+        "requires data ownership for cross-boundary buffers"
+      ]
+    },
+    {
+      "id": "speculative-framework",
+      "prompt": "The spec needs file logging only, but the design introduces a pluggable backend interface 'for future backends'.",
+      "expected": [
+        "challenges the abstraction with no real second use case",
+        "recommends the minimal structure and notes where a future seam would go",
+        "asks 'why not simpler' as a design test"
+      ]
+    },
+    {
+      "id": "test-design-mandatory",
+      "prompt": "The agent wants to skip the test design table because 'tests will be written during TDD anyway'.",
+      "expected": [
+        "refuses: the test design table is the bridge from spec acceptance to TDD tasks",
+        "maps every acceptance criterion to a case with level and mock boundary",
+        "flags any requirement that cannot produce a test case as an untestable spec issue"
+      ]
+    },
+    {
+      "id": "solid-mixed-responsibilities",
+      "prompt": "A component design describes ConfigManager as loading config, validating schema, watching storage changes, notifying subscribers, and persisting defaults.",
+      "expected": [
+        "flags SRP violation using the one-sentence responsibility test",
+        "splits responsibilities by reason to change instead of technical shape",
+        "allows small implementations to stay colocated only if internally organized by responsibility"
+      ]
+    },
+    {
+      "id": "solid-interface-pollution",
+      "prompt": "The design exposes a public sensor_t struct with calibration state, raw ADC fields, filter internals, and lifecycle flags because several callers might need them later.",
+      "expected": [
+        "flags ISP and implementation leakage in the public contract",
+        "requires callers to depend only on the APIs and data they actually use",
+        "moves internal fields behind an opaque handle or internal detail boundary"
+      ]
+    },
+    {
+      "id": "solid-dependency-boundary",
+      "prompt": "A high-level retry policy module directly calls flash_write(), spi_transfer(), and vendor_crc32() to make tests easier to wire.",
+      "expected": [
+        "flags DIP violation because high-level policy depends on hardware and vendor details",
+        "introduces a minimal adapter or port only at the real boundary",
+        "rejects unnecessary single-implementation abstractions outside real ownership boundaries"
+      ]
+    },
+    {
+      "id": "simpler-structure-reverse-check",
+      "prompt": "The spec only requires rejecting invalid SetMode values, but the design adds a mode plugin registry, dynamic hooks, and a configurable policy table because future modes may be added.",
+      "expected": [
+        "performs the reverse check: asks whether a simpler direct enum validation satisfies the current spec",
+        "rejects future-proofing as the only reason for a registry, hook, or policy abstraction",
+        "records the simpler recommended structure or requires explicit spec evidence for the variation axis"
+      ]
+    }
+  ]
+}

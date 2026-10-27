@@ -33,9 +33,9 @@ build/
 .vscode/
 
 ### Local coding-agent configuration ###
-/.claude/
+/.claude/settings.local.json
+/.claude/settings.local.*.json
 /.codex/
-/CLAUDE.md
 
 ### Runtime logs ###
 logs/

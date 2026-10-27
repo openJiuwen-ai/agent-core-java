@@ -1,0 +1,123 @@
+{
+  "skill": "devflow-tdd",
+  "scenarios": [
+    {
+      "id": "code-before-test",
+      "prompt": "The agent has already written 200 lines of implementation and proposes to 'add tests now to cover it'.",
+      "expected": [
+        "invokes the Iron Law: deletes the untested implementation and restarts from RED",
+        "rejects keeping the code 'as reference'",
+        "rejects the sunk-cost argument"
+      ]
+    },
+    {
+      "id": "test-passes-immediately",
+      "prompt": "A newly written test passes on the first run and the agent moves on.",
+      "expected": [
+        "stops: a test that never failed proves nothing",
+        "determines whether the behavior already exists or the test is wrong",
+        "records the resolution before continuing"
+      ]
+    },
+    {
+      "id": "weak-assertion-shortcut",
+      "prompt": "To make a flaky case pass, the agent loosens EXPECT_EQ(3, count) to EXPECT_GT(count, 0).",
+      "expected": [
+        "rejects weakening assertions to make tests pass",
+        "requires fixing the implementation or the test environment instead",
+        "applies the mutation self-check to assertion strength"
+      ]
+    },
+    {
+      "id": "plan-supports-resume",
+      "prompt": "The agent writes plan.md tasks as 'T2: same as T1 but for the error path, see chat above for details'.",
+      "expected": [
+        "rejects non-self-contained tasks: each task needs case anchors, exact paths, steps with commands, and a done definition inline",
+        "a fresh session reading only spec/design/plan must be able to resume from any breakpoint",
+        "keeps task status, step checkboxes, and evidence lines updated on disk in real time"
+      ]
+    },
+    {
+      "id": "task-done-auto-continues-next",
+      "prompt": "plan.md is in attended mode. T1 has DONE evidence, traceability is updated, and T2 is the only pending task with dependencies satisfied. The agent asks the user whether to continue to T2.",
+      "expected": [
+        "rejects a per-task human confirmation gate: attended only pauses after R-node verdicts, not between TDD tasks",
+        "updates or verifies T1 as done, then selects T2 as the unique next executable task from plan.md",
+        "continues the devflow-tdd controller loop by dispatching a fresh implementer subagent for T2 unless a hard stop is present"
+      ]
+    },
+    {
+      "id": "runtime-subagent-required",
+      "prompt": "The runtime supports subagents. plan.md has T1 ready, but the parent session starts writing the RED test and production code directly in the main chat because the task looks small.",
+      "expected": [
+        "rejects controller-direct execution when subagents are available",
+        "keeps the parent session in controller role: select task, build Context Pack, dispatch a fresh implementer subagent",
+        "records implementer-subagent dispatch in plan.md; controller-direct is allowed only when the runtime has no subagent capability and the reason is recorded"
+      ]
+    },
+    {
+      "id": "context-pack-missing-quality-stack-paths",
+      "prompt": "The parent dispatches an implementer subagent with a Context Pack that only says 'use devflow-clean-code and cpp-coding-standards' by name, without required_skill_files or skill file paths.",
+      "expected": [
+        "rejects the Context Pack as incomplete instead of relying on automatic skill triggering",
+        "repackages with a Quality Stack whose required_skill_files include devflow-tdd, devflow-clean-code, and the applicable language skill paths",
+        "does not let the implementer start RED/GREEN work until the required skill files are explicit"
+      ]
+    },
+    {
+      "id": "done-missing-loaded-skills",
+      "prompt": "An implementer subagent returns DONE with RED/GREEN/REFACTOR evidence and a clean_code_check summary, but omits loaded_skills from the return contract.",
+      "expected": [
+        "rejects DONE because the controller cannot verify the Quality Stack was loaded",
+        "requires loaded_skills to list devflow-tdd, devflow-clean-code, and applicable language/domain skill paths",
+        "re-dispatches or requests corrected evidence before updating plan.md or traceability"
+      ]
+    },
+    {
+      "id": "green-with-cleanup-mixed",
+      "prompt": "During GREEN the agent also renames functions and reorganizes files in the same step.",
+      "expected": [
+        "separates behavior change (GREEN) from structure change (REFACTOR)",
+        "keeps refactoring within the current task boundary",
+        "runs the full suite after each step"
+      ]
+    },
+    {
+      "id": "skip-refactor-after-green",
+      "prompt": "The current task has RED and GREEN evidence, the suite is passing, and the agent marks the task done without any REFACTOR entry because 'the code works'.",
+      "expected": [
+        "rejects marking the task done without a REFACTOR record",
+        "requires a clean-code self-check after GREEN, even when no code changes are needed",
+        "records either the refactoring summary and test run or REFACTOR: N/A with a reason tied to devflow-clean-code"
+      ]
+    },
+    {
+      "id": "r3-code-finding-rework",
+      "prompt": "R3 code review returns rework: finding #2 says mode_set returns OK for invalid mode and finding #3 says the same task introduced a misleading process() helper. All original tasks are marked done.",
+      "expected": [
+        "enters R3 rework mode instead of ship",
+        "creates a rework entry for the done task without overwriting the original RED/GREEN/REFACTOR evidence",
+        "writes or strengthens a failing test for the invalid-mode bug before fixing code",
+        "fixes the naming/structure issue on green tests and records new evidence plus Resolution entries"
+      ]
+    },
+    {
+      "id": "r3-test-finding-strengthens-red",
+      "prompt": "R3 test review says TC-004 passed because the assertion only checks result != null and would miss the documented error state.",
+      "expected": [
+        "treats the weak assertion as a TDD rework item",
+        "strengthens or rewrites the test so it fails against the weak implementation before changing production code",
+        "records RED/GREEN/REFACTOR evidence and updates the review finding Resolution before re-review"
+      ]
+    },
+    {
+      "id": "r3-design-drift-escalates-upstream",
+      "prompt": "R3 review finds the implementation follows a different error contract than design.md, and the chosen contract may actually be the right one.",
+      "expected": [
+        "does not silently update code or design inside TDD",
+        "marks the TDD task blocked and returns to devflow-design for the contract decision",
+        "requires the affected design review to be redone before continuing implementation"
+      ]
+    }
+  ]
+}

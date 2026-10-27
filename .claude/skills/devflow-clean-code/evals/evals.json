@@ -1,0 +1,149 @@
+{
+  "skill": "devflow-clean-code",
+  "scenarios": [
+    {
+      "id": "reject-scope-creep",
+      "prompt": "While implementing one task, the agent also rewrites neighboring helpers and renames unrelated files in the same diff.",
+      "expected": [
+        "flags scope creep: one diff, one purpose",
+        "requires unrelated cleanup to be logged as follow-up instead of done inline",
+        "keeps behavior changes and refactoring in separate commits"
+      ]
+    },
+    {
+      "id": "naming-that-lies",
+      "prompt": "A function named get_config() also performs a network request and writes a cache file.",
+      "expected": [
+        "identifies the lying name as a top-priority fix",
+        "proposes renaming or splitting the function",
+        "does not accept a comment as a substitute for renaming"
+      ]
+    },
+    {
+      "id": "premature-abstraction",
+      "prompt": "The agent wants to add a plugin registry and config options because 'we might need more backends later'.",
+      "expected": [
+        "rejects speculative abstraction without a real second use case",
+        "cites the rule-of-three / single-implementation-interface guidance",
+        "recommends the simplest structure satisfying the current spec"
+      ]
+    },
+    {
+      "id": "solid-god-object",
+      "prompt": "A diff adds DeviceController with methods for parsing commands, talking to SPI, updating persistent config, scheduling retries, and broadcasting UI events.",
+      "expected": [
+        "flags mixed responsibilities / god object rather than accepting a broad controller name",
+        "recommends extracting or moving functions by reason to change",
+        "keeps any cleanup scoped to the touched task or asks to return to design for module changes"
+      ]
+    },
+    {
+      "id": "solid-large-interface",
+      "prompt": "A public header exposes a struct with internal buffers and ten functions, but the new caller only needs to read the current value.",
+      "expected": [
+        "flags interface pollution and implementation leakage",
+        "recommends a smaller API or opaque handle for the caller's actual need",
+        "does not expose internal fields as a shortcut around accessors"
+      ]
+    },
+    {
+      "id": "solid-high-level-depends-on-low-level",
+      "prompt": "The high-level retry workflow directly calls flash_write() and vendor_spi_transfer() because mocking a storage adapter feels like extra work.",
+      "expected": [
+        "flags the dependency direction problem at a real hardware/vendor boundary",
+        "suggests a minimal adapter function or port if the boundary is in scope",
+        "does not create a generic framework when a concrete dependency is simpler and acceptable"
+      ]
+    },
+    {
+      "id": "implementer-done-without-clean-code-check",
+      "prompt": "A devflow implementer returns DONE with RED and GREEN evidence, but no REFACTOR entry and no clean_code_check summary.",
+      "expected": [
+        "rejects DONE because clean-code inspection is part of task completion",
+        "requires REFACTOR evidence or N/A with a concrete no-issue rationale",
+        "requires a self-check covering names, function shape, control flow, error paths, comments/dead code, and scope discipline"
+      ]
+    },
+    {
+      "id": "implementer-loaded-language-only",
+      "prompt": "A devflow implementer reports loaded_skills containing devflow-tdd and cpp-coding-standards, then returns DONE with REFACTOR: N/A because 'the C++ standard was checked', but devflow-clean-code is absent.",
+      "expected": [
+        "rejects DONE because language coding-standards do not replace devflow-clean-code",
+        "requires loaded_skills to include devflow-clean-code before accepting clean_code_check",
+        "requires REFACTOR: N/A to cite concrete clean-code checks, not only language-specific rules"
+      ]
+    },
+    {
+      "id": "refactor-na-without-specific-clean-code-rationale",
+      "prompt": "A task is green and the implementer returns REFACTOR: N/A with clean_code_check: 'looks clean' and no details about names, function shape, control flow, error paths, comments/dead code, or scope discipline.",
+      "expected": [
+        "rejects vague clean-code self-checks as insufficient evidence",
+        "requires a brief but specific conclusion across the devflow-clean-code checklist dimensions",
+        "keeps the task open until REFACTOR evidence or a concrete N/A rationale is present"
+      ]
+    },
+    {
+      "id": "r3-clean-code-finding-remediation",
+      "prompt": "R3 code review reports an important finding: a function added in task T4 has a misleading name and hides a file write side effect. The reviewer suggests renaming or splitting it. The author asks whether the reviewer should just fix it directly.",
+      "expected": [
+        "keeps the reviewer in review-only mode and does not fix code in the review context",
+        "routes the finding back to devflow-tdd as an R3 rework item with the finding number and target files",
+        "requires a green-baseline refactor, Resolution backfill, and R3 re-review before ship"
+      ]
+    },
+    {
+      "id": "pure-refactor-baseline-and-small-steps",
+      "prompt": "The user asks for a behavior-preserving cleanup of a module with long functions and duplicated validation. There is no new feature spec, but tests currently pass.",
+      "expected": [
+        "treats this as pure refactor: no spec/design expansion, but tests-first baseline and R3 still apply",
+        "requires a full passing baseline before changing structure",
+        "keeps refactors small and behavior-preserving, with tests rerun after each logical batch"
+      ]
+    },
+    {
+      "id": "test-code-over-abstracted-helper",
+      "prompt": "A test suite introduces GivenValidDeviceReadyForNominalTransferWithRetryBudget() which calls four helper layers; the actual test body only says Act() and AssertOk(). The tests pass.",
+      "expected": [
+        "flags that test code is no longer readable as a behavior specification",
+        "prefers visible Given/When/Then over excessive DRY in tests",
+        "routes the fix to devflow-tdd test refactor while preserving behavior and test pass status"
+      ]
+    },
+    {
+      "id": "performance-hot-path-with-evidence",
+      "prompt": "A new request handler loops through 500 devices and calls device_read_status() once per device over IPC. The design says the handler is on a 100 ms hot path and a batch API already exists.",
+      "expected": [
+        "treats the N+1 IPC pattern as a performance and maintainability issue, not optional micro-optimization",
+        "suggests the existing batch API or another simple structure that better expresses the need",
+        "requires verification with tests and, where available, performance evidence or a clear N/A reason"
+      ]
+    },
+    {
+      "id": "performance-without-evidence-no-micro-optimization",
+      "prompt": "The agent wants to replace a clear three-line validation function with bit tricks and a lookup cache because it might be faster, but there is no hot-path evidence or benchmark.",
+      "expected": [
+        "rejects the change as unsupported micro-optimization that reduces readability",
+        "keeps the clear implementation unless measurement or resource constraints justify complexity",
+        "allows registering a performance observation instead of blocking the task"
+      ]
+    },
+    {
+      "id": "ship-dod-clean-code-audit-missing",
+      "prompt": "All tests pass and R3 review says passed, but plan.md has no clean-code constraint audit and the implementer never recorded a concrete clean_code_check for the final task.",
+      "expected": [
+        "does not allow devflow-ship to close on tests and verdict alone",
+        "requires clean-code audit evidence or a documented-debt/critical-open/N/A status with reasons",
+        "points back to the missing REFACTOR or clean_code_check evidence rather than inventing a summary"
+      ]
+    },
+    {
+      "id": "severity-calibration-style-vs-blocking",
+      "prompt": "A reviewer finds two issues: an optional local variable name could be clearer, and a new function named validate_config() writes persistent state and swallows write failures. The author wants both marked minor style.",
+      "expected": [
+        "keeps the local naming preference as minor if it does not mislead behavior",
+        "classifies the lying name plus swallowed persistence failure as blocking/critical or important according to impact",
+        "explains that severity is based on reader risk and failure semantics, not author preference"
+      ]
+    }
+  ]
+}

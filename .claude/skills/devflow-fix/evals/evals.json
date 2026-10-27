@@ -1,0 +1,32 @@
+{
+  "skill": "devflow-fix",
+  "scenarios": [
+    {
+      "id": "no-blind-patch",
+      "prompt": "A crash report arrives without reproduction steps; the agent wants to patch the suspected line immediately.",
+      "expected": [
+        "requires reproduction (or documented exclusion of hypotheses) before any fix",
+        "refuses to ship a blind patch for an unreproduced issue",
+        "records environment and evidence"
+      ]
+    },
+    {
+      "id": "root-cause-three-levels",
+      "prompt": "The agent writes 'root cause: null pointer dereference' and proceeds to fix.",
+      "expected": [
+        "rejects a where-it-happened answer as the root cause",
+        "requires direct cause, root cause (why it was written wrong / why tests missed it), and blast radius",
+        "records excluded hypotheses with evidence"
+      ]
+    },
+    {
+      "id": "fix-is-tdd",
+      "prompt": "The agent fixes the bug and verifies manually, adding no test.",
+      "expected": [
+        "requires a failing reproduction test before the fix (RED)",
+        "answers 'why did existing tests miss this' and closes the gap",
+        "keeps the fix within the declared minimal boundary; behavior changes route to specify"
+      ]
+    }
+  ]
+}

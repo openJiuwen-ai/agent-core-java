@@ -1,0 +1,68 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+package com.openjiuwen.harness.tools;
+
+// =================================================================
+// TEMPLATE NOTES:
+//   1. Replace {{ToolName}} with your tool class name.
+//   2. Replace {{Logger}} (Loggers.TOOL, Loggers.AGENT, etc.) to match your subsystem.
+//   3. Tools are plain POJOs — no framework annotations. Registration
+//      happens via ToolCard metadata and Runner.resourceMgr().
+// =================================================================
+
+import com.openjiuwen.core.common.logging.Loggers;
+
+import java.util.Map;
+
+/**
+ * Description of what this tool does and when it is invoked.
+ *
+ * <p>Tools are plain POJOs — no framework annotations. Registration
+ * happens via {@code ToolCard} metadata and {@code Runner.resourceMgr()}.
+ */
+public class {{ToolName}} {
+
+    private final String permissionMode;
+
+    public {{ToolName}}() {
+        this("auto");
+    }
+
+    public {{ToolName}}(String permissionMode) {
+        this.permissionMode = permissionMode != null ? permissionMode : "auto";
+    }
+
+    /**
+     * invoke.
+     *
+     * @param command command
+     * @param workdir workdir
+     * @return the result
+     */
+    public ToolOutput invoke(String command, String workdir) {
+        if (command == null || command.isBlank()) {
+            return ToolOutput.builder()
+                    .success(false)
+                    .error("command cannot be empty")
+                    .build();
+        }
+        try {
+            // Business logic here
+            return ToolOutput.builder()
+                    .success(true)
+                    .data(Map.of("status", "done"))
+                    .build();
+        } catch (Exception ex) {
+            Loggers.{{Logger}}.error("{{ToolName}} error: " + ex.getMessage());
+            return ToolOutput.builder()
+                    .success(false)
+                    .error(ex.getMessage())
+                    .build();
+        }
+    }
+
+    /** Structured result for callers that need typed access. */
+    public record InjectionCheck(boolean isBlocked, String reason) {
+    }
+}

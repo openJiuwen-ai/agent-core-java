@@ -1,0 +1,18 @@
+# Dependencies: Dev-Test Parallel Team Dependency Configuration
+
+skills: []  # This team does not depend on external skills, pure code generation
+
+tools:
+  - name: python3
+    source: local
+    required: true
+    purpose: "Run functional code and test code"
+    roles:
+      - developer
+      - tester
+
+# Global dependency notes
+global_dependencies:
+  description: "This team only needs python3 to run, no external skill dependencies"
+  fallback_mode: "If python3 is unavailable, the team cannot run (required: true)"
+  community_enrichment: "Optional: find code review, formatting, etc. skills from the community to enhance leader's consolidation capability"
