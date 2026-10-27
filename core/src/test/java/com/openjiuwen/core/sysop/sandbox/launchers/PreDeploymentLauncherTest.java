@@ -11,6 +11,8 @@ import com.openjiuwen.core.sysop.config.PreDeployLauncherConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -22,13 +24,28 @@ import java.util.concurrent.ExecutionException;
 class PreDeploymentLauncherTest {
 
     @Test
-    void launchReturnsConfiguredBaseUrl() throws ExecutionException, InterruptedException {
+    void launchDefaultsToAioWithoutUsingIsolationKey() throws ExecutionException, InterruptedException {
         PreDeploymentLauncher launcher = new PreDeploymentLauncher();
         PreDeployLauncherConfig config = new PreDeployLauncherConfig("https://sandbox.example");
+        assertThat(config.getSandboxType()).isEqualTo("aio");
 
         LaunchedSandbox sandbox = launcher.launch(config, 30, "ignored").get();
 
         assertThat(sandbox.baseUrl()).isEqualTo("https://sandbox.example");
+        assertThat(sandbox.sandboxId()).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"aio", "jiuwenbox"})
+    void launchDoesNotUseIsolationKeyForExplicitRemoteType(String sandboxType) {
+        SandboxLauncherConfig config = SandboxLauncherConfig.builder()
+                .launcherType("pre_deploy")
+                .sandboxType(sandboxType)
+                .baseUrl("https://sandbox.example")
+                .build();
+
+        LaunchedSandbox sandbox = new PreDeploymentLauncher().launch(config, 30, "session:internal:key").join();
+
         assertThat(sandbox.sandboxId()).isNull();
     }
 

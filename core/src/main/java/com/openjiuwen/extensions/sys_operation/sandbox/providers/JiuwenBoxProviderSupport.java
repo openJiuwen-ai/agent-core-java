@@ -15,6 +15,7 @@ import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.result.FileSystemItem;
 import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxLifecycleProvider;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -31,10 +32,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
-import java.util.Collection;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -544,7 +544,7 @@ final class JiuwenBoxProviderSupport {
             return headers instanceof Map<?, ?> map ? (Map<String, String>) map : Map.of();
         }
 
-        Map<String, Object> launcherExtraParams(boolean create) {
+        Map<String, Object> launcherExtraParams() {
             SandboxLauncherConfig launcherConfig = config == null ? null : config.getLauncherConfig();
             if (launcherConfig == null) {
                 return Map.of();
@@ -553,16 +553,11 @@ final class JiuwenBoxProviderSupport {
             if (extraParams != null) {
                 return extraParams;
             }
-            if (!create) {
-                return Map.of();
-            }
-            Map<String, Object> created = new LinkedHashMap<>();
-            launcherConfig.setExtraParams(created);
-            return created;
+            return Map.of();
         }
 
         Map<String, Object> sandboxCreateOptionsFromLauncherExtraParams() {
-            Map<String, Object> extraParams = launcherExtraParams(false);
+            Map<String, Object> extraParams = launcherExtraParams();
             Map<String, Object> options = new LinkedHashMap<>();
             Object policy = extraParams.get("policy");
             if (policy instanceof Map<?, ?> rawMap) {
@@ -581,7 +576,7 @@ final class JiuwenBoxProviderSupport {
             String sharedKey = buildSharedScopeKey(baseUrl(), sandboxCreateOptionsFromLauncherExtraParams());
             Object isolationKey = config == null || config.getParams() == null
                     ? null
-                    : config.getParams().get("_ojw_sandbox_isolation_key");
+                    : config.getParams().get(SandboxLifecycleProvider.ISOLATION_KEY_PARAM);
             if (isolationKey == null || String.valueOf(isolationKey).isBlank()) {
                 return sharedKey;
             }
@@ -604,7 +599,7 @@ final class JiuwenBoxProviderSupport {
             try {
                 getClient().deleteSandbox(physicalSandboxId);
             } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
+                // End this asynchronous operation and propagate interruption through its future.
                 throw new CompletionException("Interrupted while deleting JiuwenBox sandbox", exception);
             } catch (IOException exception) {
                 throw new CompletionException("Failed to delete JiuwenBox sandbox", exception);
@@ -615,14 +610,14 @@ final class JiuwenBoxProviderSupport {
         }
 
         String sandboxIdFromLauncherExtraParams() {
-            Object value = launcherExtraParams(false).get("sandbox_id");
+            Object value = launcherExtraParams().get("sandbox_id");
             return value instanceof String text && !text.isBlank() ? text : null;
         }
 
         TimeoutConfig idleTimeoutFromLauncher() {
             SandboxLauncherConfig launcherConfig = config == null ? null : config.getLauncherConfig();
             Integer idleTimeout = launcherConfig == null ? null : launcherConfig.getIdleTtlSeconds();
-            Object rawCheck = launcherExtraParams(false).get("idle_check_interval");
+            Object rawCheck = launcherExtraParams().get("idle_check_interval");
             Integer idleCheckInterval = rawCheck instanceof Boolean
                     ? null
                     : rawCheck instanceof Number number ? number.intValue() : null;
@@ -675,7 +670,7 @@ final class JiuwenBoxProviderSupport {
                     uploadPreserveFilesBestEffort(
                             getClient(),
                             sandboxId,
-                            launcherExtraParams(false).get("preserve_files_upload"));
+                            launcherExtraParams().get("preserve_files_upload"));
                 }
             } else {
                 synchronized (SHARED_LOCK) {
@@ -714,14 +709,14 @@ final class JiuwenBoxProviderSupport {
                 throw new IllegalArgumentException("jiuwenbox provider requires endpoint.base_url");
             }
             Map<String, Object> createOptions = sandboxCreateOptionsFromLauncherExtraParams();
-            Object preserveFilesUpload = launcherExtraParams(false).get("preserve_files_upload");
+            Object preserveFilesUpload = launcherExtraParams().get("preserve_files_upload");
             synchronized (RECREATE_LOCK) {
                 String current = sandboxIdFromLauncherExtraParams();
                 String cached;
                 synchronized (SHARED_LOCK) {
                     cached = SHARED_SANDBOX_IDS.get(sharedScopeKey());
                 }
-                for (String candidate : List.of(current, cached)) {
+                for (String candidate : Arrays.asList(current, cached)) {
                     if (candidate != null && !candidate.isBlank() && !Objects.equals(candidate, staleSandboxId)) {
                         sandboxId = candidate;
                         publishSandboxId();
@@ -747,7 +742,7 @@ final class JiuwenBoxProviderSupport {
             if (config == null || config.getParams() == null || sandboxId == null || sandboxId.isBlank()) {
                 return;
             }
-            Object callback = config.getParams().get("_ojw_sandbox_id_callback");
+            Object callback = config.getParams().get(SandboxLifecycleProvider.SANDBOX_ID_CALLBACK_PARAM);
             if (callback instanceof Consumer<?> consumer) {
                 ((Consumer<String>) consumer).accept(sandboxId);
             }

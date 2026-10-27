@@ -15,15 +15,15 @@ import com.openjiuwen.core.sysop.config.SandboxCreateRequest;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.sandbox.SandboxRegistry;
+import com.openjiuwen.core.sysop.sandbox.launchers.LaunchedSandbox;
+import com.openjiuwen.core.sysop.sandbox.launchers.PreDeploymentLauncher;
+import com.openjiuwen.core.sysop.sandbox.launchers.SandboxLauncher;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioCodeProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioFsProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioShellProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxCodeProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxFsProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxShellProvider;
-import com.openjiuwen.core.sysop.sandbox.launchers.LaunchedSandbox;
-import com.openjiuwen.core.sysop.sandbox.launchers.PreDeploymentLauncher;
-import com.openjiuwen.core.sysop.sandbox.launchers.SandboxLauncher;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -32,7 +32,6 @@ import java.lang.reflect.Parameter;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,8 +49,6 @@ import java.util.function.Consumer;
  */
 public class SandboxGateway {
 
-    private static final String PROVIDER_ISOLATION_KEY = "_ojw_sandbox_isolation_key";
-    private static final String PROVIDER_SANDBOX_ID_CALLBACK = "_ojw_sandbox_id_callback";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final ObjectMapper HASH_MAPPER = new ObjectMapper()
@@ -65,6 +62,9 @@ public class SandboxGateway {
     private final Map<String, Object> providerCache = new ConcurrentHashMap<>();
 
     private final AbstractSandboxStore store;
+
+    // Guarded by store; acquisition waits until physical release has finished.
+    private final Map<String, CompletableFuture<Void>> pendingReleases = new LinkedHashMap<>();
 
     public SandboxGateway() {
         this(null, new InMemorySandboxStore());
@@ -127,9 +127,15 @@ public class SandboxGateway {
             String isolationKey,
             String opType) {
         String cacheKey = cacheKey(isolationKey, opType);
-        Object cached = providerCache.get(cacheKey);
-        if (cached != null) {
-            return CompletableFuture.completedFuture(cached);
+        synchronized (store) {
+            CompletableFuture<Void> pendingRelease = pendingReleases.get(isolationKey);
+            if (pendingRelease != null) {
+                return pendingRelease.thenCompose(unused -> getOrCreateProvider(config, isolationKey, opType));
+            }
+            Object cached = providerCache.get(cacheKey);
+            if (cached != null) {
+                return CompletableFuture.completedFuture(cached);
+            }
         }
         return getEndpoint(config, isolationKey).thenApply(endpoint -> {
             Object provider = SandboxRegistry.createProvider(
@@ -142,15 +148,15 @@ public class SandboxGateway {
         });
     }
 
-    void evictProviderCache(String isolationKey) {
+    private Map<String, Object> detachProviderCache(String isolationKey) {
         String prefix = String.valueOf(isolationKey) + ":";
-        List<String> keysToRemove = new ArrayList<>();
-        for (String key : providerCache.keySet()) {
-            if (key.startsWith(prefix)) {
-                keysToRemove.add(key);
+        Map<String, Object> removed = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : providerCache.entrySet()) {
+            if (entry.getKey().startsWith(prefix) && providerCache.remove(entry.getKey(), entry.getValue())) {
+                removed.put(entry.getKey(), entry.getValue());
             }
         }
-        keysToRemove.forEach(providerCache::remove);
+        return removed;
     }
 
     public CompletableFuture<GatewayResponse> getSandbox(SandboxCreateRequest request) {
@@ -160,33 +166,69 @@ public class SandboxGateway {
     }
 
     public CompletableFuture<GatewayResponse> releaseSandbox(String isolationKey, String onStop) {
-        Optional<SandboxRecord> record = store.get(isolationKey);
-        if (record.isEmpty()) {
-            evictProviderCache(isolationKey);
-            return CompletableFuture.completedFuture(errorResponse("Sandbox record not found", Boolean.FALSE));
+        SandboxRecord record;
+        Optional<SandboxLifecycleProvider> provider;
+        CompletableFuture<Void> completion = new CompletableFuture<>();
+        Map<String, Object> removedProviders;
+        synchronized (store) {
+            Optional<SandboxRecord> removed = detachRecordForRelease(isolationKey);
+            if (removed.isEmpty()) {
+                return CompletableFuture.completedFuture(errorResponse("Sandbox record not found", Boolean.FALSE));
+            }
+            record = removed.get();
+            provider = findLifecycleProvider(record.getSandboxId(), record.getBaseUrl());
+            pendingReleases.put(isolationKey, completion);
+            removedProviders = detachProviderCache(isolationKey);
         }
-        CompletableFuture<Void> releaseFuture;
-        if ("keep".equals(onStop)) {
-            releaseFuture = CompletableFuture.completedFuture(null);
-        } else if ("pause".equals(onStop)) {
-            releaseFuture = pauseSandbox(record.get());
-        } else {
-            releaseFuture = deleteSandbox(record.get());
-        }
+        CompletableFuture<Void> releaseFuture = CompletableFuture.completedFuture(null)
+                .thenCompose(unused -> releaseRecord(record, onStop, provider));
         return releaseFuture.handle((unused, error) -> {
+            finishRelease(isolationKey, record, removedProviders, onStop, error);
+            completion.complete(null);
             if (error != null) {
                 return errorResponse(rootCauseMessage(error), Boolean.FALSE);
             }
-            if ("pause".equals(onStop)) {
-                record.get().setStatus(SandboxStatus.PAUSED);
-                record.get().setLastUsedTs(currentEpochSeconds());
-                store.set(isolationKey, record.get());
-            } else {
-                store.hdel(isolationKey);
-            }
-            evictProviderCache(isolationKey);
             return successResponse(Boolean.TRUE);
-        });
+        }).copy();
+    }
+
+    // Called while holding store, together with provider detachment and release registration.
+    private Optional<SandboxRecord> detachRecordForRelease(String isolationKey) {
+        if (pendingReleases.containsKey(isolationKey)) {
+            return Optional.empty();
+        }
+        return store.hdel(isolationKey);
+    }
+
+    private void finishRelease(String isolationKey, SandboxRecord record, Map<String, Object> removedProviders,
+            String onStop, Throwable error) {
+        synchronized (store) {
+            if (error == null && "pause".equals(onStop)) {
+                record.setStatus(SandboxStatus.PAUSED);
+                record.setLastUsedTs(currentEpochSeconds());
+            }
+            if ((error != null || "pause".equals(onStop)) && store.get(isolationKey).isEmpty()) {
+                store.set(isolationKey, record);
+                if (error != null) {
+                    removedProviders.forEach(providerCache::putIfAbsent);
+                }
+            }
+            pendingReleases.remove(isolationKey);
+        }
+    }
+
+    private CompletableFuture<Void> releaseRecord(SandboxRecord record, String onStop,
+            Optional<SandboxLifecycleProvider> provider) {
+        if ("keep".equals(onStop)) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if ("pause".equals(onStop)) {
+            return pauseSandbox(record);
+        }
+        if (provider.isPresent() && record.getSandboxId() != null && !record.getSandboxId().isBlank()) {
+            return provider.get().deleteSandbox(record.getSandboxId());
+        }
+        return SandboxRegistry.createLauncher(record.getLauncherType()).delete(record.getSandboxId());
     }
 
     public CompletableFuture<Void> pauseSandbox(SandboxRecord record) {
@@ -217,7 +259,14 @@ public class SandboxGateway {
         String key = isolationKey;
         double now = currentEpochSeconds();
 
-        Optional<SandboxRecord> cachedRecord = store.get(key);
+        Optional<SandboxRecord> cachedRecord;
+        synchronized (store) {
+            CompletableFuture<Void> pendingRelease = pendingReleases.get(isolationKey);
+            if (pendingRelease != null) {
+                return pendingRelease.thenCompose(unused -> getEndpoint(config, isolationKey));
+            }
+            cachedRecord = store.get(key);
+        }
         if (cachedRecord.isPresent() && cachedRecord.get().getStatus() == SandboxStatus.RUNNING) {
             SandboxRecord record = cachedRecord.get();
             record.setLastUsedTs(now);
@@ -225,7 +274,7 @@ public class SandboxGateway {
                     new SandboxEndpoint(record.getBaseUrl(), record.getSandboxId()));
         }
 
-        SandboxRecord record = store.get(key).orElse(null);
+        SandboxRecord record = cachedRecord.orElse(null);
         if (record == null) {
             return createNewSandbox(key, now, config)
                     .thenApply(launched -> new SandboxEndpoint(launched.baseUrl(), launched.sandboxId()));
@@ -315,8 +364,8 @@ public class SandboxGateway {
         Map<String, Object> params = config.getParams() == null
                 ? new LinkedHashMap<>()
                 : new LinkedHashMap<>(config.getParams());
-        params.put(PROVIDER_ISOLATION_KEY, isolationKey);
-        params.put(PROVIDER_SANDBOX_ID_CALLBACK, (Consumer<String>) sandboxId -> {
+        params.put(SandboxLifecycleProvider.ISOLATION_KEY_PARAM, isolationKey);
+        params.put(SandboxLifecycleProvider.SANDBOX_ID_CALLBACK_PARAM, (Consumer<String>) sandboxId -> {
             if (sandboxId != null && !sandboxId.isBlank()) {
                 updateRecordSandboxId(isolationKey, sandboxId);
             }

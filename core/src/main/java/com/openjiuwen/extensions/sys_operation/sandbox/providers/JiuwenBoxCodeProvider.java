@@ -87,7 +87,7 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider implements SandboxLi
             boolean forceFile = options != null && Boolean.TRUE.equals(options.get("force_file"));
             List<String> command = buildCodeCommand(code, language, forceFile);
             Map<String, String> mergedEnvironment = prepareEnvironment(language, environment);
-            Map<String, Object> extraParams = state.launcherExtraParams(false);
+            Map<String, Object> extraParams = state.launcherExtraParams();
             List<String> excludePatterns = JiuwenBoxProviderSupport.readExcludedCommands(extraParams);
             boolean fallbackOnFailure = extraParams.get("fallback_on_failure") instanceof Boolean bool && bool;
 

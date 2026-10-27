@@ -5,6 +5,8 @@
 package com.openjiuwen.core.sysop.sandbox.gateway;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +18,12 @@ import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.sandbox.SandboxRegistry;
 import com.openjiuwen.core.sysop.sandbox.launchers.LaunchedSandbox;
 import com.openjiuwen.core.sysop.sandbox.launchers.SandboxLauncher;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -23,8 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Flow;
 import java.util.concurrent.SubmissionPublisher;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
 
 /**
  * Mirrors Python's {@code SandboxGateway} in
@@ -34,9 +40,152 @@ class SandboxGatewayTest {
 
     @AfterEach
     void cleanupRegistry() {
+        TestLauncher.deleteResult = CompletableFuture.completedFuture(null);
+        TestLauncher.pauseResult = CompletableFuture.completedFuture(null);
+        TestLauncher.pausedSandboxIds.clear();
+        TestDynamicProvider.deleteResult = CompletableFuture.completedFuture(null);
         SandboxRegistry.unregisterLauncher("gateway-test-launcher");
         SandboxRegistry.unregisterProvider("gateway-test-sandbox", "shell");
         SandboxRegistry.unregisterProvider("gateway-dynamic-sandbox", "shell");
+    }
+
+    @Test
+    void releaseDetachesRecordAndDefersReuseUntilDeletionCompletes() {
+        SandboxRegistry.registerLauncher("gateway-test-launcher", TestLauncher.class);
+        SandboxRegistry.registerProvider("gateway-test-sandbox", "shell", TestGatewayProvider.class);
+        InMemorySandboxStore store = new InMemorySandboxStore();
+        SandboxGateway gateway = new SandboxGateway(null, store);
+        Object oldProvider = gateway.getOrCreateProvider(gatewayConfig(), "pending", "shell").join();
+        SandboxRecord oldRecord = store.get("pending").orElseThrow();
+
+        completePendingDeletion(gateway, store);
+
+        assertNotSame(oldProvider, gateway.getOrCreateProvider(gatewayConfig(), "pending", "shell").join());
+        assertNotSame(oldRecord, store.get("pending").orElseThrow());
+    }
+
+    private static void completePendingDeletion(SandboxGateway gateway, InMemorySandboxStore store) {
+        TestLauncher.deleteResult = new CompletableFuture<>();
+        int initialDeleteCount = TestLauncher.deleteCount.get();
+
+        CompletableFuture<GatewayResponse> release = gateway.releaseSandbox("pending", "delete");
+        assertTrue(store.get("pending").isEmpty());
+        assertEquals(Boolean.FALSE, gateway.releaseSandbox("pending", "delete").join().data());
+        CompletableFuture<SandboxEndpoint> endpoint = gateway.getEndpoint(gatewayConfig(), "pending");
+        CompletableFuture<Object> provider = gateway.getOrCreateProvider(gatewayConfig(), "pending", "shell");
+        assertFalse(endpoint.isDone());
+        assertFalse(provider.isDone());
+        assertEquals(initialDeleteCount + 1, TestLauncher.deleteCount.get());
+
+        TestLauncher.deleteResult.complete(null);
+
+        assertEquals(Boolean.TRUE, release.join().data());
+        assertEquals("sb-pending", endpoint.join().sandboxId());
+        assertTrue(provider.isDone());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"delete", "pause"})
+    void releaseCompletionDoesNotRemoveReplacementRecord(String onStop) {
+        SandboxRegistry.registerLauncher("gateway-test-launcher", TestLauncher.class);
+        InMemorySandboxStore store = new InMemorySandboxStore();
+        SandboxGateway gateway = new SandboxGateway(null, store);
+        gateway.getEndpoint(gatewayConfig(), "replace").join();
+        TestLauncher.deleteResult = new CompletableFuture<>();
+        TestLauncher.pauseResult = TestLauncher.deleteResult;
+        CompletableFuture<GatewayResponse> release = gateway.releaseSandbox("replace", onStop);
+        SandboxRecord replacement = new SandboxRecord("new-id", "http://sandbox", SandboxStatus.RUNNING,
+                "gateway-test-launcher", "gateway-test-sandbox", "hash");
+        store.set("replace", replacement);
+
+        TestLauncher.deleteResult.complete(null);
+
+        assertEquals(Boolean.TRUE, release.join().data());
+        assertSame(replacement, store.get("replace").orElseThrow());
+    }
+
+    @Test
+    void cancellingReleaseResponseDoesNotBlockLaterAcquisition() {
+        SandboxRegistry.registerLauncher("gateway-test-launcher", TestLauncher.class);
+        SandboxGateway gateway = new SandboxGateway();
+        gateway.getEndpoint(gatewayConfig(), "cancelled-release").join();
+        TestLauncher.deleteResult = new CompletableFuture<>();
+        CompletableFuture<GatewayResponse> release = gateway.releaseSandbox("cancelled-release", "delete");
+        CompletableFuture<SandboxEndpoint> endpoint = gateway.getEndpoint(gatewayConfig(), "cancelled-release");
+
+        assertTrue(release.cancel(false));
+        TestLauncher.deleteResult.complete(null);
+
+        assertTrue(endpoint.isDone());
+        assertEquals("sb-cancelled-release", endpoint.join().sandboxId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"delete", "pause"})
+    void failedReleaseRestoresRecordAndAllowsRetry(String onStop) {
+        SandboxRegistry.registerLauncher("gateway-test-launcher", TestLauncher.class);
+        InMemorySandboxStore store = new InMemorySandboxStore();
+        SandboxGateway gateway = new SandboxGateway(null, store);
+        gateway.getEndpoint(gatewayConfig(), "retry").join();
+        SandboxRecord original = store.get("retry").orElseThrow();
+
+        failPendingRelease(gateway, onStop);
+
+        assertSame(original, store.get("retry").orElseThrow());
+        TestLauncher.deleteResult = CompletableFuture.completedFuture(null);
+        assertEquals(Boolean.TRUE, gateway.releaseSandbox("retry", "delete").join().data());
+    }
+
+    private static void failPendingRelease(SandboxGateway gateway, String onStop) {
+        TestLauncher.deleteResult = new CompletableFuture<>();
+        TestLauncher.pauseResult = TestLauncher.deleteResult;
+        CompletableFuture<GatewayResponse> release = gateway.releaseSandbox("retry", onStop);
+        CompletableFuture<SandboxEndpoint> endpoint = gateway.getEndpoint(gatewayConfig(), "retry");
+
+        TestLauncher.deleteResult.completeExceptionally(new IllegalStateException("delete failed"));
+
+        assertEquals(Boolean.FALSE, release.join().data());
+        assertEquals("delete failed", release.join().message());
+        assertEquals("sb-retry", endpoint.join().sandboxId());
+    }
+
+    @Test
+    void acquisitionWaitsForPauseAndResumesSameSandbox() {
+        SandboxRegistry.registerLauncher("gateway-test-launcher", TestLauncher.class);
+        SandboxGateway gateway = new SandboxGateway();
+        gateway.getEndpoint(gatewayConfig(), "pending-pause").join();
+        TestLauncher.pauseResult = new CompletableFuture<>();
+        CompletableFuture<GatewayResponse> release = gateway.releaseSandbox("pending-pause", "pause");
+        CompletableFuture<SandboxEndpoint> endpoint = gateway.getEndpoint(gatewayConfig(), "pending-pause");
+        assertFalse(endpoint.isDone());
+        assertEquals(Boolean.FALSE, gateway.releaseSandbox("pending-pause", "pause").join().data());
+
+        TestLauncher.pauseResult.complete(null);
+
+        assertEquals(Boolean.TRUE, release.join().data());
+        assertEquals("sb-pending-pause", endpoint.join().sandboxId());
+        assertEquals("sb-pending-pause", TestLauncher.lastResumedSandboxId);
+    }
+
+    @Test
+    void failedProviderReleasePreservesPhysicalDeletionForRetry() {
+        SandboxRegistry.registerLauncher("gateway-test-launcher", TestLauncher.class);
+        SandboxRegistry.registerProvider("gateway-dynamic-sandbox", "shell", TestDynamicProvider.class);
+        SandboxGateway gateway = new SandboxGateway();
+        SandboxGatewayConfig config = gatewayConfig("gateway-dynamic-sandbox");
+        gateway.handleRequest(config, GatewayInvokeRequest.builder()
+                .opType("shell").method("resolve").params(Map.of("text", "initialized"))
+                .isolationKey("provider-retry").build()).join();
+        Object provider = gateway.getOrCreateProvider(config, "provider-retry", "shell").join();
+        TestDynamicProvider.deleteResult = CompletableFuture.failedFuture(new IllegalStateException("delete failed"));
+
+        assertEquals(Boolean.FALSE, gateway.releaseSandbox("provider-retry", "delete").join().data());
+        assertSame(provider, gateway.getOrCreateProvider(config, "provider-retry", "shell").join());
+        TestDynamicProvider.deletedSandboxId = null;
+        TestDynamicProvider.deleteResult = CompletableFuture.completedFuture(null);
+
+        assertEquals(Boolean.TRUE, gateway.releaseSandbox("provider-retry", "delete").join().data());
+        assertEquals("physical-sandbox-id", TestDynamicProvider.deletedSandboxId);
     }
 
     @Test
@@ -186,6 +335,8 @@ class SandboxGatewayTest {
         private static final Set<String> pausedSandboxIds = ConcurrentHashMap.newKeySet();
         private static volatile String lastPausedSandboxId;
         private static volatile String lastResumedSandboxId;
+        private static CompletableFuture<Void> deleteResult = CompletableFuture.completedFuture(null);
+        private static CompletableFuture<Void> pauseResult = CompletableFuture.completedFuture(null);
 
         @Override
         public CompletableFuture<LaunchedSandbox> launch(
@@ -198,14 +349,14 @@ class SandboxGatewayTest {
         @Override
         public CompletableFuture<Void> delete(String sandboxId) {
             deleteCount.incrementAndGet();
-            return CompletableFuture.completedFuture(null);
+            return deleteResult;
         }
 
         @Override
         public CompletableFuture<Void> pause(String sandboxId) {
             lastPausedSandboxId = sandboxId;
             pausedSandboxIds.add(sandboxId);
-            return CompletableFuture.completedFuture(null);
+            return pauseResult;
         }
 
         @Override
@@ -253,6 +404,7 @@ class SandboxGatewayTest {
      */
     public static final class TestDynamicProvider implements SandboxLifecycleProvider {
         private static volatile String deletedSandboxId;
+        private static CompletableFuture<Void> deleteResult = CompletableFuture.completedFuture(null);
 
         private volatile String sandboxId;
 
@@ -284,7 +436,7 @@ class SandboxGatewayTest {
         @Override
         public CompletableFuture<Void> deleteSandbox(String physicalSandboxId) {
             deletedSandboxId = physicalSandboxId;
-            return CompletableFuture.completedFuture(null);
+            return deleteResult;
         }
     }
 }

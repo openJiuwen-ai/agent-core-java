@@ -12,6 +12,19 @@ import java.util.concurrent.CompletableFuture;
  * @since 0.1.17
  */
 public interface SandboxLifecycleProvider {
+    /**
+     * Internal gateway parameter carrying the isolation scope.
+     *
+     * @since 0.1.17
+     */
+    String ISOLATION_KEY_PARAM = "_ojw_sandbox_isolation_key";
+
+    /**
+     * Internal gateway parameter carrying a {@code Consumer<String>} ID callback.
+     *
+     * @since 0.1.17
+     */
+    String SANDBOX_ID_CALLBACK_PARAM = "_ojw_sandbox_id_callback";
 
     /**
      * Returns the provider sandbox ID currently associated with this provider.

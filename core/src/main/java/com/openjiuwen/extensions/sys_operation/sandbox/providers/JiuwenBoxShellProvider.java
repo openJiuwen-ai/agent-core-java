@@ -69,7 +69,7 @@ public class JiuwenBoxShellProvider extends BaseShellProvider implements Sandbox
             }
             String workdir = cwd == null || ".".equals(cwd) ? null : cwd;
             Integer execTimeout = timeoutSeconds != null && timeoutSeconds > 0 ? timeoutSeconds : null;
-            Map<String, Object> extraParams = state.launcherExtraParams(false);
+            Map<String, Object> extraParams = state.launcherExtraParams();
             List<String> excludePatterns = JiuwenBoxProviderSupport.readExcludedCommands(extraParams);
             boolean fallbackOnFailure = extraParams.get("fallback_on_failure") instanceof Boolean bool && bool;
 
