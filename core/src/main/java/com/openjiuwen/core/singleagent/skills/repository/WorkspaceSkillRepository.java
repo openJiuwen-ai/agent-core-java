@@ -74,9 +74,6 @@ public final class WorkspaceSkillRepository implements SkillRepository {
                     "SKILL_REJECTED: action=load source=workspace skill_id={} size={} hash={} path={} reason={}",
                     "unknown", -1, "-", escape, "path escape or symlink");
         }
-        if (!symlinkEscapes.isEmpty()) {
-            return List.of();
-        }
         List<Skill> skills = new ArrayList<>();
         for (Path skillFile : skillFiles) {
             loadSkill(skillFile).ifPresent(skills::add);
