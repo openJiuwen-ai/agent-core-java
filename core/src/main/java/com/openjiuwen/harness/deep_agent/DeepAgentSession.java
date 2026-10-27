@@ -19,7 +19,8 @@ import java.util.Map;
  * DeepAgent product session. Delegates to the official {@link AgentSession} facade
  * so state, stream, and lifecycle share one kernel.
  *
- * <p>The legacy {@code config} constructor argument accepts a string-keyed environment map.
+ * <p>The legacy {@code config} constructor argument accepts an environment map whose keys
+ * must be non-null strings. Invalid keys fail construction with {@link IllegalArgumentException}.
  * Other configuration objects retain the default environment behavior.</p>
  *
  * @since 0.1.14
@@ -32,14 +33,43 @@ public class DeepAgentSession implements AgentSessionApi {
         this.facade = new AgentSession(sessionId, null, null);
     }
 
+    /**
+     * Creates a session with request environments in the backing configuration.
+     *
+     * @param sessionId session identifier
+     * @param config environment map with non-null String keys; null or non-Map values use defaults
+     * @param card agent card
+     * @throws IllegalArgumentException if an environment map contains a null or non-String key
+     * @since 0.1.17
+     */
     public DeepAgentSession(String sessionId, Object config, AgentCard card) {
         this.facade = new AgentSession(sessionId, environments(config), card);
     }
 
+    /**
+     * Creates a session using the legacy stream-mode constructor.
+     *
+     * @param sessionId session identifier
+     * @param config environment map with non-null String keys; null or non-Map values use defaults
+     * @param card agent card
+     * @param streamModes legacy stream modes, currently ignored
+     * @throws IllegalArgumentException if an environment map contains a null or non-String key
+     * @since 0.1.17
+     */
     public DeepAgentSession(String sessionId, Object config, AgentCard card, List<StreamMode> streamModes) {
         this(sessionId, config, card);
     }
 
+    /**
+     * Creates a session using the legacy checkpointer constructor.
+     *
+     * @param sessionId session identifier
+     * @param config environment map with non-null String keys; null or non-Map values use defaults
+     * @param checkpointer legacy checkpointer, currently ignored
+     * @param card agent card
+     * @throws IllegalArgumentException if an environment map contains a null or non-String key
+     * @since 0.1.17
+     */
     public DeepAgentSession(String sessionId, Object config, Object checkpointer, AgentCard card) {
         this(sessionId, config, card);
     }

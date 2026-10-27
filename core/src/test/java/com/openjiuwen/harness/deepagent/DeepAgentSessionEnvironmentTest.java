@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.deepagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -25,6 +26,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,16 +42,33 @@ class DeepAgentSessionEnvironmentTest {
     @ParameterizedTest
     @ValueSource(strings = {"default", "stream-modes", "checkpointer"})
     void constructorsRetainEnvironmentsInTheFacadeAndKernel(String constructor) {
-        String sessionId = UUID.randomUUID().toString();
         Map<String, Object> envs = Map.of(REQUEST_CONTEXT, "caller");
-        DeepAgentSession session = switch (constructor) {
-            case "default" -> new DeepAgentSession(sessionId, envs, CARD);
-            case "stream-modes" -> new DeepAgentSession(sessionId, envs, CARD, List.of(StreamMode.OUTPUT));
-            default -> new DeepAgentSession(sessionId, envs, null, CARD);
-        };
+        DeepAgentSession session = createSession(constructor, envs);
 
         assertThat(session.getEnvs()).containsEntry(REQUEST_CONTEXT, "caller");
         assertThat(session.getInner().config().getEnv(REQUEST_CONTEXT)).isEqualTo("caller");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"default,integer", "stream-modes,integer", "checkpointer,integer",
+            "default,null", "stream-modes,null", "checkpointer,null"})
+    void constructorsRejectInvalidEnvironmentKeys(String constructor, String keyType) {
+        Map<Object, Object> envs = new LinkedHashMap<>();
+        envs.put(REQUEST_CONTEXT, "caller");
+        Object invalidKey = "integer".equals(keyType) ? Integer.valueOf(1) : null;
+        envs.put(invalidKey, "invalid");
+
+        assertThatIllegalArgumentException().isThrownBy(() -> createSession(constructor, envs))
+                .withMessage("Environment keys must be strings");
+    }
+
+    private static DeepAgentSession createSession(String constructor, Object config) {
+        String sessionId = UUID.randomUUID().toString();
+        return switch (constructor) {
+            case "default" -> new DeepAgentSession(sessionId, config, CARD);
+            case "stream-modes" -> new DeepAgentSession(sessionId, config, CARD, List.of(StreamMode.OUTPUT));
+            default -> new DeepAgentSession(sessionId, config, null, CARD);
+        };
     }
 
     @Test
