@@ -69,6 +69,15 @@ public final class WorkspaceSkillRepository implements SkillRepository {
         return List.copyOf(skills);
     }
 
+    private boolean isSymlinkEscape(Path path) {
+        try {
+            Path realTarget = path.toRealPath();
+            Path realRoot = root.toRealPath();
+            return !realTarget.startsWith(realRoot);
+        } catch (IOException exception) {
+            return true;
+        }
+    }
     private static boolean isSkillFileName(String fileName) {
         for (String skillFileName : SKILL_FILE_NAMES) {
             if (skillFileName.equals(fileName)) {
