@@ -27,12 +27,15 @@ import java.util.concurrent.CompletionException;
  */
 public class TaskTool extends AbstractHarnessTool {
 
+    /** Declared timeout for subagent tasks (matches the Python task_tool default). */
+    public static final double DEFAULT_TASK_TIMEOUT_SECONDS = 720.0D;
+
     private final DeepAgent parentAgent;
     private final String language;
     private final TaskRunner taskRunner;
 
     public TaskTool(TaskRunner taskRunner) {
-        super(toolCard("task_tool", "task_tool", "Run a subagent task."));
+        super(withTaskTimeout(toolCard("task_tool", "task_tool", "Run a subagent task.")));
         this.parentAgent = null;
         this.language = "cn";
         this.taskRunner = taskRunner;
@@ -43,10 +46,28 @@ public class TaskTool extends AbstractHarnessTool {
     }
 
     public TaskTool(ToolCard card, DeepAgent parentAgent, String language) {
-        super(card == null ? toolCard("task_tool", "task_tool", "Run a subagent task.") : card);
+        super(withTaskTimeout(card == null ? toolCard("task_tool", "task_tool", "Run a subagent task.") : card));
         this.parentAgent = parentAgent;
         this.language = language == null || language.isBlank() ? "cn" : language;
         this.taskRunner = null;
+    }
+
+    /**
+     * Declares the subagent timeout on the card so the ability manager honors it instead of
+     * falling back to the shorter global default; existing declarations are preserved.
+     */
+    private static ToolCard withTaskTimeout(ToolCard card) {
+        Map<String, Object> properties = card.getProperties() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(card.getProperties());
+        Object resilience = properties.get("resilience");
+        Map<String, Object> resilienceMap = resilience instanceof Map<?, ?> existing
+                ? new LinkedHashMap<>((Map<String, Object>) existing)
+                : new LinkedHashMap<>();
+        resilienceMap.putIfAbsent("timeout_s", DEFAULT_TASK_TIMEOUT_SECONDS);
+        properties.put("resilience", resilienceMap);
+        card.setProperties(properties);
+        return card;
     }
 
     public static String buildSubSessionId(String parentSessionId, String subagentType) {

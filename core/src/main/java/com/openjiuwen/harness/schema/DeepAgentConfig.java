@@ -597,6 +597,15 @@ public class DeepAgentConfig {
         private boolean restrictToWorkDir = true;
         private DeepAgentConfig config;
         private final Map<String, Object> metadata = new LinkedHashMap<>();
+        private Object contextEngineConfig;
+
+        public Object getContextEngineConfig() {
+            return contextEngineConfig;
+        }
+
+        public void setContextEngineConfig(Object contextEngineConfig) {
+            this.contextEngineConfig = contextEngineConfig;
+        }
 
         public SubAgentConfig() {
         }
