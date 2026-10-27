@@ -23,7 +23,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
 
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.List;
@@ -60,23 +59,25 @@ class OpenAIModelTimeoutTieringTest {
     }
 
     @Test
-    void connectTimeoutFailsFast() throws IOException {
-        try (SaturatedConnectEndpoint endpoint = SaturatedConnectEndpoint.open()) {
-            OpenAIModelClient client = client(baseConfig(endpoint.apiBase())
-                    .connectTimeoutSeconds(5.0D)
-                    .build());
+    void connectTimeoutFailsFast() {
+        // TEST-NET-1 (192.0.2.1) is reserved documentation space and is typically
+        // black-holed: the TCP handshake parks until connectTimeoutSeconds fires.
+        // A saturated local backlog is not portable — Windows often RSTs with an
+        // immediate Connection refused, which never exercises the connect timer.
+        OpenAIModelClient client = client(baseConfig("http://192.0.2.1:9")
+                .connectTimeoutSeconds(5.0D)
+                .build());
 
-            long started = System.nanoTime();
-            Throwable error = catchThrowable(() -> client.invoke(
-                    List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())
-                    .toCompletableFuture().join());
-            long elapsedMillis = (System.nanoTime() - started) / 1_000_000L;
+        long started = System.nanoTime();
+        Throwable error = catchThrowable(() -> client.invoke(
+                List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())
+                .toCompletableFuture().join());
+        long elapsedMillis = (System.nanoTime() - started) / 1_000_000L;
 
-            BaseError typed = unwrap(error);
-            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
-            assertThat(typed.getParams().get("phase")).isEqualTo("BEFORE_CONNECT");
-            assertThat(elapsedMillis).isBetween(4_000L, 15_000L);
-        }
+        BaseError typed = unwrap(error);
+        assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
+        assertThat(typed.getParams().get("phase")).isEqualTo("BEFORE_CONNECT");
+        assertThat(elapsedMillis).isBetween(4_000L, 15_000L);
     }
 
     @Test

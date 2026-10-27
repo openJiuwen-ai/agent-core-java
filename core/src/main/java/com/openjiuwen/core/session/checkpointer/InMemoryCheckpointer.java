@@ -309,7 +309,7 @@ public class InMemoryCheckpointer extends Checkpointer {
         workflowStores.remove(tid);
 
         for (String storedSessionId : new ArrayList<>(agentStores.keySet())) {
-            if (storedSessionId.startsWith(tid)) {
+            if (matchesSessionOrColonChild(storedSessionId, tid)) {
                 agentStores.remove(storedSessionId);
             }
         }
@@ -410,12 +410,27 @@ public class InMemoryCheckpointer extends Checkpointer {
             graphStore.delete(rawSessionId, null).toCompletableFuture().join();
         }
         for (String storedSessionId : new ArrayList<>(agentStores.keySet())) {
-            if (storedSessionId.equals(tid) || storedSessionId.startsWith(tid)) {
+            if (matchesSessionOrColonChild(storedSessionId, tid)) {
                 agentStores.remove(storedSessionId);
             }
         }
         agentTeamStores.remove(tid);
         workflowStores.remove(tid);
+    }
+
+    /**
+     * Match the exact session id or colon-delimited child ids only.
+     *
+     * <p>Mirrors Python's {@code sid == session_id or sid.startswith(session_id + ":")}.
+     * Bare {@code startsWith(tid)} would delete {@code chat-10} when releasing {@code chat-1}.</p>
+     *
+     * @param storedSessionId key currently in {@code agentStores}
+     * @param tid tenant-aware session id being released or evicted
+     * @return {@code true} when the store belongs to {@code tid} or a {@code tid:} child
+     * @since 0.1.18
+     */
+    static boolean matchesSessionOrColonChild(String storedSessionId, String tid) {
+        return storedSessionId.equals(tid) || storedSessionId.startsWith(tid + ":");
     }
 
     /**

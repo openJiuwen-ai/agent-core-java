@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.tools.shell.powershell;
 
+import com.openjiuwen.core.common.utils.TextTruncate;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -41,11 +43,13 @@ public final class PowerShellOutput {
 
         int headBudget = (int) (maxChars * headRatio);
         int tailBudget = maxChars - headBudget;
-        String head = text.substring(0, headBudget);
-        String tail = tailBudget > 0 ? text.substring(text.length() - tailBudget) : "";
+        String head = TextTruncate.safePrefix(text, headBudget);
+        String tail = tailBudget > 0 ? TextTruncate.safeSuffix(text, tailBudget) : "";
+        int headEnd = head.length();
+        int tailStart = text.length() - tail.length();
         String omitted = tailBudget > 0
-                ? text.substring(headBudget, text.length() - tailBudget)
-                : text.substring(headBudget);
+                ? TextTruncate.safeSubstring(text, headEnd, Math.max(headEnd, tailStart))
+                : TextTruncate.safeSubstring(text, headEnd, text.length());
         int omittedLines = countLines(omitted);
 
         return head + "\n\n... [" + omittedLines + " lines omitted] ...\n\n" + tail;
@@ -164,10 +168,10 @@ public final class PowerShellOutput {
         if (content.length() <= maxBytes) {
             return new Preview(content, false);
         }
-        String truncated = content.substring(0, maxBytes);
+        String truncated = TextTruncate.safePrefix(content, maxBytes);
         int lastNewline = truncated.lastIndexOf('\n');
-        int cut = lastNewline > maxBytes * 0.5 ? lastNewline : maxBytes;
-        return new Preview(content.substring(0, cut), true);
+        int cut = lastNewline > maxBytes * 0.5 ? lastNewline : truncated.length();
+        return new Preview(TextTruncate.safePrefix(content, cut), true);
     }
 
     private static String formatFileSize(double sizeInBytes) {

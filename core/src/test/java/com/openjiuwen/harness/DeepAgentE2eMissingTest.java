@@ -31,6 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -46,6 +48,16 @@ class DeepAgentE2eMissingTest {
 
     @TempDir
     Path tempDir;
+
+    @BeforeEach
+    void clearSharedHarnessToolsBefore() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
+
+    @AfterEach
+    void clearSharedHarnessToolsAfter() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
 
     @Test
     void deepAgentComplexTaskMultiToolChain() throws Exception {

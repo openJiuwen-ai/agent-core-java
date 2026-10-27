@@ -6,6 +6,7 @@ package com.openjiuwen.core.context.processor.compressor;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.SessionMemorySupport;
 import com.openjiuwen.core.context.context.SessionModelContext;
@@ -804,8 +805,10 @@ public class FullCompactProcessor extends ContextProcessor {
         }
         int headChars = Math.max((int) (keptChars * 0.2d), 0);
         int tailChars = Math.max(keptChars - headChars, 0);
-        String head = text.substring(0, Math.min(headChars, text.length()));
-        String tail = tailChars > 0 && text.length() > tailChars ? text.substring(text.length() - tailChars) : "";
+        String head = TextTruncate.safePrefix(text, Math.min(headChars, text.length()));
+        String tail = tailChars > 0 && text.length() > tailChars
+                ? TextTruncate.safeSuffix(text, tailChars)
+                : "";
         if (!head.isBlank() && !tail.isBlank()) {
             return head + "\n...[TRUNCATED]...\n" + tail;
         }

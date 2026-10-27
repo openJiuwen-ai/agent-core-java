@@ -262,10 +262,16 @@ class AgentCallbackManagerTest {
         InMemoryCallbackFramework global = new InMemoryCallbackFramework();
         long callbackSleepMillis = 60L;
         int concurrentAgents = 4;
+        // Count how many registered callbacks actually run for one fire. Timing alone is
+        // flaky under CI load (a single 60ms sleep can exceed 120ms wall time).
+        AtomicInteger[] fires = new AtomicInteger[concurrentAgents];
         List<AgentCallbackManager> managers = new ArrayList<>();
         for (int i = 0; i < concurrentAgents; i++) {
+            AtomicInteger fireCount = new AtomicInteger();
+            fires[i] = fireCount;
             AgentCallbackManager manager = new AgentCallbackManager("shared-agent-id", global);
             manager.registerCallback(AgentCallbackEvent.AFTER_MODEL_CALL, context -> {
+                fireCount.incrementAndGet();
                 sleepQuietly(callbackSleepMillis);
                 return CompletableFuture.completedFuture(null);
             }, 100).toCompletableFuture().join();
@@ -277,8 +283,17 @@ class AgentCallbackManagerTest {
                 .toCompletableFuture().join();
         long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000L;
 
-        assertTrue(elapsedMillis < callbackSleepMillis * 2,
-                "one fire ran every agent's callback serially: " + elapsedMillis + "ms");
+        int totalFires = 0;
+        for (AtomicInteger fireCount : fires) {
+            totalFires += fireCount.get();
+        }
+        assertEquals(1, totalFires,
+                "one fire must run exactly one agent-scoped callback, not all " + concurrentAgents
+                        + " serially; elapsed=" + elapsedMillis + "ms");
+        // Soft timing bound: serial execution of all callbacks would be ~concurrentAgents
+        // sleeps; allow generous overhead so loaded CI hosts do not flake.
+        assertTrue(elapsedMillis < callbackSleepMillis * concurrentAgents,
+                "elapsed " + elapsedMillis + "ms looks like serial fan-out across agents");
     }
 
     @Test
