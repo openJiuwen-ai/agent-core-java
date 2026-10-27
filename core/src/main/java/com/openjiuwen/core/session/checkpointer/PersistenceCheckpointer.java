@@ -54,18 +54,35 @@ import javax.sql.DataSource;
  */
 public class PersistenceCheckpointer extends Checkpointer {
 
+    private static final Logger LOG = Logger.getLogger(PersistenceCheckpointer.class.getName());
+
     private final BaseKVStore kvStore;
+    private final String actualStorePath;
     private final AgentStorage agentStorage;
     private final AgentTeamStorage agentTeamStorage;
     private final WorkflowStorage workflowStorage;
     private final PersistenceGraphStore graphStore;
 
     public PersistenceCheckpointer(BaseKVStore kvStore) {
+        this(kvStore, null);
+    }
+
+    public PersistenceCheckpointer(BaseKVStore kvStore, String actualStorePath) {
         this.kvStore = Objects.requireNonNull(kvStore, "kvStore");
+        this.actualStorePath = actualStorePath;
         this.agentStorage = new AgentStorage(kvStore);
         this.agentTeamStorage = new AgentTeamStorage(kvStore);
         this.workflowStorage = new WorkflowStorage(kvStore);
         this.graphStore = new PersistenceGraphStore(kvStore);
+    }
+
+    /**
+     * Returns the store path actually used, exposing any rewrite applied at configuration
+     * time (e.g. {@code foo} -> {@code foo.db} for sqlite).
+     */
+    @Override
+    public String actualStorePath() {
+        return actualStorePath;
     }
 
     static Checkpointer createFromConfig(Map<String, Object> conf) {
@@ -86,14 +103,32 @@ public class PersistenceCheckpointer extends Checkpointer {
         String dbPath = String.valueOf(actualConf.getOrDefault("db_path", actualConf.getOrDefault("dbPath", "checkpointer")));
         return switch (dbType) {
             case "memory", "in_memory", "inmemory" -> new PersistenceCheckpointer(new InMemoryKVStore());
-            case "shelve" -> new PersistenceCheckpointer(new ShelveStore(stripDbSuffix(dbPath)));
-            case "sqlite" -> new PersistenceCheckpointer(new DbBasedKVStore(sqliteDataSource(normalizeSqlitePath(dbPath))));
+            case "shelve" -> {
+                String actual = rewrittenPath(stripDbSuffix(dbPath), dbPath, dbType);
+                yield new PersistenceCheckpointer(new ShelveStore(actual), actual);
+            }
+            case "sqlite" -> {
+                String actual = rewrittenPath(normalizeSqlitePath(dbPath), dbPath, dbType);
+                yield new PersistenceCheckpointer(new DbBasedKVStore(sqliteDataSource(actual)), actual);
+            }
             default -> throw ErrorHelper.buildError(
                     StatusCode.CHECKPOINTER_CONFIG_ERROR,
                     "reason",
                     "db type[" + dbType + "] is not supported"
             );
         };
+    }
+
+    /**
+     * Logs a WARNING when the actually-used store path differs from the configured one, so
+     * callers can discover silent rewrites (e.g. {@code foo} -> {@code foo.db} for sqlite).
+     */
+    private static String rewrittenPath(String actualPath, String configuredPath, String dbType) {
+        if (!Objects.equals(actualPath, configuredPath)) {
+            LOG.warning("Checkpointer " + dbType + " path rewritten: configured [" + configuredPath
+                    + "], actual [" + actualPath + "]");
+        }
+        return actualPath;
     }
 
     @Override
