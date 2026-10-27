@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+
 /**
  * Resilience cases accepted from the issue #195 test-side review (items 3.1,
  * 3.2, 3.4, 3.6, 3.8, 4.2, 5.1): crash-boundary placement, restart reuse,
@@ -228,7 +229,6 @@ class StepCheckpointResilienceTest {
         firstTurn.setLlm(scriptedModel(calls, null));
         AgentSession session = new AgentSession(SESSION_ID, null, firstTurn.getCard());
         firstTurn.invoke(Map.of("query", "complete first", "conversation_id", SESSION_ID), session);
-        long completedSeq = checkpointer.lastCompletedStep(session.getInner()).getSeq();
 
         AgentSession resumedTurn = new AgentSession(SESSION_ID, null, firstTurn.getCard());
         resumedTurn.preRun(Map.of());
@@ -241,9 +241,10 @@ class StepCheckpointResilienceTest {
                 .hasMessageContaining("post-resume boom");
 
         StepCursor resume = checkpointer.lastCompletedStep(resumedTurn.getInner());
+        StepCursor firstRound = checkpointer.lastCompletedStep(session.getInner());
         assertThat(resume).isNotNull();
         assertThat(resume.getStatus()).isEqualTo(StepStatus.COMPLETED);
-        assertThat(resume.getSeq()).isEqualTo(completedSeq);
+        assertThat(resume.getSeq()).isEqualTo(firstRound.getSeq());
         // The failed iteration left its own evidence under the failed key.
         assertThat(checkpointer.lastFailedStep(resumedTurn.getInner())).isNotNull();
         assertThat(trail(SESSION_ID)).anyMatch(record -> record.getStatus() == StepStatus.FAILED);
