@@ -4,10 +4,16 @@
 
 package com.openjiuwen.core.singleagent;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mockStatic;
+
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -15,10 +21,15 @@ import com.openjiuwen.core.singleagent.skills.SkillToolBinding;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.MockedStatic;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,13 +41,30 @@ import java.util.UUID;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 @Tag("issue196-w9")
 class BaseAgentSkillToolBindingTest {
     @TempDir
     private Path tempDir;
+
+    private ResourceMgr resourceMgr;
+    private MockedStatic<Runner> runner;
+
+    @BeforeEach
+    void isolateResources() {
+        resourceMgr = new ResourceMgr();
+        // These tests register the shared skill_tool ID; keep real registration within this fixture.
+        runner = mockStatic(Runner.class, CALLS_REAL_METHODS);
+        runner.when(Runner::resourceMgr).thenReturn(resourceMgr);
+    }
+
+    @AfterEach
+    void releaseResources() {
+        try {
+            resourceMgr.release().toCompletableFuture().join();
+        } finally {
+            runner.close();
+        }
+    }
 
     @Test
     void registeredSkillToolsAreInvisibleUntilSkillIsActivated() {
@@ -176,7 +204,7 @@ class BaseAgentSkillToolBindingTest {
     }
 
     @Test
-    void registerSkillReturnsFailedStageWhenMetadataNameValidationFails() throws Exception {
+    void registerSkillReturnsFailedStageWhenMetadataNameValidationFails() throws IOException {
         TestAgent agent = new TestAgent();
         String sysOperationId = "base-agent-skill-test-" + UUID.randomUUID();
         Path skillDir = tempDir.resolve("MissingMetadataName");
@@ -214,6 +242,7 @@ class BaseAgentSkillToolBindingTest {
                 .description("tool " + name)
                 .inputParams(Map.of("type", "object"))
                 .build()) {
+            // Only the tool card is used by binding tests.
         };
     }
 
@@ -236,7 +265,7 @@ class BaseAgentSkillToolBindingTest {
             ));
             agent.configure(new TestAgentConfig(sysOperationId));
             agent.registerSkill(skillDir.toString(), true).toCompletableFuture().join();
-        } catch (Exception exception) {
+        } catch (IOException exception) {
             throw new IllegalStateException("Failed to register test skill " + skillName, exception);
         } finally {
             Runner.resourceMgr().removeSysOperation(sysOperationId);
@@ -297,6 +326,7 @@ class BaseAgentSkillToolBindingTest {
 
         @Override
         public void writeStream(Object data) {
+            // This fixture only exercises state access; stream output is intentionally discarded.
             stream.add(data);
         }
 
