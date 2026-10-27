@@ -2266,6 +2266,12 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                         iterationDurationMillis(ctx)));
                     } catch (RuntimeException exception) {
                         iterationFailureLogged = true;
+                        stepCheckpointTrigger.stepCompleted(
+                                typedBaseSession(session),
+                                null,
+                                null,
+                                new StepBoundary("ITERATION", "iteration-" + iterationNumber, StepStatus.FAILED,
+                                        iterationDurationMillis(ctx)));
                         Loggers.AGENT.exception(
                                 "ReAct iteration %d/%d failed"
                                         .formatted(iterationNumber, ctx.getMaxIterations()),

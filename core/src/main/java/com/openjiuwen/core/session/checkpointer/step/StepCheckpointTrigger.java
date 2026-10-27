@@ -69,7 +69,12 @@ public class StepCheckpointTrigger {
     }
 
     /**
-     * Record one completed step boundary.
+     * Record one step boundary. A {@link StepStatus#COMPLETED} or
+     * {@link StepStatus#RUNNING} boundary follows the policy evaluation and
+     * advances the main cursor; a {@link StepStatus#FAILED} boundary is
+     * persisted unconditionally through {@link Checkpointer#stepFailed} -
+     * failure evidence must not depend on the policy verdict and must never
+     * move the resume point.
      *
      * @param session session in the middle of a task, may be null to no-op
      * @param invokeOverride per-invocation policy override; null means "not overridden"
@@ -83,6 +88,10 @@ public class StepCheckpointTrigger {
         }
         long seq = seqCounter.incrementAndGet();
         long now = System.currentTimeMillis();
+        if (boundary.status() == StepStatus.FAILED) {
+            recordFailedStep(session, seq, boundary, now);
+            return;
+        }
         StepCheckpointPolicy policy = evaluator.resolve(agentDefault, invokeOverride);
         isLastBoundaryPersisted = checkpointer != null
                 && evaluator.shouldPersist(agentDefault, invokeOverride, signalsWithDurations(signals, seq));
@@ -101,6 +110,27 @@ public class StepCheckpointTrigger {
                         "", boundary.status(), now));
             } catch (RuntimeException exception) {
                 log.debug("Step journal append failed for session {}: {}",
+                        session.sessionId(), exception.getMessage());
+            }
+        }
+    }
+
+    private void recordFailedStep(BaseSession session, long seq, StepBoundary boundary, long now) {
+        if (checkpointer != null) {
+            try {
+                checkpointer.stepFailed(session, new StepCursor(seq, boundary.stepType(), boundary.stepName(),
+                        StepStatus.FAILED, now));
+            } catch (RuntimeException exception) {
+                log.warn("Failed-step checkpoint could not be recorded for session {}: {}",
+                        session.sessionId(), exception.getMessage());
+            }
+        }
+        if (journal != null) {
+            try {
+                journal.append(new StepRecord(session.sessionId(), "", seq, boundary.stepType(), boundary.stepName(),
+                        "", StepStatus.FAILED, now));
+            } catch (RuntimeException exception) {
+                log.debug("Failed-step journal append failed for session {}: {}",
                         session.sessionId(), exception.getMessage());
             }
         }

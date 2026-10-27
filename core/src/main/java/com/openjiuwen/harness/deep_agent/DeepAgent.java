@@ -4083,8 +4083,10 @@ public class DeepAgent implements AutoCloseable {
 
     /**
      * Record one DeepAgent task-loop round boundary: the round result type
-     * decides the step status, the trigger handles policy, cursor persistence,
-     * and audit.
+     * decides the step status - interrupt stays RUNNING (awaiting resume),
+     * error becomes FAILED (evidence record, never a resume point), anything
+     * else is COMPLETED; the trigger handles policy, cursor persistence, and
+     * audit.
      *
      * @param session loop session, may be null to no-op
      * @param roundResult result map of the finished round
@@ -4097,7 +4099,8 @@ public class DeepAgent implements AutoCloseable {
         }
         Object resultType = roundResult == null ? null : roundResult.get("result_type");
         boolean hasInterrupt = "interrupt".equals(String.valueOf(resultType));
-        StepStatus status = hasInterrupt ? StepStatus.RUNNING : StepStatus.COMPLETED;
+        boolean hasError = "error".equals(String.valueOf(resultType));
+        StepStatus status = hasInterrupt ? StepStatus.RUNNING : hasError ? StepStatus.FAILED : StepStatus.COMPLETED;
         BaseSession baseSession = session instanceof AgentSession typedSession
                 ? typedSession.getInner()
                 : null;
