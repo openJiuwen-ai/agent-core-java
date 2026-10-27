@@ -37,6 +37,7 @@ class AgentFactoryIntegrationMissingTest {
         // Exercise real duplicate validation without consuming or replacing another fixture's tools.
         runner = mockStatic(Runner.class, CALLS_REAL_METHODS);
         runner.when(Runner::resourceMgr).thenReturn(resourceMgr);
+        runner.when(Runner::getResourceMgr).thenReturn(resourceMgr);
     }
 
     @AfterEach

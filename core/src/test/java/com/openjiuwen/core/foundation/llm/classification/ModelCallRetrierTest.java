@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.fail;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
 
 /**
  * UT-R: classification-driven retry behavior of the unified model call retrier.
@@ -179,6 +182,53 @@ class ModelCallRetrierTest {
         assertThat(slept).containsExactly(Duration.ofMillis(1500L));
     }
 
+    @Test
+    void execute_nonRetryableFailure_logsTerminalClassification() {
+        BaseError failure = classifiedHttp(401, "{\"error\":{}}");
+        try (LogCapture logs = new LogCapture()) {
+            assertThatThrownBy(() -> retrier.execute(context(2), () -> {
+                throw failure;
+            }, null)).isSameAs(failure);
+
+            assertThat(logs.terminalMessage())
+                .contains("reason=NOT_RETRYABLE", "category=AUTH_FAILED", "retryable=false")
+                .contains("exception_type=" + failure.getClass().getName(), "consumed_retries=0", "max_retries=2")
+                .contains("status_code=401", "numeric_code=" + failure.getCode());
+        }
+    }
+
+    @Test
+    void execute_policyDisallowedFailure_logsTerminalClassification() {
+        BaseError failure = classifiedHttp(429, "{\"error\":{}}");
+        RetryContext context = new RetryContext(new ModelCallRetryPolicy(2, false, true));
+        try (LogCapture logs = new LogCapture()) {
+            assertThatThrownBy(() -> retrier.execute(context, () -> {
+                throw failure;
+            }, null)).isSameAs(failure);
+
+            assertThat(logs.terminalMessage())
+                .contains("reason=POLICY_DISALLOWED", "category=RATE_LIMITED", "retryable=true")
+                .contains("consumed_retries=0", "max_retries=2", "status_code=429");
+        }
+    }
+
+    @Test
+    void execute_retryBudgetExhausted_logsTerminalClassification() {
+        BaseError failure = classifiedHttp(429, "{\"error\":{}}");
+        AtomicInteger calls = new AtomicInteger();
+        try (LogCapture logs = new LogCapture()) {
+            assertThatThrownBy(() -> retrier.execute(context(2), () -> {
+                calls.incrementAndGet();
+                throw failure;
+            }, null)).isSameAs(failure);
+
+            assertThat(calls).hasValue(3);
+            assertThat(logs.terminalMessage())
+                .contains("reason=RETRY_BUDGET_EXHAUSTED", "category=RATE_LIMITED", "retryable=true")
+                .contains("consumed_retries=2", "max_retries=2", "status_code=429");
+        }
+    }
+
     private static void assertStatus(Object error, StatusCode expected) {
         if (error instanceof BaseError typed) {
             assertThat(typed.getStatus()).isEqualTo(expected);
@@ -221,5 +271,35 @@ class ModelCallRetrierTest {
         ModelCallClassification classification =
             new RuleBasedModelErrorClassifier().classify(facts);
         return ClassifiedModelErrors.toError(classification, facts, "read failed", null);
+    }
+
+    private static final class LogCapture extends Handler implements AutoCloseable {
+        private final List<String> messages = new ArrayList<>();
+
+        private LogCapture() {
+            Loggers.LLM.addHandler(this);
+        }
+
+        @Override
+        public void publish(LogRecord record) {
+            messages.add(record.getMessage());
+        }
+
+        private String terminalMessage() {
+            return messages.stream()
+                .filter(message -> message.contains("Model call failed."))
+                .reduce((first, second) -> second)
+                .orElse("");
+        }
+
+        @Override
+        public void flush() {
+            // All records are retained in memory; there is no output stream to flush.
+        }
+
+        @Override
+        public void close() {
+            Loggers.LLM.removeHandler(this);
+        }
     }
 }
