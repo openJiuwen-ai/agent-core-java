@@ -198,8 +198,10 @@ public class SkillUseRail extends DeepAgentRail {
     @Override
     public void uninit(DeepAgent agent) {
         if (agent != null) {
-            for (String name : ownedToolNames) {
-                agent.unregisterTool(name);
+            for (Object registered : agent.getRegisteredTools()) {
+                if (registered instanceof Tool tool && ownedToolIds.contains(tool.getCard().getId())) {
+                    agent.unregisterHarnessTool(tool);
+                }
             }
         }
         ownedToolNames.clear();
@@ -314,12 +316,14 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     /**
-     * Returns snake_case ids of tools this rail registered.
+     * Returns model-visible names of tools this rail registered.
+     * Internal resource IDs are available through {@link #getOwnedToolIds()}.
      *
-     * @return registered tool names
+     * @return registered tool names in registration order
+     * @since 0.1.17
      */
     public List<String> registeredToolNames() {
-        return new ArrayList<>(ownedToolIds);
+        return new ArrayList<>(ownedToolNames);
     }
 
     /**
