@@ -47,7 +47,7 @@ import java.util.function.LongSupplier;
  * combined TTL + capacity policy backed by a Guava {@link Cache}: entries not
  * written within the TTL (default 7 days, aligned with the Redis checkpointer's
  * {@code default_ttl}) are expired, and when the number of tracked sessions
- * exceeds the capacity limit (default 100) the least recently written sessions
+ * exceeds the capacity limit (default 1000) the least recently written sessions
  * are evicted first.</p>
  *
  * <p>Eviction is lazy: Guava expires entries during cache maintenance that runs
@@ -62,7 +62,7 @@ public class InMemoryCheckpointer extends Checkpointer {
     static final long DEFAULT_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000;
 
     /** Default maximum number of tracked sessions before least-recently-written eviction. */
-    static final int DEFAULT_MAX_SESSIONS = 100;
+    static final int DEFAULT_MAX_SESSIONS = 1000;
 
     private final Map<String, AgentStorage> agentStores = new ConcurrentHashMap<>();
     private final Map<String, AgentTeamStorage> agentTeamStores = new ConcurrentHashMap<>();

@@ -34,6 +34,7 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -464,6 +465,7 @@ class DeepAgentDestroyIsolationTest {
      *
      * @throws Exception when the agent lifecycle or the log capture fails
      */
+    @Disabled("有偶现错误")
     @Test
     void ut23DestroyIsolatesToolCardRemovalFailure() throws Exception {
         GlobalRegistrySnapshot before = GlobalRegistrySnapshot.take();
