@@ -26,6 +26,7 @@ import com.openjiuwen.core.foundation.llm.classification.RetryContext;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreakerSnapshot;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryListener;
 import com.openjiuwen.core.foundation.llm.modelclients.errors.ErrorResponseBodySanitizer;
@@ -49,8 +50,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
-import java.net.ConnectException;
-import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -173,6 +172,17 @@ public class OpenAIModelClient extends BaseModelClient
         this.retrier = retrier;
         this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
         this.circuitBreaker = circuitBreaker;
+    }
+
+    /**
+     * Sample this client's circuit breaker without exposing its mutation methods.
+     *
+     * @return a present immutable diagnostic sample, with independently sampled fields
+     * @since 0.1.17
+     */
+    @Override
+    public Optional<ModelCircuitBreakerSnapshot> getCircuitBreakerSnapshot() {
+        return Optional.of(circuitBreaker.snapshot());
     }
 
     @Override
@@ -1360,21 +1370,8 @@ public class OpenAIModelClient extends BaseModelClient
     private <T> HttpResponse<T> sendGenerationRequest(String path, Float timeout, String authorization,
             Map<String, String> requestHeaders, HttpResponse.BodyHandler<T> bodyHandler)
             throws IOException, InterruptedException {
-        try {
-            return httpClient.send(buildGetRequest(modelClientConfig.getApiBase(), path, timeout,
-                    authorization, requestHeaders), bodyHandler);
-        } catch (IOException exception) {
-            String fallbackApiBase = localFixtureFallbackApiBase(exception);
-            if (fallbackApiBase == null) {
-                throw exception;
-            }
-            return ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                    .withSsl()
-                    .withProxy()
-                    .build()
-                    .send(buildGetRequest(fallbackApiBase, path, timeout, authorization, requestHeaders),
-                            bodyHandler);
-        }
+        return httpClient.send(buildGetRequest(modelClientConfig.getApiBase(), path, timeout,
+                authorization, requestHeaders), bodyHandler);
     }
 
     protected AssistantMessage parseResponse(Map<String, Object> response, BaseOutputParser parser) {
@@ -1686,42 +1683,9 @@ public class OpenAIModelClient extends BaseModelClient
             PreparedRequest preparedRequest,
             int retryCount,
             double idleSeconds) throws IOException, InterruptedException {
-        HttpResponse<InputStream> response;
-        try {
-            response = httpClient.send(
-                    buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
-                    IdleBoundInputStream.bodyHandler(idleSeconds)
-            );
-        } catch (IOException exception) {
-            String fallbackApiBase = localFixtureFallbackApiBase(exception);
-            if (fallbackApiBase == null) {
-                throw exception;
-            }
-            response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                    .withSsl()
-                    .withProxy()
-                    .build()
-                    .send(
-                            buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                            IdleBoundInputStream.bodyHandler(idleSeconds)
-                    );
-        }
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String fallbackApiBase = localFixtureFallbackApiBase(response.statusCode());
-            if (fallbackApiBase != null) {
-                readBodyWithIdleTimeout(response.body(),
-                        ModelTimeoutResolver.resolveStreamIdleSeconds(modelClientConfig), true);
-                response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                        .withSsl()
-                        .withProxy()
-                        .build()
-                        .send(
-                                buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                                IdleBoundInputStream.bodyHandler(idleSeconds)
-                        );
-            }
-        }
-        return response;
+        return httpClient.send(
+                buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
+                IdleBoundInputStream.bodyHandler(idleSeconds));
     }
 
     private Iterator<AssistantMessageChunk> tracingIterator(
@@ -1779,45 +1743,6 @@ public class OpenAIModelClient extends BaseModelClient
             Duration timeout,
             String authorization,
             Map<String, String> extraHeaders) {
-    }
-
-    private String localFixtureFallbackApiBase(IOException exception) {
-        if (!isConnectionFailure(exception) || modelClientConfig.isVerifySsl()) {
-            return null;
-        }
-        return localFixtureFallbackApiBase();
-    }
-
-    private String localFixtureFallbackApiBase(int statusCode) {
-        if (statusCode < 400 || modelClientConfig.isVerifySsl()) {
-            return null;
-        }
-        return localFixtureFallbackApiBase();
-    }
-
-    private String localFixtureFallbackApiBase() {
-        try {
-            URI uri = URI.create(modelClientConfig.getApiBase());
-            String host = uri.getHost();
-            if (host == null || uri.getPort() != 8088 || !InetAddress.getByName(host).isLoopbackAddress()) {
-                return null;
-            }
-            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
-            return uri.getScheme() + "://" + host + ":8090" + path;
-        } catch (RuntimeException | java.net.UnknownHostException ignored) {
-            return null;
-        }
-    }
-
-    private static boolean isConnectionFailure(IOException exception) {
-        Throwable current = exception;
-        while (current != null) {
-            if (current instanceof ConnectException) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
     }
 
     private static void validateAuthorizationHeader(String authorization) {

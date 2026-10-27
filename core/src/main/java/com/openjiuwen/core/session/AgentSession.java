@@ -194,6 +194,13 @@ public class AgentSession implements AgentSessionApi {
     }
 
     @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        Iterator<Object> iterator = inner.streamWriterManager().streamIterator(failure);
+        closeStream();
+        return iterator;
+    }
+
+    @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();
         DecoratorFramework callbackFramework;
@@ -257,15 +264,15 @@ public class AgentSession implements AgentSessionApi {
             return this;
         }
         try {
-            if (closeStreamOnPostRun) {
-                closeStream();
-            }
             commit();
             postRunDone = true;
             return this;
         } finally {
             // Restore default so pooled threads do not leak the prior session id.
             LoggingUtils.setSessionId();
+            if (closeStreamOnPostRun) {
+                closeStream();
+            }
         }
     }
 

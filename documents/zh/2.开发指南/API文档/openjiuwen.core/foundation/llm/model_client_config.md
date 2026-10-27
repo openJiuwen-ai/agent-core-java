@@ -62,6 +62,11 @@ JSON 配置示例：
 
 `verify_ssl=false` 会关闭证书校验，仅建议用于本地调试或受控测试环境。
 
+证书校验开关不会改变 `api_base`。OpenAI 兼容客户端的请求与重试始终使用配置的地址，
+不会因连接失败或 HTTP 错误自动将本地端口 `8088` 改为 `8090`。
+使用本地 mock 时，应显式配置实际监听地址；鉴权失败应直接报告原始错误，
+不能由另一个服务的响应掩盖。重试仍遵守 `max_retries` 和错误分类规则。
+
 ## BaseModelInfo
 
 `BaseModelInfo` 同样支持 `http_version` 字段。该字段不会落入 `extraFields`，而是解析为强类型 `ModelHttpVersion`。

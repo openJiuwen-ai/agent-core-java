@@ -32,6 +32,17 @@ public interface AgentSessionApi {
 
     Iterator<Object> streamIterator();
 
+    /**
+     * Return buffered output from a failed producer, followed by its failure.
+     * Sessions without buffered failure support retain immediate failure behavior.
+     *
+     * @param failure original producer failure
+     * @return buffered failure iterator
+     */
+    default Iterator<Object> streamIterator(RuntimeException failure) {
+        throw failure;
+    }
+
     default AgentSessionApi preRun(Map<String, Object> kwargs) {
         return this;
     }

@@ -10,7 +10,9 @@ import static org.assertj.core.api.Assertions.fail;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreakerSnapshot;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -20,6 +22,8 @@ import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.sun.net.httpserver.HttpServer;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -39,6 +43,68 @@ import java.util.Map;
  * @since 2026-10-19
  */
 class ModelCallRetryFlowTest {
+    @Test
+    void exhaustedRetriesCountOnceAndFastFailPreservesSnapshot() throws Exception {
+        try (StubServer server = new StubServer().enqueue(503, errorFrame("service unavailable"))) {
+            Model model = new Model(client(server, 2, new ModelCircuitBreaker(1, 60_000L)));
+            Model otherModel = new Model(client(server));
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 0));
+
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(server.requests).hasSize(3);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(true, 1));
+            assertThat(otherModel.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 0));
+
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(server.requests).hasSize(3);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(true, 1));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {401, 402, 400})
+    void permanentHttpFailurePreservesCountAndSuccessResets(int status) throws Exception {
+        try (StubServer server = new StubServer()
+            .enqueue(429, errorFrame("rate limit reached"))
+            .enqueue(status, errorFrame("context_length_exceeded"))
+            .enqueue(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}")) {
+            Model model = new Model(client(server, 0, new ModelCircuitBreaker(3, 60_000L)));
+
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 1));
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 1));
+
+            assertThat(model.invoke("hello").toCompletableFuture().join().getContent()).isEqualTo("ok");
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 0));
+            assertThat(server.requests).hasSize(3);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void configuredFacadeAndCompatibleAliasExposeLiveSnapshot(boolean isCompatibleAlias) throws Exception {
+        try (StubServer server = new StubServer().enqueue(503, errorFrame("service unavailable"))) {
+            ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName("gpt-test").build();
+            ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI).apiKey("sk-test").apiBase(server.baseUrl())
+                .verifySsl(false).maxRetries(0).build();
+            Model model = isCompatibleAlias
+                ? new Model(new OpenAiCompatibleModelClient(requestConfig, clientConfig))
+                : new Model(clientConfig, requestConfig);
+
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 0));
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 1));
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
     @Test
     void stream_openPhase429_retriedAndStreams() throws Exception {
         // Given a 429 at the open phase then a good stream, When iterating,
@@ -157,10 +223,12 @@ class ModelCallRetryFlowTest {
 
             assertThatThrownBy(iterator::hasNext).isInstanceOf(BaseError.class);
             assertThat(server.requests).hasSize(2);
+            assertThat(client.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(true, 1));
             assertThatThrownBy(() -> client.stream(
                 "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
                 .isInstanceOf(BaseError.class);
             assertThat(server.requests).hasSize(2);
+            assertThat(client.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(true, 1));
         }
     }
 
