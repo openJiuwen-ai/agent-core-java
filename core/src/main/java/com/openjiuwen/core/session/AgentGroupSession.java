@@ -174,6 +174,11 @@ public class AgentGroupSession implements AgentSessionApi {
     }
 
     @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        return inner.streamIterator(failure);
+    }
+
+    @Override
     public void writeStream(Object data) {
         inner.writeStream(enrichWithTeamMetadata(data));
     }

@@ -193,6 +193,13 @@ public class AgentSession implements AgentSessionApi {
     }
 
     @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        Iterator<Object> iterator = inner.streamWriterManager().streamIterator(failure);
+        closeStream();
+        return iterator;
+    }
+
+    @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();
         DecoratorFramework callbackFramework;

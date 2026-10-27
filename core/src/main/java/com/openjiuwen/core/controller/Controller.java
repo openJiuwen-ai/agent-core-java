@@ -307,6 +307,8 @@ public class Controller {
 
     /**
      * Stream execution.
+     * Buffered output remains readable after processing fails; the iterator then
+     * throws the original failure.
      * <p>
      * Workflow:
      * <ol>
@@ -364,7 +366,7 @@ public class Controller {
         } catch (RuntimeException e) {
             // Cleanup on error
             cleanup(agentId, sessionId, session);
-            throw e;
+            return session.streamIterator(e);
         } catch (Exception e) {
             cleanup(agentId, sessionId, session);
             Loggers.CONTROLLER.error("Controller runtime error: {}", e.getMessage());
