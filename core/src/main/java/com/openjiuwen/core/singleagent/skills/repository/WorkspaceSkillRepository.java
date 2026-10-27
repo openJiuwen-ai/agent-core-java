@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.skills.repository;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.core.singleagent.skills.SkillSource;
 
@@ -53,13 +54,27 @@ public final class WorkspaceSkillRepository implements SkillRepository {
         if (root == null || !Files.isDirectory(root)) {
             return List.of();
         }
+        List<Path> symlinkEscapes = new ArrayList<>();
         List<Path> skillFiles = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(root)) {
             stream.filter(path -> Files.isRegularFile(path) || Files.isSymbolicLink(path))
-                    .filter(path -> isSkillFileName(path.getFileName().toString()))
                     .sorted(Comparator.comparing(path -> path.toString().toLowerCase(Locale.ROOT)))
-                    .forEach(skillFiles::add);
+                    .forEach(path -> {
+                        if (isSkillFileName(path.getFileName().toString())) {
+                            skillFiles.add(path);
+                        } else if (Files.isSymbolicLink(path) && isSymlinkEscape(path)) {
+                            symlinkEscapes.add(path);
+                        }
+                    });
         } catch (IOException ignored) {
+            return List.of();
+        }
+        for (Path escape : symlinkEscapes) {
+            Loggers.AGENT.warning(
+                    "SKILL_REJECTED: action=load source=workspace skill_id={} size={} hash={} path={} reason={}",
+                    "unknown", -1, "-", escape, "path escape or symlink");
+        }
+        if (!symlinkEscapes.isEmpty()) {
             return List.of();
         }
         List<Skill> skills = new ArrayList<>();
@@ -68,7 +83,6 @@ public final class WorkspaceSkillRepository implements SkillRepository {
         }
         return List.copyOf(skills);
     }
-
     private boolean isSymlinkEscape(Path path) {
         try {
             Path realTarget = path.toRealPath();
