@@ -10,6 +10,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -198,13 +199,14 @@ final class TieredTimeoutStubServer implements AutoCloseable {
         exchange.getResponseBody().flush();
     }
 
-    private boolean awaitClose(long millis) {
+    private boolean awaitClose(long millis) throws InterruptedIOException {
         try {
             return closed.await(Math.max(millis, 0L), TimeUnit.MILLISECONDS);
         } catch (InterruptedException exception) {
-            // An interrupted handler should stop writing without losing the interrupt signal.
-            Thread.currentThread().interrupt();
-            return true;
+            // Propagate cancellation through the HTTP handler's IOException contract.
+            InterruptedIOException failure = new InterruptedIOException("Interrupted while awaiting stub closure");
+            failure.initCause(exception);
+            throw failure;
         }
     }
 

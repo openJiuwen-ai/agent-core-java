@@ -5,6 +5,7 @@
 package com.openjiuwen.cli.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mockStatic;
 
@@ -70,8 +71,7 @@ class AgentFactoryIntegrationMissingTest {
             assertThat(agent.deepConfig().isEnableTaskLoop()).isTrue();
             assertThat(agent.deepConfig().getMaxIterations()).isEqualTo(50);
             assertThat(agent.deepConfig().getLanguage()).isEqualTo("en");
-            assertThat(agent.deepConfig().getModel()).isInstanceOf(Model.class);
-            Model model = (Model) agent.deepConfig().getModel();
+            Model model = assertInstanceOf(Model.class, agent.deepConfig().getModel());
             assertThat(model.getModelConfig().getModelName()).isEqualTo("qwen-max");
         }
     }

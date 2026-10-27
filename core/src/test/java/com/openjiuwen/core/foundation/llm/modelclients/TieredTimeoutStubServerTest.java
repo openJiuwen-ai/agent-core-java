@@ -19,6 +19,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 
+/**
+ * Verifies that closing the timeout fixture releases active scripted responses.
+ *
+ * @since 2026-10-27
+ */
 class TieredTimeoutStubServerTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
