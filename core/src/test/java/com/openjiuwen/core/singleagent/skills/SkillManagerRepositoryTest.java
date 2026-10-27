@@ -158,12 +158,55 @@ class SkillManagerRepositoryTest {
     }
 
     @Test
+    void explicitReferenceMatrixIsDeterministicAndProtectsLowerPrioritySkill()
+            throws IOException {
+        Path fsRoot = tempDir.resolve("fs");
+        Path wsRoot = tempDir.resolve("ws");
+        Path filesystemSkillDirectory =
+                writeSkillWithId(fsRoot, "shared_skill", "Filesystem version.", "filesystem/shared_id");
+        Path workspaceSkillDirectory =
+                writeSkillWithId(wsRoot, "shared_skill", "Workspace version.", "workspace/shared_id");
+
+        SkillManager manager = new SkillManager("test-op");
+        manager.setRepositories(
+                List.of(
+                        new FileSystemSkillRepository(fsRoot),
+                        new WorkspaceSkillRepository(wsRoot, "user1")));
+        manager.refreshIncrementally(List.of());
+
+        assertThat(manager.getExplicitSkill(null, null)).isEmpty();
+        assertThat(manager.getExplicitSkill("unknown_id", null)).isEmpty();
+        assertThat(manager.getExplicitSkill(null, wsRoot.resolve("missing_skill").toString()))
+                .isEmpty();
+        assertThat(manager.getExplicitSkill("filesystem/shared_id", workspaceSkillDirectory.toString()))
+                .isEmpty();
+        assertThat(manager.getExplicitSkill("workspace/shared_id", workspaceSkillDirectory.toString()))
+                .isPresent()
+                .get()
+                .returns(SkillSource.WORKSPACE, Skill::getSource)
+                .returns("Workspace version.", Skill::getDescription);
+        assertThat(manager.getExplicitSkill(
+                "workspace/shared_id", workspaceSkillDirectory.resolve("SKILL.md").toString()))
+                .isPresent()
+                .get()
+                .returns(SkillSource.WORKSPACE, Skill::getSource);
+        assertThat(manager.getExplicitSkill("filesystem/shared_id", filesystemSkillDirectory.toString()))
+                .isPresent()
+                .get()
+                .returns(SkillSource.FILESYSTEM, Skill::getSource)
+                .returns("Filesystem version.", Skill::getDescription);
+    }
+
+    @Test
     void explicitPathDoesNotBypassProtectedLowerPrioritySkill() throws IOException {
         Path fsRoot = tempDir.resolve("fs");
         Path wsRoot = tempDir.resolve("ws");
         Path protectedSkillDirectory =
-                writeSkill(fsRoot, "protected_skill", "Protected filesystem version.");
-        Path workspaceSkillDirectory = writeSkill(wsRoot, "protected_skill", "Workspace version.");
+                writeSkillWithId(
+                        fsRoot, "protected_skill", "Protected filesystem version.", "filesystem/protected_id");
+        Path workspaceSkillDirectory =
+                writeSkillWithId(
+                        wsRoot, "protected_skill", "Workspace version.", "workspace/protected_id");
         markProtected(protectedSkillDirectory.resolve("SKILL.md"));
 
         SkillManager manager = new SkillManager("test-op");
@@ -176,7 +219,9 @@ class SkillManagerRepositoryTest {
         assertThat(manager.get("protected_skill").getDescription())
                 .isEqualTo("Protected filesystem version.");
         assertThat(manager.getExplicitSkill(null, workspaceSkillDirectory.toString())).isEmpty();
+        assertThat(manager.getExplicitSkill("workspace/protected_id", null)).isEmpty();
         assertThat(manager.getExplicitSkill(null, protectedSkillDirectory.toString())).isPresent();
+        assertThat(manager.getExplicitSkill("filesystem/protected_id", null)).isPresent();
     }
 
     private static void markProtected(Path skillFile) throws IOException {
@@ -206,6 +251,26 @@ class SkillManagerRepositoryTest {
                 Skill body.
                 """
                         .formatted(name, description));
+        return skillDirectory;
+    }
+
+    private static Path writeSkillWithId(
+            Path directory, String name, String description, String id) throws IOException {
+        Path skillDirectory = directory.resolve(name);
+        Files.createDirectories(skillDirectory);
+        String content = """
+                ---
+                name: %s
+                description: %s
+                ---
+                Skill body.
+                """
+                .formatted(name, description);
+        if (id != null) {
+            content = content.replace(
+                    "description: ", "id: " + id + System.lineSeparator() + "description: ");
+        }
+        Files.writeString(skillDirectory.resolve("SKILL.md"), content);
         return skillDirectory;
     }
 }

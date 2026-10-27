@@ -230,13 +230,13 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private ToolAvailabilityChecker createDefaultToolAvailabilityChecker() {
         return (toolName, session) -> {
             List<String> activeGroupNames = new ArrayList<>(getActiveToolGroupNames(session));
-            for (String skillName : getActiveSkillNames(session)) {
+            for (String skillName : registeredActiveSkillNames(getActiveSkillNames(session))) {
                 activeGroupNames.add("skill:" + skillName);
             }
             boolean isToolInRegisteredGroup =
                     toolGroupManager.getGroups().stream()
                             .anyMatch(group -> group.toolNames().contains(toolName));
-            if (isToolInRegisteredGroup) {
+            if (isToolInRegisteredGroup || toolGroupManager.hasRevokedToolNames()) {
                 return toolGroupManager.isToolEligibleForExecution(toolName, activeGroupNames);
             }
             if (skillToolRegistry.isSkillTool(toolName)) {
@@ -827,14 +827,15 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     public List<ToolInfo> listEffectiveToolInfo(AgentSessionApi session) {
         List<String> activeSkillNames = getActiveSkillNames(session);
-        if (toolGroupManager.getGroups().isEmpty()) {
+        if (toolGroupManager.getGroups().isEmpty() && !toolGroupManager.hasRevokedToolNames()) {
             return listEffectiveToolInfo(activeSkillNames);
         }
         return listEffectiveToolInfoWithGroups(activeSkillNames, getActiveToolGroupNames(session));
     }
 
     public Optional<Tool> findActiveSkillTool(String toolName, AgentSessionApi session) {
-        return skillToolRegistry.findToolForActiveSkills(toolName, getActiveSkillNames(session));
+        return skillToolRegistry.findToolForActiveSkills(
+                toolName, registeredActiveSkillNames(getActiveSkillNames(session)));
     }
 
     public Optional<String> findSkillNameByDocumentPath(String documentPath) {
@@ -918,12 +919,14 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     }
 
     private List<ToolInfo> listEffectiveToolInfo(List<String> activeSkillNames) {
+        List<String> registeredSkillNames = registeredActiveSkillNames(activeSkillNames);
         Map<String, ToolInfo> merged = new LinkedHashMap<>();
         Map<String, String> sources = new LinkedHashMap<>();
         for (ToolInfo toolInfo : abilityManager.listToolInfo()) {
             addToolInfo(merged, sources, toolInfo, "global ability");
         }
-        Map<String, List<Tool>> skillTools = skillToolRegistry.listToolsByActiveSkill(activeSkillNames);
+        Map<String, List<Tool>> skillTools =
+                skillToolRegistry.listToolsByActiveSkill(registeredSkillNames);
         for (Map.Entry<String, List<Tool>> entry : skillTools.entrySet()) {
             String source = "active skill '" + entry.getKey() + "'";
             for (Tool tool : entry.getValue()) {
@@ -938,9 +941,10 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     private List<ToolInfo> listEffectiveToolInfoWithGroups(
             List<String> activeSkillNames, List<String> activeToolGroupNames) {
-        List<ToolInfo> merged = listEffectiveToolInfo(activeSkillNames);
+        List<String> registeredSkillNames = registeredActiveSkillNames(activeSkillNames);
+        List<ToolInfo> merged = listEffectiveToolInfo(registeredSkillNames);
         List<String> allActiveGroupNames = new ArrayList<>(activeToolGroupNames);
-        for (String skillName : activeSkillNames) {
+        for (String skillName : registeredSkillNames) {
             allActiveGroupNames.add("skill:" + skillName);
         }
         List<String> visibleToolNames =
@@ -966,6 +970,15 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         if (skillUtil == null || !skillUtil.getSkillManager().has(skillName)) {
             throw new IllegalArgumentException("Skill is not registered: " + skillName);
         }
+    }
+
+    private List<String> registeredActiveSkillNames(List<String> activeSkillNames) {
+        if (skillUtil == null || activeSkillNames == null || activeSkillNames.isEmpty()) {
+            return List.of();
+        }
+        return activeSkillNames.stream()
+                .filter(skillName -> skillUtil.getSkillManager().has(skillName))
+                .toList();
     }
 
     private static void addToolInfo(
