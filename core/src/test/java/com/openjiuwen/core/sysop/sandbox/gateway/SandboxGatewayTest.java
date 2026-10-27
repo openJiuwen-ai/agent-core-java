@@ -17,7 +17,9 @@ import com.openjiuwen.core.sysop.sandbox.SandboxRegistry;
 import com.openjiuwen.core.sysop.sandbox.launchers.LaunchedSandbox;
 import com.openjiuwen.core.sysop.sandbox.launchers.SandboxLauncher;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Flow;
 import java.util.concurrent.SubmissionPublisher;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,6 +36,7 @@ class SandboxGatewayTest {
     void cleanupRegistry() {
         SandboxRegistry.unregisterLauncher("gateway-test-launcher");
         SandboxRegistry.unregisterProvider("gateway-test-sandbox", "shell");
+        SandboxRegistry.unregisterProvider("gateway-dynamic-sandbox", "shell");
     }
 
     @Test
@@ -100,10 +103,77 @@ class SandboxGatewayTest {
         assertTrue(TestLauncher.deleteCount.get() >= 1);
     }
 
+    @Test
+    void providerResolvedSandboxIdIsPersistedAndUsedForRelease() {
+        TestDynamicProvider.deletedSandboxId = null;
+        SandboxRegistry.registerLauncher("gateway-test-launcher", TestLauncher.class);
+        SandboxRegistry.registerProvider("gateway-dynamic-sandbox", "shell", TestDynamicProvider.class);
+        SandboxGateway gateway = new SandboxGateway();
+        SandboxGatewayConfig config = gatewayConfig("gateway-dynamic-sandbox");
+        GatewayInvokeRequest request = GatewayInvokeRequest.builder()
+                .opType("shell")
+                .method("resolve")
+                .params(Map.of("text", "initialized"))
+                .isolationKey("iso-dynamic")
+                .build();
+
+        GatewayResponse invoked = gateway.handleRequest(config, request).join();
+        GatewayResponse endpoint = gateway.getSandbox(SandboxCreateRequest.builder()
+                .config(config)
+                .isolationKey("iso-dynamic")
+                .build()).join();
+        GatewayResponse released = gateway.releaseSandbox("iso-dynamic", "delete").join();
+
+        assertEquals(StatusCode.SUCCESS.getCode(), invoked.code());
+        assertEquals("physical-sandbox-id", requireSandboxEndpoint(endpoint.data()).sandboxId());
+        assertEquals(StatusCode.SUCCESS.getCode(), released.code());
+        assertEquals("physical-sandbox-id", TestDynamicProvider.deletedSandboxId);
+    }
+
+    @Test
+    void pauseAndResumeUseTheResolvedProviderSandboxId() {
+        TestLauncher.pausedSandboxIds.clear();
+        TestLauncher.lastPausedSandboxId = null;
+        TestLauncher.lastResumedSandboxId = null;
+        SandboxRegistry.registerLauncher("gateway-test-launcher", TestLauncher.class);
+        SandboxRegistry.registerProvider("gateway-dynamic-sandbox", "shell", TestDynamicProvider.class);
+        SandboxGateway gateway = new SandboxGateway();
+        SandboxGatewayConfig config = gatewayConfig("gateway-dynamic-sandbox");
+        GatewayInvokeRequest request = GatewayInvokeRequest.builder()
+                .opType("shell")
+                .method("resolve")
+                .params(Map.of("text", "initialized"))
+                .isolationKey("iso-pause")
+                .build();
+
+        gateway.handleRequest(config, request).join();
+        GatewayResponse paused = gateway.releaseSandbox("iso-pause", "pause").join();
+        GatewayResponse resumed = gateway.getSandbox(SandboxCreateRequest.builder()
+                .config(config)
+                .isolationKey("iso-pause")
+                .build()).join();
+
+        assertEquals(StatusCode.SUCCESS.getCode(), paused.code());
+        assertEquals("physical-sandbox-id", TestLauncher.lastPausedSandboxId);
+        assertEquals("physical-sandbox-id", TestLauncher.lastResumedSandboxId);
+        assertEquals("physical-sandbox-id", requireSandboxEndpoint(resumed.data()).sandboxId());
+    }
+
+    private static SandboxEndpoint requireSandboxEndpoint(Object endpoint) {
+        if (endpoint instanceof SandboxEndpoint sandboxEndpoint) {
+            return sandboxEndpoint;
+        }
+        throw new AssertionError("Gateway response did not contain a sandbox endpoint");
+    }
+
     private static SandboxGatewayConfig gatewayConfig() {
+        return gatewayConfig("gateway-test-sandbox");
+    }
+
+    private static SandboxGatewayConfig gatewayConfig(String sandboxType) {
         SandboxLauncherConfig launcherConfig = SandboxLauncherConfig.builder()
                 .launcherType("gateway-test-launcher")
-                .sandboxType("gateway-test-sandbox")
+                .sandboxType(sandboxType)
                 .build();
         return SandboxGatewayConfig.builder()
                 .launcherConfig(launcherConfig)
@@ -113,6 +183,9 @@ class SandboxGatewayTest {
 
     public static final class TestLauncher extends SandboxLauncher {
         private static final AtomicInteger deleteCount = new AtomicInteger();
+        private static final Set<String> pausedSandboxIds = ConcurrentHashMap.newKeySet();
+        private static volatile String lastPausedSandboxId;
+        private static volatile String lastResumedSandboxId;
 
         @Override
         public CompletableFuture<LaunchedSandbox> launch(
@@ -126,6 +199,28 @@ class SandboxGatewayTest {
         public CompletableFuture<Void> delete(String sandboxId) {
             deleteCount.incrementAndGet();
             return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<Void> pause(String sandboxId) {
+            lastPausedSandboxId = sandboxId;
+            pausedSandboxIds.add(sandboxId);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<Void> resume(String sandboxId) {
+            lastResumedSandboxId = sandboxId;
+            pausedSandboxIds.remove(sandboxId);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<SandboxStatus> checkStatus(String sandboxId) {
+            SandboxStatus status = pausedSandboxIds.contains(sandboxId)
+                    ? SandboxStatus.PAUSED
+                    : SandboxStatus.RUNNING;
+            return CompletableFuture.completedFuture(status);
         }
     }
 
@@ -148,6 +243,48 @@ class SandboxGatewayTest {
             lastPublisher.submit(text);
             lastPublisher.close();
             return lastPublisher;
+        }
+    }
+
+    /**
+     * Test provider that resolves its sandbox ID during invocation.
+     *
+     * @since 0.1.17
+     */
+    public static final class TestDynamicProvider implements SandboxLifecycleProvider {
+        private static volatile String deletedSandboxId;
+
+        private volatile String sandboxId;
+
+        public TestDynamicProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
+        }
+
+        /**
+         * Resolves this test provider's sandbox and returns its input text.
+         *
+         * @param text text to return
+         * @return the supplied text
+         * @since 0.1.17
+         */
+        public CompletableFuture<String> resolve(String text) {
+            sandboxId = "physical-sandbox-id";
+            return CompletableFuture.completedFuture(text);
+        }
+
+        @Override
+        public String getSandboxId() {
+            return sandboxId;
+        }
+
+        @Override
+        public String getSandboxBaseUrl() {
+            return "http://sandbox";
+        }
+
+        @Override
+        public CompletableFuture<Void> deleteSandbox(String physicalSandboxId) {
+            deletedSandboxId = physicalSandboxId;
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

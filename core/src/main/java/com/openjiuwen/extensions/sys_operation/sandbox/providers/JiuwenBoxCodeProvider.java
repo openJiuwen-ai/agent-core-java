@@ -12,6 +12,7 @@ import com.openjiuwen.core.sysop.result.ExecuteCodeData;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
 import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxLifecycleProvider;
 import com.openjiuwen.core.sysop.sandbox.providers.BaseCodeProvider;
 
 import java.nio.charset.StandardCharsets;
@@ -28,7 +29,7 @@ import java.util.concurrent.Flow;
  * Mirrors Python's {@code JiuwenBoxCodeProvider} in
  * {@code openjiuwen/extensions/sys_operation/sandbox/providers/jiuwenbox.py}.
  */
-public class JiuwenBoxCodeProvider extends BaseCodeProvider {
+public class JiuwenBoxCodeProvider extends BaseCodeProvider implements SandboxLifecycleProvider {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("jiuwenbox-code-provider-io", true);
@@ -38,6 +39,21 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
     public JiuwenBoxCodeProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         super(endpoint, config);
         this.state = new JiuwenBoxProviderSupport.ProviderState(endpoint, config);
+    }
+
+    @Override
+    public String getSandboxId() {
+        return state.currentSandboxId();
+    }
+
+    @Override
+    public String getSandboxBaseUrl() {
+        return state.baseUrl();
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteSandbox(String sandboxId) {
+        return state.deleteSandbox(sandboxId, IO_EXECUTOR);
     }
 
     @Override

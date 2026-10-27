@@ -40,7 +40,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /**
@@ -327,23 +330,25 @@ final class JiuwenBoxProviderSupport {
     }
 
     static String forceRecreateJiuwenBoxSandbox(
-            String baseUrl,
-            Map<String, Object> createOptions,
-            double timeoutSeconds,
-            Object preserveFilesUpload,
-            List<String> extraStaleSandboxIds) throws Exception {
-        List<String> staleSandboxIds = new ArrayList<>(clearSharedSandbox(baseUrl));
-        if (extraStaleSandboxIds != null) {
-            for (String sandboxId : extraStaleSandboxIds) {
+            SandboxRecreationRequest request) throws Exception {
+        List<String> staleSandboxIds = new ArrayList<>();
+        synchronized (SHARED_LOCK) {
+            String cachedSandboxId = SHARED_SANDBOX_IDS.remove(request.sharedKey());
+            if (cachedSandboxId != null && !cachedSandboxId.isBlank()) {
+                staleSandboxIds.add(cachedSandboxId);
+            }
+        }
+        if (request.extraStaleSandboxIds() != null) {
+            for (String sandboxId : request.extraStaleSandboxIds()) {
                 if (sandboxId != null && !sandboxId.isBlank() && !staleSandboxIds.contains(sandboxId)) {
                     staleSandboxIds.add(sandboxId);
                 }
             }
         }
-        try (JiuwenBoxClient client = new JiuwenBoxClient(baseUrl, timeoutSeconds)) {
-            String sandboxId = client.createSandbox(createOptions);
-            if (preserveFilesUpload != null) {
-                uploadPreserveFilesSync(client, sandboxId, preserveFilesUpload);
+        try (JiuwenBoxClient client = new JiuwenBoxClient(request.baseUrl(), request.timeoutSeconds())) {
+            String sandboxId = client.createSandbox(request.createOptions());
+            if (request.preserveFilesUpload() != null) {
+                uploadPreserveFilesSync(client, sandboxId, request.preserveFilesUpload());
             }
             for (String oldId : staleSandboxIds) {
                 if (oldId == null || oldId.isBlank() || Objects.equals(oldId, sandboxId)) {
@@ -355,7 +360,7 @@ final class JiuwenBoxProviderSupport {
                     // Keep the new sandbox even if stale cleanup partially fails.
                 }
             }
-            registerSharedSandboxId(buildSharedScopeKey(baseUrl, createOptions), sandboxId);
+            registerSharedSandboxId(request.sharedKey(), sandboxId);
             return sandboxId;
         }
     }
@@ -471,6 +476,15 @@ final class JiuwenBoxProviderSupport {
     record TimeoutConfig(Integer idleTimeout, Integer idleCheckInterval) {
     }
 
+    record SandboxRecreationRequest(
+            String sharedKey,
+            String baseUrl,
+            Map<String, Object> createOptions,
+            double timeoutSeconds,
+            Object preserveFilesUpload,
+            List<String> extraStaleSandboxIds) {
+    }
+
     record LocalProcessResult(String stdout, String stderr, int exitCode) {
     }
 
@@ -492,7 +506,7 @@ final class JiuwenBoxProviderSupport {
         private final SandboxGatewayConfig config;
         private final int timeoutSeconds;
         private JiuwenBoxClient client;
-        private String sandboxId;
+        private volatile String sandboxId;
 
         ProviderState(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
             this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
@@ -564,7 +578,40 @@ final class JiuwenBoxProviderSupport {
         }
 
         String sharedScopeKey() {
-            return buildSharedScopeKey(baseUrl(), sandboxCreateOptionsFromLauncherExtraParams());
+            String sharedKey = buildSharedScopeKey(baseUrl(), sandboxCreateOptionsFromLauncherExtraParams());
+            Object isolationKey = config == null || config.getParams() == null
+                    ? null
+                    : config.getParams().get("_ojw_sandbox_isolation_key");
+            if (isolationKey == null || String.valueOf(isolationKey).isBlank()) {
+                return sharedKey;
+            }
+            String scope = String.valueOf(isolationKey);
+            return sharedKey + "|scope=" + scope.length() + ":" + scope;
+        }
+
+        String currentSandboxId() {
+            return sandboxId;
+        }
+
+        CompletableFuture<Void> deleteSandbox(String physicalSandboxId, Executor executor) {
+            if (physicalSandboxId == null || physicalSandboxId.isBlank()) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return CompletableFuture.runAsync(() -> deleteSandboxSync(physicalSandboxId), executor);
+        }
+
+        private void deleteSandboxSync(String physicalSandboxId) {
+            try {
+                getClient().deleteSandbox(physicalSandboxId);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new CompletionException("Interrupted while deleting JiuwenBox sandbox", exception);
+            } catch (IOException exception) {
+                throw new CompletionException("Failed to delete JiuwenBox sandbox", exception);
+            }
+            synchronized (SHARED_LOCK) {
+                SHARED_SANDBOX_IDS.remove(sharedScopeKey(), physicalSandboxId);
+            }
         }
 
         String sandboxIdFromLauncherExtraParams() {
@@ -608,12 +655,9 @@ final class JiuwenBoxProviderSupport {
             if (envSandboxId != null && !envSandboxId.isBlank() && !Objects.equals(sandboxId, envSandboxId)) {
                 sandboxId = envSandboxId;
             }
-            String extraSandboxId = sandboxIdFromLauncherExtraParams();
-            if (extraSandboxId != null && !Objects.equals(extraSandboxId, sandboxId)) {
-                sandboxId = extraSandboxId;
-            }
             if (sandboxId == null || sandboxId.isBlank()) {
-                sandboxId = endpoint.sandboxId();
+                String extraSandboxId = sandboxIdFromLauncherExtraParams();
+                sandboxId = extraSandboxId == null ? endpoint.sandboxId() : extraSandboxId;
             }
             if (sandboxId == null || sandboxId.isBlank()) {
                 String sharedKey = sharedScopeKey();
@@ -626,7 +670,6 @@ final class JiuwenBoxProviderSupport {
                         newlyCreated = true;
                     }
                     SHARED_SANDBOX_IDS.put(sharedKey, sandboxId);
-                    launcherExtraParams(true).put("sandbox_id", sandboxId);
                 }
                 if (newlyCreated) {
                     uploadPreserveFilesBestEffort(
@@ -637,9 +680,9 @@ final class JiuwenBoxProviderSupport {
             } else {
                 synchronized (SHARED_LOCK) {
                     SHARED_SANDBOX_IDS.put(sharedScopeKey(), sandboxId);
-                    launcherExtraParams(true).put("sandbox_id", sandboxId);
                 }
             }
+            publishSandboxId();
             return sandboxId;
         }
 
@@ -681,22 +724,36 @@ final class JiuwenBoxProviderSupport {
                 for (String candidate : List.of(current, cached)) {
                     if (candidate != null && !candidate.isBlank() && !Objects.equals(candidate, staleSandboxId)) {
                         sandboxId = candidate;
+                        publishSandboxId();
                         return candidate;
                     }
                 }
-                String newId = forceRecreateJiuwenBoxSandbox(
+                SandboxRecreationRequest recreationRequest = new SandboxRecreationRequest(
+                        sharedScopeKey(),
                         baseUrl,
                         createOptions,
                         timeoutSeconds,
                         preserveFilesUpload,
                         List.of(staleSandboxId));
+                String newId = forceRecreateJiuwenBoxSandbox(recreationRequest);
                 sandboxId = newId;
-                launcherExtraParams(true).put("sandbox_id", newId);
+                publishSandboxId();
                 return newId;
             }
         }
 
-        private String baseUrl() {
+        @SuppressWarnings("unchecked")
+        private void publishSandboxId() {
+            if (config == null || config.getParams() == null || sandboxId == null || sandboxId.isBlank()) {
+                return;
+            }
+            Object callback = config.getParams().get("_ojw_sandbox_id_callback");
+            if (callback instanceof Consumer<?> consumer) {
+                ((Consumer<String>) consumer).accept(sandboxId);
+            }
+        }
+
+        String baseUrl() {
             if (endpoint.baseUrl() != null && !endpoint.baseUrl().isBlank()) {
                 return endpoint.baseUrl();
             }
