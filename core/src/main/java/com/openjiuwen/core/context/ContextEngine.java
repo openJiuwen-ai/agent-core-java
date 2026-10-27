@@ -12,6 +12,7 @@ import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressor;
 import com.openjiuwen.core.context.processor.compressor.DialogueCompressor;
 import com.openjiuwen.core.context.processor.compressor.FullCompactProcessor;
 import com.openjiuwen.core.context.processor.compressor.MicroCompactProcessor;
+import com.openjiuwen.core.context.processor.compressor.MultimodalHistoryCompactor;
 import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressor;
 import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
 import com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloader;
@@ -48,6 +49,7 @@ public class ContextEngine {
         registerProcessor("RoundLevelCompressor", RoundLevelCompressor.class);
         registerProcessor("CurrentRoundCompressor", CurrentRoundCompressor.class);
         registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class);
+        registerProcessor("MultimodalHistoryCompactor", MultimodalHistoryCompactor.class);
         registerProcessor("FullCompactProcessor", FullCompactProcessor.class);
         registerProcessor("MessageOffloader", MessageOffloader.class);
         registerProcessor("MessageSummaryOffloader", MessageSummaryOffloader.class);
