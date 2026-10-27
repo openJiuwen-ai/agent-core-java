@@ -160,12 +160,12 @@ class SkillManagerRepositoryTest {
     @Test
     void explicitReferenceMatrixProtectsLowerPriority()
             throws IOException {
-        Path fsRoot = tempDir.resolve("fs");
-        Path wsRoot = tempDir.resolve("ws");
         Path filesystemSkillDirectory =
-                writeSkillWithId(fsRoot, "shared_skill", "Filesystem version.", "filesystem/shared_id");
+                writeSkillWithId(tempDir.resolve("fs"), "shared_skill", "Filesystem version.", "filesystem/shared_id");
         Path workspaceSkillDirectory =
-                writeSkillWithId(wsRoot, "shared_skill", "Workspace version.", "workspace/shared_id");
+                writeSkillWithId(tempDir.resolve("ws"), "shared_skill", "Workspace version.", "workspace/shared_id");
+        Path fsRoot = filesystemSkillDirectory.getParent();
+        Path wsRoot = workspaceSkillDirectory.getParent();
 
         SkillManager manager = new SkillManager("test-op");
         manager.setRepositories(

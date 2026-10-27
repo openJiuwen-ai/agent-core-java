@@ -64,6 +64,8 @@ public final class WorkspaceSkillRepository implements SkillRepository {
                             skillFiles.add(path);
                         } else if (Files.isSymbolicLink(path) && isSymlinkEscape(path)) {
                             symlinkEscapes.add(path);
+                        } else {
+                            // Neither a skill file nor a symlink escape; skip.
                         }
                     });
         } catch (IOException ignored) {

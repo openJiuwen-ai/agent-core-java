@@ -47,6 +47,7 @@ class McpDelayedToolGroupTest {
     private static final long MCP_POLL_INTERVAL_MILLIS = 10L;
 
     private static final AtomicInteger TOOL_NAME_SEQUENCE = new AtomicInteger();
+
     private final List<String> registeredToolNames = new ArrayList<>();
 
     @AfterEach
@@ -227,7 +228,6 @@ class McpDelayedToolGroupTest {
         try {
             TimeUnit.MILLISECONDS.sleep(MCP_POLL_INTERVAL_MILLIS);
         } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
             throw new IllegalStateException(
                     "Interrupted while waiting for MCP tool resolution", exception);
         }

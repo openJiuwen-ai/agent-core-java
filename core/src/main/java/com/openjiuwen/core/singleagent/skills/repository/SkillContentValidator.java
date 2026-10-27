@@ -94,23 +94,37 @@ public final class SkillContentValidator {
         if (!normalizedFile.startsWith(normalizedRoot)) {
             return rejected("path outside workspace skill root");
         }
-        Path realFile;
-        Path realRoot;
+        ValidationResult pathResult = resolveRealPaths(normalizedFile, normalizedRoot);
+        if (!pathResult.isAllowed()) {
+            return pathResult;
+        }
         try {
-            realFile = normalizedFile.toRealPath();
-            realRoot = normalizedRoot.toRealPath();
+            return validateContent(normalizedFile.toRealPath());
+        } catch (IOException exception) {
+            return rejected("unreadable: " + exception.getMessage());
+        }
+    }
+
+    private ValidationResult resolveRealPaths(Path normalizedFile, Path normalizedRoot) {
+        try {
+            Path realFile = normalizedFile.toRealPath();
+            Path realRoot = normalizedRoot.toRealPath();
+            if (!realFile.startsWith(realRoot)) {
+                return rejected("path escape or symlink");
+            }
+            if (!Files.isRegularFile(realFile)) {
+                return rejected("not a regular file");
+            }
         } catch (IOException exception) {
             if (Files.isSymbolicLink(normalizedFile)) {
                 return rejected("path escape or symlink");
             }
             return rejected("unreadable: " + exception.getMessage());
         }
-        if (!realFile.startsWith(realRoot)) {
-            return rejected("path escape or symlink");
-        }
-        if (!Files.isRegularFile(realFile)) {
-            return rejected("not a regular file");
-        }
+        return new ValidationResult(true, null, -1, "-");
+    }
+
+    private ValidationResult validateContent(Path realFile) {
         FileMetadata metadata;
         try {
             metadata = fileMetadata(realFile);

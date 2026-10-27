@@ -361,7 +361,6 @@ class BaseAgentSkillToolBindingTest {
     void workspaceSkillRejectedBySafetyCheckActivatesFallbackVersion() throws IOException {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("workspace-skill-fallback-session");
-        String sysOperationId = "workspace-skill-fallback-test-" + UUID.randomUUID();
         Path filesystemRoot = tempDir.resolve("filesystem");
         Path workspaceRoot = tempDir.resolve("workspace");
         Path filesystemSkillDirectory = filesystemRoot.resolve("FallbackWorkspaceSkill");
@@ -373,6 +372,7 @@ class BaseAgentSkillToolBindingTest {
         Files.write(
                 workspaceSkillDirectory.resolve("SKILL.md"),
                 new byte[SkillContentValidator.DEFAULT_WORKSPACE_MAX_BYTES + 1]);
+        String sysOperationId = "workspace-skill-fallback-test-" + UUID.randomUUID();
         Runner.resourceMgr().addSysOperation(new SysOperationCard(
                 sysOperationId,
                 OperationMode.LOCAL,
