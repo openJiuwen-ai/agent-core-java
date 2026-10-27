@@ -8,7 +8,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;

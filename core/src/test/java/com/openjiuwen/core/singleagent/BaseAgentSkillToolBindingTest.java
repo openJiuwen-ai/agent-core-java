@@ -360,7 +360,6 @@ class BaseAgentSkillToolBindingTest {
     @Test
     void workspaceSkillRejectedBySafetyCheckActivatesFallbackVersion() throws IOException {
         TestAgent agent = new TestAgent();
-        MemorySession session = new MemorySession("workspace-skill-fallback-session");
         Path filesystemRoot = tempDir.resolve("filesystem");
         Path workspaceRoot = tempDir.resolve("workspace");
         Path filesystemSkillDirectory = filesystemRoot.resolve("FallbackWorkspaceSkill");
@@ -393,6 +392,7 @@ class BaseAgentSkillToolBindingTest {
                     .skillName("FallbackWorkspaceSkill")
                     .tools(List.of(tool("fallbackSkillTool")))
                     .build()).toCompletableFuture().join();
+        MemorySession session = new MemorySession("workspace-skill-fallback-session");
             agent.activateSkill("FallbackWorkspaceSkill", session);
             Skill activeSkill =
                     agent.getSkillUtil().getSkillManager().get("FallbackWorkspaceSkill");

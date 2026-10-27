@@ -60,13 +60,7 @@ public final class WorkspaceSkillRepository implements SkillRepository {
             stream.filter(path -> Files.isRegularFile(path) || Files.isSymbolicLink(path))
                     .sorted(Comparator.comparing(path -> path.toString().toLowerCase(Locale.ROOT)))
                     .forEach(path -> {
-                        if (isSkillFileName(path.getFileName().toString())) {
-                            skillFiles.add(path);
-                        } else if (Files.isSymbolicLink(path) && isSymlinkEscape(path)) {
-                            symlinkEscapes.add(path);
-                        } else {
-                            // Neither a skill file nor a symlink escape; skip.
-                        }
+                        classifySkillEntry(path, skillFiles, symlinkEscapes);
                     });
         } catch (IOException ignored) {
             return List.of();
@@ -82,6 +76,17 @@ public final class WorkspaceSkillRepository implements SkillRepository {
         }
         return List.copyOf(skills);
     }
+
+    private void classifySkillEntry(
+            Path path, List<Path> skillFiles, List<Path> symlinkEscapes) {
+        if (isSkillFileName(path.getFileName().toString())) {
+            skillFiles.add(path);
+        }
+        if (Files.isSymbolicLink(path) && isSymlinkEscape(path)) {
+            symlinkEscapes.add(path);
+        }
+    }
+
     private boolean isSymlinkEscape(Path path) {
         try {
             Path realTarget = path.toRealPath();
