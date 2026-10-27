@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Rail that manages skill prompt injection, local skill discovery and remote skill sync.
@@ -375,16 +376,20 @@ public class SkillUseRail extends DeepAgentRail {
             return;
         }
         SkillTool skillTool = new SkillTool(this::getSkillsMeta);
-        agent.registerTool(skillTool);
-        ownedToolNames.add(skillTool.getCard().getName());
-        ownedToolIds.add(skillTool.getCard().getId());
+        registerSkillToolInstance(agent, skillTool);
         if (!SKILL_MODE_AUTO_LIST.equals(skillMode)) {
             return;
         }
         ListSkillTool listSkillTool = new ListSkillTool(this::getSkillsMeta);
-        agent.registerTool(listSkillTool);
-        ownedToolNames.add(listSkillTool.getCard().getName());
-        ownedToolIds.add(listSkillTool.getCard().getId());
+        registerSkillToolInstance(agent, listSkillTool);
+    }
+
+    private void registerSkillToolInstance(DeepAgent agent, Tool tool) {
+        // Skill suppliers belong to this rail; equal schemas do not imply shared instances.
+        tool.getCard().setId(tool.getCard().getName() + "-" + UUID.randomUUID());
+        agent.registerTool(tool);
+        ownedToolNames.add(tool.getCard().getName());
+        ownedToolIds.add(tool.getCard().getId());
     }
 
     private void registerFallbackTools(DeepAgent agent) {

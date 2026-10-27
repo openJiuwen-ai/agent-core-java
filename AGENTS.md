@@ -201,6 +201,10 @@ every Java review:
 - `G.FMT.02`/`G.FMT.03`/`G.FMT.08`/`G.FMT.10`: imports are explicit, grouped,
   and sorted; indentation uses four spaces without tabs; lines do not exceed
   120 narrow characters.
+- `G.CMT.06`: separate a standalone comment from preceding code with a blank
+  line, except at the start of its block. Check field Javadoc as well as method
+  comments, and leave a space after comment markers. Scan the complete touched
+  class for the same pattern rather than checking only the reported line.
 
 ### Cloud Feedback Loop
 
@@ -234,6 +238,16 @@ Before declaring a Java change complete or creating a commit:
 6. Run CodeArts Check when it is available. Local review is not proof that
    cloud CodeArts passed; the final report must explicitly say whether the
    cloud service was run and list any unavailable check.
+
+### Core Full Build Gate
+
+Before every code delivery or commit, run `mvn -B clean package
+-Dmaven.test.failure.ignore=false` from the Core reactor root with the complete
+default test suite enabled. Compilation, focused tests, and JiuwenTestJava smoke
+are separate checks and cannot replace this build. Record the command, revision,
+environment, result counts, and final `BUILD SUCCESS`. An interrupted or failed
+run does not pass this gate. Do not skip tests or ignore failures to obtain a
+successful package. Use an isolated Maven repository when required below.
 
 ### JiuwenTestJava Smoke Gate
 
