@@ -5,6 +5,7 @@
 package com.openjiuwen.cli.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mockStatic;
 
@@ -27,21 +28,25 @@ import java.util.Map;
  * {@code tests/cli/integration/test_agent_factory.py}.
  */
 class AgentFactoryIntegrationMissingTest {
-
+    private ResourceMgr resourceMgr;
     private MockedStatic<Runner> runner;
 
     @BeforeEach
-    void setUp() {
-        ResourceMgr resourceMgr = new ResourceMgr();
-        // Keep real registration checks while isolating built-in tool IDs from other test classes.
+    void isolateResources() {
+        resourceMgr = new ResourceMgr();
+        // Exercise real duplicate validation without consuming or replacing another fixture's tools.
         runner = mockStatic(Runner.class, CALLS_REAL_METHODS);
         runner.when(Runner::resourceMgr).thenReturn(resourceMgr);
         runner.when(Runner::getResourceMgr).thenReturn(resourceMgr);
     }
 
     @AfterEach
-    void tearDown() {
-        runner.close();
+    void releaseResources() {
+        try {
+            resourceMgr.release().toCompletableFuture().join();
+        } finally {
+            runner.close();
+        }
     }
 
     @Test
@@ -67,11 +72,8 @@ class AgentFactoryIntegrationMissingTest {
             assertThat(agent.deepConfig().isEnableTaskLoop()).isTrue();
             assertThat(agent.deepConfig().getMaxIterations()).isEqualTo(50);
             assertThat(agent.deepConfig().getLanguage()).isEqualTo("en");
-            if (agent.deepConfig().getModel() instanceof Model model) {
-                assertThat(model.getModelConfig().getModelName()).isEqualTo("qwen-max");
-            } else {
-                throw new AssertionError("CLI agent model must be a Model instance");
-            }
+            Model model = assertInstanceOf(Model.class, agent.deepConfig().getModel());
+            assertThat(model.getModelConfig().getModelName()).isEqualTo("qwen-max");
         }
     }
 }
