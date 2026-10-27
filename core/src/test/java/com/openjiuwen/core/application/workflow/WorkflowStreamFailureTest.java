@@ -144,7 +144,7 @@ class WorkflowStreamFailureTest {
         WorkflowAgent agent = new WorkflowAgent(config);
         AgentSession session = new AgentSession("issue194-runner", null, agent.getCard());
         Iterator<Object> stream = assertDoesNotThrow(() -> Runner.runAgentStreaming(
-                agent, Map.of("query", "test"), session, (ModelContext) null, MODES, null)
+                agent, Map.of("query", "test"), session, null, MODES, null)
                 .toCompletableFuture().join());
         assertTracesThenFailure(stream, CompletionException.class);
         assertTrue(session.isPostRunDone());

@@ -166,7 +166,9 @@ public class AsyncStreamQueue {
         close(DEFAULT_CLOSE_TIMEOUT_MS);
     }
 
-    List<Object> drain() {
+    List<Object> closeAndDrain() {
+        // Stop new sends before taking the terminal snapshot; no consumer remains to await.
+        closed.set(true);
         List<Object> items = new ArrayList<>();
         streamQueue.drainTo(items);
         for (int index = 0; index < items.size(); index++) {

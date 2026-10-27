@@ -24,15 +24,17 @@ import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 
-import java.util.Iterator;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -177,11 +179,11 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         // no LLM model is configured (legacy super.stream -> WorkflowController.stream skips that).
         logLegacyModelParams();
         AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
-        AgentSessionApi activeSession = createdSession == null ? session : createdSession;
+        AgentSessionApi activeSession = Objects.requireNonNullElse(session, createdSession);
         InvocationResult invocation;
         try {
             invocation = invokeController(inputMap, activeSession, streamModes, createdSession);
-        } catch (RuntimeException failure) {
+        } catch (CompletionException | CancellationException failure) {
             return activeSession.streamIterator(failure);
         }
         recordContextMessages(inputMap, invocation.output(), invocation.session());
@@ -496,7 +498,8 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
 
     private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi session) {
         AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
-        return invokeController(inputMap, createdSession == null ? session : createdSession, null, createdSession);
+        AgentSessionApi activeSession = Objects.requireNonNullElse(session, createdSession);
+        return invokeController(inputMap, activeSession, null, createdSession);
     }
 
     private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi activeSession,

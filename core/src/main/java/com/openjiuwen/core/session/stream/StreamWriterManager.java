@@ -68,8 +68,8 @@ public class StreamWriterManager {
         streamOutput(DEFAULT_FRAME_TIMEOUT, DEFAULT_FRAME_TIMEOUT, true, consumer);
     }
 
-    public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean needClose, Consumer<Object> consumer) {
-        streamIterator(firstFrameTimeoutMs, timeoutMs, needClose).forEachRemaining(consumer);
+    public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean shouldClose, Consumer<Object> consumer) {
+        streamIterator(firstFrameTimeoutMs, timeoutMs, shouldClose).forEachRemaining(consumer);
     }
 
     public Iterator<Object> streamIterator() {
@@ -84,44 +84,43 @@ public class StreamWriterManager {
      * @return iterator that reports the failure once after buffered output
      */
     public Iterator<Object> streamIterator(RuntimeException failure) {
-        List<Object> buffered = streamEmitter.getStreamQueue().drain();
-        streamEmitter.getStreamQueue().close();
+        List<Object> buffered = streamEmitter.getStreamQueue().closeAndDrain();
         streamEmitter.close();
         buffered.removeIf(StreamEmitter.END_FRAME::equals);
         return streamIterator(DEFAULT_FRAME_TIMEOUT, DEFAULT_FRAME_TIMEOUT, false, buffered.iterator(), failure);
     }
 
-    public Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean needClose) {
-        return streamIterator(firstFrameTimeoutMs, timeoutMs, needClose, null, null);
+    public Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean shouldClose) {
+        return streamIterator(firstFrameTimeoutMs, timeoutMs, shouldClose, null, null);
     }
 
-    private Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean needClose,
+    private Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean shouldClose,
                                             Iterator<Object> buffered, RuntimeException failure) {
         return new Iterator<>() {
-            private boolean firstFrame = true;
-            private boolean done;
+            private boolean isFirstFrame = true;
+            private boolean isDone;
             private Object nextItem;
 
             @Override
             public boolean hasNext() {
-                if (done) {
+                if (isDone) {
                     return false;
                 }
                 if (nextItem != null) {
                     return true;
                 }
                 if (buffered == null) {
-                    nextItem = receiveOrThrow(firstFrame ? firstFrameTimeoutMs : timeoutMs, firstFrame);
+                    nextItem = receiveOrThrow(isFirstFrame ? firstFrameTimeoutMs : timeoutMs, isFirstFrame);
                 } else {
                     nextItem = buffered.hasNext() ? buffered.next() : StreamEmitter.END_FRAME;
                 }
-                firstFrame = false;
+                isFirstFrame = false;
                 if (StreamEmitter.END_FRAME.equals(nextItem)) {
-                    if (needClose) {
+                    if (shouldClose) {
                         // Draining an empty queue must not inherit the frame-interval timeout.
                         streamEmitter.getStreamQueue().close(AsyncStreamQueue.DEFAULT_CLOSE_TIMEOUT_MS);
                     }
-                    done = true;
+                    isDone = true;
                     nextItem = null;
                     if (failure != null) {
                         throw failure;
@@ -196,13 +195,13 @@ public class StreamWriterManager {
         return writers.remove(key);
     }
 
-    private Object receiveOrThrow(long timeoutMs, boolean firstFrame) {
+    private Object receiveOrThrow(long timeoutMs, boolean isFirstFrame) {
         long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_FRAME_TIMEOUT;
         Object data = streamEmitter.getStreamQueue().receive(effectiveTimeoutMs);
         if (data != null) {
             return data;
         }
-        StatusCode status = firstFrame
+        StatusCode status = isFirstFrame
                 ? StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT
                 : StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT;
         throw ErrorHelper.buildError(
