@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.harness.deep_agent;
+package com.openjiuwen.harness.deepagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,6 +14,8 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgentSession;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 
 import org.junit.jupiter.api.Test;
@@ -89,21 +91,21 @@ class DeepAgentSessionEnvironmentTest {
 
     @ParameterizedTest
     @CsvSource({"false,false", "true,false", "false,true", "true,true"})
-    void executionPassesCallerEnvironmentsToInnerSessions(boolean streaming, boolean resuming) throws Exception {
+    void executionPassesCallerEnvironmentsToInnerSessions(boolean isStreaming, boolean isResuming) throws Exception {
         String sessionId = UUID.randomUUID().toString();
         AgentSession caller = new AgentSession(sessionId, Map.of(REQUEST_CONTEXT, "caller"), CARD);
         EnvironmentRecordingAgent inner = new EnvironmentRecordingAgent();
         DeepAgent agent = new DeepAgent(CARD, DeepAgentConfig.builder().enableTaskLoop(true).build(), null);
         agent.setReactAgent(inner, true);
         Object query = "check request context";
-        if (resuming) {
+        if (isResuming) {
             InteractiveInput resume = new InteractiveInput();
             resume.update("confirmation", "continue");
             query = resume;
         }
         Map<String, Object> inputs = Map.of("query", query, "conversation_id", sessionId);
         try {
-            if (streaming) {
+            if (isStreaming) {
                 Iterator<Object> stream = agent.stream(inputs, caller, List.of(StreamMode.OUTPUT));
                 try {
                     while (stream.hasNext()) {
@@ -150,7 +152,9 @@ class DeepAgentSessionEnvironmentTest {
 
         private void recordEnvironments(AgentSessionApi session) {
             observedEnvs = session.getEnvs();
-            DeepAgentSession deep = (DeepAgentSession) session;
+            if (!(session instanceof DeepAgentSession deep)) {
+                throw new AssertionError("Expected a DeepAgentSession");
+            }
             observedKernelEnvs = deep.getInner().config().getEnvs();
         }
     }

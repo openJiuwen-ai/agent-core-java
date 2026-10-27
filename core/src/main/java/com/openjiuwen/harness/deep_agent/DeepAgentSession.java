@@ -46,7 +46,7 @@ public class DeepAgentSession implements AgentSessionApi {
 
     private static Map<String, Object> environments(Object config) {
         if (!(config instanceof Map<?, ?> values)) {
-            return null;
+            return Map.of();
         }
         Map<String, Object> envs = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : values.entrySet()) {
