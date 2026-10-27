@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.cli.agent;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.harness.HarnessResourceTestCleanup;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 
@@ -14,8 +16,6 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Mirrors Python's factory tests in

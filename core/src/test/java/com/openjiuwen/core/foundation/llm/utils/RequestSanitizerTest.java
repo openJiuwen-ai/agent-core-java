@@ -4,15 +4,19 @@
 
 package com.openjiuwen.core.foundation.llm.utils;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
+/**
+ * Unit tests for {@link RequestSanitizer} lone-surrogate cleanup at request boundaries.
+ *
+ * @since 0.1.18
+ */
 class RequestSanitizerTest {
-
     @Test
     void cleanStringReplacesLoneSurrogate() {
         String dirty = "| 风险等级 | \uD83D";

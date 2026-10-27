@@ -14,7 +14,6 @@ package com.openjiuwen.core.common.utils;
  * @since 0.1.18
  */
 public final class TextTruncate {
-
     private TextTruncate() {
     }
 

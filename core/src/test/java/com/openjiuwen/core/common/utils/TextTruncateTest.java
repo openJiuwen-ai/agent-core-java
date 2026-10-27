@@ -4,13 +4,17 @@
 
 package com.openjiuwen.core.common.utils;
 
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-class TextTruncateTest {
+import org.junit.jupiter.api.Test;
 
+/**
+ * Unit tests for {@link TextTruncate} surrogate-safe truncation helpers.
+ *
+ * @since 0.1.18
+ */
+class TextTruncateTest {
     private static boolean hasLoneSurrogate(String text) {
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);

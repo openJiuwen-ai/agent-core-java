@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -15,14 +17,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 /**
  * Regression for issue198: multi-byte UTF-8 characters spanning chunk boundaries
  * must not become U+FFFD on the streaming path.
+ *
+ * @since 0.1.18
  */
 class AsyncProcessHandlerStreamDecodeTest {
-
     @Test
     void streamDecodePreservesEmojiAcrossChunkBoundary() throws Exception {
         byte[] payload = ("a".repeat(1022) + "✅ 完成").getBytes(StandardCharsets.UTF_8);

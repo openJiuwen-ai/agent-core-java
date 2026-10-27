@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.modelclients;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -23,7 +24,11 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +43,11 @@ import java.util.function.Function;
 @Isolated
 class OpenAIModelTimeoutTieringTest {
     private static final double TOLERANCE = 0.0001D;
+    /** RFC 5737 documentation address; used only after a local backlog hang is unavailable. */
+    private static final String TEST_NET1_BLACKHOLE_BASE = "http://192.0.2.1:9";
+    private static final String TEST_NET1_HOST = "192.0.2.1";
+    private static final int TEST_NET1_PORT = 9;
+    private static final int BLACKHOLE_PROBE_TIMEOUT_MILLIS = 500;
 
     @BeforeAll
     static void disableCorporateProxy() throws Exception {
@@ -59,25 +69,50 @@ class OpenAIModelTimeoutTieringTest {
     }
 
     @Test
-    void connectTimeoutFailsFast() {
-        // TEST-NET-1 (192.0.2.1) is reserved documentation space and is typically
-        // black-holed: the TCP handshake parks until connectTimeoutSeconds fires.
-        // A saturated local backlog is not portable — Windows often RSTs with an
-        // immediate Connection refused, which never exercises the connect timer.
-        OpenAIModelClient client = client(baseConfig("http://192.0.2.1:9")
-                .connectTimeoutSeconds(5.0D)
-                .build());
+    void connectTimeoutFailsFast() throws IOException {
+        // Prefer an owned loopback backlog that parks TCP connect. When the OS
+        // (often Windows) RSTs immediately once the backlog is full, probe
+        // TEST-NET-1 and skip if that address also fails fast (air-gapped CI).
+        try (SaturatedConnectEndpoint endpoint = SaturatedConnectEndpoint.open()) {
+            String apiBase = resolveConnectTimeoutApiBase(endpoint);
+            OpenAIModelClient client = client(baseConfig(apiBase)
+                    .connectTimeoutSeconds(5.0D)
+                    .build());
 
-        long started = System.nanoTime();
-        Throwable error = catchThrowable(() -> client.invoke(
-                List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())
-                .toCompletableFuture().join());
-        long elapsedMillis = (System.nanoTime() - started) / 1_000_000L;
+            long started = System.nanoTime();
+            Throwable error = catchThrowable(() -> client.invoke(
+                    List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())
+                    .toCompletableFuture().join());
+            long elapsedMillis = (System.nanoTime() - started) / 1_000_000L;
 
-        BaseError typed = unwrap(error);
-        assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
-        assertThat(typed.getParams().get("phase")).isEqualTo("BEFORE_CONNECT");
-        assertThat(elapsedMillis).isBetween(4_000L, 15_000L);
+            BaseError typed = unwrap(error);
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_TIMEOUT);
+            assertThat(typed.getParams().get("phase")).isEqualTo("BEFORE_CONNECT");
+            assertThat(elapsedMillis).isBetween(4_000L, 15_000L);
+        }
+    }
+
+    private static String resolveConnectTimeoutApiBase(SaturatedConnectEndpoint endpoint) {
+        if (!endpoint.isSaturatedByImmediateRefuse()) {
+            return endpoint.apiBase();
+        }
+        assumeTrue(
+                isBlackholeParkingConnect(),
+                "Local backlog refuses immediately and TEST-NET-1 does not park TCP connects");
+        return TEST_NET1_BLACKHOLE_BASE;
+    }
+
+    private static boolean isBlackholeParkingConnect() {
+        try (Socket socket = new Socket()) {
+            socket.connect(
+                    new InetSocketAddress(TEST_NET1_HOST, TEST_NET1_PORT),
+                    BLACKHOLE_PROBE_TIMEOUT_MILLIS);
+            return false;
+        } catch (SocketTimeoutException expected) {
+            return true;
+        } catch (IOException fastFailure) {
+            return false;
+        }
     }
 
     @Test

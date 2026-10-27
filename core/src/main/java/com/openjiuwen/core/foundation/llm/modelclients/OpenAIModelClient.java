@@ -1617,7 +1617,7 @@ public class OpenAIModelClient extends BaseModelClient
         private final Iterator<AssistantMessageChunk> delegate;
         private final long startedNanos = System.nanoTime();
         private boolean isFirstLogged;
-        private boolean endLogged;
+        private boolean isEndLogged;
         private int chunkCount;
         private String finishReason;
         private UsageMetadata lastUsage;
@@ -1628,11 +1628,11 @@ public class OpenAIModelClient extends BaseModelClient
 
         @Override
         public boolean hasNext() {
-            boolean next = delegate.hasNext();
-            if (!next) {
+            boolean hasMore = delegate.hasNext();
+            if (!hasMore) {
                 logEnd("completed");
             }
-            return next;
+            return hasMore;
         }
 
         @Override
@@ -1665,10 +1665,10 @@ public class OpenAIModelClient extends BaseModelClient
         }
 
         private void logEnd(String reason) {
-            if (endLogged) {
+            if (isEndLogged) {
                 return;
             }
-            endLogged = true;
+            isEndLogged = true;
             long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
             if ("cancelled".equals(reason)) {
                 Loggers.LLM.info(

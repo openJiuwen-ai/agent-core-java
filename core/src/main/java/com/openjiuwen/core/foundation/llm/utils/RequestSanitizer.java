@@ -21,7 +21,6 @@ import java.util.Map;
  * @since 0.1.18
  */
 public final class RequestSanitizer {
-
     private static final char REPLACEMENT = '\uFFFD';
 
     private RequestSanitizer() {

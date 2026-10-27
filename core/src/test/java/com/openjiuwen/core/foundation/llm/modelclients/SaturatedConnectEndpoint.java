@@ -19,13 +19,15 @@ import java.util.Locale;
  * Fills a loopback listener's connection backlog without accepting connections.
  * Unlike an arbitrary unreachable IP, the endpoint has a route and stays owned
  * throughout the test. All sockets are closed even if setup or assertions fail.
+ *
+ * @since 0.1.18
  */
 final class SaturatedConnectEndpoint implements AutoCloseable {
     private static final int MAX_FILL_CONNECTIONS = 32;
 
     private final ServerSocket listener;
     private final List<Socket> connections = new ArrayList<>();
-    private boolean saturatedByImmediateRefuse;
+    private boolean isSaturatedByImmediateRefuse;
 
     private SaturatedConnectEndpoint() throws IOException {
         listener = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
@@ -54,9 +56,11 @@ final class SaturatedConnectEndpoint implements AutoCloseable {
      * Whether saturation was observed as an immediate refuse (common on Windows)
      * rather than a parked connect. Immediate refuse does not exercise
      * {@code connectTimeoutSeconds} and callers should fall back to a blackhole.
+     *
+     * @return {@code true} when the OS refused the fill connect immediately
      */
-    boolean saturatesByImmediateRefuse() {
-        return saturatedByImmediateRefuse;
+    boolean isSaturatedByImmediateRefuse() {
+        return isSaturatedByImmediateRefuse;
     }
 
     private void fillBacklog() throws IOException {
@@ -69,21 +73,21 @@ final class SaturatedConnectEndpoint implements AutoCloseable {
             } catch (SocketTimeoutException expected) {
                 // Backlog full: connect blocked until the short timeout — fixture ready.
                 connection.close();
-                saturatedByImmediateRefuse = false;
+                isSaturatedByImmediateRefuse = false;
                 return;
             } catch (ConnectException refused) {
                 // Windows (and some stacks) refuse immediately once the backlog is full.
                 connection.close();
-                saturatedByImmediateRefuse = true;
+                isSaturatedByImmediateRefuse = true;
                 return;
             } catch (IOException ioFailure) {
                 connection.close();
                 if (isImmediateRefuse(ioFailure)) {
-                    saturatedByImmediateRefuse = true;
+                    isSaturatedByImmediateRefuse = true;
                     return;
                 }
                 if (isConnectTimeoutSignal(ioFailure)) {
-                    saturatedByImmediateRefuse = false;
+                    isSaturatedByImmediateRefuse = false;
                     return;
                 }
                 throw ioFailure;
