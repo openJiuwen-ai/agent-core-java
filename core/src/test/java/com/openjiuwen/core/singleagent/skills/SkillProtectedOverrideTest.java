@@ -120,7 +120,7 @@ class SkillProtectedOverrideTest {
 
     @Test
     @Tag("TC-SEC-02")
-    void invalidEncodingWorkspaceSkill_isRejectedWithAuditWithoutBlockingOthers()
+    void invalidEncodingSkillRejectedWithAudit()
             throws IOException {
         Path workspaceRoot = tempDir.resolve("ws");
         Path invalidSkillDirectory = workspaceRoot.resolve("invalid_encoding_skill");

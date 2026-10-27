@@ -115,7 +115,7 @@ class BaseAgentSkillToolBindingTest {
     }
 
     @Test
-    void skillRegistrationActivationAndDeactivationExposeActiveToolContract() {
+    void skillRegistrationActivationExposesToolContract() {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("closed-loop-session");
         Tool skillTool = tool("closedLoopTool");
@@ -265,7 +265,7 @@ class BaseAgentSkillToolBindingTest {
     }
 
     @Test
-    void staleSkillNameDoesNotGrantVisibilityOrExecutionUntilSkillReloaded() {
+    void staleSkillNameGrantsNoVisibilityOrExecution() {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("stale-skill-session");
         registerSkill(agent, "ReloadableSkill");
@@ -414,7 +414,7 @@ class BaseAgentSkillToolBindingTest {
     }
 
     @Test
-    void removingWorkspaceSkillRestoresClasspathVersionWithActivationAndTools()
+    void removingWorkspaceSkillRestoresClasspathVersion()
             throws IOException {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("classpath-skill-fallback-session");

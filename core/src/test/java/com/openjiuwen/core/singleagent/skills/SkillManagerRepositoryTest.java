@@ -158,7 +158,7 @@ class SkillManagerRepositoryTest {
     }
 
     @Test
-    void explicitReferenceMatrixIsDeterministicAndProtectsLowerPrioritySkill()
+    void explicitReferenceMatrixProtectsLowerPriority()
             throws IOException {
         Path fsRoot = tempDir.resolve("fs");
         Path wsRoot = tempDir.resolve("ws");

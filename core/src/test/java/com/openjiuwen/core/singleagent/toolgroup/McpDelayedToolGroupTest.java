@@ -57,7 +57,7 @@ class McpDelayedToolGroupTest {
     @Test
     @Tag("TC-TG-01")
     @Tag("TC-LNK-01")
-    void delayedNormalAndMcpTools_becomeVisibleAfterResolutionAndLeaveWhenDeactivated()
+    void delayedNormalAndMcpToolsVisibleAfterResolution()
             throws Exception {
         DelayedToolGroupAgent agent = new DelayedToolGroupAgent();
         String normalToolName = newNormalToolName();
@@ -94,7 +94,7 @@ class McpDelayedToolGroupTest {
     @Test
     @Tag("TC-TG-01")
     @Tag("TC-SEC-01")
-    void delayedMcpTool_isUnavailableUntilResolvedThenExecutesWhenAuthorized() throws Exception {
+    void delayedMcpToolUnavailableUntilResolved() throws Exception {
         DelayedToolGroupAgent agent = new DelayedToolGroupAgent();
         String mcpToolName = newMcpToolName();
         DelayedMcpAbilityManager abilityManager = new DelayedMcpAbilityManager(mcpToolName);
@@ -128,7 +128,7 @@ class McpDelayedToolGroupTest {
     @Test
     @Tag("TC-TG-04")
     @Tag("TC-SEC-01")
-    void deactivatingGroupDuringMcpResolution_preventsVisibilityAndExecutionAfterResolution()
+    void deactivatingGroupDuringMcpResolutionPreventsExecution()
             throws Exception {
         DelayedToolGroupAgent agent = new DelayedToolGroupAgent();
         String mcpToolName = newMcpToolName();

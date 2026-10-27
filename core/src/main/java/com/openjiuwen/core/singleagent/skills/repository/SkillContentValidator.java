@@ -150,7 +150,7 @@ public final class SkillContentValidator {
     private static FileMetadata fileMetadata(Path skillFile) throws IOException {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            long size = 0;
+            long size = 0L;
             try (InputStream input = Files.newInputStream(skillFile)) {
                 byte[] buffer = new byte[8192];
                 int read;

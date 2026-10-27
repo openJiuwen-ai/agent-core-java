@@ -31,7 +31,10 @@ class SkillToolMetadataProviderTest {
 
         assertThat(provider.getName()).isEqualTo("skill_tool");
         assertThat(provider.getDescription("cn")).isEqualTo("使用此工具查看特定技能的内容");
-        assertThat(provider.getDescription("en")).isEqualTo("Read skill documents. Select a skill by skill_name, skill_id, or skill_path; use relative_path='SKILL.md' for the main document or a relative path for extra files.");
+        assertThat(provider.getDescription("en"))
+                .isEqualTo("Read skill documents. Select a skill by skill_name, skill_id,"
+                        + " or skill_path; use relative_path='SKILL.md' for the main"
+                        + " document or a relative path for extra files.");
         assertThat(castMap(schema.get("properties")).keySet()).containsExactly(
                 "skill_name", "skill_id", "skill_path", "relative_path");
         assertThat(castList(schema.get("required"))).isEmpty();

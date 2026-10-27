@@ -102,6 +102,11 @@ public final class ToolGroupManager {
         }
     }
 
+    /**
+     * Returns whether any tool names have been revoked by group unregistration.
+     *
+     * @return {@code true} when revoked tool names are recorded
+     */
     public boolean hasRevokedToolNames() {
         return !revokedToolNames.isEmpty();
     }
