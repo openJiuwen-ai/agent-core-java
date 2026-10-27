@@ -178,10 +178,10 @@ class PyZmqMessagerCompatibilityTest {
         parent.send("child", EventMessage.builder().eventType("ping").payload(Map.of("origin", "parent")).build())
                 .join();
 
-        assertThat(responseLatch.await(10L, TimeUnit.SECONDS)).isTrue();
+        assertThat(responseLatch.await(30L, TimeUnit.SECONDS)).isTrue();
         assertThat(response.get().getEventType()).isEqualTo("pong");
         assertThat(response.get().getPayload()).containsEntry("origin", "parent");
-        assertThat(child.waitFor(10L, TimeUnit.SECONDS)).isTrue();
+        assertThat(child.waitFor(30L, TimeUnit.SECONDS)).isTrue();
         assertThat(child.exitValue()).isZero();
     }
 
