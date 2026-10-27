@@ -68,6 +68,14 @@ public class StreamWriterManager {
         streamOutput(DEFAULT_FRAME_TIMEOUT, DEFAULT_FRAME_TIMEOUT, true, consumer);
     }
 
+    /**
+     * Deliver data frames to the consumer until the terminal frame is received.
+     *
+     * @param firstFrameTimeoutMs first-frame wait in milliseconds; non-positive values use the configured default
+     * @param timeoutMs subsequent-frame wait in milliseconds; non-positive values use the configured default
+     * @param shouldClose whether to close the queue after receiving the terminal frame
+     * @param consumer recipient of each data frame, excluding the terminal frame
+     */
     public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean shouldClose, Consumer<Object> consumer) {
         streamIterator(firstFrameTimeoutMs, timeoutMs, shouldClose).forEachRemaining(consumer);
     }
@@ -90,6 +98,14 @@ public class StreamWriterManager {
         return streamIterator(DEFAULT_FRAME_TIMEOUT, DEFAULT_FRAME_TIMEOUT, false, buffered.iterator(), failure);
     }
 
+    /**
+     * Iterate over data frames until the terminal frame, throwing on a frame timeout.
+     *
+     * @param firstFrameTimeoutMs first-frame wait in milliseconds; non-positive values use the configured default
+     * @param timeoutMs subsequent-frame wait in milliseconds; non-positive values use the configured default
+     * @param shouldClose whether to close the queue after receiving the terminal frame
+     * @return iterator over data frames, excluding the terminal frame
+     */
     public Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean shouldClose) {
         return streamIterator(firstFrameTimeoutMs, timeoutMs, shouldClose, null, null);
     }
