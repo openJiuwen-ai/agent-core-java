@@ -9,7 +9,7 @@ package com.openjiuwen.core.sysop.sandbox.gateway;
  * {@code openjiuwen/core/sys_operation/sandbox/gateway/gateway.py}.
  *
  * @param baseUrl sandbox base URL
- * @param sandboxId sandbox identifier
+ * @param sandboxId provider sandbox identifier
  */
 public record SandboxEndpoint(String baseUrl, String sandboxId) {
 

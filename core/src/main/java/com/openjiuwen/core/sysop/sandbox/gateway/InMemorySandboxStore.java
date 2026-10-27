@@ -19,29 +19,29 @@ public final class InMemorySandboxStore extends AbstractSandboxStore {
     private final Map<String, SandboxRecord> records = new LinkedHashMap<>();
 
     @Override
-    public Optional<SandboxRecord> get(String key) {
+    public synchronized Optional<SandboxRecord> get(String key) {
         return Optional.ofNullable(records.get(key));
     }
 
     @Override
-    public void set(String key, SandboxRecord record) {
+    public synchronized void set(String key, SandboxRecord record) {
         records.put(key, record);
     }
 
     @Override
-    public Optional<SandboxRecord> hdel(String key) {
+    public synchronized Optional<SandboxRecord> hdel(String key) {
         return Optional.ofNullable(records.remove(key));
     }
 
     @Override
-    public List<SandboxRecord> flushdb() {
+    public synchronized List<SandboxRecord> flushdb() {
         List<SandboxRecord> snapshot = new ArrayList<>(records.values());
         records.clear();
         return snapshot;
     }
 
     @Override
-    public List<SandboxRecord> evictExpired(int idleTtlSeconds, double now) {
+    public synchronized List<SandboxRecord> evictExpired(int idleTtlSeconds, double now) {
         List<String> expiredKeys = new ArrayList<>();
         for (Map.Entry<String, SandboxRecord> entry : records.entrySet()) {
             if ((now - entry.getValue().getLastUsedTs()) > idleTtlSeconds) {
