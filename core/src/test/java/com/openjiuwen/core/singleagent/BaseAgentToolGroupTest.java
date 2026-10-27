@@ -24,6 +24,7 @@ import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,6 +46,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 class BaseAgentToolGroupTest {
     @TempDir
     private Path tempDir;
+
+    @AfterEach
+    void releaseGlobalResources() {
+        Runner.resourceMgr().release();
+    }
 
     @Test
     void listEffectiveToolInfo_withoutGroups_returnsUnfilteredResult() {

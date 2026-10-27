@@ -13,6 +13,7 @@ import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -23,6 +24,7 @@ import com.openjiuwen.core.singleagent.skills.repository.ClasspathSkillRepositor
 import com.openjiuwen.core.singleagent.skills.repository.FileSystemSkillRepository;
 import com.openjiuwen.core.singleagent.skills.repository.WorkspaceSkillRepository;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,6 +40,11 @@ import java.util.Map;
 class Issue196IntegrationTest {
     @TempDir
     private Path tempDir;
+
+    @AfterEach
+    void releaseGlobalResources() {
+        Runner.resourceMgr().release();
+    }
 
     @Test
     @Tag("TC-LNK-01")
