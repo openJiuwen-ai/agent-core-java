@@ -32,6 +32,11 @@ build/
 ### VS Code ###
 .vscode/
 
+### Local coding-agent configuration ###
+/.claude/
+/.codex/
+/CLAUDE.md
+
 ### Runtime logs ###
 logs/
 
