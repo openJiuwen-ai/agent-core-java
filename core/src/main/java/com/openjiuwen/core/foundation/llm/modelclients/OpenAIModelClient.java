@@ -25,6 +25,7 @@ import com.openjiuwen.core.foundation.llm.classification.RetryContext;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreakerSnapshot;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryListener;
 import com.openjiuwen.core.foundation.llm.modelclients.errors.ErrorResponseBodySanitizer;
@@ -168,6 +169,17 @@ public class OpenAIModelClient extends BaseModelClient
         this.retrier = retrier;
         this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
         this.circuitBreaker = circuitBreaker;
+    }
+
+    /**
+     * Sample this client's circuit breaker without exposing its mutation methods.
+     *
+     * @return a present immutable diagnostic sample, with independently sampled fields
+     * @since 0.1.17
+     */
+    @Override
+    public Optional<ModelCircuitBreakerSnapshot> getCircuitBreakerSnapshot() {
+        return Optional.of(circuitBreaker.snapshot());
     }
 
     @Override
