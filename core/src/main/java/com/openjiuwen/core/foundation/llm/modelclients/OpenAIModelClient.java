@@ -11,6 +11,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
 import com.openjiuwen.core.foundation.llm.classification.ErrorBodyParser;
 import com.openjiuwen.core.foundation.llm.classification.FirstSegmentRetryIterator;
@@ -41,6 +42,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.openjiuwen.core.foundation.llm.utils.RequestSanitizer;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -71,6 +73,7 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -548,7 +551,8 @@ public class OpenAIModelClient extends BaseModelClient
                         "parse_response",
                         sensitiveValues);
             }
-            Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
+
+            Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", logValue(responseData)));
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
             return assistantMessage;
         } catch (BaseError exception) {
@@ -1608,7 +1612,12 @@ public class OpenAIModelClient extends BaseModelClient
     private static final class LoggingFirstChunkIterator
             implements Iterator<AssistantMessageChunk>, AutoCloseable {
         private final Iterator<AssistantMessageChunk> delegate;
+        private final long startedNanos = System.nanoTime();
         private boolean isFirstLogged;
+        private boolean isEndLogged;
+        private int chunkCount;
+        private String finishReason;
+        private UsageMetadata lastUsage;
 
         private LoggingFirstChunkIterator(Iterator<AssistantMessageChunk> delegate) {
             this.delegate = delegate;
@@ -1616,12 +1625,23 @@ public class OpenAIModelClient extends BaseModelClient
 
         @Override
         public boolean hasNext() {
-            return delegate.hasNext();
+            boolean hasMore = delegate.hasNext();
+            if (!hasMore) {
+                logEnd("completed");
+            }
+            return hasMore;
         }
 
         @Override
         public AssistantMessageChunk next() {
             AssistantMessageChunk chunk = delegate.next();
+            chunkCount++;
+            if (chunk.getFinishReason() != null && !chunk.getFinishReason().isBlank()) {
+                finishReason = chunk.getFinishReason();
+            }
+            if (chunk.getUsageMetadata() != null) {
+                lastUsage = chunk.getUsageMetadata();
+            }
             if (!isFirstLogged) {
                 isFirstLogged = true;
                 Loggers.LLM.info("OpenAI API stream first chunk. {}", chunk);
@@ -1631,12 +1651,30 @@ public class OpenAIModelClient extends BaseModelClient
 
         @Override
         public void close() {
+            logEnd("cancelled");
             if (delegate instanceof Closeable closeable) {
                 try {
                     closeable.close();
                 } catch (IOException exception) {
                     Loggers.LLM.debug("Failed to close OpenAI stream iterator. {}", exception.getMessage());
                 }
+            }
+        }
+
+        private void logEnd(String reason) {
+            if (isEndLogged) {
+                return;
+            }
+            isEndLogged = true;
+            long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
+            if ("cancelled".equals(reason)) {
+                Loggers.LLM.info(
+                        "OpenAI API stream cancelled. chunkCount={}, finishReason={}, usage={}, durationMs={}",
+                        chunkCount, finishReason, lastUsage, durationMs);
+            } else {
+                Loggers.LLM.info(
+                        "OpenAI API stream end. chunkCount={}, finishReason={}, usage={}, durationMs={}",
+                        chunkCount, finishReason, lastUsage, durationMs);
             }
         }
     }
@@ -1664,7 +1702,8 @@ public class OpenAIModelClient extends BaseModelClient
             Map<String, Object> params,
             String authorization,
             Map<String, String> requestHeaders) throws JsonProcessingException {
-        String bodyJson = OBJECT_MAPPER.writeValueAsString(requestBodyParams(params));
+        Map<String, Object> sanitized = RequestSanitizer.sanitizeChatRequest(requestBodyParams(params));
+        String bodyJson = OBJECT_MAPPER.writeValueAsString(sanitized);
         return new PreparedRequest(
                 path,
                 bodyJson,
@@ -2729,5 +2768,12 @@ public class OpenAIModelClient extends BaseModelClient
             return !map.isEmpty();
         }
         return true;
+    }
+
+    private static String logValue(Object value) {
+        if (UserConfig.isSensitive()) {
+            return "[redacted]";
+        }
+        return String.valueOf(value);
     }
 }

@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.io.IOException;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -56,6 +57,7 @@ class Issue196IntegrationTest {
     @Tag("TC-PRF-05")
     void endToEnd_registerActivateFilterRejectSkill() throws Exception {
         IntegrationAgent agent = new IntegrationAgent();
+        registerEnvSkill(agent);
 
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
@@ -109,6 +111,23 @@ class Issue196IntegrationTest {
                 .extracting(ToolInfo::getName)
                 .contains("clock")
                 .contains("skill_tool");
+    }
+
+    private void registerEnvSkill(IntegrationAgent agent) throws IOException {
+        Path skillRoot = tempDir.resolve("env-skill-root");
+        com.openjiuwen.core.singleagent.skills.SkillFixtureFactory.writeSkill(
+                skillRoot,
+                com.openjiuwen.core.singleagent.skills.SkillFixtureFactory.SkillFixtureSource
+                        .FILESYSTEM,
+                "EnvSkill",
+                "EnvSkill body.",
+                false);
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.setSysOperationId("env-skill-registration");
+        agent.configure(config);
+        agent.getSkillUtil().getSkillManager().setRepositories(
+                List.of(new FileSystemSkillRepository(skillRoot)));
+        agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
     }
 
     private void assertActiveToolInfo(IntegrationAgent agent, MemorySession session) {

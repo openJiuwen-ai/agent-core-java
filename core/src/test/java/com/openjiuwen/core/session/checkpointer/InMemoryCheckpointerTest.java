@@ -306,6 +306,37 @@ class InMemoryCheckpointerTest {
         assertTrue(checkpointer.sessionExists("session-3"));
     }
 
+    @Test
+    void releaseRemovesExactSessionAndColonChildrenOnly() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        for (String sessionId : List.of("chat-1", "chat-1:child", "chat-10", "chat-11", "chat-1xyz")) {
+            checkpointer.preAgentExecute(
+                    TestSession.agent(sessionId, "agent-" + sessionId, new AgentStateCollection()), null);
+        }
+
+        checkpointer.release("chat-1");
+
+        assertFalse(checkpointer.sessionExists("chat-1"));
+        assertFalse(checkpointer.sessionExists("chat-1:child"));
+        assertTrue(checkpointer.sessionExists("chat-10"));
+        assertTrue(checkpointer.sessionExists("chat-11"));
+        assertTrue(checkpointer.sessionExists("chat-1xyz"));
+
+        checkpointer.release("chat-1");
+        assertTrue(checkpointer.sessionExists("chat-10"));
+        assertTrue(checkpointer.sessionExists("chat-11"));
+        assertTrue(checkpointer.sessionExists("chat-1xyz"));
+    }
+
+    @Test
+    void matchesSessionOrColonChildRejectsPrefixSiblings() {
+        assertTrue(InMemoryCheckpointer.matchesSessionOrColonChild("chat-1", "chat-1"));
+        assertTrue(InMemoryCheckpointer.matchesSessionOrColonChild("chat-1:child", "chat-1"));
+        assertFalse(InMemoryCheckpointer.matchesSessionOrColonChild("chat-10", "chat-1"));
+        assertFalse(InMemoryCheckpointer.matchesSessionOrColonChild("chat-11", "chat-1"));
+        assertFalse(InMemoryCheckpointer.matchesSessionOrColonChild("chat-1xyz", "chat-1"));
+    }
+
     private static WorkflowCommitState workflowState() {
         return new WorkflowCommitState(
                 new InMemoryCommitState(),

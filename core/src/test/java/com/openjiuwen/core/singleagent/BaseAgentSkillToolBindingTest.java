@@ -9,6 +9,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mockStatic;
 
+import com.openjiuwen.core.common.logging.LogCaptureFixture;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -17,7 +19,13 @@ import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.skills.Skill;
+import com.openjiuwen.core.singleagent.skills.SkillSource;
 import com.openjiuwen.core.singleagent.skills.SkillToolBinding;
+import com.openjiuwen.core.singleagent.skills.repository.ClasspathSkillRepository;
+import com.openjiuwen.core.singleagent.skills.repository.FileSystemSkillRepository;
+import com.openjiuwen.core.singleagent.skills.repository.SkillContentValidator;
+import com.openjiuwen.core.singleagent.skills.repository.WorkspaceSkillRepository;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
@@ -32,6 +40,7 @@ import org.mockito.MockedStatic;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -103,6 +112,75 @@ class BaseAgentSkillToolBindingTest {
         agent.setAbilityManager(new AbilityManager(agent.getCard().getId()));
 
         assertThat(agent.getAbilityManager().getTools()).containsKey("skill_tool");
+    }
+
+    @Test
+    void skillRegistrationActivationExposesToolContract() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("closed-loop-session");
+        Tool skillTool = tool("closedLoopTool");
+        registerSkill(agent, "ClosedLoopSkill");
+        agent.registerSkillTools(SkillToolBinding.builder()
+                .skillName("ClosedLoopSkill")
+                .tools(List.of(skillTool))
+                .build()).toCompletableFuture().join();
+
+        assertThat(agent.getActiveSkillNames(session)).isEmpty();
+        assertThat(visibleToolNames(agent, session)).contains("skill_tool")
+                .doesNotContain("closedLoopTool");
+        assertThat(agent.findActiveSkillTool("closedLoopTool", session)).isEmpty();
+
+        agent.activateSkill("ClosedLoopSkill", session);
+        assertThat(agent.getActiveSkillNames(session)).containsExactly("ClosedLoopSkill");
+        assertThat(visibleToolNames(agent, session)).contains("closedLoopTool", "skill_tool");
+        assertThat(agent.findActiveSkillTool("closedLoopTool", session)).containsSame(skillTool);
+
+        agent.deactivateSkill("ClosedLoopSkill", session);
+        assertThat(agent.getActiveSkillNames(session)).isEmpty();
+        assertThat(visibleToolNames(agent, session)).contains("skill_tool")
+                .doesNotContain("closedLoopTool");
+        assertThat(agent.findActiveSkillTool("closedLoopTool", session)).isEmpty();
+    }
+
+    @Test
+    void skillToolLifecycle_afterDeactivationAndManagerReplacement() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("lifecycle-session");
+        Tool lifecycleTool = tool("lifecycleTool");
+        registerSkill(agent, "LifecycleSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("LifecycleSkill")
+                                .tools(List.of(lifecycleTool))
+                                .build())
+                .toCompletableFuture()
+                .join();
+
+        agent.activateSkill("LifecycleSkill", session);
+        assertThat(visibleToolNames(agent, session)).contains("lifecycleTool", "skill_tool");
+        assertThat(executeTool(agent, session, "lifecycle-tool-active", "lifecycleTool"))
+                .doesNotContain("not active");
+
+        agent.deactivateSkill("LifecycleSkill", session);
+        assertThat(visibleToolNames(agent, session)).contains("skill_tool")
+                .doesNotContain("lifecycleTool");
+        assertThat(executeTool(agent, session, "lifecycle-tool-inactive", "lifecycleTool"))
+                .contains("not active");
+
+        agent.setAbilityManager(new AbilityManager(agent.getCard().getId()));
+        assertThat(agent.getAbilityManager().getTools()).containsKey("skill_tool");
+        assertThat(visibleToolNames(agent, session)).contains("skill_tool")
+                .doesNotContain("lifecycleTool");
+        assertThat(executeTool(agent, session, "lifecycle-tool-replaced", "lifecycleTool"))
+                .contains("not active");
+
+        agent.activateSkill("LifecycleSkill", session);
+        assertThat(visibleToolNames(agent, session)).contains("lifecycleTool", "skill_tool");
+        assertThat(executeTool(agent, session, "lifecycle-tool-reactivated", "lifecycleTool"))
+                .doesNotContain("not active");
+        agent.deactivateSkill("LifecycleSkill", session);
+        assertThat(visibleToolNames(agent, session)).contains("skill_tool")
+                .doesNotContain("lifecycleTool");
     }
 
     @Test
@@ -187,6 +265,209 @@ class BaseAgentSkillToolBindingTest {
     }
 
     @Test
+    void staleSkillNameGrantsNoVisibilityOrExecution() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("stale-skill-session");
+        registerSkill(agent, "ReloadableSkill");
+        agent.registerSkillTools(SkillToolBinding.builder()
+                .skillName("ReloadableSkill")
+                .tools(List.of(tool("reloadableTool")))
+                .build()).toCompletableFuture().join();
+        agent.activateSkill("ReloadableSkill", session);
+        assertThat(visibleToolNames(agent, session)).contains("reloadableTool");
+
+        agent.getSkillUtil().getSkillManager().clear();
+
+        assertThat(agent.getSkillUtil().getSkillManager().has("ReloadableSkill")).isFalse();
+        assertThat(agent.getActiveSkillNames(session)).containsExactly("ReloadableSkill");
+        assertThat(visibleToolNames(agent, session)).doesNotContain("reloadableTool");
+        assertThat(agent.findActiveSkillTool("reloadableTool", session)).isEmpty();
+        ToolCall staleCall = ToolCall.builder()
+                .id("stale-call")
+                .name("reloadableTool")
+                .arguments("{}")
+                .build();
+        assertThat(agent.getAbilityManager()
+                .execute(null, staleCall, session, false).get(0)
+                .toolMessage().getContentAsString())
+                .contains("not active")
+                .contains("reloadableTool");
+
+        agent.deactivateSkill("ReloadableSkill", session);
+        registerSkill(agent, "ReloadableSkill");
+        agent.activateSkill("ReloadableSkill", session);
+
+        assertThat(visibleToolNames(agent, session)).contains("reloadableTool");
+    }
+
+    @Test
+    void workspaceSkillRejectedBySafetyCheckDoesNotGrantStaleToolAccess()
+            throws IOException {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("rejected-workspace-skill-session");
+        String sysOperationId = "rejected-workspace-skill-test-" + UUID.randomUUID();
+        Path workspaceRoot = tempDir.resolve("workspace");
+        Path skillDirectory = workspaceRoot.resolve("RejectedWorkspaceSkill");
+        Files.createDirectories(skillDirectory);
+        writeSkillFile(skillDirectory.resolve("SKILL.md"), "RejectedWorkspaceSkill");
+        Runner.resourceMgr().addSysOperation(new SysOperationCard(
+                sysOperationId,
+                OperationMode.LOCAL,
+                LocalWorkConfig.builder().sandboxRoot(List.of(tempDir.toString())).build()
+        ));
+        try {
+            agent.configure(new TestAgentConfig(sysOperationId));
+            agent.getSkillUtil().getSkillManager().setRepositories(
+                    List.of(new WorkspaceSkillRepository(workspaceRoot, "user1")));
+            agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
+            agent.registerSkillTools(SkillToolBinding.builder()
+                    .skillName("RejectedWorkspaceSkill")
+                    .tools(List.of(tool("rejectedSkillTool")))
+                    .build()).toCompletableFuture().join();
+            agent.activateSkill("RejectedWorkspaceSkill", session);
+            assertThat(visibleToolNames(agent, session)).contains("rejectedSkillTool");
+
+            Files.write(
+                    skillDirectory.resolve("SKILL.md"),
+                    new byte[SkillContentValidator.DEFAULT_WORKSPACE_MAX_BYTES + 1]);
+            agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
+
+            assertThat(agent.getSkillUtil().getSkillManager().has("RejectedWorkspaceSkill"))
+                    .isFalse();
+            assertThat(agent.getActiveSkillNames(session))
+                    .containsExactly("RejectedWorkspaceSkill");
+            assertThat(visibleToolNames(agent, session)).doesNotContain("rejectedSkillTool");
+            ToolCall rejectedCall = ToolCall.builder()
+                    .id("rejected-skill-call")
+                    .name("rejectedSkillTool")
+                    .arguments("{}")
+                    .build();
+            assertThat(agent.getAbilityManager()
+                    .execute(null, rejectedCall, session, false).get(0)
+                    .toolMessage().getContentAsString())
+                    .contains("not active")
+                    .contains("rejectedSkillTool");
+
+            writeSkillFile(skillDirectory.resolve("SKILL.md"), "RejectedWorkspaceSkill");
+            agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
+
+            assertThat(visibleToolNames(agent, session)).contains("rejectedSkillTool");
+        } finally {
+            Runner.resourceMgr().removeSysOperation(sysOperationId);
+        }
+    }
+
+    @Test
+    void workspaceSkillRejectedBySafetyCheckActivatesFallbackVersion() throws IOException {
+        TestAgent agent = new TestAgent();
+        Path filesystemRoot = tempDir.resolve("filesystem");
+        Path workspaceRoot = tempDir.resolve("workspace");
+        Path filesystemSkillDirectory = filesystemRoot.resolve("FallbackWorkspaceSkill");
+        Path workspaceSkillDirectory = workspaceRoot.resolve("FallbackWorkspaceSkill");
+        Files.createDirectories(filesystemSkillDirectory);
+        Files.createDirectories(workspaceSkillDirectory);
+        writeSkillFile(
+                filesystemSkillDirectory.resolve("SKILL.md"), "FallbackWorkspaceSkill");
+        Files.write(
+                workspaceSkillDirectory.resolve("SKILL.md"),
+                new byte[SkillContentValidator.DEFAULT_WORKSPACE_MAX_BYTES + 1]);
+        String sysOperationId = "workspace-skill-fallback-test-" + UUID.randomUUID();
+        Runner.resourceMgr().addSysOperation(new SysOperationCard(
+                sysOperationId,
+                OperationMode.LOCAL,
+                LocalWorkConfig.builder().sandboxRoot(List.of(tempDir.toString())).build()
+        ));
+        try {
+            agent.configure(new TestAgentConfig(sysOperationId));
+            try (LogCaptureFixture audit = LogCaptureFixture.attach("agent")) {
+                agent.getSkillUtil().getSkillManager().setRepositories(
+                        List.of(
+                                new FileSystemSkillRepository(filesystemRoot),
+                                new WorkspaceSkillRepository(workspaceRoot, "user1")));
+                agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
+
+                assertThat(audit.count("WARNING", "SKILL_REJECTED")).isEqualTo(1);
+            }
+            agent.registerSkillTools(SkillToolBinding.builder()
+                    .skillName("FallbackWorkspaceSkill")
+                    .tools(List.of(tool("fallbackSkillTool")))
+                    .build()).toCompletableFuture().join();
+        MemorySession session = new MemorySession("workspace-skill-fallback-session");
+            agent.activateSkill("FallbackWorkspaceSkill", session);
+            Skill activeSkill =
+                    agent.getSkillUtil().getSkillManager().get("FallbackWorkspaceSkill");
+
+            assertThat(activeSkill.getSource()).isEqualTo(SkillSource.FILESYSTEM);
+            assertThat(visibleToolNames(agent, session)).contains("fallbackSkillTool");
+
+            Files.delete(workspaceSkillDirectory.resolve("SKILL.md"));
+            agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
+            activeSkill = agent.getSkillUtil().getSkillManager().get("FallbackWorkspaceSkill");
+
+            assertThat(activeSkill.getSource()).isEqualTo(SkillSource.FILESYSTEM);
+            assertThat(agent.getActiveSkillNames(session))
+                    .containsExactly("FallbackWorkspaceSkill");
+            assertThat(visibleToolNames(agent, session)).contains("fallbackSkillTool");
+        } finally {
+            Runner.resourceMgr().removeSysOperation(sysOperationId);
+        }
+    }
+
+    @Test
+    void removingWorkspaceSkillRestoresClasspathVersion()
+            throws IOException {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("classpath-skill-fallback-session");
+        String sysOperationId = "classpath-skill-fallback-test-" + UUID.randomUUID();
+        Path workspaceRoot = tempDir.resolve("workspace");
+        Path workspaceSkillDirectory = workspaceRoot.resolve("builtin_demo");
+        Files.createDirectories(workspaceSkillDirectory);
+        writeSkillFile(workspaceSkillDirectory.resolve("SKILL.md"), "builtin_demo");
+        Runner.resourceMgr().addSysOperation(new SysOperationCard(
+                sysOperationId,
+                OperationMode.LOCAL,
+                LocalWorkConfig.builder().sandboxRoot(List.of(tempDir.toString())).build()
+        ));
+        try {
+            agent.configure(new TestAgentConfig(sysOperationId));
+            agent.registerSkill(workspaceSkillDirectory.toString(), true)
+                    .toCompletableFuture()
+                    .join();
+            agent.getSkillUtil()
+                    .getSkillManager()
+                    .setRepositories(
+                            List.of(
+                                    new ClasspathSkillRepository("issue196/skills"),
+                                    new WorkspaceSkillRepository(workspaceRoot, "user1")));
+            agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
+            agent.registerSkillTools(SkillToolBinding.builder()
+                    .skillName("builtin_demo")
+                    .tools(List.of(tool("classpathFallbackTool")))
+                    .build()).toCompletableFuture().join();
+            agent.activateSkill("builtin_demo", session);
+
+            assertThat(agent.getSkillUtil().getSkillManager().get("builtin_demo").getSource())
+                    .isEqualTo(SkillSource.WORKSPACE);
+            assertThat(agent.getActiveSkillNames(session)).containsExactly("builtin_demo");
+            assertThat(visibleToolNames(agent, session)).contains("classpathFallbackTool");
+            assertThat(executeTool(agent, session, "classpath-active", "classpathFallbackTool"))
+                    .doesNotContain("not active");
+
+            Files.delete(workspaceSkillDirectory.resolve("SKILL.md"));
+            agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
+
+            assertThat(agent.getSkillUtil().getSkillManager().get("builtin_demo").getSource())
+                    .isEqualTo(SkillSource.CLASSPATH);
+            assertThat(agent.getActiveSkillNames(session)).containsExactly("builtin_demo");
+            assertThat(visibleToolNames(agent, session)).contains("classpathFallbackTool");
+            assertThat(executeTool(agent, session, "classpath-restored", "classpathFallbackTool"))
+                    .doesNotContain("not active");
+        } finally {
+            Runner.resourceMgr().removeSysOperation(sysOperationId);
+        }
+    }
+
+    @Test
     void registeringDuplicateToolNameForSameSkillFailsThroughCompletionStage() {
         TestAgent agent = new TestAgent();
         agent.registerSkillTools(SkillToolBinding.builder()
@@ -244,6 +525,33 @@ class BaseAgentSkillToolBindingTest {
                 .build()) {
             // Only the tool card is used by binding tests.
         };
+    }
+
+    private static List<String> visibleToolNames(BaseAgent agent, AgentSessionApi session) {
+        return agent.listEffectiveToolInfo(session).stream()
+                .map(ToolInfo::getName)
+                .toList();
+    }
+
+    private static String executeTool(
+            BaseAgent agent, AgentSessionApi session, String callId, String toolName) {
+        ToolCall toolCall =
+                ToolCall.builder().id(callId).name(toolName).arguments("{}").build();
+        return agent.getAbilityManager()
+                .execute(null, toolCall, session, false)
+                .get(0)
+                .toolMessage()
+                .getContentAsString();
+    }
+
+    private static void writeSkillFile(Path skillFile, String skillName) throws IOException {
+        Files.writeString(skillFile, """
+                ---
+                name: %s
+                description: Test skill.
+                ---
+                Skill body.
+                """.formatted(skillName), StandardCharsets.UTF_8);
     }
 
     private void registerSkill(TestAgent agent, String skillName) {
