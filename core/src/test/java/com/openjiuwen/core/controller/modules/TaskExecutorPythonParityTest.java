@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -124,7 +125,7 @@ class TaskExecutorPythonParityTest {
         ));
 
         assertThat(outputTexts.stream().filter(text -> text.contains("completed")).count()).isEqualTo(3);
-        assertThat(TrackableTaskExecutor.instancesCreated).isEqualTo(3);
+        assertThat(TrackableTaskExecutor.INSTANCES_CREATED.get()).isEqualTo(3);
         assertThat(instanceIds(outputTexts)).hasSize(3);
     }
 
@@ -146,7 +147,7 @@ class TaskExecutorPythonParityTest {
         ));
 
         assertThat(outputTexts.stream().filter(text -> text.contains("completed")).count()).isEqualTo(3);
-        assertThat(TrackableTaskExecutor.instancesCreated).isEqualTo(3);
+        assertThat(TrackableTaskExecutor.INSTANCES_CREATED.get()).isEqualTo(3);
     }
 
     @Test
@@ -169,7 +170,7 @@ class TaskExecutorPythonParityTest {
                 .map(TaskExecutorPythonParityTest::instanceId)
                 .toList();
 
-        assertThat(executedByInstances).hasSize(new java.util.HashSet<>(executedByInstances).size());
+        assertThat(executedByInstances).hasSize(3).doesNotHaveDuplicates();
     }
 
     @Test
@@ -184,7 +185,7 @@ class TaskExecutorPythonParityTest {
                 )
         );
 
-        assertThat(TrackableTaskExecutor.instancesCreated).isZero();
+        assertThat(TrackableTaskExecutor.INSTANCES_CREATED.get()).isZero();
 
         AgentSession session = createSession("test_executor_on_demand", agent);
         collectStreamOutput(agent.stream(
@@ -193,7 +194,7 @@ class TaskExecutorPythonParityTest {
                 List.of()
         ));
 
-        assertThat(TrackableTaskExecutor.instancesCreated).isZero();
+        assertThat(TrackableTaskExecutor.INSTANCES_CREATED.get()).isZero();
     }
 
     private static Controller buildTestController() {
@@ -281,15 +282,15 @@ class TaskExecutorPythonParityTest {
      * {@code tests/unit_tests/core/controller/test_task_executor.py}.
      */
     private static final class TrackableTaskExecutor extends TaskExecutor {
-        private static int instancesCreated;
+        // Task executors are constructed concurrently by the scheduler.
+        private static final AtomicInteger INSTANCES_CREATED = new AtomicInteger();
         private static final List<TrackableTaskExecutor> ACTIVE_INSTANCES = new CopyOnWriteArrayList<>();
 
         private final int instanceId;
 
         private TrackableTaskExecutor(TaskExecutorDependencies dependencies) {
             super(dependencies);
-            instancesCreated++;
-            instanceId = instancesCreated;
+            instanceId = INSTANCES_CREATED.incrementAndGet();
             ACTIVE_INSTANCES.add(this);
         }
 
@@ -338,7 +339,7 @@ class TaskExecutorPythonParityTest {
         }
 
         private static void resetTracking() {
-            instancesCreated = 0;
+            INSTANCES_CREATED.set(0);
             ACTIVE_INSTANCES.clear();
         }
     }

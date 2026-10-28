@@ -7,15 +7,23 @@ package com.openjiuwen.core.multiagent.teams.hierarchical_msgbus;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mockStatic;
 
 /**
  * Focused parity tests for the hierarchical message-bus supervisor.
@@ -24,6 +32,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code openjiuwen/core/multi_agent/teams/hierarchical_msgbus/supervisor_agent.py}.</p>
  */
 class SupervisorAgentTest {
+    private ResourceMgr resourceMgr;
+    private MockedStatic<Runner> runner;
+
+    @BeforeEach
+    void isolateResources() {
+        resourceMgr = new ResourceMgr();
+        // Core and Harness skill tools have different declarations for the shared skill_tool ID.
+        runner = mockStatic(Runner.class, CALLS_REAL_METHODS);
+        runner.when(Runner::resourceMgr).thenReturn(resourceMgr);
+    }
+
+    @AfterEach
+    void releaseResources() {
+        try {
+            resourceMgr.release().toCompletableFuture().join();
+        } finally {
+            runner.close();
+        }
+    }
 
     @Test
     void constructorInstallsP2PAbilityManagerAndAppliesConfig() {

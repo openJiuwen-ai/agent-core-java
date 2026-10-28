@@ -20,7 +20,10 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
 import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
+import com.openjiuwen.core.testsupport.ModelRegistryIsolation;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -40,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Mirrors Python's {@code ChatAgent} in
  * {@code openjiuwen/dev_tools/tune/chat_agent/chat_agent.py}.
  */
+@ExtendWith(ModelRegistryIsolation.class)
 class ChatAgentTest {
 
     @Test
