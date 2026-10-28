@@ -104,7 +104,7 @@ class WorkflowStreamFailureTest {
         WorkflowAgent agent = new WorkflowAgent(config);
         AgentSession session = new AgentSession("issue194-facade", null, agent.getCard());
         Iterator<Object> stream = assertDoesNotThrow(() -> agent.stream(Map.of("query", "test"), session, MODES));
-        assertTracesThenFailure(stream, CompletionException.class);
+        assertTracesThenFailure(stream, BaseError.class);
     }
 
     @Test
@@ -112,7 +112,7 @@ class WorkflowStreamFailureTest {
         WorkflowAgent agent = new WorkflowAgent(config);
         Iterator<Object> stream = assertDoesNotThrow(() -> agent.stream(
                 Map.of("query", "test", "conversation_id", "issue194-auto-session"), null, MODES));
-        assertTracesThenFailure(stream, CompletionException.class);
+        assertTracesThenFailure(stream, BaseError.class);
     }
 
     @Test
@@ -120,9 +120,10 @@ class WorkflowStreamFailureTest {
         WorkflowAgent agent = new WorkflowAgent(config);
         AgentSession session = new AgentSession("issue194-default-modes", null, agent.getCard());
         Iterator<Object> stream = assertDoesNotThrow(() -> agent.stream(Map.of("query", "test"), session, null));
+
         // Null modes retain the legacy invoke path, which produces no stream chunks.
-        CompletionException failure = assertThrows(CompletionException.class, stream::hasNext);
-        assertTrue(assertInstanceOf(BaseError.class, failure.getCause()).getMessage().contains("bad"));
+        BaseError failure = assertThrows(BaseError.class, stream::hasNext);
+        assertTrue(failure.getMessage().contains("bad"));
         assertFalse(stream.hasNext());
     }
 
@@ -131,11 +132,11 @@ class WorkflowStreamFailureTest {
         WorkflowAgent agent = new WorkflowAgent(config);
         AgentSession first = new AgentSession("issue194-first", null, agent.getCard());
         Iterator<Object> firstStream = agent.stream(Map.of("query", "first"), first, MODES);
-        int firstCount = assertTracesThenFailure(firstStream, CompletionException.class);
+        int firstCount = assertTracesThenFailure(firstStream, BaseError.class);
 
         AgentSession second = new AgentSession("issue194-second", null, agent.getCard());
         Iterator<Object> secondStream = agent.stream(Map.of("query", "second"), second, MODES);
-        assertEquals(firstCount, assertTracesThenFailure(secondStream, CompletionException.class));
+        assertEquals(firstCount, assertTracesThenFailure(secondStream, BaseError.class));
         assertFalse(firstStream.hasNext());
     }
 
@@ -146,7 +147,7 @@ class WorkflowStreamFailureTest {
         Iterator<Object> stream = assertDoesNotThrow(() -> Runner.runAgentStreaming(
                 agent, Map.of("query", "test"), session, null, MODES, null)
                 .toCompletableFuture().join());
-        assertTracesThenFailure(stream, CompletionException.class);
+        assertTracesThenFailure(stream, BaseError.class);
         assertTrue(session.isPostRunDone());
     }
 

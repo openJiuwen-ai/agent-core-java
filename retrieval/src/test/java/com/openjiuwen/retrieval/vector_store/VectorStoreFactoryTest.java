@@ -12,6 +12,9 @@ import com.openjiuwen.core.foundation.store.vector_fields.PGVectorField;
 import com.openjiuwen.core.retrieval.common.StoreType;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,10 +31,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class VectorStoreFactoryTest {
 
+    @TempDir
+    Path storage;
+
     @Test
     void createVectorStoreReturnsChromaStore() {
         Map<String, Object> kwargs = new LinkedHashMap<>();
-        kwargs.put("chroma_path", "/tmp/chroma");
+        kwargs.put("chroma_path", storage.toString());
         kwargs.put("text_field", "body");
         kwargs.put("vector_field", "vector");
         kwargs.put("sparse_vector_field", "sparse");
@@ -42,7 +48,7 @@ class VectorStoreFactoryTest {
 
         assertThat(store).isInstanceOf(ChromaVectorStore.class);
         ChromaVectorStore chromaStore = (ChromaVectorStore) store;
-        assertThat(chromaStore.getChromaPath()).isEqualTo("/tmp/chroma");
+        assertThat(chromaStore.getChromaPath()).isEqualTo(storage.toString());
         assertThat(chromaStore.getTextField()).isEqualTo("body");
         assertThat(chromaStore.getVectorField().getVectorField()).isEqualTo("vector");
         assertThat(chromaStore.getSparseVectorField()).isEqualTo("sparse");

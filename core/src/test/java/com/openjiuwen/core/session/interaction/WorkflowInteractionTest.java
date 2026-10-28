@@ -19,6 +19,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,6 +30,31 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for {@link WorkflowInteraction}.
  */
 class WorkflowInteractionTest {
+
+    @Test
+    void concurrentNodeStatesConsumeRawInputOnlyOnce() throws Exception {
+        WorkflowCommitState state = InMemoryState.create(null, null, null,
+                Map.of(Constant.INTERACTIVE_INPUT, Map.of("answer", 42)), null);
+        CyclicBarrier ready = new CyclicBarrier(3);
+        List<CompletableFuture<Object>> reads = new ArrayList<>();
+        for (int index = 0; index < 3; index++) {
+            WorkflowCommitState node = state.createNodeState("node-" + index);
+            reads.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                    ready.await(5, TimeUnit.SECONDS);
+                } catch (java.util.concurrent.BrokenBarrierException | java.util.concurrent.TimeoutException error) {
+                    throw new IllegalStateException(error);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(error);
+                }
+                return node.popWorkflowState(Constant.INTERACTIVE_INPUT);
+            }));
+        }
+        CompletableFuture.allOf(reads.toArray(CompletableFuture[]::new)).get(10, TimeUnit.SECONDS);
+        assertEquals(1, reads.stream().map(CompletableFuture::join).filter(java.util.Objects::nonNull).count());
+        assertNull(state.getWorkflowState(Constant.INTERACTIVE_INPUT));
+    }
 
     @Test
     @DisplayName("workflow interaction consumes raw workflow input before interrupting")

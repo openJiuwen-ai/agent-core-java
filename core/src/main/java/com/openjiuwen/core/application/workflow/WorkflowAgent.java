@@ -14,6 +14,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.WorkflowCancellation;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -84,7 +85,6 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
             Map<String, Object> inputMap = toInputMap(inputs);
             logLegacyModelParams();
             InvocationResult invocation = invokeController(inputMap, session);
-            recordContextMessages(inputMap, invocation.output(), invocation.session());
             Map<String, Object> data = directInvokeMapView(invocation.output());
             if (data != null) {
                 return new MapCompletedStage(invocation.output(), data);
@@ -168,7 +168,6 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         Map<String, Object> inputMap = toInputMap(inputs);
         logLegacyModelParams();
         InvocationResult invocation = invokeController(inputMap, session);
-        recordContextMessages(inputMap, invocation.output(), invocation.session());
         return invocation.output();
     }
 
@@ -178,17 +177,36 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         // Always go through invokeController so INPUT_REQUIRED persists interrupted_tasks even when
         // no LLM model is configured (legacy super.stream -> WorkflowController.stream skips that).
         logLegacyModelParams();
-        AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
-        AgentSessionApi activeSession = Objects.requireNonNullElse(session, createdSession);
         InvocationResult invocation;
         try {
-            invocation = invokeController(inputMap, activeSession, streamModes, createdSession);
+            invocation = invokeController(inputMap, session, streamModes);
+        } catch (StreamInvocationFailure failure) {
+            return failure.session.streamIterator(streamFailure(failure.failure));
         } catch (CompletionException | CancellationException failure) {
-            return activeSession.streamIterator(failure);
+            AgentSessionApi activeSession = session == null ? createCompatibilitySession(inputMap) : session;
+            return activeSession.streamIterator(streamFailure(failure));
         }
-        recordContextMessages(inputMap, invocation.output(), invocation.session());
         List<Object> chunks = streamChunksView(invocation);
         return chunks.iterator();
+    }
+
+    private static RuntimeException streamFailure(RuntimeException failure) {
+        Throwable cause = failure;
+        while (cause instanceof CompletionException && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause instanceof RuntimeException runtimeException ? runtimeException : failure;
+    }
+
+    private static final class StreamInvocationFailure extends RuntimeException {
+        private final AgentSessionApi session;
+        private final RuntimeException failure;
+
+        private StreamInvocationFailure(AgentSessionApi session, RuntimeException failure) {
+            super(failure);
+            this.session = session;
+            this.failure = failure;
+        }
     }
 
     public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
@@ -497,22 +515,47 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
     }
 
     private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi session) {
+        return invokeController(inputMap, session, null);
+    }
+
+    private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi session,
+                                              List<StreamMode> streamModes) {
+        if (getController() instanceof com.openjiuwen.core.application.workflow_agent.WorkflowController controller) {
+            try (var invocation = controller.beginInvocation(inputMap, session)) {
+                AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
+                AgentSessionApi activeSession = Objects.requireNonNullElse(session, createdSession);
+                return invokeController(inputMap, activeSession, streamModes, createdSession, invocation.cancellation());
+            }
+        }
         AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
         AgentSessionApi activeSession = Objects.requireNonNullElse(session, createdSession);
-        return invokeController(inputMap, activeSession, null, createdSession);
+        return invokeController(inputMap, activeSession, streamModes, createdSession, null);
     }
 
     private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi activeSession,
-                                              List<StreamMode> streamModes, AgentSession createdSession) {
+                                              List<StreamMode> streamModes, AgentSession createdSession,
+                                              WorkflowCancellation cancellation) {
         activeSession.updateState(Map.of("__workflow_interaction_outputs__", new ArrayList<>()));
         Map<String, Object> submittedInteractions = submittedInteractionInputs(inputMap, activeSession);
         AgentSession captureSession = activeSession instanceof AgentSession agentSession ? agentSession : null;
-        Object result = getController() instanceof
-                com.openjiuwen.core.application.workflow_agent.WorkflowController controller && streamModes != null
-                ? controller.invoke(inputMap, activeSession, streamModes).toCompletableFuture().join()
-                : super.invoke(inputMap, activeSession).toCompletableFuture().join();
+        Object result;
+        try {
+            result = getController() instanceof com.openjiuwen.core.application.workflow_agent.WorkflowController controller
+                    ? controller.invoke(inputMap, activeSession, streamModes, cancellation).toCompletableFuture().join()
+                    : super.invoke(inputMap, activeSession).toCompletableFuture().join();
+        } catch (CompletionException | CancellationException failure) {
+            if (streamModes != null) {
+                throw new StreamInvocationFailure(activeSession, failure);
+            }
+            throw failure;
+        }
         ControllerOutput output = toControllerOutput(result);
         List<Object> streamChunks = captureSession == null ? List.of() : closeAndCollect(captureSession);
+        if (output.getDataAsMap() != null && "cancelled".equals(output.getDataAsMap().get("status"))) {
+            // Do not publish an obsolete interaction or save a cancelled request as a completed turn.
+            persistActiveSession(createdSession, activeSession);
+            return new InvocationResult(output, List.of(), activeSession, Map.of());
+        }
         output = legacyInvokeOutputView(output);
         List<Object> interactionSource = streamChunks.isEmpty() ? outputDataChunks(output) : streamChunks;
         List<Object> interactions = interactionChunks(interactionSource, activeSession);
@@ -528,6 +571,7 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         if (streamModes == null && !interactions.isEmpty() && shouldReturnInteractions(output)) {
             output = new ControllerOutput(EventType.TASK_COMPLETION.getValue(), interactions);
         }
+        recordContextMessages(inputMap, output, activeSession);
         persistActiveSession(createdSession, activeSession);
         return new InvocationResult(output, streamChunks, activeSession, submittedInteractions);
     }

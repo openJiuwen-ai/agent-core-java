@@ -17,6 +17,7 @@ import com.openjiuwen.core.runner.callback.CallbackDecorators;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.WorkflowEvents;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.WorkflowCancellation;
 import com.openjiuwen.core.session.state.CommitStateLike;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -39,10 +40,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
@@ -82,7 +85,8 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private final Executor executor;
     private final AtomicInteger callCount = new AtomicInteger();
     private final AtomicInteger streamCallCount = new AtomicInteger();
-    private final List<ComponentAbility> deferredStreamEndAbilities = new ArrayList<>();
+    private final Queue<ComponentAbility> deferredBatchEndAbilities = new ConcurrentLinkedQueue<>();
+    private final Queue<ComponentAbility> deferredStreamEndAbilities = new ConcurrentLinkedQueue<>();
     private VertexSession session;
     private Object context;
     private int streamCallTimeoutSeconds = 10;
@@ -207,7 +211,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     }
 
     private void callBlocking(Map<String, Object> config) throws Exception {
-        deferredStreamEndAbilities.clear();
+        deferredBatchEndAbilities.clear();
         if (session == null || executable == null) {
             throw buildError(StatusCode.GRAPH_VERTEX_EXECUTION_ERROR,
                     null,
@@ -226,7 +230,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             // stream-in abilities (COLLECT/TRANSFORM) does not race its own streamCall
             // deferred flush — those are flushed in streamCall's finally instead.
             if (!callAbilities.isEmpty()) {
-                sendDeferredStreamEndMessages();
+                sendDeferredStreamEndMessages(deferredBatchEndAbilities);
             }
             if (callAbilities.isEmpty()) {
                 traceComponentBegin();
@@ -262,6 +266,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         }
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            WorkflowCancellation.check(session);
             try {
                 if (timeout < 0.0d || nearlyZero(timeout)) {
                     return runExecutable(ability, subgraph, config, readinessSignal);
@@ -279,6 +284,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                 }
                 return runErrorRecovery(ability, wrapped);
             } catch (Exception exception) {
+                WorkflowCancellation.check(session);
                 if (attempt < maxRetries) {
                     traceInnerError(exception);
                     continue;
@@ -326,7 +332,10 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                                   Map<String, Object> config,
                                   Runnable readinessSignal) throws Exception {
         AtomicBoolean readinessSet = new AtomicBoolean(false);
-        try {
+        // A subgraph waits on its own registered nodes; registering its caller would deadlock draining.
+        try (WorkflowCancellation.Registration registration = subgraph ? () -> { }
+                : WorkflowCancellation.register(session)) {
+            WorkflowCancellation.check(session);
             markNodeExecuted();
             LOGGER.info("Begin to call node [{}] ability [{}]", nodeId, ability.name());
             switch (ability) {
@@ -342,6 +351,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                         }
                     }
                     Object result = executable.onCollect(collectInputs, session, context);
+                    WorkflowCancellation.check(session);
                     postInvoke(result);
                 }
                 case TRANSFORM -> {
@@ -358,15 +368,18 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                 }
                 default -> throw new IllegalArgumentException("Unsupported ability: " + ability);
             }
+            WorkflowCancellation.check(session);
             LOGGER.info("Succeed to call node [{}] ability [{}]", nodeId, ability.name());
             return true;
         } catch (GraphInterrupt interrupt) {
+            WorkflowCancellation.check(session);
             LOGGER.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
             throw interrupt;
         } catch (BaseError error) {
             LOGGER.error("Failed to call node [{}] ability [{}]", nodeId, ability.name(), error);
             throw error;
         } catch (Exception exception) {
+            WorkflowCancellation.check(session);
             GraphInterrupt interrupt = findGraphInterrupt(exception);
             if (interrupt != null) {
                 LOGGER.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
@@ -391,6 +404,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         }
         batchInputs = applyComponentInputCallbacks(WorkflowEvents.COMPONENT_BATCH_INPUT, batchInputs);
         Object results = executable.onInvoke(batchInputs, session, context);
+        WorkflowCancellation.check(session);
         results = applyComponentOutputCallbacks(WorkflowEvents.COMPONENT_BATCH_OUTPUT, results);
         postInvoke(results);
     }
@@ -749,7 +763,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             VertexActorManager manager = session.actorManager();
             if (manager != null && manager.subWorkflowStream() != null) {
                 if (shouldDeferStreamEnd(ability)) {
-                    deferredStreamEndAbilities.add(ability);
+                    deferStreamEnd(ability);
                 } else {
                     manager.subWorkflowStream().emit(StreamEmitter.END_FRAME);
                 }
@@ -758,11 +772,17 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         }
         if (actorManager != null) {
             if (shouldDeferStreamEnd(ability)) {
-                deferredStreamEndAbilities.add(ability);
+                deferStreamEnd(ability);
             } else {
                 actorManager.endMessage(nodeId, ability);
             }
         }
+    }
+
+    private void deferStreamEnd(ComponentAbility ability) {
+        Queue<ComponentAbility> pending = ability == ComponentAbility.INVOKE || ability == ComponentAbility.STREAM
+                ? deferredBatchEndAbilities : deferredStreamEndAbilities;
+        pending.add(ability);
     }
 
     /**
@@ -798,25 +818,21 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     }
 
     /**
-     * Flush any deferred END_FRAME messages for this node, in insertion order.
+     * Flush the completion frames owned by one execution batch, in insertion order.
      *
-     * @throws Exception when ending a deferred stream message fails
+     * @param pending completion frames for either the batch-in or stream-in execution
      */
-    private void sendDeferredStreamEndMessages() {
-        if (deferredStreamEndAbilities.isEmpty()) {
-            return;
-        }
+    private void sendDeferredStreamEndMessages(Queue<ComponentAbility> pending) {
         VertexActorManager actorManager = session.actorManager();
         boolean isEnd = endNode || isEndComponent();
         boolean isSubGraph = session.subGraph();
-        if (actorManager != null) {
-            for (ComponentAbility ability : deferredStreamEndAbilities) {
+        for (ComponentAbility ability = pending.poll(); ability != null; ability = pending.poll()) {
+            if (actorManager != null) {
                 emitDeferredStreamEnd(actorManager, ability, isEnd, isSubGraph);
                 LOGGER.debug("Produce deferred 'END_FRAME' chunk of [{}] ability [{}]",
                         nodeId, ability.name());
             }
         }
-        deferredStreamEndAbilities.clear();
     }
 
     private void emitDeferredStreamEnd(VertexActorManager actorManager,
@@ -942,8 +958,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     public void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback) {
         CountDownLatch readyLatch = latch != null ? latch : new CountDownLatch(0);
         Consumer<Exception> safeErrorCallback = errorCallback != null ? errorCallback : ignored -> { };
-        streamCallCount.incrementAndGet();
+        deferredStreamEndAbilities.clear();
         streamDone = new CompletableFuture<>();
+
+        // Publish this run's completion signal before the batch side can observe the stream counter.
+        streamCallCount.incrementAndGet();
 
         if (session == null || session.actorManager() == null) {
             BaseError error = buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR,
@@ -1015,7 +1034,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             // consumer's stream processor receives end frames in the right
             // order. Flush them now that the stream-in batch is done.
             try {
-                sendDeferredStreamEndMessages();
+                sendDeferredStreamEndMessages(deferredStreamEndAbilities);
             } catch (RuntimeException flushException) {
                 if (error == null) {
                     error = flushException;

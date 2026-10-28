@@ -180,6 +180,11 @@ public class ChromaVectorStore implements VectorStore {
         return collection;
     }
 
+    private String targetCollection(Map<String, Object> options) {
+        Object requested = options == null ? null : options.get("collection_name");
+        return requested == null ? collectionName : String.valueOf(requested);
+    }
+
     private static String defaultCompatPath(VectorStoreConfig config) {
         String collection = config == null || config.getCollectionName() == null
                 ? "default_collection"
@@ -192,7 +197,10 @@ public class ChromaVectorStore implements VectorStore {
                                                    String token,
                                                    Map<String, Object> kwargs) {
         String activeDatabase = databaseName == null || databaseName.isBlank() ? DEFAULT_DATABASE : databaseName;
-        return new InMemoryChromaClientAdapter(activeDatabase, pathOrUri);
+        if (pathOrUri != null && pathOrUri.startsWith("memory://")) {
+            return new InMemoryChromaClientAdapter(activeDatabase, pathOrUri);
+        }
+        return new PersistentChromaClientAdapter(activeDatabase, pathOrUri);
     }
 
     @Override
@@ -240,7 +248,7 @@ public class ChromaVectorStore implements VectorStore {
                                                            VectorStoreFilter filters,
                                                            Map<String, Object> kwargs) {
         return CompletableFuture.supplyAsync(() -> {
-            ChromaCollectionAdapter latestCollection = client.getCollection(collectionName);
+            ChromaCollectionAdapter latestCollection = client.getCollection(targetCollection(kwargs));
             Map<String, Object> results = latestCollection.query(queryVector, null, topK, buildQueryArgs(filters));
             return chromaResultToSearchResults(results, "vector");
         }, IO_EXECUTOR);
@@ -253,7 +261,7 @@ public class ChromaVectorStore implements VectorStore {
                                                                  Map<String, Object> kwargs) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                ChromaCollectionAdapter latestCollection = client.getCollection(collectionName);
+                ChromaCollectionAdapter latestCollection = client.getCollection(targetCollection(kwargs));
                 Map<String, Object> results = latestCollection.query(null, queryText, topK, buildQueryArgs(filters));
                 if (hasRows(results)) {
                     return chromaResultToSearchResults(results, "sparse");
@@ -777,6 +785,16 @@ public class ChromaVectorStore implements VectorStore {
             this.configuration = configuration;
         }
 
+        List<StoredDocument> snapshotRows() {
+            return new ArrayList<>(rowsById.values());
+        }
+
+        void restoreRows(List<StoredDocument> rows) {
+            for (StoredDocument row : rows) {
+                rowsById.put(row.id(), row);
+            }
+        }
+
         @Override
         public String name() {
             return name;
@@ -1041,7 +1059,7 @@ public class ChromaVectorStore implements VectorStore {
          * Mirrors Python's transient Chroma document payload in
          * {@code openjiuwen/core/retrieval/vector_store/chroma_store.py}.
          */
-        private record StoredDocument(String id,
+        record StoredDocument(String id,
                                       List<Double> embedding,
                                       String document,
                                       Map<String, Object> metadata) {

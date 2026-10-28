@@ -87,6 +87,24 @@ class T01176QuestionerComponentTest {
     }
 
     @Test
+    void extraModelFieldsDoNotCountAsCollectedRequiredFields() {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage("en");
+        config.setFieldNames(List.of(field("name", "Name", "string", true, ""),
+                field("age", "Age", "integer", true, "")));
+        QuestionerDirectReplyHandler handler = handler(config, "{\"name\":\"Bob\",\"message\":\"What is your age?\"}");
+        TestSession session = new TestSession("18");
+        Map<String, Object> first = handler.handle(Map.of("query", "Bob"), session, null);
+        assertEquals("Please provide information related to: Age", first.get("question"));
+        handler.model(modelReturning("{\"age\":18}"));
+        Map<String, Object> result = handler.handle(Map.of(), session, null);
+        assertEquals(ExecutionStatus.END, handler.getState().getStatus());
+        assertEquals("Bob", result.get("name"));
+        assertEquals(18, result.get("age"));
+        assertEquals("What is your age?", result.get("message"));
+    }
+
+    @Test
     void requiredFalseBooleanContinuesAsNotExtractedLikePython() {
         QuestionerConfig config = new QuestionerConfig();
         config.setAcceptLanguage("en");

@@ -1382,7 +1382,25 @@ public class Workflow {
         java.util.Map<String, Object> graphInputs = new java.util.HashMap<>();
         graphInputs.put(Constant.INPUTS_KEY, inputs != null ? inputs : Map.of());
         graphInputs.put(Constant.CONFIG_KEY, config);
-        return typedCompiled.invoke(graphInputs, session);
+        var cancellation = com.openjiuwen.core.session.WorkflowCancellation.from(session);
+        var graphStore = session.checkpointer() == null ? null : session.checkpointer().graphStore();
+        var previousCheckpoint = cancellation == null || graphStore == null
+                ? java.util.Optional.<com.openjiuwen.core.graph.store.GraphStoreState>empty()
+                : graphStore.get(session.sessionId(), card.getId()).toCompletableFuture().join();
+        try {
+            return typedCompiled.invoke(graphInputs, session);
+        } catch (RuntimeException failure) {
+            if (cancellation != null && cancellation.isCancelled() && graphStore != null) {
+                // Roll back the cancelled attempt; its input must not be replayed on the next resume.
+                cancellation.awaitQuiescence(java.time.Duration.ofSeconds(30));
+                if (previousCheckpoint.isPresent()) {
+                    graphStore.save(session.sessionId(), card.getId(), previousCheckpoint.get()).toCompletableFuture().join();
+                } else {
+                    graphStore.delete(session.sessionId(), card.getId()).toCompletableFuture().join();
+                }
+            }
+            throw failure;
+        }
     }
 
     private RuntimeException wrapWorkflowException(Exception e) {
@@ -1558,6 +1576,8 @@ public class Workflow {
 
         @Override
         public void postWorkflowExecute(BaseSession session, Map<String, Object> result, Exception exception) {
+            // Preserve the last completed interaction checkpoint, not a half-consumed cancelled input.
+            com.openjiuwen.core.session.WorkflowCancellation.check(session);
             delegate.postWorkflowExecute(session, result, exception);
         }
     }
