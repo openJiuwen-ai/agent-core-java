@@ -27,7 +27,7 @@ public class Config
 | `public void setEnvs(Map<String, Object> envs)` | 批量写入环境变量映射。 |
 | `public Object getEnv(String key, Object defaultValue)` | 按键读取环境变量；缺失时返回 `defaultValue`。 |
 | `public Object getEnv(String key)` | 按键读取环境变量；缺失时返回 `null`。 |
-| `public Map<String, Object> getEnvs()` | 返回环境变量副本。 |
+| `public Map<String, Object> getEnvs()` | 返回环境变量的浅拷贝：顶层 Map 独立，嵌套值保持原对象引用。 |
 | `public Object getWorkflowConfig(String workflowId)` | 按工作流 ID 读取工作流配置；`workflowId = null` 时抛出异常。 |
 | `public Object getAgentConfig()` | 返回 agent 配置对象。 |
 | `public void setAgentConfig(Object agentConfig)` | 覆盖 agent 配置对象。 |
@@ -42,6 +42,7 @@ public class Config
 
 ## 说明
 
+- `getEnvs()` 返回的新 Map 中，增删或替换顶层键值不会修改当前配置；嵌套 Map、List 等可变对象仍被共享，其内部修改对持有同一对象的会话可见。共享对象的并发访问需由调用方同步；需要独立快照时，应在相应边界自行复制嵌套值。
 - 相关测试：`SessionBasicTest`。
 - 构造时会先装入内置默认值，再尝试读取系统环境变量和 `WORKFLOW_SESSION_VARS` 中的同名覆盖项。
 - `MetadataLike` 提供三组公开 getter/setter，用来承载回调元数据中的标识、名称和事件名。
