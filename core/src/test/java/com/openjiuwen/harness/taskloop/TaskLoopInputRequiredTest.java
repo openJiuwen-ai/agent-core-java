@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.harness.task_loop;
+package com.openjiuwen.harness.taskloop;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -32,6 +32,9 @@ import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
+import com.openjiuwen.harness.task_loop.CoreTaskLoopEventExecutor;
+import com.openjiuwen.harness.task_loop.TaskLoopEventExecutor;
+import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
 
 import org.junit.jupiter.api.Test;
 
