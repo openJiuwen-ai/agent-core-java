@@ -49,7 +49,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -100,16 +99,37 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private boolean hasCall = true;
     private boolean firstInit = true;
 
+    /**
+     * Creates a vertex on the managed executor for blocking background work.
+     *
+     * @param nodeId graph node identifier
+     * @param executable component invoked by this vertex
+     * @throws NullPointerException when {@code nodeId} is {@code null}
+     */
     public Vertex(String nodeId, Executable<Map<String, Object>, ?> executable) {
-        this(nodeId, executable, ForkJoinPool.commonPool());
+        this(nodeId, executable, OpenJiuwenExecutors.backgroundExecutor());
     }
 
+    /**
+     * Creates a vertex with an optional caller-supplied executor.
+     *
+     * @param nodeId graph node identifier
+     * @param executable component invoked by this vertex
+     * @param executor executor to use, or {@code null} for the managed background executor
+     * @throws NullPointerException when {@code nodeId} is {@code null}
+     */
     public Vertex(String nodeId,
                   Executable<Map<String, Object>, ?> executable,
                   Executor executor) {
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId must not be null");
         this.executable = castExecutable(executable);
-        this.executor = executor != null ? executor : ForkJoinPool.commonPool();
+
+        // Component I/O can block; the CPU-sized common pool can starve unrelated workflows.
+        if (executor != null) {
+            this.executor = executor;
+        } else {
+            this.executor = OpenJiuwenExecutors.backgroundExecutor();
+        }
     }
 
     @SuppressWarnings("unchecked")
