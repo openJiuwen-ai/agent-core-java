@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.session.checkpointer.step;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.store.BaseKVStore;
 
 import org.slf4j.Logger;
@@ -29,6 +32,11 @@ public class KvStepJournal implements StepJournal {
     public static final String KEY_PREFIX = "stepjournal";
 
     private static final Logger log = LoggerFactory.getLogger(KvStepJournal.class);
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     private final BaseKVStore kvStore;
     private final StepPayloadSanitizer sanitizer;
@@ -60,7 +68,7 @@ public class KvStepJournal implements StepJournal {
         }
         try {
             StepRecord sanitized = sanitize(record);
-            kvStore.set(recordKey(sanitized.getSessionId(), sanitized.getSeq()), sanitized.toMap()).join();
+            kvStore.set(recordKey(sanitized.getSessionId(), sanitized.getSeq()), encodeRecord(sanitized)).join();
         } catch (RuntimeException e) {
             log.warn("Step journal append failed for session {} seq {}, ignored to keep execution path intact",
                     record.getSessionId(), record.getSeq(), e);
@@ -89,7 +97,7 @@ public class KvStepJournal implements StepJournal {
         }
         seqs.sort(Long::compare);
         for (Long seq : seqs) {
-            StepRecord record = StepRecord.fromMap(entries.get(recordKey(sessionId, seq)));
+            StepRecord record = decodeRecord(entries.get(recordKey(sessionId, seq)));
             if (record != null) {
                 records.add(record);
             }
@@ -112,7 +120,7 @@ public class KvStepJournal implements StepJournal {
         }
         List<String> expired = new ArrayList<>();
         for (Map.Entry<String, Object> entry : entries.entrySet()) {
-            StepRecord record = StepRecord.fromMap(entry.getValue());
+            StepRecord record = decodeRecord(entry.getValue());
             if (record != null && record.getTimestamp() < beforeEpochMillis) {
                 expired.add(entry.getKey());
             }
@@ -125,6 +133,44 @@ public class KvStepJournal implements StepJournal {
             removed = 0;
         }
         return removed;
+    }
+
+    /**
+     * Serialize one record for KV storage. JSON text keeps the record
+     * readable on every backend: in-memory stores may also keep the raw map,
+     * while database-backed stores flatten any non-byte value to text.
+     *
+     * @param record record to encode
+     * @return JSON text of the record map
+     */
+    private String encodeRecord(StepRecord record) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(record.toMap());
+        } catch (JsonProcessingException | RuntimeException e) {
+            throw new IllegalStateException("Failed to encode step record", e);
+        }
+    }
+
+    /**
+     * Rebuild a record from stored form. Both the raw map (in-memory stores
+     * keep object references) and the JSON text form (database stores) are
+     * accepted.
+     *
+     * @param stored value read back from the KV store, may be null
+     * @return the decoded record, or null when the value is not a record
+     */
+    private StepRecord decodeRecord(Object stored) {
+        if (stored instanceof Map<?, ?>) {
+            return StepRecord.fromMap(stored);
+        }
+        if (stored instanceof String text) {
+            try {
+                return StepRecord.fromMap(OBJECT_MAPPER.readValue(text, MAP_TYPE));
+            } catch (JsonProcessingException | RuntimeException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private StepRecord sanitize(StepRecord record) {
