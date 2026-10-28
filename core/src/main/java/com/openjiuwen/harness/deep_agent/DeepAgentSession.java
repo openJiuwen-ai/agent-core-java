@@ -67,6 +67,11 @@ public class DeepAgentSession implements AgentSessionApi {
     }
 
     @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        return facade.streamIterator(failure);
+    }
+
+    @Override
     public TenantContext getTenantContext() {
         return facade.getTenantContext();
     }

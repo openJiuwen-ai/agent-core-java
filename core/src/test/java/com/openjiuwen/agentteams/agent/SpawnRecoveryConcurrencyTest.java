@@ -37,6 +37,11 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Verifies recovery task sharing, stale callback isolation, and rejected task cleanup for teammates.
+ *
+ * @since 2026-10-27
+ */
 class SpawnRecoveryConcurrencyTest {
     private final AtomicReference<Throwable> uncaught = new AtomicReference<>();
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(

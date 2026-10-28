@@ -26,6 +26,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Verifies that cancelling a health-check worker stops it without reporting an unhealthy process.
+ *
+ * @since 2026-10-27
+ */
 class HealthCheckCancellationTest {
     private final AtomicBoolean isAlive = new AtomicBoolean(true);
     private final CountDownLatch releaseResponse = new CountDownLatch(1);

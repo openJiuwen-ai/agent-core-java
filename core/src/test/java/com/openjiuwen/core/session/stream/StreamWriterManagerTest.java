@@ -4,15 +4,26 @@
 
 package com.openjiuwen.core.session.stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.session.AgentGroupSession;
+import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.WorkflowSession;
+import com.openjiuwen.harness.deep_agent.DeepAgentSession;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python tests for
@@ -22,6 +33,88 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code tests/unit_tests/core/session/stream/test_stream_output.py}.</p>
  */
 class StreamWriterManagerTest {
+
+    @Test
+    void sessionFacadesExposeBufferedOutputBeforeFailure() {
+        AgentSession parent = new AgentSession("failed-workflow-parent", null, null);
+        List<AgentSessionApi> sessions = List.of(new AgentSession("failed-agent", null, null),
+                new AgentGroupSession("failed-group"), new WorkflowSession(parent.getInner(), "failed-workflow"),
+                new AgentTeamSession("failed-team", null, "team"), new DeepAgentSession("failed-deep-agent"));
+        for (AgentSessionApi session : sessions) {
+            session.writeStream(new OutputSchema("test", 0, session.getSessionId()));
+            IllegalStateException failure = new IllegalStateException(session.getSessionId());
+
+            Iterator<Object> iterator = session.streamIterator(failure);
+
+            OutputSchema output = assertInstanceOf(OutputSchema.class, iterator.next());
+            if (session instanceof AgentTeamSession) {
+                assertEquals(Map.of("value", "failed-team", "source_team_id", "team"), output.getPayload());
+            } else {
+                assertEquals(session.getSessionId(), output.getPayload());
+            }
+            assertSame(failure, assertThrows(IllegalStateException.class, iterator::hasNext));
+            assertFalse(iterator.hasNext());
+        }
+    }
+
+    @Test
+    void terminalDrainRejectsFurtherWrites() {
+        AsyncStreamQueue queue = new AsyncStreamQueue(1);
+        queue.send("buffered");
+
+        assertEquals(List.of("buffered"), queue.closeAndDrain());
+        assertTrue(queue.isClosed());
+        assertThrows(RuntimeException.class, () -> queue.send("late"));
+        assertThrows(IllegalStateException.class, () -> queue.sendCritical(StreamEmitter.END_FRAME));
+    }
+
+    @Test
+    @Timeout(2)
+    void failedProducerDrainsFullQueueBeforeOriginalFailure() {
+        StreamEmitter emitter = new StreamEmitter(new AsyncStreamQueue(2));
+        StreamWriterManager manager = new StreamWriterManager(emitter);
+        emitter.emit("first");
+        emitter.emit("second");
+        IllegalStateException failure = new IllegalStateException("producer failed");
+
+        Iterator<Object> iterator = manager.streamIterator(failure);
+
+        assertTrue(emitter.isClosed());
+        assertTrue(emitter.getStreamQueue().isClosed());
+        assertTrue(iterator.hasNext());
+        assertTrue(iterator.hasNext());
+        assertEquals("first", iterator.next());
+        assertEquals("second", iterator.next());
+        assertSame(failure, assertThrows(IllegalStateException.class, iterator::hasNext));
+        assertFalse(iterator.hasNext());
+        assertThrows(java.util.NoSuchElementException.class, iterator::next);
+    }
+
+    @Test
+    void failedProducerWithNoOutputReportsFailureOnce() {
+        StreamWriterManager manager = new StreamWriterManager(new StreamEmitter());
+        IllegalStateException failure = new IllegalStateException("no output");
+
+        Iterator<Object> iterator = manager.streamIterator(failure);
+
+        assertSame(failure, assertThrows(IllegalStateException.class, iterator::next));
+        assertFalse(iterator.hasNext());
+    }
+
+    @Test
+    void queuedEndFrameDoesNotHideFailureOrLeakIntoOutput() {
+        StreamEmitter emitter = new StreamEmitter();
+        StreamWriterManager manager = new StreamWriterManager(emitter);
+        emitter.emit("chunk");
+        emitter.close();
+        IllegalStateException failure = new IllegalStateException("after close");
+
+        Iterator<Object> iterator = manager.streamIterator(failure);
+
+        assertEquals("chunk", iterator.next());
+        assertSame(failure, assertThrows(IllegalStateException.class, iterator::hasNext));
+        assertFalse(iterator.hasNext());
+    }
 
     @Test
     void streamOutputWithCustomWriter() {

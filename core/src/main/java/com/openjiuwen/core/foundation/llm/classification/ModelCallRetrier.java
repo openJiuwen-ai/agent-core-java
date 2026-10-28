@@ -131,8 +131,16 @@ public final class ModelCallRetrier {
         if (classification.category() == ModelErrorCategory.USER_CANCELLED) {
             throw cancellation("model call cancelled");
         }
-        boolean isAllowed = classification.isRetryable() && context.policy().allows(classification.category());
-        if (!isAllowed || !context.tryConsumeRetry()) {
+        if (!classification.isRetryable()) {
+            publishTerminal(context, classification, failure, "NOT_RETRYABLE");
+            return false;
+        }
+        if (!context.policy().allows(classification.category())) {
+            publishTerminal(context, classification, failure, "POLICY_DISALLOWED");
+            return false;
+        }
+        if (!context.tryConsumeRetry()) {
+            publishTerminal(context, classification, failure, "RETRY_BUDGET_EXHAUSTED");
             return false;
         }
         Duration delay = delayFor(context.consumedRetries(), classification);
@@ -222,6 +230,30 @@ public final class ModelCallRetrier {
                 "retry_count", event.retryCount(),
                 "listener_exception_type", exception.getClass().getName()));
         }
+    }
+
+    private static void publishTerminal(RetryContext context, ModelCallClassification classification,
+        Exception failure, String reason) {
+        Loggers.LLM.warning("Model call failed. {}", terminalLogFields(context, classification, failure, reason));
+    }
+
+    private static Map<String, Object> terminalLogFields(RetryContext context,
+        ModelCallClassification classification, Exception failure, String reason) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("category", classification.category().name());
+        fields.put("retryable", classification.isRetryable());
+        fields.put("exception_type", failure.getClass().getName());
+        fields.put("consumed_retries", context.consumedRetries());
+        fields.put("max_retries", context.policy().maxRetries());
+        if (failure instanceof BaseError baseError) {
+            Integer statusCode = httpStatusOf(baseError);
+            if (statusCode != null) {
+                fields.put("status_code", statusCode);
+            }
+            fields.put("numeric_code", baseError.getCode());
+        }
+        fields.put("reason", reason);
+        return fields;
     }
 
     private static Map<String, Object> retryLogFields(ModelRetryEvent event) {

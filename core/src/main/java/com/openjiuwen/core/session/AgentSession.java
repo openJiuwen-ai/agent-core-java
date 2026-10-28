@@ -193,6 +193,13 @@ public class AgentSession implements AgentSessionApi {
     }
 
     @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        Iterator<Object> iterator = inner.streamWriterManager().streamIterator(failure);
+        closeStream();
+        return iterator;
+    }
+
+    @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();
         DecoratorFramework callbackFramework;
@@ -253,11 +260,15 @@ public class AgentSession implements AgentSessionApi {
         if (postRunDone) {
             return this;
         }
-        if (closeStreamOnPostRun) {
-            closeStream();
+        try {
+            // Stream completion must not race readers restoring this run's checkpoint.
+            commit();
+            postRunDone = true;
+        } finally {
+            if (closeStreamOnPostRun) {
+                closeStream();
+            }
         }
-        commit();
-        postRunDone = true;
         return this;
     }
 

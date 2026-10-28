@@ -12,6 +12,8 @@ tests over assumptions.
 
 ## What This Repo Is
 
+Java packages below live under `core/src/main/java/` unless noted otherwise.
+
 - `com.openjiuwen.core/`: public SDK/runtime for agents, workflows, sessions,
   memory, retrieval, security, and system operations.
 - `com.openjiuwen.harness/`: coding-agent framework built on core
@@ -23,7 +25,7 @@ tests over assumptions.
   `TeamAgent` is the runtime host, `TeamBackend` is the data/message hub.
 - `com.openjiuwen.agentevolving/`: RL-based agent optimization, evaluation,
   trajectory management, and checkpointing.
-- `com.openjiuwen.autoharness/`: automated testing/evaluation infrastructure
+- `com.openjiuwen.auto_harness/`: automated testing/evaluation infrastructure
   — pipelines, orchestrators, stages, and experience management.
 - `com.openjiuwen.extensions/`: optional integrations such as storage
   (db/kv), checkpointer (redis), context evolver, message queue, sandbox
@@ -34,7 +36,7 @@ tests over assumptions.
   subagents, and tools.
 - `com.openjiuwen.spi/`: Service Provider Interface for store (kv/object/
   query/vector) extensions.
-- `src/test/java/`: JUnit 5 tests; `system-test` tagged tests are excluded
+- Each module uses `src/test/java/` for JUnit 5 tests; `system-test` tagged tests are excluded
   from normal surefire runs.
 - `examples/` and `documents/`: user-facing usage references. Update them
   when public behavior changes.
@@ -60,24 +62,26 @@ tests over assumptions.
   and keep tests isolated.
 - `TeamAgent` is a single implementation serving both Leader and Teammate
   roles (switched by `TeamRole`). Do not split into two classes.
-- `CoordinatorLoop` does not make decisions; it only handles wake-up and
-  periodic polling. All business logic is in `EventDispatcher` + team tools.
 
-## Commands
+## Build Layout and Commands
+
+The root Maven reactor contains `core/`, `retrieval/`, and `memory/`.
+Run these commands from the repository root with JDK 17 or newer:
 
 - Compile: `mvn compile`
-- Run all unit tests: `mvn test`
-- Run system tests: `mvn test -Dsurefire.groups=system-test`
-- Run targeted test: `mvn test -Dtest=ClassName` or `-Dtest=ClassName#methodName`
-- Skip tests: `mvn compile -DskipTests`
-- Code coverage report: `mvn test jacoco:report`
-- Lint / code check: follow
-  `.claude/skills/coding-standard-full/SKILL.md` (Huawei CodeArts Check,
-  144 rules)
+- Run default tests: `mvn test`
+- Build and verify all modules: `mvn clean verify`
+- Install without running tests: `mvn clean install -DskipTests`
+- Run a targeted core test: `mvn -pl core test -Dtest=ClassName`
+  (or `-Dtest=ClassName#methodName`). Use `-pl retrieval` or `-pl memory`
+  for those modules; install required sibling dependencies first.
+- Coverage report: `mvn test jacoco:report`
 
-`mvn test` excludes `system-test` tagged tests by default (configured in
-surefire plugin `<excludedGroups>`). To run them, pass
-`-Dsurefire.groups=system-test`.
+Default tests exclude `system-test`; core also excludes `perftest`.
+For configured system tests in a selected module, use
+`mvn -pl core test -Dsurefire.groups=system-test -Dsurefire.excludedGroups=perftest`.
+Check the selected module's POM and test prerequisites before running tests
+that need external services.
 
 ## Java & JDK 17 Notes
 
@@ -85,306 +89,42 @@ surefire plugin `<excludedGroups>`). To run them, pass
   pattern matching for instanceof, text blocks) where appropriate.
 - Lombok is used (`provided` scope). Do not add Lombok annotations to code
   that doesn't already use them; prefer explicit code for new files.
-- Jackson 2.17 for JSON. Reuse `ObjectMapper` as singleton; never create
+- Jackson for JSON; versions are defined in the POMs. Reuse `ObjectMapper` as singleton; never create
   per-call.
-- SLF4J 2.0 + Logback 1.5 for logging. Logger must be
+- SLF4J + Logback for logging. Logger must be
   `private static final` (see `G.LOG.01`/`G.LOG.02`).
-- OkHttp 4.12 for HTTP. Connection pool tuning matters for LLM call
-  throughput (see `.claude/rules/performance-tuning.md`).
+- OkHttp for HTTP. Connection pool tuning matters for LLM call
+  throughput (see `.claude/skills/performance-tuning/SKILL.md`).
 - Do not use `Executors.newCachedThreadPool()` / `newFixedThreadPool()` —
   create `ThreadPoolExecutor` explicitly with bounded queue and named threads
   (see `G.CON.12` in the full coding standard).
 
-## Java Coding Standard (Mandatory)
+## Coding Standards and Verification
 
-These gates apply whenever Java code is added, deleted, moved, modified, or
-reviewed, including tests and behavior-neutral bug-fix cleanup. Completing only
-the requested line-level change is not sufficient.
-
-### Rule-Loading Gate
-
-Before the first Java patch, the main working agent must perform this sequence:
-
-1. Inspect `git status`, the intended Java files, their complete enclosing
-   methods or types, and nearby tests. Identify every construct the change will
-   touch before selecting rule categories.
-2. Read `.claude/skills/coding-standard-full/SKILL.md` completely. Do not rely
-   on remembered rule text, excerpts, or another agent's summary.
-3. Read the following baseline category files completely and in this order:
-   `G.FMT` → `G.NAM` → `G.DCL` → `G.MET` → `G.CTL` → `G.EXP` → `G.ERR`
-   → `G.CMT` → `G.OTH`.
-4. After the baseline, read each applicable scenario group completely and in
-   the listed order:
-
-   - Classes, interfaces, inheritance, `equals`, or object lifecycle:
-     `G.OBJ`.
-   - Collections, generics, streams, or performance-sensitive allocation:
-     `G.COL` → `G.PRM` → `G.TYP`.
-   - Threads, executors, futures, locks, cancellation, or shared state:
-     `G.CON` → `G.TYP` → `SEC_EXT`.
-   - Logging changes: `G.LOG`.
-   - Files, streams, paths, encodings, or other resources:
-     `G.FIO` → `G.PRM` → `G.TYP`.
-   - Serialization: `G.SER`.
-   - External input, security-sensitive operations, XML, secrets, or command
-     execution: `G.SEC` → `G.EDV` → `G.FIO` → `G.OTH` → `SEC_EXT`.
-   - Any category explicitly named by the user or a CodeArts finding, even if
-     it appears unrelated to the original task.
-
-5. State the loaded categories in the working commentary or plan before
-   editing. If the implementation expands into a new construct or module,
-   pause editing and load the newly applicable categories first. A category
-   only needs to be loaded once per task, but it must be read to the end.
-
-### Edit and Review Gate
-
-- Preserve existing observable behavior for code-standard-only changes.
-  Prefer small, targeted diffs and do not refactor unrelated code merely to
-  silence a checker.
-- Treat severity 0 and 1 findings as mandatory fixes. Fix severity 2 findings
-  in changed code unless doing so would alter required behavior. Resolve
-  severity 3 findings in the edited scope when the correction is
-  behavior-neutral. Do not suppress a finding merely to make a check pass.
-- When CodeArts reports one line, inspect the entire enclosing method, all
-  helpers extracted from it, and equivalent patterns in the touched class.
-  Moved code and newly introduced helpers must be reviewed as new code.
-- Review the completed diff in this exact order:
-
-  1. Structure and declarations: `G.MET`, then `G.DCL`.
-  2. Control flow and expressions: `G.CTL`, then `G.EXP`.
-  3. Null and exception contracts: `G.MET`, then `G.ERR`.
-  4. Naming, formatting, imports, comments, dead code, and logging:
-     `G.NAM`, `G.FMT`, `G.CMT`, `G.OTH`, then `G.LOG` when applicable.
-  5. Every scenario-specific group loaded for the task, in its loading order.
-
-- Review both the diff and the complete changed Java files. Diff-only review
-  can miss declaration distance, method size, nesting depth, import order, or
-  interactions between moved code and existing branches.
-
-### Recurring CodeArts Regression Checklist
-
-The following rules have caused repeated cloud findings and are mandatory on
-every Java review:
-
-- `G.MET.01`: each method has at most 50 code lines, at most 5 parameters, and
-  at most 4 nested code-block levels. The method itself counts as one level.
-  Recalculate these limits after extracting helpers.
-- `G.DCL.02`: declare and initialize each local variable close to its first
-  use; declaration-to-first-use distance must not exceed 10 lines.
-  For before/after state assertions, keep the initial snapshot before mutations
-  and extract the intervening scenario into a focused helper. Never move the
-  snapshot past mutations or add a meaningless early use to satisfy the checker.
-- `G.MET.05`/`G.MET.06`: return empty containers for empty results and use
-  `Optional` for genuinely absent scalar results. Do not return or assign
-  `null` to an `Optional`.
-- `G.ERR.02`/`G.ERR.06`: do not catch `Throwable`, `Exception`, or
-  `RuntimeException` directly, and preserve the original cause when wrapping
-  an exception.
-- `G.CON.10`: do not call `Thread.interrupt()` directly in business code.
-  Prefer executor/future cancellation and cooperative cancellation state after
-  reading the complete concurrency rules.
-- `G.NAM.08`: boolean variables begin with an affirmative predicate such as
-  `is`, `has`, `can`, or `should`.
-- `G.FMT.04`: declare class members in the order static fields, static
-  initializers, instance fields, instance initializers, constructors, then
-  methods. Within fields and constructors, order access from `public` through
-  `protected` and package-private to `private`.
-- `G.CTL.02`: an `else if` chain ends with a meaningful `else`. Prefer guard
-  clauses or independent checks when there is no meaningful final branch; do
-  not add an empty `else` solely for compliance.
-- `G.EXP.03`: the second and third operands of `?:` have the same declared
-  type. When types differ or are unclear, use an explicitly typed local
-  variable and an `if` statement instead of adding a cosmetic cast.
-- `G.ERR.05`: throw an exception type that matches the method's abstraction
-  level and includes enough context to identify the failed operation. Do not
-  throw a raw `RuntimeException`, `Exception`, or `Throwable`.
-- `G.FMT.02`/`G.FMT.03`/`G.FMT.08`/`G.FMT.10`: imports are explicit, grouped,
-  and sorted; indentation uses four spaces without tabs; lines do not exceed
-  120 narrow characters.
-- `G.CMT.06`: separate a standalone comment from preceding code with a blank
-  line, except at the start of its block. Check field Javadoc as well as method
-  comments, and leave a space after comment markers. Scan the complete touched
-  class for the same pattern rather than checking only the reported line.
-
-### Cloud Feedback Loop
-
-- Treat every new CodeArts finding as both a code defect and a review-process
-  signal. Before fixing it, read the complete category file named by the rule.
-- Search the full touched class and the complete branch diff for the same
-  syntax or semantic pattern. Fix equivalent findings in the edited scope
-  together instead of waiting for another cloud round trip.
-- If a broadly applicable finding is not represented above, update the
-  loading matrix or recurring checklist in the same change. Keep one-off
-  product behavior out of this file.
-- Do not satisfy a checker with empty branches, meaningless casts, broad
-  wrappers, suppressions, or behavior changes. Apply the rule's recommended
-  semantic refactoring and rerun the complete review sequence.
-
-### Verification Gate
-
-Before declaring a Java change complete or creating a commit:
-
-1. Run `git diff --check` and inspect `git status` to confirm the intended
-   scope.
-2. Identify every changed Java file and scan the complete files, not only
-   added lines, for tabs, trailing whitespace, wildcard imports, lines longer
-   than 120 characters, `TODO`/`FIXME`, unused imports, and dead code.
-3. Re-scan changed methods for the recurring checklist above, including
-   `return null`, broad catches, direct thread interruption, boolean names,
-   incomplete `else if` chains, and mixed-type ternary expressions.
-4. Run `mvn compile` and the narrowest affected tests. Run broader tests when
-   shared runtime, concurrency, session, graph, or public API code changed.
-5. Re-run the diff and scope checks after formatting or test-driven edits.
-6. Run CodeArts Check when it is available. Local review is not proof that
-   cloud CodeArts passed; the final report must explicitly say whether the
-   cloud service was run and list any unavailable check.
-
-### Core Full Build Gate
-
-Before every code delivery or commit, run `mvn -B clean package
--Dmaven.test.failure.ignore=false` from the Core reactor root with the complete
-default test suite enabled. Compilation, focused tests, and JiuwenTestJava smoke
-are separate checks and cannot replace this build. Record the command, revision,
-environment, result counts, and final `BUILD SUCCESS`. An interrupted or failed
-run does not pass this gate. Do not skip tests or ignore failures to obtain a
-successful package. Use an isolated Maven repository when required below.
-
-### JiuwenTestJava Smoke Gate
-
-Before every code delivery or commit, including test-only fixes, run the complete
-smoke suite in the corresponding JiuwenTestJava checkout (here:
-`/home/jiayang/workspace/jiuwen-test-java`) against the JAR built from the current
-`core-java-repo` worktree. Focused tests and a previous delivery's smoke result
-do not replace this gate. Record both revisions, local changes, JAR digest,
-command, environment/fixture provenance, timestamp, and all result counts.
-
-1. Preserve unrelated changes in both repositories. Inspect `git status` in
-   `core-java-repo` and `jiuwen-test-java`; never clean, reset, or include
-   sibling-repository changes merely to run this gate.
-2. Export the Redis address and verify that Redis is listening before testing:
-
-   ```bash
-   export REDIS_IP='127.0.0.1'
-   ss -ltn | grep -E ':(6379)([[:space:]]|$)'
-   ```
-
-3. Verify that all five mock services are listening on ports `8000`, `8088`,
-   `8188`, `8189`, and `8190`. Reuse healthy processes; do not start duplicate
-   instances on occupied ports:
-
-   ```bash
-   ss -ltn | grep -E ':(8000|8088|8188|8189|8190)([[:space:]]|$)'
-   ```
-
-   If a service is missing, start it from `jiuwen-test-java` with the shared
-   `openjiuwen` Python environment. The five services may run in the same
-   terminal because each command is backgrounded:
-
-   ```bash
-   JIUWEN_TEST_REPO=/home/jiayang/workspace/jiuwen-test-java
-   MOCK_PYTHON=/home/jiayang/workspace/miniconda3/envs/openjiuwen/bin/python
-   cd "$JIUWEN_TEST_REPO"
-   mkdir -p logs/mcp
-   nohup "$MOCK_PYTHON" mock_service/mock_http/weather_reporter.py \
-     > logs/mock_http.log 2>&1 < /dev/null &
-   nohup "$MOCK_PYTHON" mock_service/mockllm/main.py \
-     > logs/mockllm.log 2>&1 < /dev/null &
-   nohup "$MOCK_PYTHON" mock_service/mock_mcp/mcp_sse_server.py \
-     --log logs/mcp/mock_mcp_sse.log \
-     > logs/mock_mcp_8188.out 2>&1 < /dev/null &
-   nohup "$MOCK_PYTHON" mock_service/mock_mcp/mcp_sse_server2.py \
-     --log logs/mcp/mock_mcp_sse2.log \
-     > logs/mock_mcp_8189.out 2>&1 < /dev/null &
-   nohup "$MOCK_PYTHON" mock_service/mock_mcp/mcp_sse_server3.py \
-     --log logs/mcp/mock_mcp_sse3.log \
-     > logs/mock_mcp_8190.out 2>&1 < /dev/null &
-   ```
-
-   After startup, recheck all five ports and reset the mock LLM state:
-
-   ```bash
-   ss -ltn | grep -E ':(8000|8088|8188|8189|8190)([[:space:]]|$)'
-   curl -fsS -X POST http://127.0.0.1:8088/reset_all
-   ```
-
-4. Build and install the current core worktree, and capture its Maven version.
-   Do not rely on a previously installed JAR:
-
-   ```bash
-   CORE_REPO=/home/jiayang/workspace/core-java-repo
-   cd "$CORE_REPO"
-   CORE_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-   mvn clean install -DskipTests
-   ```
-
-5. Run the complete smoke group from `jiuwen-test-java`, explicitly overriding
-   its dependency version so it resolves the JAR installed in step 4. Keep
-   `pipefail` enabled when saving a log so `tee` cannot hide a Maven failure:
-
-   ```bash
-   CORE_REPO=/home/jiayang/workspace/core-java-repo
-   JIUWEN_TEST_REPO=/home/jiayang/workspace/jiuwen-test-java
-   TEST_ARTIFACTS=/home/jiayang/workspace/test-artifacts
-   CORE_VERSION=$(mvn -f "$CORE_REPO/pom.xml" help:evaluate \
-     -Dexpression=project.version -q -DforceStdout)
-   mkdir -p "$TEST_ARTIFACTS"
-   cd "$JIUWEN_TEST_REPO"
-   set -o pipefail
-   mvn clean test -Dgroups='smoke' -Dagent-core-java.version="$CORE_VERSION" \
-     2>&1 | tee "$TEST_ARTIFACTS/jiuwen-test-java-smoke.log"
-   ```
-
-6. The gate passes only when Maven reports `BUILD SUCCESS` with zero failures
-   and zero errors. Record the total passed, failed, errored, and skipped counts
-   in the final report. Investigate every new or unexpected skip; do not treat
-   it as a pass merely because Maven exited successfully.
-
-Do not commit, push, or declare a code delivery accepted while this gate is failing or its
-environment is incomplete. Report the exact failing cases or missing service
-instead of bypassing, disabling, or weakening the smoke suite.
-
-If any gate fails, fix the issue or report the concrete blocker; do not mark
-the task complete, commit, or push while silently leaving a failed gate.
-
-New and changed Java code must use UTF-8, four-space indentation, no tabs or
-trailing whitespace, and lines no longer than 120 narrow characters. Use
-braces for control statements and keep one statement per line. Keep imports
-explicit; wildcard imports are prohibited. Put static imports first, separate
-import categories with one blank line, and sort each category alphabetically
-as required by `G.FMT.02` and `G.FMT.03`.
-
-Follow the declaration order, naming, Javadoc, exception handling, logging,
-collection, concurrency, resource-management, serialization, and security
-rules in the applicable category files. Public and protected APIs require
-complete Javadoc, including ordered tags and `@since`.
-
-## Cross-Repository Failure Triage
-
-- For JiuwenTestJava failures, inspect both Core production behavior and the
-  test repository's fixtures, expectations, and cleanup. Do not assume either
-  repository is correct solely because a test passes alone or a public API exists.
-- Record both Git revisions, the effective Maven dependency version, and the
-  tested JAR digest. Rebuild Core into an isolated Maven repository when comparing
-  fixes; do not replace a shared same-version JAR without explicit agreement.
-- Reproduce order-dependent failures in the same JVM, in both orders and with a
-  recorded random seed. A fresh JVM is a diagnostic control, not the fix.
-- Restore the exact previous state of global factories, including absent entries
-  and case aliases. Use owned resource IDs, assert registration results, and wait
-  for cleanup completion. Never change duplicate-resource rejection to hide leaks.
-- Assert tool payloads at the actual request/response boundary. Do not weaken
-  sensitive logging, depend on full prompt dumps, or replace behavior assertions
-  with generic success checks.
-- Fix each defect in its owning repository and rerun the cross-repository gate
-  against the newly built Core artifact. Report remaining failures and skips
-  separately; focused green tests do not mean the whole suite is green.
+- Use UTF-8, four-space indentation, explicit imports, and the surrounding
+  project's Java style. Keep public API documentation current.
+- Consult the relevant community rules and skills below for the task at hand.
+  They do not require loading every category or following a fixed review sequence
+  for every edit.
+- Inspect the affected behavior and reuse existing test coverage. Add regression
+  coverage when a meaningful gap exists; do not add tests mechanically.
+- Run relevant tests and build checks for the affected scope, and use
+  `git diff --check` to check whitespace. Investigate failures without weakening
+  assertions, skipping checks, or changing duplicate-resource rejection to hide
+  resource leaks.
+- External integration and smoke tests require their documented services and
+  configuration. Run them when relevant to the change; a separate checkout or
+  developer-specific environment is not a prerequisite for every commit.
+- Preserve unrelated changes and developer-local configuration. Report checks
+  actually run, their results, and any unavailable verification.
 
 ## Reference Guides
 
 - Full coding standards (144 rules):
   `.claude/skills/coding-standard-full/SKILL.md`
 - Coding standards quick reference: `.claude/rules/coding-standard.md`
-- Performance tuning (JDK 17 baseline): `.claude/rules/performance-tuning.md`
-- Agent Team quick build guide: `.claude/rules/agent-team-guide.md`
-- Workflow application guide: `.claude/rules/workflow-guide.md`
+- Performance tuning (JDK 17 baseline): `.claude/skills/performance-tuning/SKILL.md`
+- Agent Team quick build guide: `.claude/skills/agent-team-guide/SKILL.md`
+- Workflow application guide: `.claude/skills/workflow-guide/SKILL.md`
 - Deep operational guides: `.claude/skills/`
 - Permissions and env vars: `.claude/settings.json`

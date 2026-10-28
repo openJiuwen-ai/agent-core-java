@@ -107,6 +107,15 @@ public class WorkflowSession implements AgentSessionApi {
         return manager.streamIterator();
     }
 
+    @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        StreamWriterManager manager = parent == null ? null : parent.streamWriterManager();
+        if (manager == null) {
+            throw failure;
+        }
+        return manager.streamIterator(failure);
+    }
+
     public Map<String, Object> getEnvs() {
         return envs;
     }
