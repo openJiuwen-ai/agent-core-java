@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.checkpointer.step;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -41,8 +43,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.sql.DataSource;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * SQLite-backed concurrency cases: concurrent multi-session saves over one
  * shared file-database checkpointer stay isolated - no cross contamination
@@ -54,10 +54,10 @@ class StepCheckpointSqliteConcurrencyTest {
 
     private PersistenceCheckpointer sqliteCheckpointer;
 
-    private DbBasedKVStore sqliteStore;
-
     @TempDir
     Path tempDir;
+
+    private DbBasedKVStore sqliteStore;
 
     @BeforeEach
     void installSqliteCheckpointer() throws Exception {
@@ -247,6 +247,8 @@ class StepCheckpointSqliteConcurrencyTest {
      * failing with SQLITE_BUSY.
      *
      * @return datasource opening one fresh connection per operation
+     * @throws SQLException when the file cannot be created or WAL mode
+     *         cannot be enabled on the initial connection
      */
     private DataSource sqliteDataSource() throws SQLException {
         String url = "jdbc:sqlite:"

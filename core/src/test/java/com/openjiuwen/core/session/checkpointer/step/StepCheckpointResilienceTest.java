@@ -657,7 +657,10 @@ class StepCheckpointResilienceTest {
             });
         }
 
-        /** Simulate the process restart: the storage fault clears. */
+        /**
+         * Simulate the process restart: clear the storage fault so the
+         * underlying store accepts writes again.
+         */
         void markStorageHealed() {
             isFaultArmed = false;
         }
