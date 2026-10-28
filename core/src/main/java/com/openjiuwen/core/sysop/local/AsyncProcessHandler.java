@@ -10,7 +10,12 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CoderResult;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -191,10 +196,122 @@ public final class AsyncProcessHandler {
     }
 
     private CompletableFuture<Void> readToQueue(InputStream stream, StreamEventType streamType) {
-        return CompletableFuture.runAsync(() -> readBytes(stream, chunk -> {
-            String data = new String(chunk, charset);
-            offerEvent(new StreamEvent(streamType, data));
-        }));
+        return CompletableFuture.runAsync(() -> readBytesIncremental(stream, streamType));
+    }
+
+    /**
+     * Decode stdout/stderr with a stateful {@link CharsetDecoder} so multi-byte
+     * characters that span chunk boundaries are not replaced with U+FFFD.
+     *
+     * <p>Mirrors Python's {@code codecs.getincrementaldecoder} path in
+     * {@code AsyncProcessHandler._reader}.</p>
+     *
+     * @param stream process stdout or stderr
+     * @param streamType event type published for decoded text
+     */
+    private void readBytesIncremental(InputStream stream, StreamEventType streamType) {
+        try {
+            byte[] buffer = new byte[Math.max(chunkSize, 1)];
+            CharBuffer out = CharBuffer.allocate(Math.max(chunkSize, 1) * 2);
+            CharsetDecoder decoder = charset.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPLACE)
+                    .onUnmappableCharacter(CodingErrorAction.REPLACE);
+            ByteBuffer leftover = ByteBuffer.allocate(16);
+            leftover.flip();
+            while (true) {
+                int read = stream.read(buffer);
+                if (read < 0) {
+                    flushDecoder(decoder, leftover, out, streamType);
+                    break;
+                }
+                if (read == 0) {
+                    continue;
+                }
+                decodeChunk(decoder, leftover, ByteBuffer.wrap(buffer, 0, read), out, streamType);
+            }
+        } catch (IOException exception) {
+            LOGGER.error("Stream read error: {}", exception.getMessage());
+            if (!suppressReaderErrors.get()) {
+                offerEvent(new StreamEvent(
+                        StreamEventType.ERROR,
+                        streamTypeName(stream, exception) + " reader error: " + exception.getMessage()
+                ));
+            }
+        }
+    }
+
+    private void decodeChunk(
+            CharsetDecoder decoder,
+            ByteBuffer leftover,
+            ByteBuffer incoming,
+            CharBuffer out,
+            StreamEventType streamType) throws IOException {
+        ByteBuffer in = prependLeftover(leftover, incoming);
+        out.clear();
+        CoderResult result = decoder.decode(in, out, false);
+        if (result.isOverflow()) {
+            out.flip();
+            offerDecoded(streamType, out);
+            out.clear();
+            result = decoder.decode(in, out, false);
+        }
+        if (result.isError()) {
+            result.throwException();
+        }
+        leftover.clear();
+        if (in.hasRemaining()) {
+            leftover.put(in);
+        }
+        leftover.flip();
+        out.flip();
+        offerDecoded(streamType, out);
+    }
+
+    private void flushDecoder(CharsetDecoder decoder, ByteBuffer leftover, CharBuffer out,
+                              StreamEventType streamType) throws IOException {
+        out.clear();
+        CoderResult result = decoder.decode(leftover, out, true);
+        if (result.isOverflow()) {
+            out.flip();
+            offerDecoded(streamType, out);
+            out.clear();
+            result = decoder.decode(leftover, out, true);
+        }
+        if (result.isError()) {
+            result.throwException();
+        }
+        result = decoder.flush(out);
+        if (result.isOverflow()) {
+            out.flip();
+            offerDecoded(streamType, out);
+            out.clear();
+            result = decoder.flush(out);
+        }
+        if (result.isError()) {
+            result.throwException();
+        }
+        out.flip();
+        offerDecoded(streamType, out);
+    }
+
+    private static ByteBuffer prependLeftover(ByteBuffer leftover, ByteBuffer incoming) {
+        if (!leftover.hasRemaining()) {
+            return incoming;
+        }
+        ByteBuffer combined = ByteBuffer.allocate(leftover.remaining() + incoming.remaining());
+        combined.put(leftover);
+        combined.put(incoming);
+        combined.flip();
+        leftover.clear();
+        leftover.flip();
+        return combined;
+    }
+
+    private void offerDecoded(StreamEventType streamType, CharBuffer out) {
+        if (!out.hasRemaining()) {
+            return;
+        }
+        offerEvent(new StreamEvent(streamType, out.toString()));
     }
 
     private void readBytes(InputStream stream, java.util.function.Consumer<byte[]> consumer) {

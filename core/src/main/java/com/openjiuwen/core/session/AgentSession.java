@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggingUtils;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
@@ -218,6 +219,8 @@ public class AgentSession implements AgentSessionApi {
         if (preRunDone) {
             return this;
         }
+        // Bind logging trace_id so concurrent sessions can be distinguished in MDC.
+        LoggingUtils.setSessionId(getSessionId());
         Map<String, Object> callbackKwargs = new LinkedHashMap<>();
         callbackKwargs.put("session_id", getSessionId());
         callbackKwargs.put("card", card);
@@ -261,15 +264,16 @@ public class AgentSession implements AgentSessionApi {
             return this;
         }
         try {
-            // Stream completion must not race readers restoring this run's checkpoint.
             commit();
             postRunDone = true;
+            return this;
         } finally {
+            // Restore default so pooled threads do not leak the prior session id.
+            LoggingUtils.setSessionId();
             if (closeStreamOnPostRun) {
                 closeStream();
             }
         }
-        return this;
     }
 
     @Override
