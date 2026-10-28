@@ -79,7 +79,7 @@ class TCPRF03RealLlmPerformanceTest {
     private static final List<Integer> DEFAULT_CONCURRENCIES = List.of(1, 10, 40);
     private static final String FULL_MODE = "full";
     private static final String FILTERED_MODE = "filtered";
-    private static final float REQUEST_TIMEOUT_SECONDS = 120.0F;
+    private static final int REQUEST_TIMEOUT_SECONDS = 120;
     private static final List<Task> TASKS =
             List.of(
                     new Task("Search for today's news headlines.", "tool_search"),
@@ -314,7 +314,7 @@ class TCPRF03RealLlmPerformanceTest {
 
     private static int roundBudgetSeconds(int concurrency) {
         int waves = (concurrency + Math.max(1, maxParallelRequests) - 1) / Math.max(1, maxParallelRequests);
-        return (int)(REQUEST_TIMEOUT_SECONDS * waves + 60);
+        return REQUEST_TIMEOUT_SECONDS * waves + 60;
     }
 
     private ModelInvokeOptions modelInvokeOptions(StreamRequest request) {
@@ -326,7 +326,7 @@ class TCPRF03RealLlmPerformanceTest {
                 .temperature(0.0F)
                 .topP(0.1F)
                 .maxTokens(128)
-                .timeout(REQUEST_TIMEOUT_SECONDS)
+                .timeout((float) REQUEST_TIMEOUT_SECONDS)
                 .build();
     }
 
