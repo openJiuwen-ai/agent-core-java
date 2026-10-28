@@ -16,7 +16,10 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.dev_tools.tune.Case;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
+import com.openjiuwen.core.testsupport.ModelRegistryIsolation;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -39,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Mirrors Python's {@code test_bad_case_prompt_builder} in
  * {@code tests/unit_tests/agent_builder/prompt_builder/test_badcase_prompt_builder.py}.
  */
+@ExtendWith(ModelRegistryIsolation.class)
 class BadCasePromptBuilderTest {
     private static final Pattern SUMMARY_TAG_PATTERN = Pattern.compile(
             "<summary>((?:(?!</summary>).)*?)</summary>",
