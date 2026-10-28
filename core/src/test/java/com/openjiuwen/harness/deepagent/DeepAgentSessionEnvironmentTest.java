@@ -7,6 +7,7 @@ package com.openjiuwen.harness.deepagent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
@@ -30,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Request environments must survive DeepAgent session construction and execution boundaries.
@@ -38,6 +40,7 @@ import java.util.UUID;
 class DeepAgentSessionEnvironmentTest {
     private static final AgentCard CARD = new AgentCard("environment-test", "environment-test", "environment test");
     private static final String REQUEST_CONTEXT = "request-context";
+    private static final String RESPONSE_COLLECTOR = "response-collector";
 
     @ParameterizedTest
     @ValueSource(strings = {"default", "stream-modes", "checkpointer"})
@@ -109,10 +112,14 @@ class DeepAgentSessionEnvironmentTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"false,false", "true,false", "false,true", "true,true"})
-    void executionPassesCallerEnvironmentsToInnerSessions(boolean isStreaming, boolean isResuming) throws Exception {
+    @CsvSource({"false,false,false", "true,false,false", "false,true,false", "true,true,false",
+            "false,false,true", "true,false,true", "false,true,true", "true,true,true"})
+    void executionPassesCallerEnvironmentsToInnerSessions(boolean isStreaming, boolean isResuming,
+            boolean isThroughRunner) throws Exception {
         String sessionId = UUID.randomUUID().toString();
-        AgentSession caller = new AgentSession(sessionId, Map.of(REQUEST_CONTEXT, "caller"), CARD);
+        AtomicInteger collector = new AtomicInteger();
+        AgentSession caller = new AgentSession(sessionId,
+                Map.of(REQUEST_CONTEXT, "caller", RESPONSE_COLLECTOR, collector), CARD);
         EnvironmentRecordingAgent inner = new EnvironmentRecordingAgent();
         DeepAgent agent = new DeepAgent(CARD, DeepAgentConfig.builder().enableTaskLoop(true).build(), null);
         agent.setReactAgent(inner, true);
@@ -125,7 +132,9 @@ class DeepAgentSessionEnvironmentTest {
         Map<String, Object> inputs = Map.of("query", query, "conversation_id", sessionId);
         try {
             if (isStreaming) {
-                Iterator<Object> stream = agent.stream(inputs, caller, List.of(StreamMode.OUTPUT));
+                Iterator<Object> stream = isThroughRunner
+                        ? Runner.runAgentStreaming(agent, inputs, caller, null, List.of(StreamMode.OUTPUT))
+                        : agent.stream(inputs, caller, List.of(StreamMode.OUTPUT));
                 try {
                     while (stream.hasNext()) {
                         stream.next();
@@ -136,12 +145,19 @@ class DeepAgentSessionEnvironmentTest {
                     }
                 }
             } else {
-                agent.invoke(inputs, caller);
+                if (isThroughRunner) {
+                    Runner.runAgent(agent, inputs, caller, null);
+                } else {
+                    agent.invoke(inputs, caller);
+                }
             }
 
             assertThat(inner.observedEnvs).containsEntry(REQUEST_CONTEXT, "caller");
             assertThat(inner.observedKernelEnvs).containsEntry(REQUEST_CONTEXT, "caller");
             assertThat(caller.getEnvs()).containsEntry(REQUEST_CONTEXT, "caller");
+            assertThat(inner.observedEnvs.get(RESPONSE_COLLECTOR)).isSameAs(collector);
+            assertThat(inner.observedKernelEnvs.get(RESPONSE_COLLECTOR)).isSameAs(collector);
+            assertThat(collector.get()).isEqualTo(1);
         } finally {
             agent.shutdown();
             CheckpointerFactory.getCheckpointer().release(sessionId);
@@ -171,10 +187,17 @@ class DeepAgentSessionEnvironmentTest {
 
         private void recordEnvironments(AgentSessionApi session) {
             observedEnvs = session.getEnvs();
-            if (!(session instanceof DeepAgentSession deep)) {
-                throw new AssertionError("Expected a DeepAgentSession");
+            if (session instanceof DeepAgentSession deep) {
+                observedKernelEnvs = deep.getInner().config().getEnvs();
+            } else if (session instanceof AgentSession facade) {
+                observedKernelEnvs = facade.getInner().config().getEnvs();
+            } else {
+                throw new AssertionError("Expected a native agent session");
             }
-            observedKernelEnvs = deep.getInner().config().getEnvs();
+            Object collector = observedEnvs.get(RESPONSE_COLLECTOR);
+            if (collector instanceof AtomicInteger counter) {
+                counter.incrementAndGet();
+            }
         }
     }
 }

@@ -1390,6 +1390,10 @@ public final class Runner {
                     agentSession.preRun(inputKwargs(inputs));
                     return new PreparedAgent(baseAgent, agentSession, agentSession);
                 }
+                if (agent instanceof DeepAgent deepAgent) {
+                    agentSession.preRun(inputKwargs(inputs));
+                    return new PreparedAgent(deepAgent, agentSession, agentSession);
+                }
                 if (agent instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
                     agentSession.preRun(inputKwargs(inputs));
                     return new PreparedAgent(legacyAgent, agentSession, agentSession);
