@@ -157,8 +157,6 @@ class MessageOffloaderOffloadV2Test {
         // TC_089: 取回结果作为新消息追加（运行时以携带防重标记的 ToolMessage 落上下文）
         // 且原 marker 消息内容与句柄保持不变。
         ToolMessage reloadResult = new ToolMessage(reloadOutput, "tc-zero-reload");
-        reloadResult.setMetadata(new LinkedHashMap<>(Map.of(
-        ToolMessage reloadResult = new ToolMessage(reloadOutput, "tc-zero-reload");
         // 不写 metadata：只依赖 reloadOutput 末尾的 openjiuwen.offload_done=true 文本尾行防重，
         // 以覆盖 isOffloadDone 的尾行兜底分支。
         String markerContentBefore = context.getMessages().get(1).getContentAsString();
