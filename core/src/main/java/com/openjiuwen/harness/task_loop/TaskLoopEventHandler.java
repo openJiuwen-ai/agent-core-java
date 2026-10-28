@@ -16,12 +16,14 @@ import com.openjiuwen.core.controller.schema.TaskFailedEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.DeepAgentState;
 import com.openjiuwen.harness.schema.task.TaskPlan;
 import com.openjiuwen.harness.schema.task.TodoItem;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -312,18 +314,64 @@ public class TaskLoopEventHandler extends EventHandler {
         String message = "";
         Event event = inputs == null ? null : inputs.getEvent();
         if (event instanceof TaskInteractionEvent interactionEvent && !interactionEvent.getInteraction().isEmpty()) {
-            DataFrame frame = interactionEvent.getInteraction().get(0);
-            // Structured interrupt control info (type=__interaction__ / result_type=interrupt)
-            // must stay in the interrupt state and never enter the steering queue as text.
-            if (!isStructuredInterruptFrame(frame)) {
-                message = frameText(frame);
+            Map<String, Object> interrupt = extractInterruptResult(interactionEvent.getInteraction());
+            if (!interrupt.isEmpty()) {
+                // TaskScheduler stops at INPUT_REQUIRED; a later completion chunk cannot resolve this round.
+                resolveFuture(interrupt, interruptRoundId(inputs, interactionEvent));
+                return interrupt;
             }
+            message = frameText(interactionEvent.getInteraction().get(0));
         }
         if (!message.isBlank() && interactionQueues != null) {
             interactionQueues.pushSteer(message);
         }
         Map<String, Object> result = resultMap("status", "steer_injected");
         result.put("msg", message);
+        return result;
+    }
+
+    private int interruptRoundId(EventHandlerInput inputs, TaskInteractionEvent event) {
+        Task task = event.getTask();
+        Object roundId = metadataOf(event).get("_handler_round_id");
+        if (roundId == null && task != null && task.getMetadata() != null) {
+            roundId = task.getMetadata().get("_handler_round_id");
+        }
+        if (roundId != null) {
+            return intValue(roundId, 0);
+        }
+        String sessionId = inputs.getSession() != null ? inputs.getSession().getSessionId()
+                : task == null ? "default" : task.getSessionId();
+        String normalized = stringOrDefault(sessionId, "default");
+        // Event callbacks may run on a thread belonging to another request. Never use its latest round.
+        return roundStates.entrySet().stream()
+                .filter(entry -> normalized.equals(entry.getValue().sessionId))
+                .mapToInt(Map.Entry::getKey).max().orElse(0);
+    }
+
+    private static Map<String, Object> extractInterruptResult(List<DataFrame> frames) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        List<Object> states = new ArrayList<>();
+        for (DataFrame frame : frames) {
+            if (!(frame instanceof DataFrame.JsonDataFrame jsonFrame) || !isStructuredInterruptFrame(jsonFrame)) {
+                continue;
+            }
+            Map<String, Object> data = jsonFrame.data();
+            if ("interrupt".equals(data.get("result_type"))) {
+                result.putAll(data);
+                if (data.get("state") instanceof List<?> existing) {
+                    states.addAll(existing);
+                }
+            } else {
+                result.put("result_type", "interrupt");
+                states.add(new OutputSchema("__interaction__", states.size(), data.get("payload")));
+            }
+        }
+        if (!result.isEmpty()) {
+            result.putIfAbsent("output", "");
+            if (!states.isEmpty()) {
+                result.put("state", states);
+            }
+        }
         return result;
     }
 
