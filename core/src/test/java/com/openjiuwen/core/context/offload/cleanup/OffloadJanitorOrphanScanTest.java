@@ -6,6 +6,7 @@ package com.openjiuwen.core.context.offload.cleanup;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.common.logging.Slf4jLogCapture;
 import com.openjiuwen.core.context.offload.api.OffloadCatalogImpl;
 import com.openjiuwen.core.context.offload.api.OffloadService;
 import com.openjiuwen.core.context.offload.api.OffloadServiceImpl;
@@ -269,23 +270,7 @@ class OffloadJanitorOrphanScanTest {
 
     /** Captures [OffloadJanitor] logger lines while the action runs. */
     private static java.util.List<String> captureJanitorLogs(Runnable action) {
-        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger)
-                org.slf4j.LoggerFactory.getLogger(OffloadJanitor.class);
-        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
-                new ch.qos.logback.core.read.ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        ch.qos.logback.classic.Level original = logger.getLevel();
-        logger.setLevel(ch.qos.logback.classic.Level.INFO);
-        try {
-            action.run();
-        } finally {
-            logger.detachAppender(appender);
-            logger.setLevel(original);
-        }
-        return appender.list.stream()
-                .map(event -> event.getFormattedMessage())
-                .toList();
+        return Slf4jLogCapture.capture(OffloadJanitor.class, action);
     }
 
     @Test

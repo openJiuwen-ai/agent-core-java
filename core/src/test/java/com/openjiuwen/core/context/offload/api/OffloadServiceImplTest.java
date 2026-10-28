@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.common.logging.Slf4jLogCapture;
 import com.openjiuwen.core.context.offload.cleanup.SessionOffloadGate;
 import com.openjiuwen.core.context.offload.model.OffloadBackend;
 import com.openjiuwen.core.context.offload.model.OffloadConfig;
@@ -823,23 +824,7 @@ class OffloadServiceImplTest {
      * @return the formatted log lines captured while the action ran
      */
     private static List<String> captureLogger(Runnable action) {
-        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger)
-                org.slf4j.LoggerFactory.getLogger(OffloadServiceImpl.class);
-        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
-                new ch.qos.logback.core.read.ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        ch.qos.logback.classic.Level original = logger.getLevel();
-        logger.setLevel(ch.qos.logback.classic.Level.INFO);
-        try {
-            action.run();
-        } finally {
-            logger.detachAppender(appender);
-            logger.setLevel(original);
-        }
-        return appender.list.stream()
-                .map(event -> event.getFormattedMessage())
-                .toList();
+        return Slf4jLogCapture.capture(OffloadServiceImpl.class, action);
     }
 
     /**
