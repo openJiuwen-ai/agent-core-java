@@ -309,12 +309,24 @@ public class TaskLoopEventHandler extends EventHandler {
         return result;
     }
 
+    /**
+     * Complete structured interrupts and task requests waiting for input; inject other events as steering.
+     *
+     * @param inputs the interaction event and owning session
+     * @return the interrupt result or steering acknowledgement
+     * @since 0.1.17
+     */
     @Override
     public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
         String message = "";
         Event event = inputs == null ? null : inputs.getEvent();
         if (event instanceof TaskInteractionEvent interactionEvent && !interactionEvent.getInteraction().isEmpty()) {
             Map<String, Object> interrupt = extractInterruptResult(interactionEvent.getInteraction());
+            if (interrupt.isEmpty() && interactionEvent.getTask() != null
+                    && interactionEvent.getTask().getStatus() == TaskStatus.INPUT_REQUIRED) {
+                // Scheduler-owned requests end the call; taskless DeepAgent.steer events keep running.
+                interrupt = taskInteractionResult(interactionEvent);
+            }
             if (!interrupt.isEmpty()) {
                 // TaskScheduler stops at INPUT_REQUIRED; a later completion chunk cannot resolve this round.
                 resolveFuture(interrupt, interruptRoundId(inputs, interactionEvent));
@@ -327,6 +339,15 @@ public class TaskLoopEventHandler extends EventHandler {
         }
         Map<String, Object> result = resultMap("status", "steer_injected");
         result.put("msg", message);
+        return result;
+    }
+
+    private static Map<String, Object> taskInteractionResult(TaskInteractionEvent event) {
+        Map<String, Object> result = resultMap("result_type", "interrupt");
+        result.put("output", "");
+        result.put("message", frameText(event.getInteraction().get(0)));
+        result.put("interaction", event.getInteraction());
+        result.put("task_id", event.getTask().getTaskId());
         return result;
     }
 

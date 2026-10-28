@@ -182,10 +182,11 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
                 savePlanState(session, completedState);
             }
             fireAfterTaskIteration(task, session, effective, result, null);
-            // Streamed interrupts resolve the round at TASK_INTERACTION, where the scheduler stops.
-            // Without an interaction chunk (including invoke-only interrupts), TASK_COMPLETION resolves it.
+            // Both streamed and invoke-only interrupts leave the task waiting for input.
             List<ControllerOutputChunk> chunks = new java.util.ArrayList<>(processingChunks(result, taskId));
-            ControllerOutputPayload payload = new ControllerOutputPayload(EventType.TASK_COMPLETION.getValue(),
+            String eventType = isInterruptResult(result)
+                    ? EventType.TASK_INTERACTION.getValue() : EventType.TASK_COMPLETION.getValue();
+            ControllerOutputPayload payload = new ControllerOutputPayload(eventType,
                     List.of(new DataFrame.JsonDataFrame(result == null ? Map.of() : result)),
                     Map.of("task_id", taskId));
             chunks.add(new ControllerOutputChunk(chunks.size(), payload, true));
