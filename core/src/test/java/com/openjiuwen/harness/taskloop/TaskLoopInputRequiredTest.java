@@ -59,6 +59,29 @@ class TaskLoopInputRequiredTest {
     }
 
     @Test
+    void publicExecutorInterruptRequiresInputAndPreservesEnvelope() throws ReflectiveOperationException {
+        var state = List.of(new OutputSchema("__interaction__", 0, new InteractionOutput("call", "Confirm")));
+        Map<String, Object> result = Map.of("result_type", "interrupt", "state", state,
+                "interrupt_ids", List.of("call"), "workflow_execution_state", Map.of("pending", "call"));
+        var card = new AgentCard("public-executor", "public-executor", "interrupt regression");
+        try (var agent = new DeepAgent(card, DeepAgentConfig.builder().build(), null);
+                var fixture = new Fixture(result)) {
+            agent.setReactAgent(new ReActAgent(card) {
+                @Override
+                public Object invoke(Object inputs, AgentSessionApi session) {
+                    return result;
+                }
+            }, true);
+            fixture.scheduler.getTaskExecutorRegistry().addTaskExecutor(TaskLoopEventExecutor.DEEP_TASK_TYPE,
+                    dependencies -> TaskLoopEventExecutor.buildDeepExecutor(dependencies, agent));
+            fixture.execute();
+            assertThat(fixture.status()).isEqualTo(TaskStatus.INPUT_REQUIRED);
+            assertThat(fixture.handler.waitCompletion(0.0D, "session")).containsAllEntriesOf(result);
+            assertThat(fixture.handler.getInteractionQueues().drainSteering()).isEmpty();
+        }
+    }
+
+    @Test
     void streamedInterruptsKeepEveryMemberAndRequireInput() throws ReflectiveOperationException {
         var first = new InteractionOutput("first", "Confirm first");
         var second = new InteractionOutput("second", "Confirm second");
