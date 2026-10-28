@@ -147,7 +147,7 @@ public class OffloadServiceImpl implements OffloadService {
             long reloadedTokens = payloadTokens(payload);
             OffloadMetric metric = new OffloadMetric(type, handle, true, null, 0L, reloadedTokens,
                     System.currentTimeMillis() - startedAt, record.backend());
-            LOGGER.debug("{}", metric.toLogLine("load"));
+            LOGGER.info("{}", metric.toLogLine("load"));
             recordMetric("load", metric);
             return payload;
         } catch (OffloadException ex) {

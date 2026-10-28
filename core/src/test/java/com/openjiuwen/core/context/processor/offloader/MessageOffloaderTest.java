@@ -48,6 +48,19 @@ class MessageOffloaderTest {
     }
 
     @Test
+    void mismatchedProcessorConfigTypeIsRejected() {
+        assertThatThrownBy(() -> new MessageOffloader(new com.openjiuwen.core.context.processor.compressor.DialogueCompressorConfig()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("MessageOffloader requires MessageOffloaderConfig");
+    }
+
+    @Test
+    void nullProcessorConfigFallsBackToDefaults() {
+        MessageOffloader offloader = new MessageOffloader((Object) null);
+        assertThat(offloader.getConfig()).isNotNull();
+    }
+
+    @Test
     void invalidConfigTrimSizeGreaterThanLargeMessageThresholdRaises() {
         MessageOffloaderConfig config = new MessageOffloaderConfig();
         config.setTrimSize(600);
@@ -296,6 +309,31 @@ class MessageOffloaderTest {
         SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
         assertThat(reloader.reloadOriginalContextMessages(marker.getOffloadHandle(), marker.getOffloadType()))
                 .contains(longContent);
+    }
+
+    @Test
+    void defaultTrimSize100CapsPreviewWithEllipsis() {
+        // TC_005-UT: 默认 trimSize=100——预览恰为前 100 字符 + "..."，
+        // 120 字符原文的超长段不出现在窗口预览中。
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setTokensThreshold(50);
+        config.setLargeMessageThreshold(110);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        assertThat(config.getTrimSize()).isEqualTo(100);
+        SessionModelContext context = contextWith(config, fixedTokenCounter(100));
+        String longContent = "d".repeat(120);
+
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                new ToolMessage(longContent, "tc-trim")
+        )).toCompletableFuture().join();
+
+        BaseMessage marker = context.getMessages().get(1);
+        assertThat(marker).isInstanceOf(OffloadMessage.class);
+        assertThat(marker.getContentAsString())
+                .startsWith("d".repeat(100) + MessageOffloader.OMIT_STRING)
+                .doesNotContain("d".repeat(101));
     }
 
     @Test
