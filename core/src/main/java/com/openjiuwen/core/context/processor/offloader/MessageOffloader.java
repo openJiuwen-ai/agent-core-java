@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
@@ -216,7 +217,7 @@ public class MessageOffloader extends ContextProcessor {
     CompletionStage<BaseMessage> offloadMessage(BaseMessage message, SessionModelContext context,
                                                 Map<String, Object> kwargs) {
         String content = (String) message.getContent();
-        String trimmedContent = content.substring(0, Math.min(config.getTrimSize(), content.length())) + OMIT_STRING;
+        String trimmedContent = TextTruncate.safePrefix(content, config.getTrimSize()) + OMIT_STRING;
         Map<String, Object> extraFields = new LinkedHashMap<>(message.modelDump());
         extraFields.remove("role");
         extraFields.remove("content");
@@ -266,8 +267,8 @@ public class MessageOffloader extends ContextProcessor {
         try {
             // postTokenCount = the token footprint of what stays context-visible
             // after offloading (preview + marker), AC-6-04.
-            String preview = message.getContentAsString().substring(0,
-                    Math.min(config.getTrimSize(), message.getContentAsString().length())) + OMIT_STRING;
+            String preview = TextTruncate.safePrefix(message.getContentAsString(), config.getTrimSize())
+                    + OMIT_STRING;
             long postTokens = ContextUtils.estimateTokens(preview + markerSuffix());
             OffloadRequest request = OffloadRequest.builder()
                     .namespace(resolveNamespace(context))

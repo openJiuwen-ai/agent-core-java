@@ -26,11 +26,14 @@ import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.harness.HarnessResourceTestCleanup;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -63,6 +66,16 @@ import java.util.concurrent.atomic.AtomicReference;
 @DisplayName("DeepAgent destroy chain exception isolation")
 class DeepAgentDestroyIsolationTest {
     private static final String WORKSPACE = "./target/destroy-isolation-test";
+
+    @BeforeEach
+    void clearSharedHarnessToolsBefore() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
+
+    @AfterEach
+    void clearSharedHarnessToolsAfter() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
 
     /**
      * Rail that counts uninit invocations and registers one callback, the
@@ -464,6 +477,17 @@ class DeepAgentDestroyIsolationTest {
         String agentId = agent.getCard().getId();
         try {
             agent.ensureInitialized();
+            // setAbilityManager() resets the skill-meta flag and calls
+            // ensureSkillMetaToolRegistered(). Without a local skill_tool card,
+            // that path registers a GLOBAL ResourceMgr entry that destroy does
+            // not own/release. Seed the card so the ensure path short-circuits
+            // and this case only asserts tool-card-removal isolation.
+            agent.getAbilityManager().add(ToolCard.builder()
+                    .id("skill_tool")
+                    .name("skill_tool")
+                    .description("seed: avoid GLOBAL skill_tool on setAbilityManager")
+                    .stateless(true)
+                    .build());
             AbilityManager abilities = spy(agent.getAbilityManager());
             doThrow(new IllegalStateException("boom-tool-card-removal"))
                     .when(abilities).remove("armed-tool-card");
@@ -481,6 +505,7 @@ class DeepAgentDestroyIsolationTest {
             GlobalRegistrySnapshot.take().assertDeltaZero(before);
             assertThatFrameworkIsClean(agentId);
         } finally {
+            HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
             cleanupFrameworkResidue(agentId);
         }
     }

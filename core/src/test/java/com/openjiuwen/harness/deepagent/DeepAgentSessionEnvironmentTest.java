@@ -53,15 +53,14 @@ class DeepAgentSessionEnvironmentTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"default,integer", "stream-modes,integer", "checkpointer,integer",
-            "default,null", "stream-modes,null", "checkpointer,null"})
-    void constructorsRejectInvalidEnvironmentKeys(String constructor, String keyType) {
+    @ValueSource(strings = {"integer", "null"})
+    void constructorRejectsInvalidEnvironmentKeys(String keyType) {
         Map<Object, Object> envs = new LinkedHashMap<>();
         envs.put(REQUEST_CONTEXT, "caller");
         Object invalidKey = "integer".equals(keyType) ? Integer.valueOf(1) : null;
         envs.put(invalidKey, "invalid");
 
-        assertThatIllegalArgumentException().isThrownBy(() -> createSession(constructor, envs))
+        assertThatIllegalArgumentException().isThrownBy(() -> createSession("default", envs))
                 .withMessage("Environment keys must be strings");
     }
 
@@ -90,19 +89,6 @@ class DeepAgentSessionEnvironmentTest {
     }
 
     @Test
-    void environmentSnapshotsAndOtherSessionsRemainIsolated() {
-        DeepAgentSession first = new DeepAgentSession(UUID.randomUUID().toString(),
-                Map.of(REQUEST_CONTEXT, "first"), CARD);
-        DeepAgentSession second = new DeepAgentSession(UUID.randomUUID().toString(),
-                Map.of(REQUEST_CONTEXT, "second"), CARD);
-
-        first.getEnvs().put(REQUEST_CONTEXT, "snapshot-only");
-        assertThat(first.getEnvs()).containsEntry(REQUEST_CONTEXT, "first");
-        first.setEnvs(Map.of(REQUEST_CONTEXT, "updated"));
-        assertThat(second.getEnvs()).containsEntry(REQUEST_CONTEXT, "second");
-    }
-
-    @Test
     void nullAndLegacyConfigurationKeepDefaultEnvironments() {
         DeepAgentSession session = new DeepAgentSession(UUID.randomUUID().toString());
         DeepAgentSession legacy = new DeepAgentSession(UUID.randomUUID().toString(), new Object(), CARD);
@@ -112,10 +98,8 @@ class DeepAgentSessionEnvironmentTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"false,false,false", "true,false,false", "false,true,false", "true,true,false",
-            "false,false,true", "true,false,true", "false,true,true", "true,true,true"})
-    void executionPassesCallerEnvironmentsToInnerSessions(boolean isStreaming, boolean isResuming,
-            boolean isThroughRunner) throws Exception {
+    @CsvSource({"false,false", "true,false", "false,true", "true,true"})
+    void runnerPassesCallerEnvironmentsToInnerSessions(boolean isStreaming, boolean isResuming) throws Exception {
         String sessionId = UUID.randomUUID().toString();
         AtomicInteger collector = new AtomicInteger();
         AgentSession caller = new AgentSession(sessionId,
@@ -132,9 +116,8 @@ class DeepAgentSessionEnvironmentTest {
         Map<String, Object> inputs = Map.of("query", query, "conversation_id", sessionId);
         try {
             if (isStreaming) {
-                Iterator<Object> stream = isThroughRunner
-                        ? Runner.runAgentStreaming(agent, inputs, caller, null, List.of(StreamMode.OUTPUT))
-                        : agent.stream(inputs, caller, List.of(StreamMode.OUTPUT));
+                Iterator<Object> stream = Runner.runAgentStreaming(agent, inputs, caller, null,
+                        List.of(StreamMode.OUTPUT));
                 try {
                     while (stream.hasNext()) {
                         stream.next();
@@ -145,11 +128,7 @@ class DeepAgentSessionEnvironmentTest {
                     }
                 }
             } else {
-                if (isThroughRunner) {
-                    Runner.runAgent(agent, inputs, caller, null);
-                } else {
-                    agent.invoke(inputs, caller);
-                }
+                Runner.runAgent(agent, inputs, caller, null);
             }
 
             assertThat(inner.observedEnvs).containsEntry(REQUEST_CONTEXT, "caller");

@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.skills;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.common.logging.LogCaptureFixture;
 import com.openjiuwen.core.singleagent.skills.repository.SkillContentValidator;
 import com.openjiuwen.core.singleagent.skills.repository.SkillRepository;
 import com.openjiuwen.core.singleagent.skills.repository.WorkspaceSkillRepository;
@@ -14,10 +15,14 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 
 /**
@@ -79,13 +84,17 @@ class SkillProtectedOverrideTest {
         Path wsRoot = tempDir.resolve("ws");
         Path oversizedDir = wsRoot.resolve("oversized_skill");
         Files.createDirectories(oversizedDir);
-        byte[] oversizedContent = new byte[SkillContentValidator.DEFAULT_WORKSPACE_MAX_BYTES + 1];
+        byte[] oversizedContent =
+                contentWithSecretMarker(SkillContentValidator.DEFAULT_WORKSPACE_MAX_BYTES + 1);
         Files.write(oversizedDir.resolve("SKILL.md"), oversizedContent);
         writeSkill(wsRoot.resolve("normal_skill"), "normal_skill", "Normal skill.");
 
         SkillContentValidator validator = new SkillContentValidator();
-        assertThat(validator.validate(oversizedDir.resolve("SKILL.md"), wsRoot).isAllowed())
-                .isFalse();
+        SkillContentValidator.ValidationResult oversizedResult =
+                validator.validate(oversizedDir.resolve("SKILL.md"), wsRoot);
+        assertThat(oversizedResult.isAllowed()).isFalse();
+        assertThat(oversizedResult.size()).isEqualTo((long) oversizedContent.length);
+        assertThat(oversizedResult.hash()).isEqualTo(sha256(oversizedContent));
         assertThat(
                         validator
                                 .validate(
@@ -93,12 +102,60 @@ class SkillProtectedOverrideTest {
                                 .isAllowed())
                 .isTrue();
         SkillRepository wsRepo = new WorkspaceSkillRepository(wsRoot, "user1");
-        SkillManager manager = new SkillManager("test-op");
-        manager.setRepositories(List.of(wsRepo));
-        manager.refreshIncrementally(List.of());
+        try (LogCaptureFixture audit = LogCaptureFixture.attach("agent")) {
+            SkillManager manager = new SkillManager("test-op");
+            manager.setRepositories(List.of(wsRepo));
+            manager.refreshIncrementally(List.of());
+            assertThat(manager.has("normal_skill")).isTrue();
+            assertThat(manager.has("oversized_skill")).isFalse();
+            assertThat(audit.messagesAt("WARNING").get(0))
+                    .contains("action=load")
+                    .contains("source=workspace")
+                    .contains("skill_id=unknown")
+                    .contains("size=" + oversizedContent.length)
+                    .contains("hash=" + sha256(oversizedContent))
+                    .doesNotContain("SECRET-BODY-MARK");
+        }
+    }
 
-        assertThat(manager.has("normal_skill")).isTrue();
-        assertThat(manager.has("oversized_skill")).isFalse();
+    @Test
+    @Tag("TC-SEC-02")
+    void invalidEncodingSkillRejectedWithAudit()
+            throws IOException {
+        Path workspaceRoot = tempDir.resolve("ws");
+        Path invalidSkillDirectory = workspaceRoot.resolve("invalid_encoding_skill");
+        Files.createDirectories(invalidSkillDirectory);
+        ByteArrayOutputStream invalidContent = new ByteArrayOutputStream();
+        invalidContent.writeBytes("SECRET-BODY-MARK\n".getBytes(StandardCharsets.UTF_8));
+        invalidContent.writeBytes(new byte[] {0x0A, (byte) 0xFF, (byte) 0xFE, 0x0A});
+        byte[] invalidBytes = invalidContent.toByteArray();
+        Files.write(invalidSkillDirectory.resolve("SKILL.md"), invalidBytes);
+        writeSkill(workspaceRoot.resolve("normal_skill"), "normal_skill", "Normal skill.");
+
+        SkillContentValidator validator = new SkillContentValidator();
+        SkillContentValidator.ValidationResult invalidResult =
+                validator.validate(invalidSkillDirectory.resolve("SKILL.md"), workspaceRoot);
+        try (LogCaptureFixture audit = LogCaptureFixture.attach("agent")) {
+            SkillRepository workspaceRepository =
+                    new WorkspaceSkillRepository(workspaceRoot, "user1");
+            SkillManager manager = new SkillManager("invalid-encoding-skill-test");
+            manager.setRepositories(List.of(workspaceRepository));
+            manager.refreshIncrementally(List.of());
+
+            assertThat(invalidResult.isAllowed()).isFalse();
+            assertThat(invalidResult.reason()).contains("invalid UTF-8 encoding");
+            assertThat(invalidResult.size()).isEqualTo((long) invalidBytes.length);
+            assertThat(invalidResult.hash()).isEqualTo(sha256(invalidBytes));
+            assertThat(manager.has("invalid_encoding_skill")).isFalse();
+            assertThat(manager.has("normal_skill")).isTrue();
+            assertThat(audit.count("WARNING", "SKILL_REJECTED")).isEqualTo(1);
+            assertThat(audit.messagesAt("WARNING").get(0))
+                    .contains("invalid_encoding_skill")
+                    .contains("invalid UTF-8 encoding")
+                    .contains("size=" + invalidBytes.length)
+                    .contains("hash=" + sha256(invalidBytes))
+                    .doesNotContain("SECRET-BODY-MARK");
+        }
     }
 
     @Test
@@ -145,6 +202,22 @@ class SkillProtectedOverrideTest {
                 """
                         .formatted(name, description),
                 StandardCharsets.UTF_8);
+    }
+
+    private static byte[] contentWithSecretMarker(int length) {
+        byte[] marker = "SECRET-BODY-MARK\n".getBytes(StandardCharsets.UTF_8);
+        byte[] content = new byte[length];
+        System.arraycopy(marker, 0, content, 0, Math.min(marker.length, content.length));
+        return content;
+    }
+
+    private static String sha256(byte[] content) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(content));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 digest is unavailable", exception);
+        }
     }
 
     private static SkillRepository fixedRepository(SkillSource source, List<Skill> skills) {

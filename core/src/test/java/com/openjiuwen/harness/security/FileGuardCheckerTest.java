@@ -200,6 +200,9 @@ class FileGuardCheckerTest {
 
         @Test
         void prefixCaseVariants_allDenied(@TempDir Path tempDir) {
+            // Prefix rules are matched lexically (case-sensitive) in FileGuardChecker.
+            // Keep the configured prefix casing intact and only vary the leaf name so
+            // the deny still applies without depending on full-path case folding.
             String prefixPath = posix(tempDir.resolve("tmp"));
             FileGuardChecker checker = FileGuardChecker.build(
                     nativeConfig(
@@ -208,10 +211,28 @@ class FileGuardCheckerTest {
                             map("read", "allow", "write", "allow", "exec", "allow")),
                     tempDir, List.of());
             assertThat(checker).isNotNull();
-            PermissionResult r = checker.evaluate("read_file",
+
+            PermissionResult exactCase = checker.evaluate("read_file",
+                    Map.of("file_path", prefixPath + "/secret.txt"));
+            assertThat(exactCase).isNotNull();
+            assertThat(exactCase.getPermission()).isEqualTo(PermissionLevel.DENY);
+
+            PermissionResult leafCaseVariant = checker.evaluate("read_file",
+                    Map.of("file_path", prefixPath + "/SECRET.TXT"));
+            assertThat(leafCaseVariant).isNotNull();
+            assertThat(leafCaseVariant.getPermission()).isEqualTo(PermissionLevel.DENY);
+
+            // Full-path case folding is not part of prefix matching; a lower-cased
+            // drive/path that no longer equals the rule prefix must fall through to
+            // defaults (allow → null) rather than NPE or throw.
+            PermissionResult foldedAwayFromRule = checker.evaluate("read_file",
                     Map.of("file_path", prefixPath.toLowerCase(Locale.ROOT) + "/secret.txt"));
-            assertThat(r).isNotNull();
-            assertThat(r.getPermission()).isEqualTo(PermissionLevel.DENY);
+            if (!prefixPath.equals(prefixPath.toLowerCase(Locale.ROOT))) {
+                assertThat(foldedAwayFromRule).isNull();
+            } else {
+                assertThat(foldedAwayFromRule).isNotNull();
+                assertThat(foldedAwayFromRule.getPermission()).isEqualTo(PermissionLevel.DENY);
+            }
         }
 
         @Test

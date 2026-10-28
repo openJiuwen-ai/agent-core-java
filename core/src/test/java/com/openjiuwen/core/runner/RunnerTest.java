@@ -253,31 +253,32 @@ class RunnerTest {
     }
 
     @Test
-    void runAgentPreservesExplicitSessionForDeepAgent() {
+    void runDeepAgentRetainsCallerSessionAndEnvironment() {
         RecordingDeepAgent agent = new RecordingDeepAgent();
         AgentSession caller = AgentSession.createAgentSession("caller-invoke",
                 Map.of("request-context", "current-request"), agent.getCard());
 
-        Runner.runAgent(agent, Map.of("query", "hello"), caller, null);
+        Object result = Runner.runAgent(agent, Map.of("query", "hello"), caller, null);
 
+        assertEquals(Map.of("query", "hello"), result);
         assertSame(caller, agent.lastSession);
         assertEquals("current-request", agent.lastSession.getEnvs().get("request-context"));
+        assertTrue(caller.isPreRunDone());
     }
 
     @Test
-    void streamAgentPreservesExplicitSessionForDeepAgent() {
+    void streamDeepAgentRetainsCallerSessionAndEnvironment() {
         RecordingDeepAgent agent = new RecordingDeepAgent();
         AgentSession caller = AgentSession.createAgentSession("caller-stream",
                 Map.of("request-context", "current-request"), agent.getCard());
 
         Iterator<Object> stream = Runner.runAgentStreaming(agent, Map.of("query", "hello"), caller, null,
                 List.of(StreamMode.OUTPUT));
-        while (stream.hasNext()) {
-            stream.next();
-        }
 
+        assertEquals(List.of("stream-output"), drain(stream));
         assertSame(caller, agent.lastSession);
         assertEquals("current-request", agent.lastSession.getEnvs().get("request-context"));
+        assertTrue(caller.isPreRunDone());
     }
 
     @Test

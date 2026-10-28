@@ -97,7 +97,7 @@ public final class SkillDocumentLoader {
             return Optional.empty();
         }
         if (!SkillPathValidator.isSafeRelativePath(relativePath)) {
-            logRejected(skill, relativePath, "path_escape");
+            logRejected(skill, relativePath, -1, "-", "path_escape");
             return Optional.empty();
         }
         if (skill.getSource() == SkillSource.CLASSPATH) {
@@ -132,7 +132,7 @@ public final class SkillDocumentLoader {
             Skill skill, String relativePath, SkillConfig config) {
         Optional<Path> resolved = SkillPathValidator.resolveSafe(skill, relativePath);
         if (resolved.isEmpty()) {
-            logRejected(skill, relativePath, "path_escape_or_symlink");
+            logRejected(skill, relativePath, -1, "-", "path_escape_or_symlink");
             return Optional.empty();
         }
         if (!Files.isRegularFile(resolved.get())) {
@@ -163,17 +163,20 @@ public final class SkillDocumentLoader {
         if (result.isAllowed()) {
             return false;
         }
-        logRejected(skill, resolved.toString(), result.reason());
+        logRejected(skill, resolved.toString(), result.size(), result.hash(), result.reason());
         return true;
     }
 
-    private static void logRejected(Skill skill, String relativePath, String reason) {
+    private static void logRejected(
+            Skill skill, String relativePath, long size, String hash, String reason) {
         Loggers.AGENT.warning(
-                "SKILL_REJECTED: action=document_read skill_id={} source={} path={} reason={}",
+                "SKILL_REJECTED: action=document_read skill_id={} source={} size={} hash={} path={} reason={}",
                 skill.getId() == null || skill.getId().isBlank() ? skill.getName() : skill.getId(),
                 skill.getSource() == null
                         ? SkillSource.FILESYSTEM.value()
                         : skill.getSource().value(),
+                size,
+                hash,
                 relativePath,
                 reason);
     }

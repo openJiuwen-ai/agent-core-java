@@ -586,12 +586,17 @@ class TeamSkillExperienceOptimizerPythonParityTest {
             LlmResilience.LLMInvokePolicy policy,
             EvolutionStore store
     ) {
+        // Exercise the production retry policy without spending wall time on fixture backoff.
+        LlmResilience.LLMInvokePolicy defaults = TeamSkillExperienceOptimizer.TEAM_SKILL_RECORD_LLM_POLICY;
+        LlmResilience.LLMInvokePolicy immediateRetry = new LlmResilience.LLMInvokePolicy(
+                defaults.attemptTimeoutSecs(), defaults.totalBudgetSecs(), defaults.maxAttempts(),
+                0, defaults.retryEmptyResponse());
         return new TeamSkillOptimizer(
                 new Model(invoker),
                 "test-model",
                 language,
                 null,
-                policy == null ? TeamSkillExperienceOptimizer.TEAM_SKILL_RECORD_LLM_POLICY : policy,
+                policy == null ? immediateRetry : policy,
                 store
         );
     }

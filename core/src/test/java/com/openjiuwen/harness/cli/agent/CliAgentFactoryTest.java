@@ -4,15 +4,18 @@
 
 package com.openjiuwen.harness.cli.agent;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.openjiuwen.harness.HarnessResourceTestCleanup;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Mirrors Python's factory tests in
@@ -20,6 +23,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code tests/unit_tests/harness/test_cli_default_skills.py}.
  */
 class CliAgentFactoryTest {
+
+    @BeforeEach
+    void clearSharedHarnessToolsBefore() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
+
+    @AfterEach
+    void clearSharedHarnessToolsAfter() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
 
     @Test
     void defaultSkillDirsReturnsExpectedPaths() {
