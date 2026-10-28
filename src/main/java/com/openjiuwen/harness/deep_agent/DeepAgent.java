@@ -1065,11 +1065,39 @@ public class DeepAgent implements AutoCloseable {
                 }
             });
         } catch (RejectedExecutionException ex) {
-            // 池满（线程 + 队列全占用）：写入流错误事件而不是挂死客户端，
-            // 与 AbortPolicy 语义一致——单请求失败，池子保持健康。
-            writeStreamError(effectiveSession, 0, ex);
+            handleStreamRejection(effectiveSession, session, ex);
         }
         return effectiveSession.streamIterator();
+    }
+
+    /**
+     * Terminate the stream when the executor rejects the task: write an error
+     * frame, then mirror the finally sequence of the accepted path (state
+     * propagation plus postRun closing the emitter with END_FRAME) so the
+     * client iterator ends cleanly instead of waiting for the frame timeout.
+     * Package-private so tests can exercise the rejection sequence without
+     * saturating the shared stream executor.
+     *
+     * @param effectiveSession the request-level streaming session
+     * @param session the caller session to propagate state to, may be null
+     * @param ex the rejection caught by the caller
+     * @since 0.1.14.post2
+     */
+    void handleStreamRejection(AgentSessionApi effectiveSession, AgentSessionApi session,
+            RejectedExecutionException ex) {
+        // 池满（线程 + 队列全占用）：写入流错误事件而不是挂死客户端，
+        // 与 AbortPolicy 语义一致——单请求失败，池子保持健康。
+        writeStreamError(effectiveSession, 0, ex);
+        // 拒绝路径同样要终结流：镜像 accepted 路径 finally 的关流序列（状态传播 +
+        // postRun 关 emitter 发 END_FRAME），否则客户端迭代器只能等帧
+        // 间隔超时（默认 600s）才以超时错误收尾。
+        try {
+            if (session != null) {
+                copySessionState(effectiveSession, session);
+            }
+        } finally {
+            effectiveSession.postRun();
+        }
     }
 
     private java.util.Iterator<Object> streamInvokeOnce(Map<String, Object> normalized,
