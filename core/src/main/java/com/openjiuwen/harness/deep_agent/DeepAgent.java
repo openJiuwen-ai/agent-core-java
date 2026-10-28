@@ -44,9 +44,13 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
+import com.openjiuwen.core.session.checkpointer.step.KvStepJournal;
 import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepJournal;
 import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
@@ -345,6 +349,7 @@ public class DeepAgent implements AutoCloseable {
                 .configureMaxParallelToolCalls(this.config.getMaxParallelToolCalls())
                 .configureFailTaskOnToolError(this.config.isShouldFailTaskOnToolError());
         runtimeConfig.setEnableKvCacheAffinity(this.config.isEnableKvCacheAffinity());
+        runtimeConfig.setStepCheckpointPolicy(this.config.getStepCheckpointPolicy());
         applyModelConfig(runtimeConfig, this.config.getModel());
         applyBackendConfig(runtimeConfig, this.config.getBackend());
         return runtimeConfig;
@@ -2372,6 +2377,7 @@ public class DeepAgent implements AutoCloseable {
         int maxRounds = Math.max(1, config.getMaxIterations());
 
         startTaskLoopRuntime(session);
+        bindStepCheckpointTrigger(session);
         try {
             while (coordinator.shouldContinue() && rounds.size() < maxRounds) {
                 DeepAgentState loopState = loadState(session);
@@ -4082,6 +4088,28 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
+     * Re-bind the step checkpoint trigger with the session's checkpointer and
+     * a journal over the persistence store, so task-loop round (PHASE)
+     * boundaries persist and audit instead of no-opping. The policy comes
+     * from this agent's config and is propagated to the inner ReActAgent at
+     * configure time, keeping one knob for both agents.
+     *
+     * @param session task-loop session, may be null
+     */
+    private void bindStepCheckpointTrigger(AgentSessionApi session) {
+        BaseSession baseSession = taskLoopBaseSession(session);
+        Checkpointer checkpointer = baseSession != null && baseSession.checkpointer() instanceof Checkpointer typed
+                ? typed
+                : null;
+        StepJournal journal = null;
+        if (checkpointer instanceof PersistenceCheckpointer persistence) {
+            journal = new KvStepJournal(persistence.kvStore());
+        }
+        StepCheckpointPolicy effectivePolicy = config.getStepCheckpointPolicy();
+        stepCheckpointTrigger = new StepCheckpointTrigger(checkpointer, journal, effectivePolicy);
+    }
+
+    /**
      * Record one DeepAgent task-loop round boundary: the round result type
      * decides the step status - interrupt stays RUNNING (awaiting resume),
      * error becomes FAILED (evidence record, never a resume point), anything
@@ -4099,16 +4127,39 @@ public class DeepAgent implements AutoCloseable {
         }
         Object resultType = roundResult == null ? null : roundResult.get("result_type");
         boolean hasInterrupt = "interrupt".equals(String.valueOf(resultType));
-        boolean hasError = "error".equals(String.valueOf(resultType));
+        // Task-failed rounds resolve with only an "error" key (no result_type),
+        // so the error evidence must be derived from both shapes.
+        boolean hasError = "error".equals(String.valueOf(resultType))
+                || (roundResult != null && roundResult.containsKey("error"));
         StepStatus status = hasInterrupt ? StepStatus.RUNNING : hasError ? StepStatus.FAILED : StepStatus.COMPLETED;
-        BaseSession baseSession = session instanceof AgentSession typedSession
-                ? typedSession.getInner()
-                : null;
+        BaseSession baseSession = taskLoopBaseSession(session);
         if (baseSession == null) {
             return;
         }
         stepCheckpointTrigger.stepCompleted(baseSession, null, null,
                 new StepBoundary("PHASE", stepName, status, 0L));
+    }
+
+    /**
+     * Unwrap the task-loop session to the internal {@link BaseSession} the
+     * checkpointer step entry points expect. The task loop runs over either
+     * the public {@link AgentSession} facade or the harness
+     * {@link DeepAgentSession} wrapper; both expose the internal kernel.
+     *
+     * @param session task-loop session, may be null
+     * @return the internal session, or null when unavailable
+     */
+    private static BaseSession taskLoopBaseSession(AgentSessionApi session) {
+        if (session instanceof AgentSession typedSession) {
+            return typedSession.getInner();
+        }
+        if (session instanceof DeepAgentSession deepSession) {
+            return deepSession.getInner();
+        }
+        if (session instanceof BaseSession baseSession) {
+            return baseSession;
+        }
+        return null;
     }
 
     public void clearState(Object session, boolean clearPersisted) {
