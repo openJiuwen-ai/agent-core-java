@@ -401,6 +401,87 @@ class StepCheckpointTest {
         assertEquals(1, journal.replay("session-audit").size());
     }
 
+    @Test
+    void triggerPersistsFailedStepIndependentlyOfPolicy() {
+        KvStepJournal journal = new KvStepJournal(new InMemoryKVStore());
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-failed", "agent-failed", state);
+        checkpointer.preAgentExecute(session, null);
+
+        StepCheckpointTrigger trigger = new StepCheckpointTrigger(
+                checkpointer, journal, StepCheckpointPolicy.STEP_OFF);
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("ITERATION", "iteration-2", StepStatus.FAILED, 55L));
+
+        // The main cursor stays untouched (STEP_OFF would never write it), the
+        // failed cursor lands under its own key, and the audit keeps the FAILED
+        // status regardless of the policy verdict.
+        assertNull(StepCursor.fromState(state.getState()));
+        StepCursor failed = StepCursor.failedFromState(state.getState());
+        assertNotNull(failed);
+        assertEquals("ITERATION", failed.getStepType());
+        assertEquals("iteration-2", failed.getStepName());
+        assertEquals(StepStatus.FAILED, failed.getStatus());
+        assertEquals(1L, failed.getSeq());
+        assertEquals(1, trigger.observedSteps());
+        List<StepRecord> trail = journal.replay("session-failed");
+        assertEquals(1, trail.size());
+        assertEquals(StepStatus.FAILED, trail.get(0).getStatus());
+        assertEquals(checkpointer.lastCompletedStep(session), null);
+        assertEquals(checkpointer.lastFailedStep(session).getStepName(), "iteration-2");
+    }
+
+    @Test
+    void failedStepDoesNotMoveResumePointAfterRestart() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-failed-resume", "agent-failed-resume", state);
+        checkpointer.preAgentExecute(session, null);
+
+        StepCheckpointTrigger trigger = new StepCheckpointTrigger(
+                checkpointer, null, StepCheckpointPolicy.STEP_ALWAYS);
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("TOOL_CALL", "search", StepStatus.COMPLETED, 10L));
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("ITERATION", "iteration-2", StepStatus.FAILED, 20L));
+
+        // A fresh session for the same id restores the state: the resume point
+        // is still the completed step, not the failure.
+        AgentStateCollection restoredState = new AgentStateCollection();
+        TestSession restored = new TestSession("session-failed-resume", "agent-failed-resume", restoredState);
+        checkpointer.preAgentExecute(restored, null);
+
+        StepCursor resume = checkpointer.lastCompletedStep(restored);
+        assertNotNull(resume);
+        assertEquals(1L, resume.getSeq());
+        assertEquals("search", resume.getStepName());
+        assertEquals(StepStatus.COMPLETED, resume.getStatus());
+        StepCursor failed = checkpointer.lastFailedStep(restored);
+        assertNotNull(failed);
+        assertEquals(StepStatus.FAILED, failed.getStatus());
+    }
+
+    @Test
+    void failedStepOverwriteKeepsLatestFailure() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-failed-latest", "agent-failed-latest", state);
+        checkpointer.preAgentExecute(session, null);
+
+        StepCheckpointTrigger trigger = new StepCheckpointTrigger(
+                checkpointer, null, StepCheckpointPolicy.STEP_ALWAYS);
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("ITERATION", "iteration-1", StepStatus.FAILED, 10L));
+        trigger.stepCompleted(session, null, null,
+                new StepBoundary("ITERATION", "iteration-5", StepStatus.FAILED, 20L));
+
+        StepCursor failed = checkpointer.lastFailedStep(session);
+        assertNotNull(failed);
+        assertEquals("iteration-5", failed.getStepName());
+        assertEquals(2L, failed.getSeq());
+    }
+
     private static final class TestSession extends BaseSession {
         private final String sessionId;
         private final String agentId;

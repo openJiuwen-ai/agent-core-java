@@ -306,6 +306,7 @@ public final class HarnessFactory {
                         : new LinkedHashMap<>(source.getTodoStorageConfig()))
                 .sessionStoreType(source.getSessionStoreType())
                 .kvStoreConfig(source.getKvStoreConfig())
+                .stepCheckpointPolicy(source.getStepCheckpointPolicy())
                 .tmpTtl(source.getTmpTtl())
                 .tmpTtlScanInterval(source.getTmpTtlScanInterval())
                 .build();
