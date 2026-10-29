@@ -2244,9 +2244,6 @@ public class DeepAgent implements AutoCloseable {
         if (childConfig.getContextEngineConfig() == null) {
             childConfig.setContextEngineConfig(config.getContextEngineConfig());
         }
-        if (childConfig.getToolTimeoutSeconds() == null) {
-            childConfig.setToolTimeoutSeconds(config.getToolTimeoutSeconds());
-        }
         // A dynamically created subagent runs under its own conversation id,
         // but it remains part of the parent's KVC-affinity lifecycle (Python
         // deep_agent.py passes kv_cache_affinity_config to every subagent);

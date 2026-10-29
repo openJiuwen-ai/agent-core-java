@@ -119,9 +119,6 @@ public class SubAgentConfig {
     /** Optional context engine bounds; when null the parent's config is inherited instead. */
     private ContextEngineConfig contextEngineConfig;
 
-    /** Optional per-subagent tool timeout in seconds; when null the card/global default applies. */
-    private Double toolTimeoutSeconds;
-
     /**
      * setEnableTaskLoop.
      * 
@@ -177,7 +174,6 @@ public class SubAgentConfig {
                 .factoryKwargs(new LinkedHashMap<>(factoryKwargs)).workspacePath(workspacePath)
                 .isRestrictToWorkDir(isRestrictToWorkDir)
                 .contextEngineConfig(contextEngineConfig)
-                .toolTimeoutSeconds(toolTimeoutSeconds)
                 .build();
     }
 

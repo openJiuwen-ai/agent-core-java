@@ -290,7 +290,6 @@ public final class HarnessFactory {
                 .skills(new ArrayList<>(source.getSkills() != null ? source.getSkills() : List.of()))
                 .enableSkillDiscovery(source.isEnableSkillDiscovery())
                 .contextEngineConfig(source.getContextEngineConfig())
-                .toolTimeoutSeconds(source.getToolTimeoutSeconds())
                 .factoryKwargs(new java.util.LinkedHashMap<>(
                         source.getFactoryKwargs() != null ? source.getFactoryKwargs() : Map.of()))
                 .isAsyncSubagentEnabled(source.isEnableAsyncSubagent())

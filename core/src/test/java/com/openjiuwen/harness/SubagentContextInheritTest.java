@@ -71,19 +71,16 @@ class SubagentContextInheritTest {
     }
 
     @Test
-    void subAgentConfigCarriesContextAndTimeoutFields() {
+    void subAgentConfigCarriesContextFields() {
         ContextEngineConfig context = ContextEngineConfig.builder().maxContextMessageNum(64).build();
         SubAgentConfig spec = SubAgentConfig.builder()
                 .contextEngineConfig(context)
-                .toolTimeoutSeconds(120.0D)
                 .build();
 
         assertThat(spec.getContextEngineConfig()).isSameAs(context);
-        assertThat(spec.getToolTimeoutSeconds()).isEqualTo(120.0D);
 
         DeepAgentConfig converted = spec.toDeepAgentConfig();
         assertThat(converted.getContextEngineConfig()).isSameAs(context);
-        assertThat(converted.getToolTimeoutSeconds()).isEqualTo(120.0D);
     }
 
     private static DeepAgent parentWithSubagent(ContextEngineConfig parentContextConfig) {

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.context.schema;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +36,34 @@ class ContextDefaultsTest {
                 .build();
 
         assertThat(config.getMaxContextMessageNum()).isEqualTo(64);
+        assertThat(config.getDefaultWindowMessageNum()).isEqualTo(200);
+        assertThat(config.getDefaultWindowRoundNum()).isEqualTo(10);
+    }
+
+    @Test
+    void explicitNullBoundsStillFallBackToSafeDefaults() {
+        ContextEngineConfig config = ContextEngineConfig.builder()
+                .maxContextMessageNum(null)
+                .defaultWindowMessageNum(null)
+                .defaultWindowRoundNum(null)
+                .build();
+
+        assertThat(config.getMaxContextMessageNum()).isEqualTo(200);
+        assertThat(config.getDefaultWindowMessageNum()).isEqualTo(200);
+        assertThat(config.getDefaultWindowRoundNum()).isEqualTo(10);
+    }
+
+    @Test
+    void jsonDeserializationWithExplicitNullsFallsBackToSafeDefaults() throws Exception {
+        String json = "{"
+                + "\"max_context_message_num\": null,"
+                + "\"default_window_message_num\": null,"
+                + "\"default_window_round_num\": null"
+                + "}";
+
+        ContextEngineConfig config = new ObjectMapper().readValue(json, ContextEngineConfig.class);
+
+        assertThat(config.getMaxContextMessageNum()).isEqualTo(200);
         assertThat(config.getDefaultWindowMessageNum()).isEqualTo(200);
         assertThat(config.getDefaultWindowRoundNum()).isEqualTo(10);
     }

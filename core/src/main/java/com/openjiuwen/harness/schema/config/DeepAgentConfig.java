@@ -111,14 +111,6 @@ public class DeepAgentConfig {
     private ToolPermissionHost permissionHost;
 
     /**
-     * Optional per-agent tool-call timeout in seconds; when null the tool card's declared
-     * timeout (or the global default) applies.
-     *
-     * @since 0.1.18
-     */
-    private Double toolTimeoutSeconds;
-
-    /**
      * Optional context engine bounds for this agent; when null the parent's config is
      * inherited by dynamically created subagents.
      *
