@@ -200,6 +200,22 @@ public class AgentSession implements AgentSessionApi {
         return iterator;
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long renewModelCallTimeout(long leaseId, long idleTimeoutMs, long delayMs) {
+        return inner.streamWriterManager().renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void endModelCallTimeout(long leaseId) {
+        inner.streamWriterManager().endModelCallTimeout(leaseId);
+    }
+
     @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();

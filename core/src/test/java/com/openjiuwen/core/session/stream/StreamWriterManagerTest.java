@@ -7,10 +7,13 @@ package com.openjiuwen.core.session.stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -200,6 +203,148 @@ class StreamWriterManagerTest {
         assertEquals("nodeC_stream", third.data());
     }
 
+    @Test
+    @Timeout(2)
+    void shortFirstFrameTimeoutKeepsOriginalError() {
+        StreamWriterManager manager = new StreamWriterManager(new StreamEmitter());
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> manager.streamIterator(30L, 1000L, false).hasNext());
+
+        assertEquals(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT, error.getStatus());
+        assertEquals("0.03", error.getParams().get("timeout"));
+    }
+
+    @Test
+    @Timeout(2)
+    void shortSubsequentTimeoutKeepsOriginalError() {
+        StreamEmitter emitter = new StreamEmitter();
+        StreamWriterManager manager = new StreamWriterManager(emitter);
+        emitter.emit("first");
+        Iterator<Object> iterator = manager.streamIterator(1000L, 30L, false);
+        assertEquals("first", iterator.next());
+
+        BaseError error = assertThrows(BaseError.class, iterator::hasNext);
+
+        assertEquals(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, error.getStatus());
+        assertEquals("0.03", error.getParams().get("timeout"));
+    }
+
+    @Test
+    @Timeout(8)
+    void shorterLeaseDoesNotShortenOriginalSubsequentDeadline() {
+        FrameOnCallQueue queue = new FrameOnCallQueue(8, "original-deadline");
+        StreamEmitter emitter = new StreamEmitter(queue);
+        StreamWriterManager manager = new StreamWriterManager(emitter);
+        emitter.emit("first");
+        Iterator<Object> iterator = manager.streamIterator(1000L, 6200L, false);
+        assertEquals("first", iterator.next());
+        long leaseId = manager.renewModelCallTimeout(0L, 1L, 0L);
+
+        assertEquals("original-deadline", iterator.next());
+        assertTrue(leaseId > 0L);
+        assertEquals(leaseId, manager.renewModelCallTimeout(leaseId, 1L, 0L));
+        assertEquals(8, queue.receiveCalls);
+    }
+
+    @Test
+    @Timeout(2)
+    void activeLeaseDoesNotExtendFirstFrameTimeout() {
+        StreamWriterManager manager = new StreamWriterManager(new StreamEmitter());
+        manager.renewModelCallTimeout(0L, 1000L, 0L);
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> manager.streamIterator(30L, 1000L, false).hasNext());
+
+        assertEquals(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT, error.getStatus());
+    }
+
+    @Test
+    @Timeout(7)
+    void expiredLeaseRestoresOriginalTimeoutWithoutBusyLoop() {
+        FrameOnCallQueue queue = new FrameOnCallQueue(-1, "unused");
+        StreamEmitter emitter = new StreamEmitter(queue);
+        StreamWriterManager manager = new StreamWriterManager(emitter);
+        emitter.emit("first");
+        Iterator<Object> iterator = manager.streamIterator(1000L, 40L, false);
+        assertEquals("first", iterator.next());
+        manager.renewModelCallTimeout(0L, 1L, 0L);
+
+        BaseError error = assertThrows(BaseError.class, iterator::hasNext);
+
+        assertEquals(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, error.getStatus());
+        assertEquals("0.04", error.getParams().get("timeout"));
+        assertTrue(queue.receiveCalls <= 8);
+    }
+
+    @Test
+    @Timeout(2)
+    void queuedFrameIsDrainedWhenDeadlineExpires() {
+        FrameAfterWaitQueue queue = new FrameAfterWaitQueue();
+        StreamEmitter emitter = new StreamEmitter(queue);
+        StreamWriterManager manager = new StreamWriterManager(emitter);
+        emitter.emit("first");
+        Iterator<Object> iterator = manager.streamIterator(1000L, 20L, false);
+        assertEquals("first", iterator.next());
+        queue.enqueueAfterNull = true;
+
+        assertEquals("queued-before-timeout", iterator.next());
+    }
+
+    @Test
+    @Timeout(2)
+    void tryReceiveIsNonblockingAndSharesDataPath() {
+        AsyncStreamQueue queue = new AsyncStreamQueue();
+
+        assertNull(queue.tryReceive());
+        queue.send("queued");
+        assertEquals("queued", queue.tryReceive());
+    }
+
+    @Test
+    @Timeout(3)
+    void invalidLeaseOperationsPreserveExistingLease() {
+        FrameOnCallQueue queue = new FrameOnCallQueue(3, "preserved-lease");
+        StreamEmitter emitter = new StreamEmitter(queue);
+        StreamWriterManager manager = new StreamWriterManager(emitter);
+        emitter.emit("first");
+        Iterator<Object> iterator = manager.streamIterator(1000L, 60L, false);
+        assertEquals("first", iterator.next());
+        long leaseId = manager.renewModelCallTimeout(0L, 100L, 0L);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.renewModelCallTimeout(leaseId + 1L, 100L, 0L));
+        manager.endModelCallTimeout(0L);
+        manager.endModelCallTimeout(leaseId + 1L);
+
+        assertEquals("preserved-lease", iterator.next());
+        manager.endModelCallTimeout(leaseId);
+    }
+
+    @Test
+    @Timeout(3)
+    void multipleLeasesUseLatestDeadline() {
+        FrameOnCallQueue queue = new FrameOnCallQueue(3, "latest-lease");
+        StreamEmitter emitter = new StreamEmitter(queue);
+        StreamWriterManager manager = new StreamWriterManager(emitter);
+        emitter.emit("first");
+        Iterator<Object> iterator = manager.streamIterator(1000L, 60L, false);
+        assertEquals("first", iterator.next());
+        manager.renewModelCallTimeout(0L, 1L, 0L);
+        manager.renewModelCallTimeout(0L, 100L, 0L);
+
+        assertEquals("latest-lease", iterator.next());
+    }
+
+    @Test
+    void customSessionDefaultsToNoLeaseCoordination() {
+        MinimalSession session = new MinimalSession();
+
+        assertEquals(0L, session.renewModelCallTimeout(0L, 1L, 0L));
+        session.endModelCallTimeout(0L);
+        session.endModelCallTimeout(1L);
+    }
+
     private static List<Object> drain(StreamWriterManager manager) {
         Iterator<Object> iterator = manager.streamIterator();
         java.util.ArrayList<Object> items = new java.util.ArrayList<>();
@@ -207,6 +352,88 @@ class StreamWriterManagerTest {
             items.add(iterator.next());
         }
         return items;
+    }
+
+    private static final class FrameOnCallQueue extends AsyncStreamQueue {
+        private final int frameOnCall;
+        private final String frame;
+        private int receiveCalls;
+
+        private FrameOnCallQueue(int frameOnCall, String frame) {
+            this.frameOnCall = frameOnCall;
+            this.frame = frame;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Object receive(long timeoutMs) {
+            receiveCalls++;
+            if (receiveCalls == frameOnCall) {
+                send(frame);
+            }
+            return super.receive(timeoutMs);
+        }
+    }
+
+    private static final class FrameAfterWaitQueue extends AsyncStreamQueue {
+        private boolean enqueueAfterNull;
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Object receive(long timeoutMs) {
+            Object item = super.receive(timeoutMs);
+            if (enqueueAfterNull && item == null) {
+                enqueueAfterNull = false;
+                send("queued-before-timeout");
+            }
+            return item;
+        }
+    }
+
+    private static final class MinimalSession implements AgentSessionApi {
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String getSessionId() {
+            return "minimal";
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Object getState(String key) {
+            return Map.of();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void updateState(Map<String, Object> data) {
+            // No state is needed for the default lease contract.
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void writeStream(Object data) {
+            // No stream output is needed for the default lease contract.
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Iterator<Object> streamIterator() {
+            return java.util.Collections.emptyIterator();
+        }
     }
 
     private record MockSchema(String data) {

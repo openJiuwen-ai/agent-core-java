@@ -157,6 +157,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
+    private static final String MODEL_CALL_TIMEOUT_LEASE_ID_KEY = "_model_call_timeout_lease_id";
 
     /** Stateless normalizer shared by all structured multimodal entry inputs. */
     private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
@@ -464,6 +465,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .join();
         runtime.extraFields().remove("__openjiuwen_kvc_model");
         ModelInvokeOptions options = optionsBuilder.build();
+        renewModelCallTimeout(ctx, options);
         StreamModelCall modelCall = new StreamModelCall(ctx, model, messages, options, modelInputs);
         if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
             return invokeNonStreaming(modelCall, kvLease);
@@ -564,6 +566,18 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         }
 
         return optionsBuilder;
+    }
+
+    private static void renewModelCallTimeout(AgentCallbackContext ctx, ModelInvokeOptions options) {
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) || ctx.getSession() == null
+                || options == null || options.getTimeout() == null) {
+            return;
+        }
+        long idleTimeoutMs = ModelTimeoutResolver.toDuration(options.getTimeout().doubleValue()).toMillis();
+        Object currentLease = ctx.getExtra().get(MODEL_CALL_TIMEOUT_LEASE_ID_KEY);
+        long leaseId = currentLease instanceof Number number ? number.longValue() : 0L;
+        long renewedLease = ctx.getSession().renewModelCallTimeout(leaseId, idleTimeoutMs, 0L);
+        ctx.getExtra().put(MODEL_CALL_TIMEOUT_LEASE_ID_KEY, renewedLease);
     }
 
     private record ModelCallRuntime(
