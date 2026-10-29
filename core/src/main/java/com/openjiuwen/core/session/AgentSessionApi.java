@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.interaction.SimpleAgentInteraction;
@@ -48,6 +49,12 @@ public class AgentSessionApi implements Session {
     private final AtomicInteger runState = new AtomicInteger(0);
     private SimpleAgentInteraction interaction;
     private TenantContext tenantContext;
+
+    // checkpointer 的 session key 由线程租户推导，而 preRun 与 postRun 可能落在不同线程
+    // （流式场景 postRun 在池线程执行）。这里固化 preRun 时刻解析出的租户，postRun 复用它，
+    // 保证两端推导出同一个 key；否则会查不到 preRun 创建的 agent store（BUG-0005）。
+    private volatile TenantContext checkpointerTenant;
+    private volatile boolean checkpointerTenantResolved;
 
     /**
      * Create a new AgentSessionApi.
@@ -331,6 +338,7 @@ public class AgentSessionApi implements Session {
         if ((runState.getAndUpdate(s -> s | PRE_DONE) & PRE_DONE) != 0) {
             return;
         }
+        resolveCheckpointerTenant();
         CheckpointerFactory.getCheckpointer().preAgentExecute(inner, inputs);
     }
 
@@ -348,7 +356,50 @@ public class AgentSessionApi implements Session {
         // Close_stream first, then commit/post_agent_execute.
         inner.streamWriterManager().getStreamEmitter().close();
         if (inner.checkpointerTyped() != null) {
-            inner.checkpointerTyped().postAgentExecute(inner);
+            runWithCheckpointerTenant(() -> inner.checkpointerTyped().postAgentExecute(inner));
+        }
+    }
+
+    /**
+     * Resolve and remember the tenant that the checkpointer actually consumed during preRun.
+     * <p>
+     * 必须直接取当前线程值：preAgentExecute 本身就是按线程租户推导 key，若改用其他来源
+     * （例如会话自带租户）会让 postRun 复用一个 preRun 从未使用过的值，反而制造不一致。
+     *
+     * @since 0.1.7
+     */
+    private void resolveCheckpointerTenant() {
+        TenantContext ctx = TenantContextHolder.getCurrentTenant();
+        checkpointerTenant = (ctx != null && ctx.isTenantAware()) ? ctx : null;
+        checkpointerTenantResolved = true;
+    }
+
+    /**
+     * Run the given action with the tenant captured at pre-run time bound to the current thread.
+     * <p>
+     * postRun 通常在池线程上执行，该线程的 ThreadLocal 既可能为空，也可能残留继承自其他请求的
+     * 租户；若此时按线程租户推导 session key，就会与 preRun 不一致。这里显式复用捕获值，
+     * 结束后恢复线程原值。未经过 preRun 的会话保持原有线程语义不变。
+     *
+     * @param action the action to run
+     * @since 0.1.7
+     */
+    private void runWithCheckpointerTenant(Runnable action) {
+        if (!checkpointerTenantResolved) {
+            action.run();
+            return;
+        }
+        TenantContext previous = TenantContextHolder.getCurrentTenant();
+        try {
+            // setCurrentTenant(null) 会覆盖从父线程继承来的残留租户，使推导结果回到无租户语义。
+            TenantContextHolder.setCurrentTenant(checkpointerTenant);
+            action.run();
+        } finally {
+            if (previous == null) {
+                TenantContextHolder.clearCurrentTenant();
+            } else {
+                TenantContextHolder.setCurrentTenant(previous);
+            }
         }
     }
 
@@ -359,6 +410,9 @@ public class AgentSessionApi implements Session {
      */
     public void resetRunState() {
         runState.set(0);
+        // 会话可能被复用给另一租户，清除上一轮捕获的租户，由下一次 preRun 重新解析。
+        checkpointerTenant = null;
+        checkpointerTenantResolved = false;
     }
 
     /**
@@ -374,6 +428,9 @@ public class AgentSessionApi implements Session {
     public void copyPreRunState(AgentSessionApi source) {
         if (source != null && (source.runState.get() & PRE_DONE) != 0) {
             runState.getAndUpdate(s -> s | PRE_DONE);
+            // 本实例因沿用上游状态而跳过 preRun，仍需固化租户供 postRun 复用（BUG-0005）；
+            // 此处运行在调用线程，租户仍可用。
+            resolveCheckpointerTenant();
         }
     }
 
