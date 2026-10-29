@@ -5,6 +5,7 @@
 package examples.gitcode_issue_evolver.infrastructure;
 
 import examples.gitcode_issue_evolver.AutoEvolvingConfig;
+import examples.gitcode_issue_evolver.RepositoryCoordinates;
 import examples.gitcode_issue_evolver.job.EvolutionJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,7 @@ public final class ExampleWorktreeManager {
     private final Path repository;
     private final Path worktreeRoot;
     private final String baseBranch;
+    private final RepositoryCoordinates coordinates;
 
     /**
      * Create a Worktree manager from resolved file configuration.
@@ -49,6 +51,7 @@ public final class ExampleWorktreeManager {
         this.repository = required.getLocalRepository().toAbsolutePath().normalize();
         this.worktreeRoot = required.getWorktreeRoot().toAbsolutePath().normalize();
         this.baseBranch = required.getBaseBranch();
+        this.coordinates = required.repositoryCoordinates();
     }
 
     /**
@@ -72,16 +75,14 @@ public final class ExampleWorktreeManager {
             }
             Files.writeString(marker, requiredJob.id() + "\n" + requiredJob.branch(),
                     StandardCharsets.UTF_8);
-            run(repository, "fetch base branch", List.of(
-                    "git", "-C", repository.toString(), "-c", "core.longpaths=true",
-                    "fetch", "--prune", "origin", baseBranch));
+            String startPoint = fetchStartPoint(requiredJob);
             run(repository, "prune Worktrees", List.of(
                     "git", "-C", repository.toString(), "-c", "core.longpaths=true",
                     "worktree", "prune"));
             run(repository, "create Worktree", List.of(
                     "git", "-C", repository.toString(), "-c", "core.longpaths=true",
                     "worktree", "add", "--no-checkout", "-b", requiredJob.branch(),
-                    worktree.toString(), "origin/" + baseBranch));
+                    worktree.toString(), startPoint));
             run(worktree, "initialize sparse checkout", List.of(
                     "git", "-C", worktree.toString(), "-c", "core.longpaths=true",
                     "sparse-checkout", "init", "--cone"));
@@ -90,10 +91,36 @@ public final class ExampleWorktreeManager {
                     "sparse-checkout", "set", "src/main", "src/test"));
             run(worktree, "checkout sparse Worktree", List.of(
                     "git", "-C", worktree.toString(), "-c", "core.longpaths=true", "checkout"));
+            verifyResumeHead(requiredJob, worktree);
             return new PreparedWorktree(worktree, requiredJob.branch());
         } catch (IOException | IllegalStateException ex) {
             cleanupAfterFailure(requiredJob, worktree, marker, ex);
             throw new WorktreePreparationException("prepare sparse Worktree", safe(ex.getMessage()), ex);
+        }
+    }
+
+    private String fetchStartPoint(EvolutionJob job) {
+        if (job.pullRequestNumber() == null || job.headSha() == null || job.headSha().isBlank()) {
+            run(repository, "fetch base branch", List.of(
+                    "git", "-C", repository.toString(), "-c", "core.longpaths=true",
+                    "fetch", "--prune", "origin", baseBranch));
+            return "origin/" + baseBranch;
+        }
+        run(repository, "fetch published repair branch", List.of(
+                "git", "-C", repository.toString(), "-c", "core.longpaths=true",
+                "fetch", "--prune", coordinates.publishCloneUri().toString(),
+                "refs/heads/" + job.branch()));
+        return "FETCH_HEAD";
+    }
+
+    private void verifyResumeHead(EvolutionJob job, Path worktree) {
+        if (job.pullRequestNumber() == null || job.headSha() == null || job.headSha().isBlank()) {
+            return;
+        }
+        CommandResult result = execute(worktree, List.of(
+                "git", "-C", worktree.toString(), "rev-parse", "HEAD"));
+        if (!result.success() || !job.headSha().equalsIgnoreCase(result.output().strip())) {
+            throw new IllegalStateException("Published repair branch head changed unexpectedly");
         }
     }
 

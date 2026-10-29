@@ -38,48 +38,32 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
    - Meanings for `bindHost`, `port`, `dataDir`, `worktreeRoot`, `localRepository`,
      `codingStandardSkill`, `issueWorkerSkill`, `targetRepository`, `publishRepository`,
      `baseBranch`, `assignees`, `workerConcurrency`, `triggerMode`, `triggerLabel`,
-     `issueScanWindowHours`, `pollIntervalMinutes`, `maxIssueScanPages`, `gitUserName`, and
-     `gitUserEmail`.
+     `issueScanWindowHours`, `pollIntervalMinutes`, `maxIssueScanPages`,
+     `manualFullScanEnabled`, `maxPrimaryRepairRounds`, `maxDiagnosticRepairRounds`,
+     `maxTransientStageRetries`, `smokeTestEnabled`, `smokeTestRepository`,
+     `smokeTestSelectors`, `smokeTestTimeoutMinutes`, `gitUserName`, and `gitUserEmail`.
    - Meanings for `gitCodeToken` and the conditionally required `webhookSecret`, without requesting
      their values or confusing the Bot Token with a user's personal Issue-submission PAT.
    - Both sanitized JSON skeletons from the reference.
    Do not return only the first Check error or a summary of selected fields.
-6. Before starting the service, run only the Maven `test` lifecycle phase from the repository root:
+6. Before starting the service, run the Example-owned deterministic suite. Do not run the main
+   repository's complete Maven test suite for this independent service:
 
 ```powershell
-mvn.cmd -B -ntp test
+bash examples/gitcode_issue_evolver/scripts/test-demo.sh
 ```
 
-   Do not invoke `clean`, `package`, `verify`, or `install`, and do not use `-DskipTests`,
-   `-Dmaven.test.skip`, or a global `-Dtest` selector. Preserve the POM-defined discovery and tag
-   policy.
-
-   Track each test file from Surefire `Running <fully-qualified-class>` output and timestamp every
-   Maven/Surefire console line. After an exact active top-level test file has been identified, if the
-   Maven gate produces no console output for more than 120 consecutive seconds, follow the
-   timeout-skip procedure in `references/agent-contract.md`: stop only the current Maven gate process
-   tree, add that exact test file to a new run-scoped Surefire exclusions file, and rerun the Maven
-   `test` phase with that file. Any new console output resets the 120-second silence timer, even when
-   the test's total runtime exceeds 120 seconds. Do not infer a test-file timeout from compilation,
-   other non-test work, or an ambiguous active class.
-
-   Never prepopulate or reuse exclusions. If Surefire reports a test failure or error, add that exact
-   test file to the same run-scoped exclusions file and rerun the Maven `test` phase. Record the
-   failing method, exception or assertion type, message, and the most relevant project stack frame.
-   Build, compilation, dependency, or configuration failures are not skippable.
-
-   Report every skipped file as either `TIMEOUT` or `TEST_ERROR`. Include the observed console-silence
-   duration for a timeout and the specific sanitized error reason for a test error. A successful retry
-   is a Maven test gate with skips, not a complete repository test-suite pass. The POM continues to
-   exclude `@Tag("system-test")` by default.
-7. When the temporary Maven gate succeeds, run the same management command with `-Action Start`. The Example start script performs its own compilation with Maven tests skipped; do not treat that compilation as another test result.
+   The script compiles the Example and runs its deterministic tests. Do not skip a failing Example
+   test or reinterpret a main-project Maven failure as an Evolver test result.
+7. When the Example gate succeeds, run the same management command with `-Action Start`. The Example
+   start script performs compilation with Maven tests skipped; do not treat that compilation as
+   another test result.
 8. Report only the structured status, trigger mode, local health URL, optional public health and
-   webhook URLs, mode-specific manual GitCode steps, and the Maven test gate result, including every
-   skipped file, its classification, and its reason.
+   webhook URLs, mode-specific manual GitCode steps, and the Example deterministic gate result.
 
 ## Other actions
 
-Use `-Action Status` to inspect the non-secret process state. Use `-Action Stop` only when the user explicitly asks to stop or restart the demo. Except for the pre-start Maven gate defined above, do not replace these actions with handwritten process, Maven, Java, or cloudflared commands.
+Use `-Action Status` to inspect the non-secret process state. Use `-Action Stop` only when the user explicitly asks to stop or restart the demo. Except for the pre-start Example gate defined above, do not replace these actions with handwritten process, Maven, Java, or cloudflared commands.
 
 ## Hard boundaries
 

@@ -57,6 +57,19 @@ class DevToolsCompatibilityTest {
     }
 
     @Test
+    void seededCaseLoaderShuffleIsReproducibleAndPreservesCases() {
+        CaseLoader firstLoader = new CaseLoader(casesForShuffle());
+        CaseLoader secondLoader = new CaseLoader(casesForShuffle());
+
+        firstLoader.shuffle(42);
+        secondLoader.shuffle(42);
+
+        List<String> firstOrder = queries(firstLoader);
+        assertThat(firstOrder).containsExactlyElementsOf(queries(secondLoader));
+        assertThat(firstOrder).containsExactlyInAnyOrder("first", "second", "third", "fourth", "fifth");
+    }
+
+    @Test
     void legacyJointOptimizerRangeValidationUsesToolchainStatus() {
         assertThatThrownBy(() -> new JointOptimizer(modelConfig(), clientConfig(), 21)).isInstanceOf(BaseError.class)
                 .satisfies(error -> assertThat(((BaseError) error).getCode())
@@ -71,5 +84,20 @@ class DevToolsCompatibilityTest {
     private static ModelClientConfig clientConfig() {
         return ModelClientConfig.builder().clientProvider("OpenAI").apiKey("test-key").apiBase("https://example.com/v1")
                 .verifySsl(false).build();
+    }
+
+    private static List<Case> casesForShuffle() {
+        return List.of(caseWithQuery("first"), caseWithQuery("second"), caseWithQuery("third"),
+                caseWithQuery("fourth"), caseWithQuery("fifth"));
+    }
+
+    private static Case caseWithQuery(String query) {
+        return Case.builder().inputs(Map.of("query", query)).build();
+    }
+
+    private static List<String> queries(CaseLoader loader) {
+        return loader.get_cases().stream()
+                .map(item -> String.valueOf(item.getInputs().get("query")))
+                .toList();
     }
 }

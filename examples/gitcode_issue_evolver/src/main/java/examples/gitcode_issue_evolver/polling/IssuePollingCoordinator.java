@@ -5,11 +5,19 @@
 package examples.gitcode_issue_evolver.polling;
 
 import examples.gitcode_issue_evolver.AutoEvolvingConfig;
+import examples.gitcode_issue_evolver.codecheck.CodeCheckCommentParser;
+import examples.gitcode_issue_evolver.codecheck.CodeCheckReport;
+import examples.gitcode_issue_evolver.codecheck.FailedCodeCheckComment;
+import examples.gitcode_issue_evolver.codecheck.OpenLibingCodeCheckClient;
+import examples.gitcode_issue_evolver.curation.CodingStandardFindingEvidence;
 import examples.gitcode_issue_evolver.gitcode.GitCodeClient;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssuePage;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssueSummary;
 import examples.gitcode_issue_evolver.gitcode.GitCodePullRequest;
+import examples.gitcode_issue_evolver.gitcode.GitCodePullRequestComment;
+import examples.gitcode_issue_evolver.gitcode.IssueLabelScanRequest;
 import examples.gitcode_issue_evolver.gitcode.IssueScanRequest;
+import examples.gitcode_issue_evolver.job.CodeCheckRepairRequest;
 import examples.gitcode_issue_evolver.job.EnqueueResult;
 import examples.gitcode_issue_evolver.job.EvolutionJob;
 import examples.gitcode_issue_evolver.job.EvolutionJobState;
@@ -25,7 +33,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -43,6 +53,8 @@ public final class IssuePollingCoordinator {
     private final GitCodeClient gitCode;
     private final RepositoryProfile profile;
     private final Clock clock;
+    private final Optional<OpenLibingCodeCheckClient> codeCheckClient;
+    private final CodeCheckCommentParser commentParser = new CodeCheckCommentParser();
     private final PollingStatus status = new PollingStatus();
 
     /**
@@ -55,15 +67,29 @@ public final class IssuePollingCoordinator {
      */
     public IssuePollingCoordinator(AutoEvolvingConfig config, EvolutionJobStore store,
                                    GitCodeClient gitCode, RepositoryProfile profile) {
-        this(config, store, gitCode, profile, Clock.systemUTC());
+        this(config, store, gitCode, profile, Optional.empty(), Clock.systemUTC());
+    }
+
+    /** Create a coordinator with controlled CodeCheck report access. */
+    public IssuePollingCoordinator(AutoEvolvingConfig config, EvolutionJobStore store,
+                                   GitCodeClient gitCode, RepositoryProfile profile,
+                                   Optional<OpenLibingCodeCheckClient> codeCheckClient) {
+        this(config, store, gitCode, profile, codeCheckClient, Clock.systemUTC());
     }
 
     IssuePollingCoordinator(AutoEvolvingConfig config, EvolutionJobStore store,
                             GitCodeClient gitCode, RepositoryProfile profile, Clock clock) {
+        this(config, store, gitCode, profile, Optional.empty(), clock);
+    }
+
+    IssuePollingCoordinator(AutoEvolvingConfig config, EvolutionJobStore store,
+                            GitCodeClient gitCode, RepositoryProfile profile,
+                            Optional<OpenLibingCodeCheckClient> codeCheckClient, Clock clock) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.store = Objects.requireNonNull(store, "store must not be null");
         this.gitCode = Objects.requireNonNull(gitCode, "gitCode must not be null");
         this.profile = Objects.requireNonNull(profile, "profile must not be null");
+        this.codeCheckClient = Objects.requireNonNull(codeCheckClient, "codeCheckClient must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -77,6 +103,30 @@ public final class IssuePollingCoordinator {
             status.recordSuccess(clock.instant());
             LOGGER.info("GitCode polling completed: inspected={}, eligible={}, created={}, existing={}, prs={}",
                     counts.inspected(), counts.eligible(), counts.created(), counts.existing(), reconciled);
+        } catch (RuntimeException ex) {
+            status.recordFailure();
+            throw ex;
+        }
+    }
+
+    /**
+     * Scan every open Issue carrying the exact configured label without changing the rolling checkpoint.
+     *
+     * @return non-sensitive full scan counts
+     */
+    public IssueFullScanResult runFullScan() {
+        status.recordAttempt(clock.instant());
+        try {
+            FullScanCounts fullScan = scanAllOpenIssues();
+            int reconciled = reconcilePullRequests();
+            status.recordSuccess(clock.instant());
+            ScanCounts counts = fullScan.counts();
+            LOGGER.info("GitCode full Issue scan completed: pages={}, inspected={}, eligible={}, "
+                            + "created={}, existing={}, prs={}",
+                    fullScan.pages(), counts.inspected(), counts.eligible(), counts.created(),
+                    counts.existing(), reconciled);
+            return new IssueFullScanResult(fullScan.pages(), counts.inspected(), counts.eligible(),
+                    counts.created(), counts.existing(), reconciled);
         } catch (RuntimeException ex) {
             status.recordFailure();
             throw ex;
@@ -119,6 +169,20 @@ public final class IssuePollingCoordinator {
         return counts;
     }
 
+    private FullScanCounts scanAllOpenIssues() {
+        ScanCounts counts = ScanCounts.empty();
+        int page = 1;
+        while (true) {
+            GitCodeIssuePage result = gitCode.listOpenIssuesByLabel(
+                    new IssueLabelScanRequest(config.getTriggerLabel(), page, PAGE_SIZE));
+            counts = counts.add(processFullScanPage(result.issues()));
+            if (result.receivedCount() < PAGE_SIZE) {
+                return new FullScanCounts(page, counts);
+            }
+            page = Math.incrementExact(page);
+        }
+    }
+
     private IssueScanCheckpoint newCheckpoint(String repository, String label, Instant now) {
         Instant start = now.minus(Duration.ofHours(config.getIssueScanWindowHours()));
         return new IssueScanCheckpoint(repository, label, start, now, 1);
@@ -129,6 +193,19 @@ public final class IssuePollingCoordinator {
         for (GitCodeIssueSummary issue : issues) {
             counts = counts.inspectedOne();
             if (!isEligible(issue, checkpoint)) {
+                continue;
+            }
+            EnqueueResult result = store.enqueueIssue(jobRequest(issue));
+            counts = counts.eligibleOne(result.status() == EnqueueResult.Status.CREATED);
+        }
+        return counts;
+    }
+
+    private ScanCounts processFullScanPage(List<GitCodeIssueSummary> issues) {
+        ScanCounts counts = ScanCounts.empty();
+        for (GitCodeIssueSummary issue : issues) {
+            counts = counts.inspectedOne();
+            if (!issue.isOpen() || !issue.hasLabel(config.getTriggerLabel())) {
                 continue;
             }
             EnqueueResult result = store.enqueueIssue(jobRequest(issue));
@@ -167,16 +244,81 @@ public final class IssuePollingCoordinator {
     }
 
     private void reconcilePullRequest(EvolutionJob job, GitCodePullRequest pullRequest) {
-        if (pullRequest.isMerged()) {
-            transitionTerminal(job, EvolutionJobState.MERGED);
-            return;
-        }
         if (pullRequest.isClosed()) {
             transitionTerminal(job, EvolutionJobState.CLOSED);
             return;
         }
+        if (!config.isCodeCheckFeedbackEnabled()) {
+            reconcileWithoutCodeCheck(job, pullRequest);
+            return;
+        }
+        if (pullRequest.hasLabel(config.getCodeCheckSuccessLabel())) {
+            if (pullRequest.isMerged()) {
+                transitionTerminal(job, EvolutionJobState.MERGED);
+            } else {
+                markChecked(job, pullRequest);
+            }
+            return;
+        }
+        if (pullRequest.isOpen() && scheduleCodeCheckRepair(job, pullRequest)) {
+            return;
+        }
+        markChecked(job, pullRequest);
+        if (pullRequest.isMerged()) {
+            LOGGER.warn("PR {} is merged but still lacks the required CI success label", pullRequest.number());
+        }
+    }
+
+    private void reconcileWithoutCodeCheck(EvolutionJob job, GitCodePullRequest pullRequest) {
+        if (pullRequest.isMerged()) {
+            transitionTerminal(job, EvolutionJobState.MERGED);
+            return;
+        }
+        markChecked(job, pullRequest);
+    }
+
+    private boolean scheduleCodeCheckRepair(EvolutionJob job, GitCodePullRequest pullRequest) {
+        OpenLibingCodeCheckClient reportClient = codeCheckClient.orElseThrow(
+                () -> new IllegalStateException("CodeCheck feedback is enabled without a controlled client"));
+        Optional<GitCodePullRequestComment> latest = gitCode.listPullRequestComments(pullRequest.number()).stream()
+                .filter(comment -> config.getCodeCheckBotLogin().equals(comment.authorLogin()))
+                .filter(comment -> comment.body().toLowerCase(Locale.ROOT).contains("codecheck"))
+                .max(Comparator.comparing(GitCodePullRequestComment::updatedAt));
+        if (latest.isEmpty()) {
+            return false;
+        }
+        Optional<FailedCodeCheckComment> failed = commentParser.parseFailed(latest.get());
+        if (failed.isEmpty()) {
+            return false;
+        }
+        CodeCheckReport report = reportClient.read(failed.get().reportUrl(), pullRequest.number());
+        if (report.findings().isEmpty()) {
+            LOGGER.warn("Trusted CodeCheck failure for PR {} exposed no structured finding", pullRequest.number());
+            return false;
+        }
+        String canonical = latest.get().id() + System.lineSeparator() + latest.get().updatedAt()
+                + System.lineSeparator() + latest.get().body();
+        String fingerprint = GitCodeWebhookVerifier.sha256(canonical.getBytes(StandardCharsets.UTF_8));
+        CodeCheckRepairRequest.Feedback feedback = new CodeCheckRepairRequest.Feedback(
+                failed.get().commentId(), failed.get().reportUrl().toString(),
+                "Trusted CodeCheck feedback requires repair", report.repairContext(),
+                curationEvidence(report));
+        CodeCheckRepairRequest request = new CodeCheckRepairRequest(
+                job.id(), job.version(), fingerprint, pullRequest.headSha(), feedback);
+        return store.scheduleCodeCheckRepair(request).isPresent();
+    }
+
+    private static List<CodingStandardFindingEvidence> curationEvidence(CodeCheckReport report) {
+        return report.findings().stream()
+                .map(finding -> new CodingStandardFindingEvidence(
+                        finding.ruleId(), finding.ruleName(), finding.description(), finding.level()))
+                .filter(finding -> finding.ruleId() != null && !finding.ruleId().isBlank())
+                .toList();
+    }
+
+    private void markChecked(EvolutionJob job, GitCodePullRequest pullRequest) {
         store.markPullRequestChecked(job.id(), clock.instant().toEpochMilli());
-        if (!pullRequest.isOpen()) {
+        if (!pullRequest.isOpen() && !pullRequest.isMerged()) {
             LOGGER.warn("Ignored unsupported GitCode PR state for PR {}", pullRequest.number());
         }
     }
@@ -212,5 +354,8 @@ public final class IssuePollingCoordinator {
             return new ScanCounts(inspected + other.inspected, eligible + other.eligible,
                     created + other.created, existing + other.existing);
         }
+    }
+
+    private record FullScanCounts(int pages, ScanCounts counts) {
     }
 }

@@ -16,20 +16,27 @@ public enum EvolutionJobState {
     PLANNING,
     IMPLEMENTING,
     VERIFYING,
+    SMOKE_TESTING,
     COMMITTED,
     PUBLISHING,
     PR_CREATED,
     WAITING_REVIEW,
+    CODECHECK_REPAIR,
     CANCEL_REQUESTED,
     MERGED,
     CLOSED,
-    FAILED_RETRYABLE,
-    FAILED_FINAL,
+    RETRY_SCHEDULED,
+    NO_ACTION_REQUIRED,
+    BLOCKED_EXTERNAL,
+    FAILED_AUTOMATION,
+    FAILED_CONFIGURATION,
+    FAILED_POLICY,
+    FAILED_INTERNAL,
     CANCELLED;
 
     private static final Set<EvolutionJobState> ACTIVE = Set.of(
-            RECEIVED, PLANNING, IMPLEMENTING, VERIFYING, COMMITTED, PUBLISHING,
-            PR_CREATED, WAITING_REVIEW, FAILED_RETRYABLE, CANCEL_REQUESTED);
+            RECEIVED, PLANNING, IMPLEMENTING, VERIFYING, SMOKE_TESTING, COMMITTED, PUBLISHING,
+            PR_CREATED, WAITING_REVIEW, CODECHECK_REPAIR, RETRY_SCHEDULED, CANCEL_REQUESTED);
 
     /**
      * Report whether the state reserves the Issue uniqueness slot.
@@ -47,7 +54,10 @@ public enum EvolutionJobState {
      */
     public boolean releasesLease() {
         return this == WAITING_REVIEW || this == MERGED || this == CLOSED
-                || this == FAILED_FINAL || this == CANCELLED;
+                || this == NO_ACTION_REQUIRED
+                || this == BLOCKED_EXTERNAL || this == FAILED_AUTOMATION
+                || this == FAILED_CONFIGURATION || this == FAILED_POLICY
+                || this == FAILED_INTERNAL || this == CANCELLED;
     }
 
     /**
@@ -60,31 +70,44 @@ public enum EvolutionJobState {
         if (destination == null) {
             return false;
         }
-        if (isActive() && this != CANCEL_REQUESTED && destination == FAILED_FINAL) {
+        if (isActive() && this != CANCEL_REQUESTED && isFailureTerminal(destination)) {
             return true;
         }
         return switch (this) {
-            case RECEIVED -> destination == PLANNING || destination == FAILED_RETRYABLE
+            case RECEIVED -> destination == PLANNING || destination == RETRY_SCHEDULED
                     || destination == CANCEL_REQUESTED;
             case PLANNING -> destination == IMPLEMENTING || destination == PR_CREATED
-                    || destination == FAILED_RETRYABLE || destination == CANCEL_REQUESTED;
+                    || destination == RETRY_SCHEDULED || destination == CANCEL_REQUESTED;
             case IMPLEMENTING -> destination == VERIFYING
-                    || destination == FAILED_RETRYABLE || destination == CANCEL_REQUESTED;
-            case VERIFYING -> destination == COMMITTED
-                    || destination == FAILED_RETRYABLE || destination == CANCEL_REQUESTED;
+                    || destination == RETRY_SCHEDULED || destination == CANCEL_REQUESTED;
+            case VERIFYING -> destination == SMOKE_TESTING || destination == COMMITTED
+                    || destination == RETRY_SCHEDULED || destination == CANCEL_REQUESTED;
+            case SMOKE_TESTING -> destination == COMMITTED
+                    || destination == RETRY_SCHEDULED || destination == CANCEL_REQUESTED;
             case COMMITTED -> destination == PUBLISHING
-                    || destination == FAILED_RETRYABLE || destination == CANCEL_REQUESTED;
+                    || destination == RETRY_SCHEDULED || destination == CANCEL_REQUESTED;
             case PUBLISHING -> destination == PR_CREATED
-                    || destination == FAILED_RETRYABLE || destination == CANCEL_REQUESTED;
+                    || destination == RETRY_SCHEDULED || destination == CANCEL_REQUESTED;
             case PR_CREATED -> destination == WAITING_REVIEW || destination == MERGED
-                    || destination == CLOSED || destination == FAILED_RETRYABLE
+                    || destination == CLOSED || destination == RETRY_SCHEDULED
                     || destination == CANCEL_REQUESTED;
-            case WAITING_REVIEW -> destination == MERGED || destination == CLOSED
+            case WAITING_REVIEW -> destination == CODECHECK_REPAIR || destination == MERGED || destination == CLOSED
                     || destination == CANCEL_REQUESTED;
-            case FAILED_RETRYABLE -> destination == PLANNING
-                    || destination == FAILED_RETRYABLE || destination == CANCEL_REQUESTED;
+            case CODECHECK_REPAIR -> destination == PLANNING || destination == RETRY_SCHEDULED
+                    || destination == CANCEL_REQUESTED;
+            case RETRY_SCHEDULED -> destination == PLANNING
+                    || destination == RETRY_SCHEDULED || destination == CANCEL_REQUESTED;
             case CANCEL_REQUESTED -> destination == CANCELLED;
-            case MERGED, CLOSED, FAILED_FINAL, CANCELLED -> false;
+            case MERGED, CLOSED, NO_ACTION_REQUIRED, BLOCKED_EXTERNAL,
+                    FAILED_AUTOMATION, FAILED_CONFIGURATION, FAILED_POLICY,
+                    FAILED_INTERNAL, CANCELLED -> false;
         };
+    }
+
+    private static boolean isFailureTerminal(EvolutionJobState state) {
+        return state == NO_ACTION_REQUIRED
+                || state == BLOCKED_EXTERNAL || state == FAILED_AUTOMATION
+                || state == FAILED_CONFIGURATION || state == FAILED_POLICY
+                || state == FAILED_INTERNAL;
     }
 }

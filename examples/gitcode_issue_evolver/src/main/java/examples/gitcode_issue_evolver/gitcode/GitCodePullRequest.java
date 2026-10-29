@@ -4,13 +4,29 @@
 
 package examples.gitcode_issue_evolver.gitcode;
 
+import java.util.List;
+
 /**
  * Current GitCode pull-request context.
  *
  * @since 0.1.12
  */
 public record GitCodePullRequest(long number, String url, String state, String headRef,
-                                 String headSha, boolean draft) {
+                                 String headSha, boolean draft, List<String> labels) {
+    public GitCodePullRequest(long number, String url, String state, String headRef,
+                              String headSha, boolean draft) {
+        this(number, url, state, headRef, headSha, draft, List.of());
+    }
+
+    public GitCodePullRequest {
+        labels = labels == null ? List.of() : List.copyOf(labels);
+    }
+
+    /** @return whether the PR has the exact label */
+    public boolean hasLabel(String label) {
+        return labels.contains(label);
+    }
+
     /** @return {@code true} while GitCode reports the PR as open */
     public boolean isOpen() {
         return "open".equalsIgnoreCase(state) || "opened".equalsIgnoreCase(state);

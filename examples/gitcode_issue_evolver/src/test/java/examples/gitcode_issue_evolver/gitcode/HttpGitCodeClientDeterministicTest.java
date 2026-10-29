@@ -13,6 +13,7 @@ import okhttp3.ResponseBody;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** Deterministic GitCode Issue-list HTTP contract checks. */
@@ -33,7 +34,21 @@ public final class HttpGitCodeClientDeterministicTest {
                 "openJiuwen/agent-core-java", "tester/agent-core-java", "730");
         OkHttpClient httpClient = new OkHttpClient.Builder().addInterceptor(chain -> {
             query.set(chain.request().url().query());
-            ResponseBody body = ResponseBody.create(responseJson(), MediaType.get("application/json"));
+            String response = responseJson();
+            String path = chain.request().url().encodedPath();
+            if (path.endsWith("/pulls/9")) {
+                response = pullRequestJson();
+            }
+            if (path.endsWith("/pulls/9/comments")) {
+                response = pullRequestCommentsJson();
+            }
+            if (path.endsWith("/issues/90")) {
+                response = issueJson();
+            }
+            if (path.endsWith("/issues/90/comments")) {
+                response = "[]";
+            }
+            ResponseBody body = ResponseBody.create(response, MediaType.get("application/json"));
             return new Response.Builder()
                     .request(chain.request())
                     .protocol(Protocol.HTTP_1_1)
@@ -62,6 +77,47 @@ public final class HttpGitCodeClientDeterministicTest {
                 "pagination parameters are missing");
         require(captured.contains("created_after=") && captured.contains("created_before="),
                 "frozen window parameters are missing");
+
+        client.listOpenIssuesByLabel(new IssueLabelScanRequest("bug/codecheck", 7, 100));
+        String fullScanQuery = query.get();
+        require(fullScanQuery.contains("state=open"), "full scan open state filter is missing");
+        require(fullScanQuery.contains("labels=bug/codecheck"),
+                "full scan label filter is missing");
+        require(fullScanQuery.contains("page=7") && fullScanQuery.contains("per_page=100"),
+                "full scan pagination parameters are missing");
+        require(!fullScanQuery.contains("created_after=") && !fullScanQuery.contains("created_before="),
+                "full scan must not send rolling window parameters");
+        GitCodeIssue issue = client.getIssue(90L);
+        require(issue.labels().equals(List.of("bug/codecheck")),
+                "Issue detail labels were not retained for worker policy selection");
+        GitCodePullRequest pullRequest = client.getPullRequest(9L);
+        require(pullRequest.hasLabel("ci-successful"), "PR label was not parsed");
+        List<GitCodePullRequestComment> comments = client.listPullRequestComments(9L);
+        require(comments.size() == 1 && "openJiuwen-bot".equals(comments.get(0).authorLogin()),
+                "trusted PR comment metadata was not parsed");
+    }
+
+    private static String pullRequestJson() {
+        return """
+                {"number":9,"state":"open","html_url":"https://gitcode/pr/9",
+                 "head":{"ref":"branch","sha":"0123456789012345678901234567890123456789"},
+                 "labels":[{"name":"ci-successful"}],"draft":false}
+                """;
+    }
+
+    private static String issueJson() {
+        return """
+                {"number":90,"title":"CodeCheck G.OTH.01","body":"target:64","state":"open",
+                 "html_url":"https://gitcode/issues/90","labels":[{"name":"bug/codecheck"}]}
+                """;
+    }
+
+    private static String pullRequestCommentsJson() {
+        return """
+                [{"id":12,"body":"CodeCheck FAILED","comment_type":"Note",
+                  "user":{"login":"openJiuwen-bot"},
+                  "created_at":"2026-08-24T01:00:00Z","updated_at":"2026-08-24T02:00:00Z"}]
+                """;
     }
 
     private static String responseJson() {

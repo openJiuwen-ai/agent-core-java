@@ -4,9 +4,13 @@
 
 package com.openjiuwen.core.common.exception;
 
+import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -28,10 +32,13 @@ import java.util.Map;
  * @since 0.1.7
  */
 public class BaseError extends RuntimeException {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private final StatusCode status;
     private final int code;
-    private final Map<String, Object> params;
-    private final Object details;
+    private final HashMap<String, Object> params;
+    private final Serializable details;
     private final String templateMessage;
     private final String message;
 
@@ -55,8 +62,12 @@ public class BaseError extends RuntimeException {
         super(msg != null ? msg : renderMessage(status, params), cause);
         this.status = status;
         this.code = status.getCode();
-        this.params = params != null ? Collections.unmodifiableMap(new HashMap<>(params)) : Collections.emptyMap();
-        this.details = details;
+        this.params = params != null ? new HashMap<>(params) : new HashMap<>();
+        if (details == null) {
+            this.details = null;
+        } else {
+            this.details = SerializationUtils.requireSerializable(details, "details");
+        }
         this.templateMessage = renderMessage(status, params);
         this.message = msg != null ? msg : this.templateMessage;
         this.recoverable = defaultRecoverable();
@@ -174,7 +185,7 @@ public class BaseError extends RuntimeException {
         map.put("code", code);
         map.put("status", status.name());
         map.put("message", templateMessage);
-        map.put("params", params);
+        map.put("params", getParams());
         map.put("raw_message", message);
         map.put("details", details);
         return map;
@@ -221,7 +232,7 @@ public class BaseError extends RuntimeException {
      * @since 0.1.7
      */
     public Map<String, Object> getParams() {
-        return params;
+        return Collections.unmodifiableMap(params);
     }
 
     /**

@@ -190,6 +190,26 @@ function Read-RuntimeConfiguration {
     if ($maxIssueScanPages -lt 1 -or $maxIssueScanPages -gt 100) {
         throw "maxIssueScanPages must be between 1 and 100"
     }
+    $manualFullScanEnabled = [bool](Get-OptionalProperty $config "manualFullScanEnabled" $false)
+    $bindHost = [string](Get-RequiredProperty $config "bindHost")
+    if ($manualFullScanEnabled -and $bindHost -ne "127.0.0.1") {
+        throw "manualFullScanEnabled requires bindHost 127.0.0.1"
+    }
+    if ($manualFullScanEnabled -and $triggerMode -notin @("polling", "both")) {
+        throw "manualFullScanEnabled requires polling or both triggerMode"
+    }
+    $maxPrimaryRepairRounds = [int](Get-OptionalProperty $config "maxPrimaryRepairRounds" 5)
+    if ($maxPrimaryRepairRounds -lt 1 -or $maxPrimaryRepairRounds -gt 20) {
+        throw "maxPrimaryRepairRounds must be between 1 and 20"
+    }
+    $maxDiagnosticRepairRounds = [int](Get-OptionalProperty $config "maxDiagnosticRepairRounds" 3)
+    if ($maxDiagnosticRepairRounds -lt 0 -or $maxDiagnosticRepairRounds -gt 10) {
+        throw "maxDiagnosticRepairRounds must be between 0 and 10"
+    }
+    $maxTransientStageRetries = [int](Get-OptionalProperty $config "maxTransientStageRetries" 5)
+    if ($maxTransientStageRetries -lt 1 -or $maxTransientStageRetries -gt 10) {
+        throw "maxTransientStageRetries must be between 1 and 10"
+    }
     $localRepository = Resolve-ConfiguredPath $Root `
             ([string](Get-RequiredProperty $config "localRepository")) "localRepository"
     if (-not (Test-Path -LiteralPath $localRepository -PathType Container) -or
@@ -236,6 +256,10 @@ function Read-RuntimeConfiguration {
         IssueScanWindowHours = $issueScanWindowHours
         PollIntervalMinutes = $pollIntervalMinutes
         MaxIssueScanPages = $maxIssueScanPages
+        ManualFullScanEnabled = $manualFullScanEnabled
+        MaxPrimaryRepairRounds = $maxPrimaryRepairRounds
+        MaxDiagnosticRepairRounds = $maxDiagnosticRepairRounds
+        MaxTransientStageRetries = $maxTransientStageRetries
     }
 }
 

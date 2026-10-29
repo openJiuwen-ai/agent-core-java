@@ -1,0 +1,4 @@
+interface:
+  display_name: "Java PR Failure Analysis"
+  short_description: "Analyze Java PR test failures from reports and diffs"
+  default_prompt: "Use $analyze-failures to analyze this Java PR failure report, determine evidence-backed ownership, and write analysis.md."

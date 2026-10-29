@@ -61,7 +61,7 @@ public class ACEMemory {
      */
     public static String generateId(String section, String content) {
         String normalizedSection = section != null && !section.isBlank() ? section : "general";
-        return normalizedSection + "-" + SchemaUtils.md5Hex(content).substring(0, 8);
+        return normalizedSection + "-" + SchemaUtils.sha256Hex(content).substring(0, 8);
     }
 
     /**

@@ -4,6 +4,7 @@
 
 package examples.gitcode_issue_evolver;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import examples.utils.SharedExampleApiConfigLoader;
 
@@ -43,7 +44,8 @@ public final class ExampleConfigLoader {
                 .dataDir(path(settings.dataDir(), "../gitcode-issue-evolver-data"))
                 .worktreeRoot(path(settings.worktreeRoot(), "../gitcode-issue-evolver-worktrees"))
                 .localRepository(path(settings.localRepository(), "."))
-                .codingStandardSkill(path(settings.codingStandardSkill(), "resources/skills/coding-standard"))
+                .codingStandardSkill(path(settings.codingStandardSkill(),
+                        ".claude/skills/coding-standard-full"))
                 .issueWorkerSkill(path(settings.issueWorkerSkill(),
                         "examples/gitcode_issue_evolver/skills/gitcode-issue-evolver-worker"))
                 .webhookSecret(value(secrets.webhookSecret(), ""))
@@ -62,6 +64,29 @@ public final class ExampleConfigLoader {
                         ? 15 : settings.pollIntervalMinutes())
                 .maxIssueScanPages(settings.maxIssueScanPages() == null
                         ? 10 : settings.maxIssueScanPages())
+                .manualFullScanEnabled(Boolean.TRUE.equals(settings.manualFullScanEnabled()))
+                .codeCheckFeedbackEnabled(Boolean.TRUE.equals(settings.codeCheckFeedbackEnabled()))
+                .codeCheckStandardOnlyOverride(Boolean.TRUE.equals(
+                        settings.codeCheckStandardOnlyOverride()))
+                .codeCheckBotLogin(value(settings.codeCheckBotLogin(), "openJiuwen-bot"))
+                .codeCheckSuccessLabel(value(settings.codeCheckSuccessLabel(), "ci-successful"))
+                .openLibingBaseUrl(value(settings.openLibingBaseUrl(), ""))
+                .openLibingTimeoutSeconds(settings.openLibingTimeoutSeconds() == null
+                        ? 60 : settings.openLibingTimeoutSeconds())
+                .openLibingMaxFindings(settings.openLibingMaxFindings() == null
+                        ? 100 : settings.openLibingMaxFindings())
+                .maxPrimaryRepairRounds(settings.maxPrimaryRepairRounds() == null
+                        ? 5 : settings.maxPrimaryRepairRounds())
+                .maxDiagnosticRepairRounds(settings.maxDiagnosticRepairRounds() == null
+                        ? 3 : settings.maxDiagnosticRepairRounds())
+                .maxTransientStageRetries(settings.maxTransientStageRetries() == null
+                        ? 5 : settings.maxTransientStageRetries())
+                .smokeTestEnabled(Boolean.TRUE.equals(settings.smokeTestEnabled()))
+                .smokeTestRepository(path(settings.smokeTestRepository(), "../jiuwen-test-java"))
+                .smokeTestSelectors(settings.smokeTestSelectors() == null
+                        ? List.of() : settings.smokeTestSelectors())
+                .smokeTestTimeoutMinutes(settings.smokeTestTimeoutMinutes() == null
+                        ? 30 : settings.smokeTestTimeoutMinutes())
                 .gitUserName(value(settings.gitUserName(), "gitcode-issue-evolver"))
                 .gitUserEmail(value(settings.gitUserEmail(), "gitcode-issue-evolver@localhost"))
                 .modelProvider(SharedExampleApiConfigLoader.getModelProvider())
@@ -121,10 +146,26 @@ public final class ExampleConfigLoader {
             Integer issueScanWindowHours,
             Integer pollIntervalMinutes,
             Integer maxIssueScanPages,
+            Boolean manualFullScanEnabled,
+            Boolean codeCheckFeedbackEnabled,
+            Boolean codeCheckStandardOnlyOverride,
+            String codeCheckBotLogin,
+            String codeCheckSuccessLabel,
+            String openLibingBaseUrl,
+            Integer openLibingTimeoutSeconds,
+            Integer openLibingMaxFindings,
+            Integer maxPrimaryRepairRounds,
+            Integer maxDiagnosticRepairRounds,
+            Integer maxTransientStageRetries,
+            Boolean smokeTestEnabled,
+            String smokeTestRepository,
+            List<String> smokeTestSelectors,
+            Integer smokeTestTimeoutMinutes,
             String gitUserName,
             String gitUserEmail) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private record SecretSettings(String gitCodeToken, String webhookSecret) {
     }
 }

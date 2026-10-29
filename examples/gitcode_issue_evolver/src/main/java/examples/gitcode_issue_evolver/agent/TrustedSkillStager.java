@@ -11,9 +11,10 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
 
 /**
- * Stages the two trusted Skills under one immutable-for-Agent root.
+ * Stages the authoritative full coding standard and Issue worker Skill under one trusted root.
  *
  * @since 0.1.12
  */
@@ -25,19 +26,36 @@ public final class TrustedSkillStager {
      * Rebuild the trusted Skill root from configured sources outside mutable Worktrees.
      *
      * @param stagingRoot external runtime staging root
-     * @param codingStandardSource coding-standard Skill directory
+     * @param codingStandardSource authoritative coding-standard-full Skill directory
      * @param issueWorkerSource Issue worker Skill directory
      * @return normalized single Skill root
      */
     public static Path stage(Path stagingRoot, Path codingStandardSource, Path issueWorkerSource) {
         Path root = stagingRoot.toAbsolutePath().normalize();
         try {
+            requireCompleteCodingStandard(codingStandardSource);
             Files.createDirectories(root);
-            copySkill(root, "coding-standard", codingStandardSource);
+            copySkill(root, "coding-standard-full", codingStandardSource);
             copySkill(root, "gitcode-issue-evolver-worker", issueWorkerSource);
             return root;
         } catch (IOException ex) {
             throw new IllegalStateException("Unable to stage trusted Skills", ex);
+        }
+    }
+
+    private static void requireCompleteCodingStandard(Path source) throws IOException {
+        Path root = source.toAbsolutePath().normalize();
+        List<String> categories = List.of(
+                "G.FMT", "G.NAM", "G.DCL", "G.MET", "G.CTL", "G.EXP", "G.ERR",
+                "G.CMT", "G.OTH", "G.OBJ", "G.COL", "G.PRM", "G.TYP", "G.CON",
+                "SEC_EXT", "G.LOG", "G.FIO", "G.SER", "G.SEC", "G.EDV");
+        if (!Files.isReadable(root.resolve("SKILL.md"))) {
+            throw new IOException("coding-standard-full SKILL.md is unavailable");
+        }
+        for (String category : categories) {
+            if (!Files.isReadable(root.resolve("rules").resolve(category + ".md"))) {
+                throw new IOException("coding-standard-full category is unavailable: " + category);
+            }
         }
     }
 

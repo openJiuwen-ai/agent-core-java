@@ -33,6 +33,7 @@
 
 | 页面 | 关注点 | 主要依据 | 说明 |
 | --- | --- | --- | --- |
+| [GitCode Issue Evolver](GitCode%20Issue%20Evolver.md) | Bug Issue、受限 ReAct Agent、编译 Gate、自动 PR 和人工合入 | `examples/gitcode_issue_evolver`、`resources/skills/gitcode-issue-evolver` | 说明从 Bug Issue 准入到修复 PR 创建、评论与终态对账的完整流程。 |
 | [GitCode Feature Evolver](GitCode%20Feature%20Evolver.md) | Feature Issue、Controller、ReAct、测试 Gate、双 PR 和 System Test 交付 | `examples/gitcode_feature_evolver`、`resources/skills/gitcode-feature-devflow` | 说明从 Feature Issue 到 Feature PR、System Test PR 合入的完整持久化流程。 |
 
 ### Skills / 系统操作 / 扩展 / 演化

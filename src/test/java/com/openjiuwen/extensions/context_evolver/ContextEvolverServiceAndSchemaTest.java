@@ -126,7 +126,7 @@ class ContextEvolverServiceAndSchemaTest {
         taskMemory.setSection("api");
 
         var taskNode = taskMemory.toVectorNode();
-        assertEquals("task_workspace-a_" + SchemaUtils.md5Hex("Use a dedicated DTO instead of an anonymous map."),
+        assertEquals("task_workspace-a_" + SchemaUtils.sha256Hex("Use a dedicated DTO instead of an anonymous map."),
                 taskNode.getId());
 
         TaskMemory restoredTaskMemory = TaskMemory.fromVectorNode(taskNode);

@@ -7,6 +7,9 @@ package com.openjiuwen.core.singleagent.interrupt;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 
 import java.io.Serial;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Interrupt request enriched with tool-call metadata.
@@ -18,7 +21,7 @@ public class ToolCallInterruptRequest extends InterruptRequest implements java.i
     private static final long serialVersionUID = 1L;
     private String toolCallId;
     private String toolName;
-    private java.util.List<java.util.Map<String, Object>> questions;
+    private ArrayList<Map<String, Object>> questions;
 
     /**
      * Return the interrupted tool call id.
@@ -94,7 +97,7 @@ public class ToolCallInterruptRequest extends InterruptRequest implements java.i
      * @return questions list or null
      * @since 0.1.14
      */
-    public java.util.List<java.util.Map<String, Object>> getQuestions() {
+    public List<Map<String, Object>> getQuestions() {
         return questions;
     }
 
@@ -104,7 +107,7 @@ public class ToolCallInterruptRequest extends InterruptRequest implements java.i
      * @param questions questions to present
      * @since 0.1.14
      */
-    public void setQuestions(java.util.List<java.util.Map<String, Object>> questions) {
-        this.questions = questions;
+    public void setQuestions(List<Map<String, Object>> questions) {
+        this.questions = questions == null ? null : new ArrayList<>(questions);
     }
 }

@@ -5,7 +5,12 @@
 package examples.gitcode_issue_evolver;
 
 import com.openjiuwen.core.runner.Runner;
+import examples.gitcode_issue_evolver.agent.AgentModelSettings;
 import examples.gitcode_issue_evolver.agent.TrustedSkillStager;
+import examples.gitcode_issue_evolver.codecheck.HttpOpenLibingCodeCheckClient;
+import examples.gitcode_issue_evolver.codecheck.OpenLibingCodeCheckClient;
+import examples.gitcode_issue_evolver.curation.CodingStandardCurationService;
+import examples.gitcode_issue_evolver.curation.CodingStandardCuratorAgent;
 import examples.gitcode_issue_evolver.gitcode.GitCodeClient;
 import examples.gitcode_issue_evolver.gitcode.HttpGitCodeClient;
 import examples.gitcode_issue_evolver.job.EvolutionJobStore;
@@ -19,6 +24,7 @@ import examples.gitcode_issue_evolver.worker.AutoEvolvingWorker;
 import examples.gitcode_issue_evolver.worker.ExampleIssueTaskExecutor;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -64,23 +70,49 @@ public final class AutoEvolvingServiceLauncher {
                     profile,
                     requiredConfig.getAssignees());
             ExampleIssueTaskExecutor executor = new ExampleIssueTaskExecutor(
-                    requiredConfig, profile, publisher, trustedSkillsRoot);
-            AutoEvolvingWorker worker = new AutoEvolvingWorker(store, gitCode, executor);
+                    requiredConfig, profile, publisher, trustedSkillsRoot, store);
+            AutoEvolvingWorker worker = new AutoEvolvingWorker(store, gitCode, executor,
+                    java.util.UUID.randomUUID().toString(), config.getMaxTransientStageRetries());
+            Optional<OpenLibingCodeCheckClient> codeCheckClient = createCodeCheckClient(
+                    requiredConfig, coordinates);
             Optional<IssuePollingCoordinator> polling = requiredConfig.getTriggerMode().usesPolling()
-                    ? Optional.of(new IssuePollingCoordinator(requiredConfig, store, gitCode, profile))
+                    ? Optional.of(new IssuePollingCoordinator(
+                    requiredConfig, store, gitCode, profile, codeCheckClient))
                     : Optional.empty();
-            runService(requiredConfig, store, profile, worker, polling);
+            Optional<CodingStandardCurationService> curation = codeCheckClient.map(ignored ->
+                    new CodingStandardCurationService(store,
+                            new CodingStandardCuratorAgent(modelSettings(requiredConfig),
+                                    trustedSkillsRoot)));
+            AutoEvolvingService.ServiceComponents components = new AutoEvolvingService.ServiceComponents(
+                    Optional.of(worker), polling, curation);
+            runService(requiredConfig, store, profile, components);
         } finally {
             Runner.stop();
         }
     }
 
+    private static Optional<OpenLibingCodeCheckClient> createCodeCheckClient(
+            AutoEvolvingConfig config, RepositoryCoordinates coordinates) {
+        if (!config.isCodeCheckFeedbackEnabled()) {
+            return Optional.empty();
+        }
+        return Optional.of(new HttpOpenLibingCodeCheckClient(
+                URI.create(config.getOpenLibingBaseUrl()), coordinates,
+                config.getOpenLibingTimeoutSeconds(), config.getOpenLibingMaxFindings()));
+    }
+
+    private static AgentModelSettings modelSettings(AutoEvolvingConfig config) {
+        return new AgentModelSettings(
+                config.getModelProvider(), config.getModelApiKey(), config.getModelApiBase(),
+                config.getModelName(), config.isModelVerifySsl());
+    }
+
     private static void runService(AutoEvolvingConfig config, EvolutionJobStore store,
-                                   RepositoryProfile profile, AutoEvolvingWorker worker,
-                                   Optional<IssuePollingCoordinator> polling)
+                                   RepositoryProfile profile,
+                                   AutoEvolvingService.ServiceComponents components)
             throws IOException, InterruptedException {
         try (AutoEvolvingService service = new AutoEvolvingService(
-                config, store, profile, Optional.of(worker), polling)) {
+                config, store, profile, components)) {
             Thread shutdownHook = new AutoEvolvingThreadFactory("auto-evolving-shutdown")
                     .newThread(service::close);
             Runtime runtime = Runtime.getRuntime();

@@ -22,6 +22,14 @@ public interface GitCodeClient {
     GitCodeIssuePage listIssues(IssueScanRequest request);
 
     /**
+     * Read one page from all open Issues carrying the configured label.
+     *
+     * @param request label-only full scan request
+     * @return Issue page with valid summaries and the raw page count
+     */
+    GitCodeIssuePage listOpenIssuesByLabel(IssueLabelScanRequest request);
+
+    /**
      * Read current Issue data.
      *
      * @param issueIid Issue IID
@@ -69,4 +77,14 @@ public interface GitCodeClient {
      * @return current PR
      */
     GitCodePullRequest getPullRequest(long number);
+
+    /**
+     * Read bounded PR comments in API order.
+     *
+     * @param number PR number
+     * @return immutable comments
+     */
+    default List<GitCodePullRequestComment> listPullRequestComments(long number) {
+        return List.of();
+    }
 }

@@ -31,8 +31,19 @@ import java.util.concurrent.Future;
  */
 public final class ChildProcess {
     /**
+     * Trusted class prefix.
+     * <p>
+     * Agent classes are loaded dynamically from the spawn configuration. Loading is
+     * restricted to classes within the application's own namespace so that untrusted
+     * classes cannot be loaded and executed via static initializers.
+     *
+     * @since 0.1.7
+     */
+    private static final String TRUSTED_CLASS_PREFIX = "com.openjiuwen.";
+
+    /**
      * ChildProcess.
-     * 
+     *
      * @since 0.1.7
      */
     private ChildProcess() {
@@ -142,7 +153,7 @@ public final class ChildProcess {
             if (!(agentConfig instanceof ClassAgentSpawnConfig classConfig)) {
                 throw new IllegalArgumentException("agent_config kind CLASS_AGENT requires ClassAgentSpawnConfig");
             }
-            Class<?> agentClass = Class.forName(resolveClassName(classConfig));
+            Class<?> agentClass = loadAgentClass(classConfig);
             Object agent = instantiate(agentClass, classConfig.getInitKwargs());
             return Runner.runAgent(agent, inputs, session, null);
         }
@@ -178,7 +189,7 @@ public final class ChildProcess {
             if (!(agentConfig instanceof ClassAgentSpawnConfig classConfig)) {
                 throw new IllegalArgumentException("agent_config kind CLASS_AGENT requires ClassAgentSpawnConfig");
             }
-            Class<?> agentClass = Class.forName(resolveClassName(classConfig));
+            Class<?> agentClass = loadAgentClass(classConfig);
             Object agent = instantiate(agentClass, classConfig.getInitKwargs());
             Iterator<Object> iterator = Runner.runAgentStreaming(agent, inputs, session, null, null);
             List<Object> chunks = new ArrayList<>();
@@ -247,6 +258,22 @@ public final class ChildProcess {
             constructor.setAccessible(true);
             return constructor.newInstance();
         }
+    }
+
+    /**
+     * loadAgentClass.
+     *
+     * @param classConfig classConfig
+     * @return the result
+     * @throws ClassNotFoundException ClassNotFoundException
+     * @since 0.1.7
+     */
+    private static Class<?> loadAgentClass(ClassAgentSpawnConfig classConfig) throws ClassNotFoundException {
+        String className = resolveClassName(classConfig);
+        if (!className.startsWith(TRUSTED_CLASS_PREFIX)) {
+            throw new IllegalArgumentException("Agent class is not trusted: " + className);
+        }
+        return Class.forName(className);
     }
 
     /**

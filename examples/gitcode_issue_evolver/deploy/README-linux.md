@@ -31,6 +31,7 @@ The provided service and proxy templates use this layout:
 /etc/gitcode-issue-evolver/apiconfig.json
 /var/lib/gitcode-issue-evolver/data
 /var/lib/gitcode-issue-evolver/worktrees
+/var/lib/gitcode-issue-evolver/jiuwen-test-java
 /var/log/gitcode-issue-evolver
 ```
 
@@ -57,6 +58,24 @@ sudo -u gitcode-evolver git -C /opt/gitcode-issue-evolver/repo \
 
 The repository must retain the remote and base branch required by
 `localRepository`; the service fetches and manages Git Worktrees there.
+Set `codingStandardSkill` to
+`/opt/gitcode-issue-evolver/repo/.claude/skills/coding-standard-full`.
+Startup rejects the incomplete compatibility Skill under `resources/skills`.
+
+When the JiuwenTestJava smoke Gate is enabled, install a dedicated checkout
+outside the source repository and Job Worktree root. The service account must
+be able to write Maven's generated `target` directory, but the checkout is
+never exposed to the Bugfix Agent's file tools:
+
+```bash
+sudo -u gitcode-evolver git clone --branch agent_core_java \
+  https://gitcode.com/openJiuwen/jiuwen-test.git \
+  /var/lib/gitcode-issue-evolver/jiuwen-test-java
+```
+
+Use the organization-approved mirror or deployment artifact when direct clone
+is unavailable. Update this checkout only while the service is stopped, so a
+running Job observes one frozen smoke-test revision.
 
 ## External configuration
 
@@ -75,7 +94,15 @@ changed:
 localRepository=/opt/gitcode-issue-evolver/repo
 dataDir=/var/lib/gitcode-issue-evolver/data
 worktreeRoot=/var/lib/gitcode-issue-evolver/worktrees
+smokeTestRepository=/var/lib/gitcode-issue-evolver/jiuwen-test-java
 ```
+
+Set `smokeTestEnabled=true` and configure one to three exact fully qualified
+Java test class names in `smokeTestSelectors`. Do not configure a Maven group,
+package wildcard, or the complete test repository. The Controller first runs
+the fixed source compile Gate, installs the current repaired source version
+with tests skipped, and then runs only those exact smoke classes. The model
+cannot change the repository, selectors, Maven arguments, or timeout.
 
 Create the two credential-bearing JSON files directly on the host. Do not put
 their values in the unit file, shell history, or source control. The service
@@ -150,6 +177,48 @@ systemctl status gitcode-issue-evolver.service
 journalctl -u gitcode-issue-evolver.service -f
 curl --fail http://127.0.0.1:8081/health/ready
 ```
+
+When `manualFullScanEnabled` is true, a local administrator can request a
+full scan of every open Issue carrying the exact configured label. This
+operation ignores only the rolling creation-time window and keeps durable
+lifetime admission deduplication:
+
+```bash
+curl --fail-with-body -X POST \
+  -H 'X-Issue-Evolver-Admin: full-scan' \
+  http://127.0.0.1:8081/admin/poll/full
+```
+
+HTTP 202 means the asynchronous scan was accepted. HTTP 409 means a scheduled
+scan or another full scan is still running. The endpoint is not registered
+unless explicitly enabled and configuration validation requires the listener
+to remain on `127.0.0.1`.
+
+When `codeCheckFeedbackEnabled` is true, polling also inspects comments from the
+exact `codeCheckBotLogin`, reads supported OpenLibing reports through the
+restricted adapter, and updates the same publication branch after a failed
+report. Completion requires both a merged PR and the exact
+`codeCheckSuccessLabel`. The restricted adapter posts the opaque report TASK
+ID, UUID, and Project ID directly to the fixed OpenLibing API origin. It does
+not probe the HTML page, issue HEAD requests, or send Cookie, CSRF, GitCode PAT,
+or model credentials. Treat the complete report URL as a sensitive capability
+link and keep it out of public logs.
+
+Set `codeCheckStandardOnlyOverride` to true when CodeCheck remediation must ignore
+Issue-authored repair suggestions and use only the complete coding standard, repository
+evidence, and Controller Gate. Stale reported source paths are then recoverable hints
+within `src/main/**` and `src/test/**`, not immediate terminal failures.
+
+The bugfix Agent shares the bounded-context/model reliability harness used by
+Feature Evolver. Each primary or diagnostic repair tier retains one
+conversation. The Agent may call only the zero-argument `runApprovedGate`;
+the Controller owns the verification commands and repeats the Gate after the
+final model response. Deterministic Gate results are reused by the current
+file fingerprint. Configure `maxPrimaryRepairRounds`,
+`maxDiagnosticRepairRounds`, and `maxTransientStageRetries` to bound recovery.
+When smoke is enabled, readiness reports the non-secret `TARGETED_SMOKE`
+profile and selector count. It does not disclose repository paths or test
+output.
 
 Logback also writes rotating files below
 `/var/log/gitcode-issue-evolver`. These logs can contain Issue text, source

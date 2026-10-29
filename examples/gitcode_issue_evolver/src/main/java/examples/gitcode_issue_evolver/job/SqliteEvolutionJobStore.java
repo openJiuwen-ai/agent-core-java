@@ -4,6 +4,9 @@
 
 package examples.gitcode_issue_evolver.job;
 
+import examples.gitcode_issue_evolver.curation.CodingStandardCurationTask;
+import examples.gitcode_issue_evolver.curation.CodingStandardFindingEvidence;
+import examples.gitcode_issue_evolver.curation.CodingStandardLesson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,10 +36,12 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
     private static final int MAX_DETAIL_LENGTH = 4000;
     private static final Logger LOGGER = LoggerFactory.getLogger(SqliteEvolutionJobStore.class);
     private static final String ACTIVE_STATES = "'RECEIVED','PLANNING','IMPLEMENTING','VERIFYING',"
-            + "'COMMITTED','PUBLISHING','PR_CREATED','WAITING_REVIEW','FAILED_RETRYABLE',"
+            + "'SMOKE_TESTING','COMMITTED','PUBLISHING','PR_CREATED','WAITING_REVIEW','CODECHECK_REPAIR',"
+            + "'RETRY_SCHEDULED',"
             + "'CANCEL_REQUESTED'";
     private static final String JOB_COLUMNS = "id,repo,issue_iid,issue_title,issue_url,state,"
             + "trigger_delivery_id,branch,head_sha,pr_number,pr_url,draft,attempt_count,next_attempt_at,"
+            + "primary_repair_rounds,diagnostic_repair_rounds,last_failure_code,last_failure_category,"
             + "lease_owner,lease_until,version,last_error,created_at,updated_at";
     private static final String FIND_BY_PULL_REQUEST_SQL = "SELECT " + JOB_COLUMNS
             + " FROM evolution_jobs WHERE repo=? AND pr_number=? ORDER BY created_at DESC LIMIT 1";
@@ -51,7 +56,8 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
             + " ORDER BY pr_checked_at,updated_at LIMIT ?";
     private static final String CLAIM_JOB_SQL = "UPDATE evolution_jobs SET lease_owner=?,lease_until=?,"
             + "attempt_count=attempt_count+1,version=version+1,updated_at=? WHERE id=(SELECT id "
-            + "FROM evolution_jobs WHERE state IN ('RECEIVED','FAILED_RETRYABLE','CANCEL_REQUESTED') "
+            + "FROM evolution_jobs WHERE state IN ('RECEIVED','CODECHECK_REPAIR','RETRY_SCHEDULED',"
+            + "'CANCEL_REQUESTED') "
             + "AND next_attempt_at<=? "
             + "AND (lease_until=0 OR lease_until<?) ORDER BY created_at LIMIT 1) "
             + "AND (lease_until=0 OR lease_until<?) RETURNING " + JOB_COLUMNS;
@@ -259,6 +265,418 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
     }
 
     @Override
+    public Optional<EvolutionJob> scheduleCodeCheckRepair(CodeCheckRepairRequest request) {
+        CodeCheckRepairRequest required = Objects.requireNonNull(request, "request must not be null");
+        requireText(required.jobId(), "jobId");
+        requireText(required.fingerprint(), "fingerprint");
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                if (!insertCodeCheckFeedback(connection, required)) {
+                    connection.commit();
+                    return Optional.empty();
+                }
+                EvolutionJob before = requireById(connection, required.jobId());
+                if (before.state() != EvolutionJobState.WAITING_REVIEW) {
+                    throw new IllegalStateException("CodeCheck repair requires WAITING_REVIEW state");
+                }
+                updateCodeCheckRepair(connection, required);
+                insertCodeCheckFailure(connection, required);
+                insertCodingStandardCuration(connection, required);
+                EvolutionJob after = requireById(connection, required.jobId());
+                appendEvent(connection, required.jobId(), before.state(), after.state(), required.summary());
+                connection.commit();
+                return Optional.of(after);
+            } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+                rollback(connection, ex);
+                throw ex;
+            }
+        } catch (SQLException ex) {
+            throw failure("schedule CodeCheck repair", ex);
+        }
+    }
+
+    private static boolean insertCodeCheckFeedback(Connection connection, CodeCheckRepairRequest request)
+            throws SQLException {
+        String sql = "INSERT OR IGNORE INTO issue_codecheck_feedback"
+                + "(job_id,fingerprint,comment_id,report_url,head_sha,created_at) VALUES(?,?,?,?,?,?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, request.jobId());
+            statement.setString(2, safeDetail(request.fingerprint()));
+            statement.setString(3, safeDetail(request.commentId()));
+            statement.setString(4, safeDetail(request.reportUrl()));
+            statement.setString(5, safeDetail(request.headSha()));
+            statement.setLong(6, System.currentTimeMillis());
+            return statement.executeUpdate() == 1;
+        }
+    }
+
+    private static void updateCodeCheckRepair(Connection connection, CodeCheckRepairRequest request)
+            throws SQLException {
+        String sql = "UPDATE evolution_jobs SET state='CODECHECK_REPAIR',primary_repair_rounds=0,"
+                + "diagnostic_repair_rounds=0,last_failure_code='CODECHECK_FAILED',"
+                + "last_failure_category='AGENT_CORRECTABLE',last_error=?,pr_checked_at=?,"
+                + "next_attempt_at=0,lease_owner='',lease_until=0,version=version+1,updated_at=? "
+                + "WHERE id=? AND state='WAITING_REVIEW' AND version=?";
+        long now = System.currentTimeMillis();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, safeDetail(request.summary()));
+            statement.setLong(2, now);
+            statement.setLong(3, now);
+            statement.setString(4, request.jobId());
+            statement.setLong(5, request.expectedVersion());
+            requireUpdated(statement.executeUpdate(), request.jobId());
+        }
+    }
+
+    private static void insertCodeCheckFailure(Connection connection, CodeCheckRepairRequest request)
+            throws SQLException {
+        String sql = "INSERT INTO issue_failure_events"
+                + "(job_id,stage,code,category,summary,diagnostic,created_at) VALUES(?,?,?,?,?,?,?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, request.jobId());
+            statement.setString(2, "CODECHECK");
+            statement.setString(3, "CODECHECK_FAILED");
+            statement.setString(4, IssueFailureCategory.AGENT_CORRECTABLE.name());
+            statement.setString(5, safeDetail(request.summary()));
+            statement.setString(6, safeDetail(request.diagnostic()));
+            statement.setLong(7, System.currentTimeMillis());
+            statement.executeUpdate();
+        }
+    }
+
+    private static void insertCodingStandardCuration(Connection connection,
+                                                     CodeCheckRepairRequest request)
+            throws SQLException {
+        if (request.curationFindings().isEmpty()) {
+            return;
+        }
+        String taskSql = "INSERT OR IGNORE INTO coding_standard_curation_tasks"
+                + "(job_id,feedback_fingerprint,status,attempt_count,next_attempt_at,last_error,"
+                + "created_at,updated_at) VALUES(?,?,'PENDING',0,0,'',?,?)";
+        long now = System.currentTimeMillis();
+        try (PreparedStatement statement = connection.prepareStatement(taskSql)) {
+            statement.setString(1, request.jobId());
+            statement.setString(2, safeDetail(request.fingerprint()));
+            statement.setLong(3, now);
+            statement.setLong(4, now);
+            statement.executeUpdate();
+        }
+        insertCodingStandardFindings(connection, request);
+    }
+
+    private static void insertCodingStandardFindings(Connection connection,
+                                                      CodeCheckRepairRequest request)
+            throws SQLException {
+        String sql = "INSERT OR IGNORE INTO coding_standard_curation_findings"
+                + "(job_id,feedback_fingerprint,ordinal,rule_id,rule_name,description,level) "
+                + "VALUES(?,?,?,?,?,?,?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int ordinal = 0;
+            for (CodingStandardFindingEvidence finding : request.curationFindings()) {
+                statement.setString(1, request.jobId());
+                statement.setString(2, safeDetail(request.fingerprint()));
+                statement.setInt(3, ordinal++);
+                statement.setString(4, safeDetail(finding.ruleId()));
+                statement.setString(5, safeDetail(finding.ruleName()));
+                statement.setString(6, safeDetail(finding.description()));
+                statement.setString(7, safeDetail(finding.level()));
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    @Override
+    public Optional<CodingStandardCurationTask> nextCodingStandardCurationTask() {
+        String sql = "SELECT task.job_id,task.feedback_fingerprint,task.attempt_count "
+                + "FROM coding_standard_curation_tasks task JOIN evolution_jobs job ON job.id=task.job_id "
+                + "WHERE task.status='PENDING' AND task.next_attempt_at<=? AND job.state='MERGED' "
+                + "ORDER BY task.created_at LIMIT 1";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, System.currentTimeMillis());
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return Optional.empty();
+                }
+                String jobId = result.getString("job_id");
+                String fingerprint = result.getString("feedback_fingerprint");
+                int attempts = result.getInt("attempt_count");
+                return Optional.of(new CodingStandardCurationTask(jobId, fingerprint, attempts,
+                        readCodingStandardFindings(connection, jobId, fingerprint)));
+            }
+        } catch (SQLException ex) {
+            throw failure("find coding-standard curation task", ex);
+        }
+    }
+
+    private static List<CodingStandardFindingEvidence> readCodingStandardFindings(
+            Connection connection, String jobId, String fingerprint) throws SQLException {
+        String sql = "SELECT rule_id,rule_name,description,level "
+                + "FROM coding_standard_curation_findings WHERE job_id=? AND feedback_fingerprint=? "
+                + "ORDER BY ordinal";
+        List<CodingStandardFindingEvidence> findings = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, jobId);
+            statement.setString(2, fingerprint);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    findings.add(new CodingStandardFindingEvidence(
+                            result.getString("rule_id"), result.getString("rule_name"),
+                            result.getString("description"), result.getString("level")));
+                }
+            }
+        }
+        return List.copyOf(findings);
+    }
+
+    @Override
+    public void completeCodingStandardCuration(CodingStandardCurationTask task,
+                                               List<CodingStandardLesson> lessons) {
+        CodingStandardCurationTask requiredTask = Objects.requireNonNull(task, "task must not be null");
+        List<CodingStandardLesson> requiredLessons = List.copyOf(
+                Objects.requireNonNull(lessons, "lessons must not be null"));
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                insertCodingStandardLessons(connection, requiredTask, requiredLessons);
+                completeCodingStandardTask(connection, requiredTask, requiredLessons.isEmpty());
+                connection.commit();
+            } catch (SQLException ex) {
+                rollback(connection, ex);
+                throw ex;
+            }
+        } catch (SQLException ex) {
+            throw failure("complete coding-standard curation", ex);
+        }
+    }
+
+    private static void insertCodingStandardLessons(Connection connection,
+                                                    CodingStandardCurationTask task,
+                                                    List<CodingStandardLesson> lessons)
+            throws SQLException {
+        String sql = "INSERT OR IGNORE INTO coding_standard_lessons"
+                + "(fingerprint,rule_id,category,summary,prevention,source_job_id,"
+                + "source_feedback_fingerprint,created_at) VALUES(?,?,?,?,?,?,?,?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (CodingStandardLesson lesson : lessons) {
+                statement.setString(1, lesson.fingerprint());
+                statement.setString(2, lesson.ruleId());
+                statement.setString(3, lesson.category());
+                statement.setString(4, safeDetail(lesson.summary()));
+                statement.setString(5, safeDetail(lesson.prevention()));
+                statement.setString(6, task.jobId());
+                statement.setString(7, task.feedbackFingerprint());
+                statement.setLong(8, System.currentTimeMillis());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    private static void completeCodingStandardTask(Connection connection,
+                                                   CodingStandardCurationTask task,
+                                                   boolean hasNoUpdate) throws SQLException {
+        String sql = "UPDATE coding_standard_curation_tasks SET status=?,last_error='',updated_at=? "
+                + "WHERE job_id=? AND feedback_fingerprint=? AND status='PENDING'";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, hasNoUpdate ? "NO_UPDATE" : "COMPLETED");
+            statement.setLong(2, System.currentTimeMillis());
+            statement.setString(3, task.jobId());
+            statement.setString(4, task.feedbackFingerprint());
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void failCodingStandardCuration(CodingStandardCurationTask task, String error,
+                                           int maximumAttempts) {
+        CodingStandardCurationTask requiredTask = Objects.requireNonNull(task, "task must not be null");
+        if (maximumAttempts < 1) {
+            throw new IllegalArgumentException("maximumAttempts must be positive");
+        }
+        int attempts = requiredTask.attemptCount() + 1;
+        boolean isExhausted = attempts >= maximumAttempts;
+        long nextAttemptAt = isExhausted ? 0 : System.currentTimeMillis() + retryDelayMillis(attempts);
+        String sql = "UPDATE coding_standard_curation_tasks SET status=?,attempt_count=?,"
+                + "next_attempt_at=?,last_error=?,updated_at=? "
+                + "WHERE job_id=? AND feedback_fingerprint=? AND status='PENDING'";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, isExhausted ? "FAILED" : "PENDING");
+            statement.setInt(2, attempts);
+            statement.setLong(3, nextAttemptAt);
+            statement.setString(4, safeDetail(error));
+            statement.setLong(5, System.currentTimeMillis());
+            statement.setString(6, requiredTask.jobId());
+            statement.setString(7, requiredTask.feedbackFingerprint());
+            statement.executeUpdate();
+        } catch (SQLException ex) {
+            throw failure("record coding-standard curation failure", ex);
+        }
+    }
+
+    private static long retryDelayMillis(int attempts) {
+        return switch (attempts) {
+            case 1 -> Duration.ofSeconds(30).toMillis();
+            case 2 -> Duration.ofMinutes(2).toMillis();
+            default -> Duration.ofMinutes(10).toMillis();
+        };
+    }
+
+    @Override
+    public List<CodingStandardLesson> listCodingStandardLessons(int limit) {
+        if (limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("limit must be between 1 and 100");
+        }
+        String sql = "SELECT fingerprint,rule_id,category,summary,prevention "
+                + "FROM coding_standard_lessons ORDER BY created_at DESC LIMIT ?";
+        List<CodingStandardLesson> lessons = new ArrayList<>();
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, limit);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    lessons.add(new CodingStandardLesson(
+                            result.getString("fingerprint"), result.getString("rule_id"),
+                            result.getString("category"), result.getString("summary"),
+                            result.getString("prevention")));
+                }
+            }
+            return List.copyOf(lessons);
+        } catch (SQLException ex) {
+            throw failure("list coding-standard lessons", ex);
+        }
+    }
+
+    @Override
+    public void recordFailureEvent(String jobId, String stage, String code,
+                                   IssueFailureCategory category, String summary,
+                                   String diagnostic) {
+        requireText(jobId, "jobId");
+        requireText(stage, "stage");
+        requireText(code, "code");
+        Objects.requireNonNull(category, "category must not be null");
+        String sql = "INSERT INTO issue_failure_events"
+                + "(job_id,stage,code,category,summary,diagnostic,created_at) VALUES(?,?,?,?,?,?,?)";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, jobId);
+            statement.setString(2, safeDetail(stage));
+            statement.setString(3, safeDetail(code));
+            statement.setString(4, category.name());
+            statement.setString(5, safeDetail(summary));
+            statement.setString(6, safeDetail(diagnostic));
+            statement.setLong(7, System.currentTimeMillis());
+            statement.executeUpdate();
+        } catch (SQLException ex) {
+            throw failure("record Issue failure event", ex);
+        }
+    }
+
+    @Override
+    public void recordGateReceipt(String jobId, String fingerprint, String status,
+                                  String profile, String code, String category,
+                                  boolean cached, int exitCode, String outputTail,
+                                  long completedAt) {
+        requireText(jobId, "jobId");
+        requireText(fingerprint, "fingerprint");
+        requireText(status, "status");
+        requireText(profile, "profile");
+        requireNonNegative(completedAt, "completedAt");
+        String sql = "INSERT INTO issue_gate_receipts"
+                + "(job_id,fingerprint,status,profile,code,category,cached,exit_code,output_tail,completed_at) "
+                + "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(job_id,fingerprint) DO UPDATE SET "
+                + "status=excluded.status,profile=excluded.profile,code=excluded.code,"
+                + "category=excluded.category,cached=excluded.cached,exit_code=excluded.exit_code,"
+                + "output_tail=excluded.output_tail,completed_at=excluded.completed_at";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, jobId);
+            statement.setString(2, fingerprint);
+            statement.setString(3, status);
+            statement.setString(4, profile);
+            statement.setString(5, safeDetail(code));
+            statement.setString(6, safeDetail(category));
+            statement.setInt(7, cached ? 1 : 0);
+            statement.setInt(8, exitCode);
+            statement.setString(9, safeDetail(outputTail));
+            statement.setLong(10, completedAt);
+            statement.executeUpdate();
+        } catch (SQLException ex) {
+            throw failure("record Issue Gate receipt", ex);
+        }
+    }
+
+    @Override
+    public Optional<IssueGateReceipt> findGateReceipt(String jobId, String fingerprint) {
+        requireText(jobId, "jobId");
+        requireText(fingerprint, "fingerprint");
+        String sql = "SELECT status,profile,code,category,cached,exit_code,output_tail,completed_at "
+                + "FROM issue_gate_receipts WHERE job_id=? AND fingerprint=?";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, jobId);
+            statement.setString(2, fingerprint);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(new IssueGateReceipt(fingerprint,
+                        result.getString("status"), result.getString("profile"),
+                        result.getString("code"), result.getString("category"),
+                        result.getInt("cached") == 1, result.getInt("exit_code"),
+                        result.getString("output_tail"), result.getLong("completed_at")));
+            }
+        } catch (SQLException ex) {
+            throw failure("find Issue Gate receipt", ex);
+        }
+    }
+
+    @Override
+    public void recordRepairProgress(String jobId, int primaryRounds, int diagnosticRounds,
+                                     String failureCode, String failureCategory) {
+        requireText(jobId, "jobId");
+        requireNonNegative(primaryRounds, "primaryRounds");
+        requireNonNegative(diagnosticRounds, "diagnosticRounds");
+        String sql = "UPDATE evolution_jobs SET primary_repair_rounds=?,"
+                + "diagnostic_repair_rounds=?,last_failure_code=?,last_failure_category=?,"
+                + "updated_at=? WHERE id=?";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, primaryRounds);
+            statement.setInt(2, diagnosticRounds);
+            statement.setString(3, safeDetail(failureCode));
+            statement.setString(4, safeDetail(failureCategory));
+            statement.setLong(5, System.currentTimeMillis());
+            statement.setString(6, jobId);
+            requireUpdated(statement.executeUpdate(), jobId);
+        } catch (SQLException ex) {
+            throw failure("record Issue repair progress", ex);
+        }
+    }
+
+    @Override
+    public List<String> recentFailureContext(String jobId, int limit) {
+        requireText(jobId, "jobId");
+        if (limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("limit must be between 1 and 100");
+        }
+        String sql = "SELECT code,category,summary,diagnostic FROM issue_failure_events "
+                + "WHERE job_id=? ORDER BY id DESC LIMIT ?";
+        List<String> context = new ArrayList<>();
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, jobId);
+            statement.setInt(2, limit);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    context.add("code=" + result.getString("code")
+                            + ", category=" + result.getString("category")
+                            + ", summary=" + result.getString("summary")
+                            + ", diagnostic=" + result.getString("diagnostic"));
+                }
+            }
+            return List.copyOf(context);
+        } catch (SQLException ex) {
+            throw failure("load Issue failure context", ex);
+        }
+    }
+
+    @Override
     public Optional<EvolutionJob> leaseNext(String workerId, Duration leaseDuration) {
         requireText(workerId, "workerId");
         long now = System.currentTimeMillis();
@@ -319,11 +737,13 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try {
+                lockJobForWrite(connection, jobId);
                 EvolutionJob before = requireById(connection, jobId);
                 requireTransition(before.state(), state);
-                long nextAttemptAt = state == EvolutionJobState.FAILED_RETRYABLE
+                boolean retryScheduled = state == EvolutionJobState.RETRY_SCHEDULED;
+                long nextAttemptAt = retryScheduled
                         ? System.currentTimeMillis() + retryDelay(before.attemptCount()) : 0L;
-                boolean release = state.releasesLease() || state == EvolutionJobState.FAILED_RETRYABLE;
+                boolean release = state.releasesLease() || retryScheduled;
                 String sql = "UPDATE evolution_jobs SET state=?,last_error=?,next_attempt_at=?,"
                         + (release ? "lease_owner='',lease_until=0," : "")
                         + "version=version+1,updated_at=? WHERE id=? AND version=?";
@@ -356,6 +776,7 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try {
+                lockJobForWrite(connection, jobId);
                 EvolutionJob before = requireById(connection, jobId);
                 if (before.state() == EvolutionJobState.CANCEL_REQUESTED
                         || before.state() == EvolutionJobState.CANCELLED) {
@@ -396,6 +817,7 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try {
+                lockJobForWrite(connection, jobId);
                 EvolutionJob before = requireById(connection, jobId);
                 requireTransition(before.state(), EvolutionJobState.PR_CREATED);
                 String sql = "UPDATE evolution_jobs SET state='PR_CREATED',pr_number=?,pr_url=?,head_sha=?,draft=?,"
@@ -427,13 +849,14 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
     public void recoverExpiredLeases() {
         long now = System.currentTimeMillis();
         recoverExpiredCancellationLeases(now);
-        String sql = "UPDATE evolution_jobs SET state='FAILED_RETRYABLE',lease_owner='',lease_until=0,"
+        String sql = "UPDATE evolution_jobs SET state='RETRY_SCHEDULED',lease_owner='',lease_until=0,"
                 + "next_attempt_at=? + CASE attempt_count "
                 + "WHEN 1 THEN 30000 WHEN 2 THEN 120000 ELSE 600000 END,"
                 + "last_error='WORKER_INFRASTRUCTURE_FAILED: worker lease expired',"
                 + "version=version+1,updated_at=? "
                 + "WHERE state IN (" + ACTIVE_STATES + ") "
-                + "AND state NOT IN ('RECEIVED','FAILED_RETRYABLE','WAITING_REVIEW','CANCEL_REQUESTED') "
+                + "AND state NOT IN ('RECEIVED','RETRY_SCHEDULED',"
+                + "'WAITING_REVIEW','CANCEL_REQUESTED') "
                 + "AND lease_until>0 AND lease_until<?";
         try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, now);
@@ -486,6 +909,10 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                   pr_url TEXT NOT NULL DEFAULT '',
                   draft INTEGER NOT NULL DEFAULT 0,
                   attempt_count INTEGER NOT NULL DEFAULT 0,
+                  primary_repair_rounds INTEGER NOT NULL DEFAULT 0,
+                  diagnostic_repair_rounds INTEGER NOT NULL DEFAULT 0,
+                  last_failure_code TEXT NOT NULL DEFAULT '',
+                  last_failure_category TEXT NOT NULL DEFAULT '',
                   next_attempt_at INTEGER NOT NULL DEFAULT 0,
                   lease_owner TEXT NOT NULL DEFAULT '',
                   lease_until INTEGER NOT NULL DEFAULT 0,
@@ -522,16 +949,87 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                   updated_at INTEGER NOT NULL,
                   PRIMARY KEY(repo,label)
                 );
+                CREATE TABLE IF NOT EXISTS issue_failure_events (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  job_id TEXT NOT NULL,
+                  stage TEXT NOT NULL,
+                  code TEXT NOT NULL,
+                  category TEXT NOT NULL,
+                  summary TEXT NOT NULL,
+                  diagnostic TEXT NOT NULL,
+                  created_at INTEGER NOT NULL,
+                  FOREIGN KEY(job_id) REFERENCES evolution_jobs(id)
+                );
+                CREATE TABLE IF NOT EXISTS issue_gate_receipts (
+                  job_id TEXT NOT NULL,
+                  fingerprint TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  profile TEXT NOT NULL,
+                  code TEXT NOT NULL,
+                  category TEXT NOT NULL,
+                  cached INTEGER NOT NULL,
+                  exit_code INTEGER NOT NULL,
+                  output_tail TEXT NOT NULL,
+                  completed_at INTEGER NOT NULL,
+                  PRIMARY KEY(job_id,fingerprint),
+                  FOREIGN KEY(job_id) REFERENCES evolution_jobs(id)
+                );
+                CREATE TABLE IF NOT EXISTS issue_codecheck_feedback (
+                  job_id TEXT NOT NULL,
+                  fingerprint TEXT NOT NULL,
+                  comment_id TEXT NOT NULL,
+                  report_url TEXT NOT NULL,
+                  head_sha TEXT NOT NULL,
+                  created_at INTEGER NOT NULL,
+                  PRIMARY KEY(job_id,fingerprint),
+                  FOREIGN KEY(job_id) REFERENCES evolution_jobs(id)
+                );
+                CREATE TABLE IF NOT EXISTS coding_standard_curation_tasks (
+                  job_id TEXT NOT NULL,
+                  feedback_fingerprint TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  attempt_count INTEGER NOT NULL,
+                  next_attempt_at INTEGER NOT NULL,
+                  last_error TEXT NOT NULL,
+                  created_at INTEGER NOT NULL,
+                  updated_at INTEGER NOT NULL,
+                  PRIMARY KEY(job_id,feedback_fingerprint),
+                  FOREIGN KEY(job_id) REFERENCES evolution_jobs(id)
+                );
+                CREATE TABLE IF NOT EXISTS coding_standard_curation_findings (
+                  job_id TEXT NOT NULL,
+                  feedback_fingerprint TEXT NOT NULL,
+                  ordinal INTEGER NOT NULL,
+                  rule_id TEXT NOT NULL,
+                  rule_name TEXT NOT NULL,
+                  description TEXT NOT NULL,
+                  level TEXT NOT NULL,
+                  PRIMARY KEY(job_id,feedback_fingerprint,ordinal),
+                  FOREIGN KEY(job_id,feedback_fingerprint)
+                    REFERENCES coding_standard_curation_tasks(job_id,feedback_fingerprint)
+                );
+                CREATE TABLE IF NOT EXISTS coding_standard_lessons (
+                  fingerprint TEXT PRIMARY KEY,
+                  rule_id TEXT NOT NULL,
+                  category TEXT NOT NULL,
+                  summary TEXT NOT NULL,
+                  prevention TEXT NOT NULL,
+                  source_job_id TEXT NOT NULL,
+                  source_feedback_fingerprint TEXT NOT NULL,
+                  created_at INTEGER NOT NULL,
+                  FOREIGN KEY(source_job_id,source_feedback_fingerprint)
+                    REFERENCES coding_standard_curation_tasks(job_id,feedback_fingerprint)
+                );
                 DROP INDEX IF EXISTS ux_evolution_active_issue;
                 CREATE UNIQUE INDEX ux_evolution_active_issue
                   ON evolution_jobs(repo, issue_iid) WHERE state IN (
-                    'RECEIVED','PLANNING','IMPLEMENTING','VERIFYING','COMMITTED','PUBLISHING',
-                    'PR_CREATED','WAITING_REVIEW','FAILED_RETRYABLE','CANCEL_REQUESTED');
+                    'RECEIVED','PLANNING','IMPLEMENTING','VERIFYING','SMOKE_TESTING','COMMITTED','PUBLISHING',
+                    'PR_CREATED','WAITING_REVIEW','CODECHECK_REPAIR','RETRY_SCHEDULED','CANCEL_REQUESTED');
                 CREATE UNIQUE INDEX IF NOT EXISTS ux_evolution_pr
                   ON evolution_jobs(repo, pr_number) WHERE pr_number IS NOT NULL;
-                PRAGMA user_version=3;
                 """;
         try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            executePragma(statement, "PRAGMA journal_mode=WAL");
             for (String sql : schema.split(";")) {
                 if (!sql.isBlank()) {
                     int updated = statement.executeUpdate(sql);
@@ -540,9 +1038,24 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
             }
             ensureColumn(connection, "evolution_jobs", "pr_checked_at",
                     "ALTER TABLE evolution_jobs ADD COLUMN pr_checked_at INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "evolution_jobs", "primary_repair_rounds",
+                    "ALTER TABLE evolution_jobs ADD COLUMN primary_repair_rounds INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "evolution_jobs", "diagnostic_repair_rounds",
+                    "ALTER TABLE evolution_jobs ADD COLUMN diagnostic_repair_rounds INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(connection, "evolution_jobs", "last_failure_code",
+                    "ALTER TABLE evolution_jobs ADD COLUMN last_failure_code TEXT NOT NULL DEFAULT ''");
+            ensureColumn(connection, "evolution_jobs", "last_failure_category",
+                    "ALTER TABLE evolution_jobs ADD COLUMN last_failure_category TEXT NOT NULL DEFAULT ''");
+            ensureColumn(connection, "issue_codecheck_feedback", "head_sha",
+                    "ALTER TABLE issue_codecheck_feedback ADD COLUMN head_sha TEXT NOT NULL DEFAULT ''");
+            statement.executeUpdate("UPDATE evolution_jobs SET state='RETRY_SCHEDULED' "
+                    + "WHERE state='FAILED_RETRYABLE'");
+            statement.executeUpdate("UPDATE evolution_jobs SET state='FAILED_AUTOMATION' "
+                    + "WHERE state='FAILED_FINAL'");
             statement.executeUpdate("INSERT OR IGNORE INTO issue_admissions"
                     + "(repo,issue_iid,first_delivery_id,admitted_at) "
                     + "SELECT repo,issue_iid,trigger_delivery_id,created_at FROM evolution_jobs");
+            statement.executeUpdate("PRAGMA user_version=8");
         } catch (SQLException ex) {
             throw failure("initialize SQLite schema", ex);
         }
@@ -553,7 +1066,6 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
         try {
             try (Statement statement = connection.createStatement()) {
                 executePragma(statement, "PRAGMA foreign_keys=ON");
-                executePragma(statement, "PRAGMA journal_mode=WAL");
                 executePragma(statement, "PRAGMA busy_timeout=5000");
             }
             return connection;
@@ -644,6 +1156,14 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
         }
     }
 
+    private static void lockJobForWrite(Connection connection, String jobId) throws SQLException {
+        String sql = "UPDATE evolution_jobs SET updated_at=updated_at WHERE id=?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, jobId);
+            requireUpdated(statement.executeUpdate(), jobId);
+        }
+    }
+
     private static EvolutionJob readJob(ResultSet result) throws SQLException {
         long prNumber = result.getLong("pr_number");
         boolean isPrNumberNull = result.wasNull();
@@ -661,6 +1181,10 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                 .pullRequestUrl(result.getString("pr_url"))
                 .draft(result.getInt("draft") == 1)
                 .attemptCount(result.getInt("attempt_count"))
+                .primaryRepairRounds(result.getInt("primary_repair_rounds"))
+                .diagnosticRepairRounds(result.getInt("diagnostic_repair_rounds"))
+                .lastFailureCode(result.getString("last_failure_code"))
+                .lastFailureCategory(result.getString("last_failure_category"))
                 .nextAttemptAt(result.getLong("next_attempt_at"))
                 .leaseOwner(result.getString("lease_owner"))
                 .leaseUntil(result.getLong("lease_until"))
@@ -745,7 +1269,9 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
         return switch (attemptCount) {
             case 0, 1 -> Duration.ofSeconds(30).toMillis();
             case 2 -> Duration.ofMinutes(2).toMillis();
-            default -> Duration.ofMinutes(10).toMillis();
+            case 3 -> Duration.ofMinutes(10).toMillis();
+            case 4 -> Duration.ofMinutes(30).toMillis();
+            default -> Duration.ofHours(2).toMillis();
         };
     }
 
