@@ -368,7 +368,9 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 .content(content)
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
-                .finishReason(toolCalls.isEmpty() ? "stop" : "tool_calls")
+                .finishReason(isPythonTruthy(choice.get("finish_reason"))
+                        ? String.valueOf(choice.get("finish_reason"))
+                        : (toolCalls.isEmpty() ? "stop" : "tool_calls"))
                 .reasoningContent(reasoningContent)
                 .parserContent(parserContent)
                 .build();
