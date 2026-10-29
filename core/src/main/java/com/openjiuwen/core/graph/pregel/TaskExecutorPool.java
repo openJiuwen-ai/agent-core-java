@@ -6,7 +6,6 @@ package com.openjiuwen.core.graph.pregel;
 
 import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
-
 import com.openjiuwen.core.graph.store.PendingNode;
 
 import java.util.ArrayList;
@@ -29,8 +28,7 @@ import java.util.concurrent.TimeoutException;
  * {@code openjiuwen/core/graph/pregel/task.py}.</p>
  */
 public class TaskExecutorPool {
-
-    private static final long STOP_TIMEOUT_SECONDS = 30;
+    private static final long STOP_TIMEOUT_SECONDS = 30L;
 
     private final PregelConfig config;
     private final ExecutorService executorService;
@@ -87,7 +85,9 @@ public class TaskExecutorPool {
                 TaskOutcome outcome = collect(task);
                 if (outcome.error() != null && firstError == null) {
                     firstError = outcome.error();
-                } else if (outcome.result() instanceof GraphInterrupt graphInterrupt) {
+                    continue;
+                }
+                if (outcome.result() instanceof GraphInterrupt graphInterrupt) {
                     interrupt = interrupt == null ? graphInterrupt : mergeInterrupts(interrupt, graphInterrupt);
                 }
             }
@@ -181,14 +181,30 @@ public class TaskExecutorPool {
         executions.remove(task);
         if (outcome.error() != null) {
             commitFailure(node, outcome.error());
-        } else if (outcome.result() instanceof GraphInterrupt interrupt) {
+            return outcome;
+        }
+        if (outcome.result() instanceof GraphInterrupt interrupt) {
             commitFailure(node, interrupt);
-        } else if (outcome.result() instanceof List<?> messages) {
+            return outcome;
+        }
+        if (outcome.result() instanceof List<?> messages) {
             for (Object message : messages) {
-                succeedMessages.add((Message) message);
+                addSucceededMessage(message);
             }
         }
         return outcome;
+    }
+
+    private void addSucceededMessage(Object message) {
+        if (message == null) {
+            succeedMessages.add(null);
+            return;
+        }
+        if (message instanceof Message routedMessage) {
+            succeedMessages.add(routedMessage);
+            return;
+        }
+        throw new ClassCastException("Pregel route must contain Message instances");
     }
 
     private void commitFailure(PregelNode node, Exception error) {

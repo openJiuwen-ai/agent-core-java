@@ -4,23 +4,26 @@
 
 package com.openjiuwen.core.graph.pregel;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.common.concurrent.InterruptSignals;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies cancellation and checkpoint collection without relying on worker scheduling delays.
@@ -141,6 +144,29 @@ class TaskExecutorPoolCancellationTest {
         assertEquals(1, pool.getSucceedMessages().size());
         assertEquals("complete", pool.getSucceedMessages().get(0).getSender());
         assertTrue(pool.getFailed().containsKey("failed"));
+    }
+
+    @Test
+    void routerFailurePreservesCheckedCause() {
+        IOException expected = new IOException("injected routing failure");
+        pool.submit(new PregelNode("failed-router", ignored -> null, List.of(source -> {
+            throw expected;
+        })), 1);
+
+        assertSame(expected, assertThrows(IOException.class, pool::waitAll));
+        assertTrue(pool.isQuiescent());
+    }
+
+    @Test
+    void fatalNodeFailurePreservesCauseAndStopsWorker() {
+        AssertionError expected = new AssertionError("injected node failure");
+        PregelTaskExecution execution = new PregelTaskExecution(new PregelNode("fatal", ignored -> {
+            throw expected;
+        }, List.of()), config, 1, Runnable::run);
+
+        CompletionException failure = assertThrows(CompletionException.class, () -> execution.result().join());
+        assertSame(expected, failure.getCause());
+        assertTrue(execution.isStopped());
     }
 
     private PregelNode routingNode(String name) {

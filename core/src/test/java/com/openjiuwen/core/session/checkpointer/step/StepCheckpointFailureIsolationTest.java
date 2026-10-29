@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.session.checkpointer.step;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.internal.AgentSession;
@@ -13,9 +16,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 /**
  * Failed persistence and failure evidence must never advance the recoverable snapshot.
  *
@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class StepCheckpointFailureIsolationTest {
     @Test
-    void failedSaveRollsBackCursorAndFailureEvidenceKeepsCommittedMessages() {
+    void failedSavePreservesCommittedSnapshot() {
         try (FailingCheckpointer checkpointer = new FailingCheckpointer()) {
             AgentSession session = session("rollback", "agent-a");
             checkpointer.preAgentExecute(session, null);

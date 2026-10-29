@@ -56,7 +56,8 @@ class VertexExecutorIsolationTest {
         Vertex.VertexSession session = createSession("owned");
         WorkflowCommitState state = mock(WorkflowCommitState.class,
                 withSettings().extraInterfaces(Vertex.VertexState.class));
-        when(session.state()).thenReturn((Vertex.VertexState) state);
+        assertThat(state).isInstanceOfSatisfying(Vertex.VertexState.class,
+                vertexState -> when(session.state()).thenReturn(vertexState));
         assertThat(vertex.init(session)).isTrue();
 
         vertex.invoke(new GraphState(), Map.of()).toCompletableFuture().get(5, TimeUnit.SECONDS);

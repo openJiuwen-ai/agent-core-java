@@ -10,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -26,13 +27,9 @@ final class PregelTaskExecution {
     private boolean isCancelled;
 
     PregelTaskExecution(PregelNode node, PregelConfig config, int version, Executor executor) {
-        result = CompletableFuture.supplyAsync(() -> {
-            try {
-                return new NodeTask(node, config, version).run();
-            } catch (Exception error) {
-                throw new CompletionException(error);
-            }
-        }, command -> executor.execute(() -> runOwned(command)));
+        FutureTask<Object> task = new FutureTask<>(() -> new NodeTask(node, config, version).run());
+        result = CompletableFuture.supplyAsync(() -> runTask(task),
+                command -> executor.execute(() -> runOwned(command)));
     }
 
     CompletableFuture<Object> result() {
@@ -60,6 +57,19 @@ final class PregelTaskExecution {
 
     void awaitStopped(long deadlineNanos) throws InterruptedException, ExecutionException, TimeoutException {
         stopped.get(Math.max(1L, deadlineNanos - System.nanoTime()), TimeUnit.NANOSECONDS);
+    }
+
+    private Object runTask(FutureTask<Object> task) {
+        // Execute inline so node state and cancellation remain owned by the same worker.
+        task.run();
+        try {
+            return task.get();
+        } catch (ExecutionException error) {
+            throw new CompletionException(error.getCause());
+        } catch (InterruptedException error) {
+            InterruptSignals.restoreCurrentThread();
+            throw new CompletionException(error);
+        }
     }
 
     private void runOwned(Runnable command) {
