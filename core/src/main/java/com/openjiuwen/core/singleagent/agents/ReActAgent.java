@@ -584,11 +584,14 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         clampModelCallTimeoutToRemainingBudget(ctx, optionsBuilder, perCallIdleTimeout);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
-            optionsBuilder.retryListener(event -> session.writeStream(new OutputSchema(
-                    "model_retry",
-                    nextStreamIndex(ctx),
-                    modelRetryPayload(event)
-            )));
+            optionsBuilder.retryListener(event -> {
+                renewClientModelCallTimeout(ctx, event);
+                session.writeStream(new OutputSchema(
+                        "model_retry",
+                        nextStreamIndex(ctx),
+                        modelRetryPayload(event)
+                ));
+            });
         }
 
         return optionsBuilder;
@@ -602,6 +605,15 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         long idleTimeoutMs = ModelTimeoutResolver.toDuration(options.getTimeout().doubleValue()).toMillis();
         ctx.getExtra().put(MODEL_CALL_IDLE_TIMEOUT_MS_KEY, idleTimeoutMs);
         renewModelCallTimeout(ctx, idleTimeoutMs, 0L);
+    }
+
+    private static void renewClientModelCallTimeout(AgentCallbackContext ctx, ModelRetryEvent event) {
+        Object actualIdle = ctx.getExtra().get(MODEL_CALL_IDLE_TIMEOUT_MS_KEY);
+        if (!(actualIdle instanceof Number idleTimeout)) {
+            return;
+        }
+        long delayMs = event.delay() == null ? 0L : event.delay().toMillis();
+        renewModelCallTimeout(ctx, idleTimeout.longValue(), delayMs);
     }
 
     private static void renewModelCallTimeout(AgentCallbackContext ctx, long idleTimeoutMs, long delayMs) {

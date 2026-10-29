@@ -19,7 +19,10 @@ import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetryPolicy;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
 import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
+import com.openjiuwen.core.foundation.llm.classification.RetryContext;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -43,6 +46,8 @@ import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
@@ -265,6 +270,31 @@ class ReActAgentModelTimeoutWindowTest {
     }
 
     @Test
+    @Timeout(20)
+    void clientRetryRenewsLeaseForNextRealAttempt() throws Exception {
+        RetryingTimeoutClient client = new RetryingTimeoutClient();
+        ShortTimeoutSession session = new ShortTimeoutSession("client-retry-lease", new ObservedQueue(), true);
+        ReActAgent agent = agentWith(client, 5.2D);
+        disableGuardrailRetries(agent);
+        Iterator<Object> stream = agent.stream(Map.of("query", "hello"), session, List.of());
+        assertTrue(client.secondAttemptEntered.await(8L, TimeUnit.SECONDS),
+                "Second real client attempt was not started");
+        assertEquals("model_retry", assertInstanceOf(OutputSchema.class, stream.next()).getType());
+        TimeoutRenewal initialRenewal = session.renewals.get(0);
+        TimeoutRenewal retryRenewal = session.renewals.get(1);
+        assertEquals(initialRenewal.renewedLeaseId(), retryRenewal.requestedLeaseId());
+        assertEquals(initialRenewal.idleMs(), retryRenewal.idleMs());
+        assertEquals(500L, retryRenewal.delayMs());
+        Future<Object> finalFrame = consumerExecutor.submit(stream::next);
+
+        Object error = assertDoesNotThrow(() -> finalFrame.get(7L, TimeUnit.SECONDS));
+
+        assertModelError(error, 181008);
+        assertEquals(2, client.streamCalls);
+        session.awaitLeaseEnd();
+    }
+
+    @Test
     @Timeout(15)
     void afterModelCallbackPauseBeyondGraceKeepsRealModelError() {
         assertTerminalPauseKeepsModelError(AgentCallbackEvent.AFTER_MODEL_CALL);
@@ -428,6 +458,17 @@ class ReActAgentModelTimeoutWindowTest {
             outcome.complete(iterator.next());
         } catch (BaseError error) {
             outcome.completeExceptionally(error);
+        }
+    }
+
+    private static void awaitActualIdle(ModelInvokeOptions options) {
+        long idleMs = ModelTimeoutResolver.toDuration(options.getTimeout()).toMillis();
+        try {
+            if (new CountDownLatch(1).await(idleMs, TimeUnit.MILLISECONDS)) {
+                throw new IllegalStateException("Unexpected model idle release");
+            }
+        } catch (InterruptedException exception) {
+            throw new CancellationException("Model call cancelled");
         }
     }
 
@@ -706,7 +747,7 @@ class ReActAgentModelTimeoutWindowTest {
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             this.options = options;
             options.getRetryListener().onRetry(new ModelRetryEvent(1, 2, null, "java.io.IOException",
-                    Duration.ZERO, "exponential_backoff", ModelErrorCategory.TEMPORARY));
+                    null, "exponential_backoff", ModelErrorCategory.TEMPORARY));
             modelEntered.countDown();
             awaitModelRelease();
             if (failure != null) {
@@ -735,6 +776,37 @@ class ReActAgentModelTimeoutWindowTest {
         }
     }
 
+    private static final class RetryingTimeoutClient implements Model.ModelClient {
+        private final ModelCallRetrier retrier = new ModelCallRetrier(
+                delay -> TimeUnit.NANOSECONDS.sleep(delay.toNanos()), () -> 0.0D);
+        private final CountDownLatch secondAttemptEntered = new CountDownLatch(1);
+        private int streamCalls;
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            return CompletableFuture.completedFuture(new AssistantMessage("ok"));
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            RetryContext context = new RetryContext(new ModelCallRetryPolicy(1, true, true));
+            try {
+                return retrier.openStream(context, () -> openTimeout(options), options.getRetryListener()).iterator();
+            } catch (IOException exception) {
+                throw new UncheckedIOException(exception);
+            }
+        }
+
+        private ModelCallRetrier.StreamHandle<AssistantMessageChunk> openTimeout(ModelInvokeOptions options) {
+            streamCalls++;
+            if (streamCalls == 2) {
+                secondAttemptEntered.countDown();
+            }
+            awaitActualIdle(options);
+            throw new ModelError(StatusCode.MODEL_CALL_TIMEOUT);
+        }
+    }
+
     private static final class TwoRoundTimeoutClient implements Model.ModelClient {
         private final List<ModelInvokeOptions> options = new CopyOnWriteArrayList<>();
         private int streamCalls;
@@ -759,17 +831,6 @@ class ReActAgentModelTimeoutWindowTest {
             for (int retry = 1; retry <= 2; retry++) {
                 options.getRetryListener().onRetry(new ModelRetryEvent(retry, 2, null, "java.io.IOException",
                         Duration.ZERO, "exponential_backoff", ModelErrorCategory.TEMPORARY));
-            }
-        }
-
-        private static void awaitActualIdle(ModelInvokeOptions options) {
-            long idleMs = ModelTimeoutResolver.toDuration(options.getTimeout()).toMillis();
-            try {
-                if (new CountDownLatch(1).await(idleMs, TimeUnit.MILLISECONDS)) {
-                    throw new IllegalStateException("Unexpected model idle release");
-                }
-            } catch (InterruptedException exception) {
-                throw new CancellationException("Model call cancelled");
             }
         }
     }
