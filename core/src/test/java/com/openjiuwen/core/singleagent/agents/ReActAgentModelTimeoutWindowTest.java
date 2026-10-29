@@ -199,6 +199,35 @@ class ReActAgentModelTimeoutWindowTest {
     }
 
     @Test
+    void directFinalModelFailureReleasesLeaseOutsideInvocation() {
+        BlockingModelClient initialClient = new BlockingModelClient();
+        initialClient.releaseModel.countDown();
+        ShortTimeoutSession session = new ShortTimeoutSession("direct-failure-cleanup", new ObservedQueue(), true);
+        ContextCapturingReActAgent agent = agentWith(initialClient, 0.25D);
+        disableGuardrailRetries(agent);
+        Iterator<Object> stream = agent.stream(Map.of("query", "hello"), session, List.of());
+        assertEquals("model_retry", assertInstanceOf(OutputSchema.class, stream.next()).getType());
+        assertEquals("llm_output", assertInstanceOf(OutputSchema.class, stream.next()).getType());
+        assertEquals("answer", assertInstanceOf(OutputSchema.class, stream.next()).getType());
+        session.awaitLeaseEnd();
+        AgentCallbackContext context = agent.lastContext;
+        int previousEnds = session.endedLeases.size();
+        int previousRenewals = session.renewals.size();
+        BlockingModelClient failingClient = new BlockingModelClient(new ModelError(StatusCode.MODEL_CALL_FAILED));
+        failingClient.releaseModel.countDown();
+        agent.setLlm(new Model(failingClient));
+
+        assertThrows(ModelError.class, () -> agent.callModel(context, context.getContext(), List.of()));
+
+        assertEquals(previousEnds + 1, session.endedLeases.size());
+        long directLease = session.renewals.get(previousRenewals).renewedLeaseId();
+        assertEquals(directLease, session.endedLeases.get(previousEnds));
+        assertEquals(0L, context.getExtra().get("_model_call_timeout_lease_id"));
+        assertEquals("model_retry", assertInstanceOf(OutputSchema.class, stream.next()).getType());
+        assertOriginalWaitIsRestored(stream);
+    }
+
+    @Test
     void cancellationReleasesCurrentLeaseAndRestoresOriginalWait() throws Exception {
         BlockingModelClient client = new BlockingModelClient();
         ObservedQueue queue = new ObservedQueue(true);

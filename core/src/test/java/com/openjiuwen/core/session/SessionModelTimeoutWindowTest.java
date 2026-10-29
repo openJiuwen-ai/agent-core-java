@@ -18,10 +18,13 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.session.stream.AsyncStreamQueue;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgentSession;
 
@@ -60,7 +63,7 @@ class SessionModelTimeoutWindowTest {
     private static final long MODEL_IDLE_MS = 100L;
 
     private final ThreadPoolExecutor componentExecutor = new ThreadPoolExecutor(
-            1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(4),
+            2, 2, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(8),
             SessionModelTimeoutWindowTest::newComponentThread);
 
     @AfterEach
@@ -130,6 +133,48 @@ class SessionModelTimeoutWindowTest {
     }
 
     @Test
+    void workflowStreamCoordinatesTemporaryConsumerManager() throws Exception {
+        BlockingStreamModelClient client = new BlockingStreamModelClient();
+        com.openjiuwen.core.workflow.components.llm.react.ReActAgentCompConfig config =
+                new com.openjiuwen.core.workflow.components.llm.react.ReActAgentCompConfig();
+        configureModelCall(config);
+        com.openjiuwen.core.workflow.components.llm.react.ReActAgentCompExecutable executable =
+                new com.openjiuwen.core.workflow.components.llm.react.ReActAgentCompExecutable(config);
+        StreamingInvokeReActAgent agent = injectModel(executable, client, config);
+        CountDownLatch modelFrameConsumed = new CountDownLatch(1);
+        pauseAfterInvokeUntil(agent, modelFrameConsumed);
+        BaseSession outerSession = new BaseSession() {
+        };
+
+        Iterator<Object> componentStream = executable.stream("question", outerSession, null);
+
+        assertModelFrameAfterBlockedWait(agent, client, modelFrameConsumed);
+        Map<?, ?> answer = assertInstanceOf(Map.class, componentStream.next());
+        assertEquals("answer", answer.get("result_type"));
+    }
+
+    @Test
+    void nodeStreamCoordinatesTemporaryConsumerManager() throws Exception {
+        BlockingStreamModelClient client = new BlockingStreamModelClient();
+        com.openjiuwen.core.workflow.component.llm.ReActAgentCompConfig config =
+                new com.openjiuwen.core.workflow.component.llm.ReActAgentCompConfig();
+        configureModelCall(config);
+        com.openjiuwen.core.workflow.component.llm.ReActAgentCompExecutable executable =
+                new com.openjiuwen.core.workflow.component.llm.ReActAgentCompExecutable(config);
+        StreamingInvokeReActAgent agent = injectModel(executable, client, config);
+        CountDownLatch modelFrameConsumed = new CountDownLatch(1);
+        pauseAfterInvokeUntil(agent, modelFrameConsumed);
+        NodeSessionApi outerSession = new NodeSessionApi(new BaseSession() {
+        });
+
+        Future<Iterator<Object>> componentStream = componentExecutor.submit(
+                () -> executable.stream("question", outerSession, null));
+
+        assertModelFrameAfterBlockedWait(agent, client, modelFrameConsumed);
+        componentStream.get(2L, TimeUnit.SECONDS);
+    }
+
+    @Test
     void adaptersWithoutManagerKeepNoOpLeaseBehavior() {
         BlockingStreamModelClient client = new BlockingStreamModelClient();
         client.release.countDown();
@@ -163,6 +208,41 @@ class SessionModelTimeoutWindowTest {
         } finally {
             client.release.countDown();
         }
+    }
+
+    private void assertModelFrameAfterBlockedWait(StreamingInvokeReActAgent agent, BlockingStreamModelClient client,
+            CountDownLatch modelFrameConsumed) throws Exception {
+        assertTrue(client.entered.await(2L, TimeUnit.SECONDS));
+        AgentSession agentSession = assertInstanceOf(AgentSession.class, agent.streamingSession);
+        StreamWriterManager manager = agentSession.getInner().streamWriterManager();
+        manager.streamEmitter().emit("first");
+        Iterator<Object> consumer = manager.streamIterator(1000L, ORIGINAL_TIMEOUT_MS, false);
+        assertEquals("first", consumer.next());
+        Future<Object> nextFrame = componentExecutor.submit(consumer::next);
+        try {
+            assertThrows(TimeoutException.class,
+                    () -> nextFrame.get(3 * ORIGINAL_TIMEOUT_MS, TimeUnit.MILLISECONDS));
+            client.release.countDown();
+            OutputSchema modelFrame = assertInstanceOf(OutputSchema.class, nextFrame.get(2L, TimeUnit.SECONDS));
+            assertEquals("llm_output", modelFrame.getType());
+            modelFrameConsumed.countDown();
+        } finally {
+            client.release.countDown();
+            modelFrameConsumed.countDown();
+        }
+    }
+
+    private static void pauseAfterInvokeUntil(StreamingInvokeReActAgent agent, CountDownLatch modelFrameConsumed) {
+        agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE, context -> {
+            try {
+                if (!modelFrameConsumed.await(2L, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Model frame was not consumed");
+                }
+            } catch (InterruptedException exception) {
+                throw new IllegalStateException("Model frame coordination was interrupted", exception);
+            }
+            return CompletableFuture.completedFuture(null);
+        }, 50).toCompletableFuture().join();
     }
 
     private static Stream<Arguments> publicSessionPaths() {
@@ -211,7 +291,8 @@ class SessionModelTimeoutWindowTest {
         config.setModelStreamIdleSeconds(0.25D);
     }
 
-    private static void injectModel(Object executable, BlockingStreamModelClient client, ReActAgentConfig config) {
+    private static StreamingInvokeReActAgent injectModel(Object executable, BlockingStreamModelClient client,
+            ReActAgentConfig config) {
         try {
             StreamingInvokeReActAgent agent = new StreamingInvokeReActAgent();
             agent.configure(config);
@@ -219,6 +300,7 @@ class SessionModelTimeoutWindowTest {
             Field field = executable.getClass().getDeclaredField("reactAgent");
             field.setAccessible(true);
             field.set(executable, agent);
+            return agent;
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to inject the external model boundary", exception);
         }
@@ -291,6 +373,8 @@ class SessionModelTimeoutWindowTest {
     }
 
     private static final class StreamingInvokeReActAgent extends ReActAgent {
+        private volatile AgentSessionApi streamingSession;
+
         private StreamingInvokeReActAgent() {
             super(new AgentCard("workflow-streaming", "Workflow streaming", "Workflow streaming agent"));
         }
@@ -301,6 +385,24 @@ class SessionModelTimeoutWindowTest {
         @Override
         public Object invoke(Object inputs, AgentSessionApi session) {
             return super.invoke(inputs, session, Map.of("_streaming", true));
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Object invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
+            streamingSession = session;
+            return super.invoke(inputs, session, kwargs);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
+            streamingSession = session;
+            return super.stream(inputs, session, streamModes);
         }
     }
 

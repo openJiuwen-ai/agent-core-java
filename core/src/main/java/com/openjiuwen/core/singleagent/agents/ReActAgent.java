@@ -161,6 +161,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
     private static final String MODEL_CALL_TIMEOUT_LEASE_ID_KEY = "_model_call_timeout_lease_id";
     private static final String MODEL_CALL_IDLE_TIMEOUT_MS_KEY = "_model_call_idle_timeout_ms";
+    private static final String MODEL_CALL_INVOCATION_OWNER_KEY = "_model_call_invocation_owner";
 
     /** Stateless normalizer shared by all structured multimodal entry inputs. */
     private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
@@ -468,7 +469,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             isModelCallSuccessful = true;
             return result;
         } finally {
-            if (isModelCallSuccessful) {
+            if (isModelCallSuccessful
+                    || !Boolean.TRUE.equals(ctx.getExtra().get(MODEL_CALL_INVOCATION_OWNER_KEY))) {
                 endModelCallTimeout(ctx);
             }
         }
@@ -2141,6 +2143,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             invokeInputs.setConversationId(conversationId);
 
             ctx = new AgentCallbackContext(this);
+            ctx.getExtra().put(MODEL_CALL_INVOCATION_OWNER_KEY, Boolean.TRUE);
             ctx.setInputs(invokeInputs);
             ctx.setSession(session);
             ctx.setConfig(config);
@@ -2434,6 +2437,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 try {
                     endModelCallTimeout(ctx);
                 } finally {
+                    if (ctx != null) {
+                        ctx.getExtra().remove(MODEL_CALL_INVOCATION_OWNER_KEY);
+                    }
                     SessionContextHolder.restoreCurrentSession(previousSession);
                 }
             }
