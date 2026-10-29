@@ -5,6 +5,10 @@
 package com.openjiuwen.core.memory.graph.graph_memory;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
@@ -60,6 +64,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class GraphMemory {
     private static final String STORE_TYPE = "graph mem store";
+    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
     /**
      * Public record SearchHit used by the Java parity implementation.
@@ -244,7 +249,9 @@ public class GraphMemory {
                 throw new IllegalArgumentException("Search config cannot be registered as an empty value.");
             }
             if (searchStrategies.containsKey(name) && !isForceRegister) {
-                throw new IllegalArgumentException("Search config with name [" + name + "] already exists.");
+                throw ErrorHelper.buildError(StatusCode.MEMORY_STORE_VALIDATION_INVALID,
+                        "store_type", STORE_TYPE,
+                        "error_msg", "Search config with name [" + name + "] already exists.");
             }
             searchStrategies.put(name,
                     List.of(searchEntity != null ? copySearchConfig(searchEntity) : new SearchConfig(),
@@ -785,12 +792,35 @@ public class GraphMemory {
         if (extra != null) {
             params.putAll(extra);
         }
+        AssistantMessage response;
         semaphore.acquire();
         try {
-            return llmClient.invoke(params.get("messages"), null, null, null, null, null, null, null, null, params);
+            response = llmClient.invoke(params.get("messages"), null, null, null, null, null, null, null, null, params);
         } finally {
             semaphore.release();
         }
+        if (isDebugEnabled) {
+            logLlmInvocation(promptCall.template().getName(), params.get("messages"), response);
+        }
+        return response;
+    }
+
+    private static void logLlmInvocation(String templateName, Object messages, AssistantMessage response) {
+        String separator = System.lineSeparator() + "=".repeat(60) + System.lineSeparator();
+        String debugMessage = "TEMPLATE " + templateName + separator + lastMessageContent(messages)
+                + separator + String.valueOf(response.getContent());
+        MEMORY_LOGGER.info("Graph Memory LLM Invoke: {}", debugMessage);
+    }
+
+    private static String lastMessageContent(Object messages) {
+        if (!(messages instanceof List<?> messageList) || messageList.isEmpty()) {
+            return "";
+        }
+        Object lastMessage = messageList.get(messageList.size() - 1);
+        if (lastMessage instanceof Map<?, ?> messageMap) {
+            return String.valueOf(messageMap.get("content"));
+        }
+        return String.valueOf(lastMessage);
     }
 
     /**

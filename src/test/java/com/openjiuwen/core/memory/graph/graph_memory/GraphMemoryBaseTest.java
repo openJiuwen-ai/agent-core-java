@@ -4,6 +4,8 @@ package com.openjiuwen.core.memory.graph.graph_memory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -17,8 +19,14 @@ import com.openjiuwen.core.foundation.store.graph.GraphStore;
 import com.openjiuwen.core.foundation.store.graph.Relation;
 import com.openjiuwen.core.memory.config.graph.SearchConfig;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
 import java.nio.file.Path;
@@ -102,6 +110,21 @@ class GraphMemoryBaseTest {
     }
 
     @Test
+    void shouldRejectDuplicateStrategyWithMemoryValidationError() {
+        GraphConfig config =
+            GraphConfig.builder().uri(tempDir.resolve("graph.db").toString()).backend("in_memory").build();
+        GraphMemory memory = new GraphMemory(config);
+
+        assertThatThrownBy(() -> memory.registerSearchStrategy(
+                "default", new SearchConfig(), new SearchConfig(), new SearchConfig(), false))
+                .isInstanceOfSatisfying(BaseError.class, error -> {
+                    assertThat(error.getStatus()).isEqualTo(StatusCode.MEMORY_STORE_VALIDATION_INVALID);
+                    assertThat(error.getCode()).isEqualTo(StatusCode.MEMORY_STORE_VALIDATION_INVALID.getCode());
+                })
+                .hasMessageContaining("Search config with name [default] already exists.");
+    }
+
+    @Test
     void shouldPrepareConversationEpisodesAndBuildHistory() throws Exception {
         GraphConfig config =
             GraphConfig.builder().uri(tempDir.resolve("graph.db").toString()).backend("in_memory").build();
@@ -154,6 +177,37 @@ class GraphMemoryBaseTest {
         Entity entity = update.getAddedEntity().get(0);
         assertThat(entity.getName()).isEqualTo("Alice");
         assertThat(entity.getContent()).contains("Alice likes coffee");
+    }
+
+    @Test
+    void shouldLogLlmInvocationWhenDebugEnabled() throws Exception {
+        Logger memoryLogger = (Logger) LoggerFactory.getLogger("memory");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Level previousLevel = memoryLogger.getLevel();
+        memoryLogger.setLevel(Level.INFO);
+        memoryLogger.addAppender(appender);
+        try {
+            GraphConfig config =
+                GraphConfig.builder().uri(tempDir.resolve("debug-graph.db").toString()).backend("in_memory").build();
+            FakeModel fakeModel = new FakeModel("{\"extracted_relations\":[]}",
+                    "{\"extracted_entities\":[{\"name\":\"Alice\",\"entityTypeId\":0}]}",
+                    "{\"extracted_relations\":[]}",
+                    "{\"summary\":\"Alice likes coffee\",\"attributes\":{}}");
+            GraphMemory memory = new GraphMemory(config, fakeModel, true, null, null, Map.of(), null, "cn", true);
+            memory.attachEmbedder(new DummyEmbedding());
+
+            memory.addMemory(com.openjiuwen.core.memory.config.graph.EpisodeType.DOCUMENT, "user-1",
+                    "Alice likes coffee", null, OffsetDateTime.now());
+
+            assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("Graph Memory LLM Invoke: TEMPLATE", "Alice likes coffee",
+                                    "extracted_relations"));
+        } finally {
+            memoryLogger.detachAppender(appender);
+            memoryLogger.setLevel(previousLevel);
+        }
     }
 
     private static final class DummyEmbedding extends Embedding {
