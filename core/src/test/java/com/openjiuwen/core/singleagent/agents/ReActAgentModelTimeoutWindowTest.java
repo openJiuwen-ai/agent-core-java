@@ -218,6 +218,43 @@ class ReActAgentModelTimeoutWindowTest {
     }
 
     @Test
+    void sharedCallReleaseIsIsolatedAndRestoresOriginalWait() {
+        ObservedQueue queue = new ObservedQueue();
+        StreamWriterManager manager = new StreamWriterManager(new StreamEmitter(queue));
+        ShortTimeoutSession longSession = new ShortTimeoutSession("shared-long", manager, true);
+        ShortTimeoutSession shortSession = new ShortTimeoutSession("shared-short", manager, true);
+        BlockingModelClient longClient = new BlockingModelClient();
+        BlockingModelClient shortClient = new BlockingModelClient();
+        ReActAgent longAgent = agentWith(longClient, 0.25D);
+        ReActAgent shortAgent = agentWith(shortClient, 0.05D);
+        try {
+            longAgent.stream(Map.of("query", "long"), longSession, List.of());
+            longClient.awaitModelEntered();
+            shortAgent.stream(Map.of("query", "short"), shortSession, List.of());
+            shortClient.awaitModelEntered();
+
+            shortClient.releaseModel.countDown();
+            shortSession.awaitLeaseEnd();
+            shortSession.awaitStreamClosed();
+            queue.drain();
+            manager.streamEmitter().emit("first");
+            Iterator<Object> iterator = manager.streamIterator(1000L, SUBSEQUENT_TIMEOUT_MS, false);
+            assertEquals("first", iterator.next());
+            queue.arm(3, "long-call-lease");
+            assertEquals("long-call-lease", iterator.next());
+
+            longClient.releaseModel.countDown();
+            longSession.awaitLeaseEnd();
+            longSession.awaitStreamClosed();
+            queue.drain();
+            assertOriginalWaitIsRestored(iterator);
+        } finally {
+            longClient.releaseModel.countDown();
+            shortClient.releaseModel.countDown();
+        }
+    }
+
+    @Test
     void railDelayAndActualIdleAreRenewedBeforeRetryEvent() {
         assertSecondRoundModelTimeout(0.12D, 0.08D, "rail-interval");
     }
@@ -473,7 +510,11 @@ class ReActAgentModelTimeoutWindowTest {
         }
 
         private ShortTimeoutSession(String sessionId, AsyncStreamQueue queue, boolean keepStreamOpen) {
-            super(sessionId, null, null, new StreamWriterManager(new StreamEmitter(queue)), false, null);
+            this(sessionId, new StreamWriterManager(new StreamEmitter(queue)), keepStreamOpen);
+        }
+
+        private ShortTimeoutSession(String sessionId, StreamWriterManager manager, boolean keepStreamOpen) {
+            super(sessionId, null, null, manager, false, null);
             this.keepStreamOpen = keepStreamOpen;
         }
 
@@ -558,6 +599,8 @@ class ReActAgentModelTimeoutWindowTest {
         private final CountDownLatch expiredWait = new CountDownLatch(1);
         private final CountDownLatch resumeWait = new CountDownLatch(1);
         private int receiveCalls;
+        private int frameOnCall = -1;
+        private String frame = "";
 
         private ObservedQueue() {
             this(false);
@@ -567,12 +610,26 @@ class ReActAgentModelTimeoutWindowTest {
             this.pauseAfterTimeout = pauseAfterTimeout;
         }
 
+        private void arm(int call, String value) {
+            frameOnCall = call;
+            frame = value;
+        }
+
+        private void drain() {
+            while (tryReceive() != null) {
+                // Remove completed producer output before measuring the next wait.
+            }
+        }
+
         /**
          * {@inheritDoc}
          */
         @Override
         public Object receive(long timeoutMs) {
             receiveCalls++;
+            if (receiveCalls == frameOnCall) {
+                send(frame);
+            }
             boolean isFirstSubsequentWait = receiveCalls == 2;
             if (isFirstSubsequentWait) {
                 blockedWait.countDown();
@@ -628,6 +685,7 @@ class ReActAgentModelTimeoutWindowTest {
 
     private static final class BlockingModelClient implements Model.ModelClient {
         private final CountDownLatch releaseModel = new CountDownLatch(1);
+        private final CountDownLatch modelEntered = new CountDownLatch(1);
         private final RuntimeException failure;
         private volatile ModelInvokeOptions options;
 
@@ -649,11 +707,21 @@ class ReActAgentModelTimeoutWindowTest {
             this.options = options;
             options.getRetryListener().onRetry(new ModelRetryEvent(1, 2, null, "java.io.IOException",
                     Duration.ZERO, "exponential_backoff", ModelErrorCategory.TEMPORARY));
+            modelEntered.countDown();
             awaitModelRelease();
             if (failure != null) {
                 throw failure;
             }
             return List.of(AssistantMessageChunk.builder().content("ok").finishReason("stop").build()).iterator();
+        }
+
+        private void awaitModelEntered() {
+            try {
+                assertTrue(modelEntered.await(LATCH_WAIT_SECONDS, TimeUnit.SECONDS),
+                        "Model call was not entered");
+            } catch (InterruptedException exception) {
+                throw new AssertionError("Model entry wait was interrupted", exception);
+            }
         }
 
         private void awaitModelRelease() {

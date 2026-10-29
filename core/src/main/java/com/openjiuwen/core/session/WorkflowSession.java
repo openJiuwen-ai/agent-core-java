@@ -116,6 +116,26 @@ public class WorkflowSession implements AgentSessionApi {
         return manager.streamIterator(failure);
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long renewModelCallTimeout(long leaseId, long idleTimeoutMs, long delayMs) {
+        StreamWriterManager manager = parent == null ? null : parent.streamWriterManager();
+        return manager == null ? 0L : manager.renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void endModelCallTimeout(long leaseId) {
+        StreamWriterManager manager = parent == null ? null : parent.streamWriterManager();
+        if (manager != null) {
+            manager.endModelCallTimeout(leaseId);
+        }
+    }
+
     public Map<String, Object> getEnvs() {
         return envs;
     }
