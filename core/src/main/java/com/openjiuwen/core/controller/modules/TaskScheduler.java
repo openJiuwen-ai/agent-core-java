@@ -25,6 +25,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.AbilityManager;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -79,6 +80,8 @@ public class TaskScheduler {
      */
     private final Map<String, RunningTaskEntry> runningTasks = new ConcurrentHashMap<>();
     private final ReentrantLock lock = new ReentrantLock();
+    // Guarded by lock; callback completion and the idle decision must use the same snapshot.
+    private final Map<String, Integer> pendingTaskCallbacks = new HashMap<>();
 
     public TaskScheduler(
             ControllerConfig config,
@@ -148,8 +151,6 @@ public class TaskScheduler {
     // ==================== Task Execution ====================
 
     private void handleTaskExecutionFailure(String taskId, AgentSessionApi session, String errorMessage) {
-        taskManager.updateTaskStatus(taskId, TaskStatus.FAILED, errorMessage);
-
         ControllerOutputChunk failedChunk = new ControllerOutputChunk(
                 0,
                 new ControllerOutputPayload(
@@ -159,7 +160,7 @@ public class TaskScheduler {
                 ),
                 false
         );
-        publishTaskEvent(taskId, session, failedChunk);
+        processTaskResult(taskId, session, failedChunk, TaskStatus.FAILED, errorMessage);
     }
 
     @SuppressWarnings("resource")
@@ -251,21 +252,42 @@ public class TaskScheduler {
 
                 if (EventType.TASK_COMPLETION.getValue().equals(payloadType)) {
                     Loggers.CONTROLLER.info("Task {} completed", taskId);
-                    taskManager.updateTaskStatus(taskId, TaskStatus.COMPLETED);
-                    publishTaskEvent(taskId, session, chunk);
+                    processTaskResult(taskId, session, chunk, TaskStatus.COMPLETED, null);
                     break;
                 } else if (EventType.TASK_INTERACTION.getValue().equals(payloadType)) {
                     Loggers.CONTROLLER.info("Task {} requires interaction", taskId);
-                    taskManager.updateTaskStatus(taskId, TaskStatus.INPUT_REQUIRED);
-                    publishTaskEvent(taskId, session, chunk);
+                    processTaskResult(taskId, session, chunk, TaskStatus.INPUT_REQUIRED, null);
                     break;
                 } else if (EventType.TASK_FAILED.getValue().equals(payloadType)) {
                     Loggers.CONTROLLER.error("Task {} failed", taskId);
-                    taskManager.updateTaskStatus(taskId, TaskStatus.FAILED);
-                    publishTaskEvent(taskId, session, chunk);
+                    processTaskResult(taskId, session, chunk, TaskStatus.FAILED, null);
                     break;
                 }
                 // "processing" -> continue
+            }
+        }
+    }
+
+    private void processTaskResult(String taskId, AgentSessionApi session, ControllerOutputChunk chunk,
+                                   TaskStatus status, String errorMessage) {
+        String sessionId = session.getSessionId();
+        lock.lock();
+        try {
+            // Register before exposing a terminal status to another task's completion check.
+            pendingTaskCallbacks.merge(sessionId, 1, Integer::sum);
+        } finally {
+            lock.unlock();
+        }
+        try {
+            taskManager.updateTaskStatus(taskId, status, errorMessage);
+            // Callbacks may submit more tasks or pause/cancel siblings; never run them under lock.
+            publishTaskEvent(taskId, session, chunk);
+        } finally {
+            lock.lock();
+            try {
+                pendingTaskCallbacks.computeIfPresent(sessionId, (id, count) -> count == 1 ? null : count - 1);
+            } finally {
+                lock.unlock();
             }
         }
     }
@@ -295,7 +317,7 @@ public class TaskScheduler {
     }
 
     /**
-     * Ensure the session receives an all-tasks-processed signal when no active tasks remain.
+     * Ensure the session receives an all-tasks-processed signal when no active tasks or result callbacks remain.
      *
      * <p>Mirrors Python's {@code TaskScheduler.ensure_session_completion_signal} in
      * {@code openjiuwen/core/controller/modules/task_scheduler.py}.</p>
@@ -307,14 +329,16 @@ public class TaskScheduler {
             return;
         }
         try {
-            if (!areAllTasksCompleted(sessionId)) {
-                Loggers.CONTROLLER.info("Not all tasks completed, continue");
-                return;
-            }
-            // Check after reading statuses: a newly started task may already be terminal
-            // while its callback is still writing output or submitting the next task.
-            if (runningTasks.values().stream().anyMatch(entry -> sessionId.equals(entry.sessionId))) {
-                return;
+            lock.lock();
+            try {
+                // A stopped worker may still await external I/O. Only unfinished callbacks
+                // must delay completion, so their output and submitted successors are visible.
+                if (pendingTaskCallbacks.containsKey(sessionId) || !areAllTasksCompleted(sessionId)) {
+                    Loggers.CONTROLLER.info("Session still has active tasks or result callbacks, continue");
+                    return;
+                }
+            } finally {
+                lock.unlock();
             }
             Loggers.CONTROLLER.info("All tasks completed for session {}, sending completion signal", sessionId);
 
@@ -585,7 +609,7 @@ public class TaskScheduler {
                             () -> executeTaskWrapper(taskId, session), "task-" + taskId, true);
                     taskThread.start();
 
-                    runningTasks.put(taskId, new RunningTaskEntry(null, taskThread, task.getSessionId()));
+                    runningTasks.put(taskId, new RunningTaskEntry(null, taskThread));
                 } finally {
                     lock.unlock();
                 }
@@ -697,12 +721,10 @@ public class TaskScheduler {
     private static class RunningTaskEntry {
         private volatile TaskExecutor executor;
         private final Thread taskThread;
-        private final String sessionId;
 
-        RunningTaskEntry(TaskExecutor executor, Thread taskThread, String sessionId) {
+        RunningTaskEntry(TaskExecutor executor, Thread taskThread) {
             this.executor = executor;
             this.taskThread = taskThread;
-            this.sessionId = sessionId;
         }
 
         TaskExecutor getExecutor() {

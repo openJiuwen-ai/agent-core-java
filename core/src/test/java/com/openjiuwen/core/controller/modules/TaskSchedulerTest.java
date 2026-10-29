@@ -18,6 +18,8 @@ import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,6 +27,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -141,8 +144,9 @@ class TaskSchedulerTest {
                 .containsEntry("shared", "task-value");
     }
 
-    @Test
-    void completionSignalWaitsForTaskCompletionCallback() throws Exception {
+    @ParameterizedTest
+    @EnumSource(value = EventType.class, names = {"TASK_COMPLETION", "TASK_INTERACTION", "TASK_FAILED"})
+    void completionSignalWaitsForTaskResultCallback(EventType eventType) throws Exception {
         ControllerConfig config = new ControllerConfig();
         TaskManager taskManager = new TaskManager(config);
         EventQueue eventQueue = new EventQueue(config);
@@ -155,6 +159,20 @@ class TaskSchedulerTest {
         eventQueue.setEventHandler(new RecordingEventHandler() {
             @Override
             public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
+                return handleResult(inputs);
+            }
+
+            @Override
+            public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
+                return handleResult(inputs);
+            }
+
+            @Override
+            public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
+                return handleResult(inputs);
+            }
+
+            private Map<String, Object> handleResult(EventHandlerInput inputs) {
                 callbackStarted.countDown();
                 try {
                     if (!releaseCallback.await(3, TimeUnit.SECONDS)) {
@@ -172,7 +190,7 @@ class TaskSchedulerTest {
         scheduler.getSessions().put(session.getSessionId(), session);
         scheduler.getTaskExecutorRegistry().addTaskExecutor("test_task", dependencies ->
                 new TestTaskExecutor(dependencies, List.of(new ControllerOutputChunk(0,
-                        new ControllerOutputPayload(EventType.TASK_COMPLETION.getValue(), List.of())))));
+                        new ControllerOutputPayload(eventType.getValue(), List.of())))));
         try {
             scheduler.start();
             taskManager.addTask(task(session.getSessionId(), "task-1", TaskStatus.SUBMITTED));
@@ -208,6 +226,64 @@ class TaskSchedulerTest {
         assertThat(secondCancel).isFalse();
         assertThat(taskManager.getTask(TaskFilter.byTaskId("task-1")).get(0).getStatus())
                 .isEqualTo(TaskStatus.CANCELED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = TaskStatus.class, names = {"CANCELED", "PAUSED"})
+    void completionSignalDoesNotWaitForStoppedWorker(TaskStatus stoppedStatus) throws Exception {
+        ControllerConfig config = new ControllerConfig();
+        TaskManager taskManager = new TaskManager(config);
+        EventQueue eventQueue = new EventQueue(config);
+        BaseCard card = new BaseCard("agent-1", "agent", "test agent");
+        TaskScheduler scheduler = new TaskScheduler(config, taskManager, new ContextEngine(),
+                new AbilityManager(), eventQueue, card);
+        FakeSession session = new FakeSession("session-1");
+        CompletableFuture<Void> workerResult = new CompletableFuture<>();
+        CountDownLatch workerStarted = new CountDownLatch(1);
+        CountDownLatch stopRequested = new CountDownLatch(1);
+        AtomicReference<Boolean> stopped = new AtomicReference<>();
+        eventQueue.setEventHandler(new RecordingEventHandler() {
+            @Override
+            public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
+                stopped.set(stoppedStatus == TaskStatus.CANCELED
+                        ? scheduler.cancelTask("worker") : scheduler.pauseTask("worker"));
+                stopRequested.countDown();
+                return Map.of();
+            }
+        });
+        eventQueue.subscribe(card.getId(), session.getSessionId());
+        scheduler.getSessions().put(session.getSessionId(), session);
+        scheduler.getTaskExecutorRegistry().addTaskExecutor("blocked", dependencies ->
+                new TestTaskExecutor(dependencies) {
+                    @Override
+                    public Iterator<ControllerOutputChunk> executeAbility(String taskId, AgentSessionApi taskSession) {
+                        workerStarted.countDown();
+                        // join(), as used by asynchronous executors, does not stop on interrupt.
+                        workerResult.join();
+                        return Collections.emptyIterator();
+                    }
+                });
+        scheduler.getTaskExecutorRegistry().addTaskExecutor("test_task", dependencies ->
+                new TestTaskExecutor(dependencies, List.of(new ControllerOutputChunk(0,
+                        new ControllerOutputPayload(EventType.TASK_COMPLETION.getValue(), List.of())))));
+        try {
+            scheduler.start();
+            Task worker = new Task(session.getSessionId(), "worker", "blocked");
+            worker.setStatus(TaskStatus.SUBMITTED);
+            taskManager.addTask(worker);
+            assertThat(workerStarted.await(3, TimeUnit.SECONDS)).isTrue();
+            taskManager.addTask(task(session.getSessionId(), "finishing-task", TaskStatus.SUBMITTED));
+            assertThat(stopRequested.await(3, TimeUnit.SECONDS)).isTrue();
+            assertThat(stopped.get()).isTrue();
+            waitUntil(() -> session.streamSnapshot().stream().anyMatch(TaskSchedulerTest::isAllTasksProcessed));
+            assertThat(workerResult).isNotDone();
+            assertThat(taskManager.getTask(TaskFilter.byTaskId("worker")).get(0).getStatus())
+                    .isEqualTo(stoppedStatus);
+        } finally {
+            workerResult.complete(null);
+            scheduler.stop();
+            eventQueue.stop();
+        }
     }
 
     @Test
@@ -269,7 +345,7 @@ class TaskSchedulerTest {
      * <p>Mirrors Python's {@code TaskExecutor} extension point in
      * {@code openjiuwen/core/controller/modules/task_scheduler.py}.</p>
      */
-    private static final class TestTaskExecutor extends TaskExecutor {
+    private static class TestTaskExecutor extends TaskExecutor {
         private final List<ControllerOutputChunk> chunks;
 
         private TestTaskExecutor(TaskExecutorDependencies dependencies) {
