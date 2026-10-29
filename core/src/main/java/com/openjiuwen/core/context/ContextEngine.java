@@ -281,6 +281,9 @@ public class ContextEngine {
         try {
             result = compressContext(contextId, session, null, null, compressionKwargs);
         } catch (RuntimeException compressFailure) {
+            // Intentional broad catch: recovery must never replace the original model
+            // exception with a compress failure (BaseError and other runtime failures
+            // included). Error/Throwable still propagate. Same pattern as createProcessor.
             Loggers.CONTEXT_ENGINE.warning(
                     "model context recovery compress failed; preserving original model exception: "
                             + compressFailure.getMessage());

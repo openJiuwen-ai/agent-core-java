@@ -435,15 +435,18 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     public Object railedModelCall(AgentCallbackContext ctx) {
+        // Populate ModelCallInputs before BEFORE_MODEL_CALL so rails can inspect
+        // the current request messages (security/tracing/observability).
+        prepareModelRequest(ctx);
         return Rails.run(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
                 AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
                 () -> {
-                    // Rebuild the message window on every attempt so overflow
-                    // compress+retry (and other rails that mutate ModelContext)
-                    // send the post-recovery snapshot, not the pre-failure one.
+                    // Rebuild again on every attempt so overflow compress+retry
+                    // (and other rails that mutate ModelContext) send the
+                    // post-recovery snapshot rather than the pre-failure one.
                     prepareModelRequest(ctx);
                     return doRailedModelCall(ctx);
                 }
@@ -2783,7 +2786,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .enableOpenrouterModelContextWindowTokens(source.isEnableOpenrouterModelContextWindowTokens())
                 .openrouterRequestTimeout(source.getOpenrouterRequestTimeout())
                 .enableOffload(source.isEnableOffload())
-                .offload(source.getOffload());
+                .offload(source.getOffload())
+                .enableModelContextOverflowRecovery(source.isEnableModelContextOverflowRecovery())
+                .extraContextOverflowKeywords(source.getExtraContextOverflowKeywords());
         Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
         if (modelWindowTokens != null) {
             snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));

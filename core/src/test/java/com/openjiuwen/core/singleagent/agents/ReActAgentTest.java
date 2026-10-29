@@ -417,6 +417,80 @@ class ReActAgentTest {
     }
 
     @Test
+    void copyContextEngineConfigPreservesOverflowRecoverySettings() throws Exception {
+        java.lang.reflect.Method copy = ReActAgent.class.getDeclaredMethod(
+                "copyContextEngineConfig", ContextEngineConfig.class);
+        copy.setAccessible(true);
+        ContextEngineConfig source = ContextEngineConfig.builder()
+                .enableModelContextOverflowRecovery(false)
+                .extraContextOverflowKeywords(List.of("custom_overflow_marker"))
+                .build();
+
+        ContextEngineConfig snapshot = (ContextEngineConfig) copy.invoke(null, source);
+
+        assertFalse(snapshot.isEnableModelContextOverflowRecovery());
+        assertEquals(List.of("custom_overflow_marker"), snapshot.getExtraContextOverflowKeywords());
+        assertEquals(source, snapshot);
+    }
+
+    @Test
+    void contextEngineHonorsOverflowRecoverySnapshotWithoutForcedRebuild() {
+        ContextEngineConfig overflowConfig = ContextEngineConfig.builder()
+                .enableModelContextOverflowRecovery(false)
+                .extraContextOverflowKeywords(List.of("vendor_overflow"))
+                .build();
+        ReActAgent agent = new ReActAgent(new AgentCard("overflow-cfg", "overflow-cfg", "desc"));
+        agent.configure(ReActAgentConfig.builder().contextEngineConfig(overflowConfig).build());
+        ContextEngine first = agent.getContextEngine();
+        MemorySession session = new MemorySession("overflow-cfg-session");
+        ModelContext modelContext = agent.initContext(session);
+        modelContext.addMessages(new UserMessage("keep")).toCompletableFuture().join();
+
+        assertSame(first, agent.getContextEngine());
+        assertFalse(agent.getContextEngine().recoverFromModelException(
+                modelContext.contextId(),
+                session,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                null));
+        assertSame(first, agent.getContextEngine());
+    }
+
+    @Test
+    void beforeModelCallSeesPreparedRequestMessages() {
+        AtomicReference<List<String>> beforeContents = new AtomicReference<>();
+        AgentRail observingRail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                beforeContents.set(inputs.getMessages().stream()
+                        .map(message -> ((BaseMessage) message).getContentAsString())
+                        .toList());
+            }
+        };
+        ReActAgent agent = agentWithFakeModel(new AssistantMessage("ok"));
+        agent.registerRail(observingRail).toCompletableFuture().join();
+        try {
+            AgentSessionApi session = new MemorySession("before-messages");
+            ModelContext modelContext = agent.initContext(session);
+            modelContext.addMessages(new UserMessage("visible-to-before-hook"))
+                    .toCompletableFuture().join();
+            AgentCallbackContext ctx = new AgentCallbackContext(agent);
+            ctx.setSession(session);
+            ctx.setContext(modelContext);
+
+            agent.callModel(ctx, modelContext, List.of());
+
+            assertNotNull(beforeContents.get());
+            assertTrue(beforeContents.get().stream().anyMatch(content -> content.contains("visible-to-before-hook")),
+                    "BEFORE_MODEL_CALL must observe prepareModelRequest messages");
+        } finally {
+            agent.unregisterRail(observingRail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
     void contextEngineRefreshesAfterNestedConfigMapUpdate() {
         ReActAgent agent = new ReActAgent(new AgentCard("nested-1", "nested", "desc"));
         Map<String, Integer> modelWindowTokens = new LinkedHashMap<>();
