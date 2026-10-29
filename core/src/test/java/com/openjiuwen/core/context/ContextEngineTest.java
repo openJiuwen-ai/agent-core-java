@@ -128,6 +128,52 @@ class ContextEngineTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void createContextCacheHitAlignsProcessorsWhenSeededWithoutThem() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-processor-align");
+
+        SessionModelContext seeded = (SessionModelContext) engine.createContext(
+                "ctx", session, null, null, null);
+        assertThat(seeded.getProcessors()).isEmpty();
+
+        List<ContextEngine.ProcessorSpec> processorSpecs = List.of(
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of("enabled", true)));
+        SessionModelContext aligned = (SessionModelContext) engine.createContext(
+                "ctx", session, processorSpecs, null, null);
+
+        assertThat(aligned).isSameAs(seeded);
+        assertThat(aligned.getProcessors()).hasSize(1);
+        assertThat(aligned.getProcessors().get(0).processorType()).isEqualTo("T00919CompactProcessor");
+
+        Object result = engine.compressContext("ctx", session, null,
+                List.of("T00919CompactProcessor"),
+                Map.of("return_state", true));
+        assertThat(result).isInstanceOf(Map.class);
+        Map<String, Object> payload = (Map<String, Object>) result;
+        assertThat(payload.get("result")).isEqualTo(SessionModelContext.ACTIVE_COMPRESSION_RESULT_COMPRESSED);
+    }
+
+    @Test
+    void createContextCacheHitKeepsProcessorsWhenSpecsOmitted() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-processor-keep");
+        List<ContextEngine.ProcessorSpec> processorSpecs = List.of(
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of()));
+
+        SessionModelContext withProcessors = (SessionModelContext) engine.createContext(
+                "ctx", session, processorSpecs, null, null);
+        SessionModelContext reused = (SessionModelContext) engine.createContext(
+                "ctx", session, null, null, null);
+
+        assertThat(reused).isSameAs(withProcessors);
+        assertThat(reused.getProcessors()).hasSize(1);
+        assertThat(reused.getProcessors().get(0).processorType()).isEqualTo("T00919CompactProcessor");
+    }
+
+    @Test
     void unknownProcessorAndMissingContextRaiseContextExecutionError() {
         ContextEngine engine = new ContextEngine(new ContextEngineConfig());
         RecordingSession session = new RecordingSession("session-error");

@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -102,18 +103,59 @@ public class ContextEngine {
                 processedContextId, sessionId, session, processors, historyMessages, tokenCounter));
         if (context instanceof SessionModelContext sessionModelContext) {
             sessionModelContext.setSessionRef(session);
+            alignProcessorsOnCacheHit(sessionModelContext, processors);
         }
         loadStateFromSession(context, session, historyMessages);
         return context;
     }
 
+    /**
+     * Aligns cached context processors when a later {@link #createContext} call supplies a different
+     * declaration (e.g. checkpointer seed without processors, then agent init with processors).
+     *
+     * <p>{@code null} specs mean the caller did not request a processor update and existing
+     * instances are left unchanged.</p>
+     *
+     * @param context cached session model context
+     * @param processors requested processor declaration; {@code null} skips alignment
+     */
+    private void alignProcessorsOnCacheHit(SessionModelContext context, List<ProcessorSpec> processors) {
+        if (processors == null) {
+            return;
+        }
+        if (hasSameProcessorDeclaration(context.getProcessors(), processors)) {
+            return;
+        }
+        context.reconfigureProcessors(createProcessorInstances(processors));
+    }
+
+    /**
+     * Compares installed processor types with the requested declaration in order.
+     *
+     * @param installed processors currently on the context
+     * @param requested processor specs from the createContext call
+     * @return {@code true} when sizes and ordered {@code processorType} values match
+     */
+    private static boolean hasSameProcessorDeclaration(
+            List<SessionModelContext.ContextProcessorPort> installed,
+            List<ProcessorSpec> requested) {
+        if (installed.size() != requested.size()) {
+            return false;
+        }
+        for (int index = 0; index < installed.size(); index++) {
+            String installedType = installed.get(index).processorType();
+            String requestedType = requested.get(index).processorType();
+            if (!Objects.equals(installedType, requestedType)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private SessionModelContext newSessionContext(String processedContextId, String sessionId, Object session,
                                                   List<ProcessorSpec> processors, List<BaseMessage> historyMessages,
                                                   ModelContext.TokenCounterPort tokenCounter) {
-        List<SessionModelContext.ContextProcessorPort> processorInstances = new ArrayList<>();
-        for (ProcessorSpec processorSpec : processors == null ? List.<ProcessorSpec>of() : processors) {
-            processorInstances.add(createProcessor(processorSpec.processorType(), processorSpec.config()));
-        }
+        List<SessionModelContext.ContextProcessorPort> processorInstances = createProcessorInstances(processors);
 
         // Default to CJK-weighted SimpleTokenCounter when no encoder is configured.
         // when the caller omits token_counter. TiktokenCounter has no encoder in this JDK build.
