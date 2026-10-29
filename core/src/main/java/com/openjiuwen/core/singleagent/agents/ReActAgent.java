@@ -2400,6 +2400,46 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return ref[0]++;
     }
 
+    /**
+     * Publishes a guardrail retry after the retry has been registered. Observation is
+     * best-effort and cannot revoke the pending model retry.
+     *
+     * @param context current model callback context
+     * @param retryCount guardrail-local retry sequence, starting at one
+     * @param maxRetries guardrail-local retry budget
+     * @param delaySeconds delay requested for the guardrail retry, in seconds
+     */
+    public void publishGuardrailRetry(AgentCallbackContext context, int retryCount, int maxRetries,
+            double delaySeconds) {
+        if (context == null || context.getSession() == null
+                || !Boolean.TRUE.equals(context.getExtra().get("_streaming"))) {
+            return;
+        }
+        Map<String, Object> payload = guardrailRetryPayload(retryCount, maxRetries, delaySeconds);
+        try {
+            context.getSession().writeStream(new OutputSchema(
+                    "model_retry",
+                    nextStreamIndex(context),
+                    payload
+            ));
+        } catch (IllegalStateException | IllegalArgumentException | NullPointerException exception) {
+            Loggers.AGENT.warning("Guardrail retry event write failed; retry continues. {}", Map.of(
+                    "retry_count", retryCount,
+                    "write_exception_type", exception.getClass().getName()));
+        }
+    }
+
+    private static Map<String, Object> guardrailRetryPayload(int retryCount, int maxRetries, double delaySeconds) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("retry_count", retryCount);
+        payload.put("max_retries", maxRetries);
+        payload.put("delay_ms", Math.max(0L, Math.round(delaySeconds * 1000.0D)));
+        payload.put("delay_source", "guardrail");
+        payload.put("message", "模型调用预算耗尽，护栏层发起整轮重试 %d/%d".formatted(retryCount, maxRetries));
+        payload.put("retry_tier", "rail");
+        return payload;
+    }
+
     private static Map<String, Object> modelRetryPayload(ModelRetryEvent event) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("retry_count", event.retryCount());
@@ -2413,6 +2453,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         } else if (event.exceptionType() != null) {
             payload.put("exception_type", event.exceptionType());
         }
+        payload.put("retry_tier", "client");
         return payload;
     }
 
