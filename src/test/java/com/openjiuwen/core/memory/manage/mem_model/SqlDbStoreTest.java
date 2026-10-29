@@ -63,6 +63,29 @@ class SqlDbStoreTest {
     }
 
     @Test
+    void writeRejectsSqlInjectionTableAndColumnNames() {
+        assertThrows(IllegalArgumentException.class, () -> sqlDbStore.write(
+                "user_message; DROP TABLE user_message", Map.of("message_id", "x")));
+        assertThrows(IllegalArgumentException.class, () -> sqlDbStore.write(
+                "user_message", Map.of("message_id; DROP TABLE user_message", "x")));
+    }
+
+    @Test
+    void deleteTableRejectsSqlInjectionTableName() {
+        assertThrows(IllegalArgumentException.class, () -> sqlDbStore.deleteTable(
+                "user_message; DROP TABLE user_message"));
+        assertThrows(IllegalArgumentException.class, () -> sqlDbStore.deleteTable("user_message--"));
+    }
+
+    @Test
+    void getWithSortRejectsSqlInjectionIdentifiers() {
+        assertThrows(IllegalArgumentException.class, () -> sqlDbStore.getWithSort(
+                "user_message; DROP TABLE user_message", Map.of(), "timestamp", "ASC", 10));
+        assertThrows(IllegalArgumentException.class, () -> sqlDbStore.getWithSort(
+                "user_message", Map.of(), "timestamp; DROP TABLE user_message", "ASC", 10));
+    }
+
+    @Test
     void batchGetUsesOrWithinEachConditionGroup() {
         List<Map<String, Object>> rows =
             sqlDbStore.batchGet("user_message", List.of(Map.of("message_id", "m1", "role", "assistant")));
