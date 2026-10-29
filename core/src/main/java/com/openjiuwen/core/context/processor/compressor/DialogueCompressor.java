@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Compresses historical ReAct dialogue blocks into memory messages.
@@ -86,6 +87,9 @@ public class DialogueCompressor extends ContextProcessor {
     private final boolean keepLastRound;
     private final int compressionTargetTokens;
     private final Model model;
+    private final AtomicBoolean modelNullWarned = new AtomicBoolean(false);
+    private final AtomicBoolean compressionFailureWarned = new AtomicBoolean(false);
+    private final AtomicBoolean nullResponseWarned = new AtomicBoolean(false);
 
     public DialogueCompressor(Object config) {
         this(asConfig(config));
@@ -95,6 +99,11 @@ public class DialogueCompressor extends ContextProcessor {
         this(config, config != null && config.getModelClient() != null
                 ? Runner.resourceMgr().resolveModel(null, config.getModelClient(), config.getModel())
                 : null);
+        if (config != null && config.getModelClient() == null) {
+            Loggers.CONTEXT_ENGINE.warning(
+                    "DialogueCompressor created without modelClient - compression body will never execute. "
+                            + "Set modelClient (and optionally model) in DialogueCompressorConfig to enable compression.");
+        }
     }
 
     DialogueCompressor(DialogueCompressorConfig config, Model model) {
@@ -136,6 +145,14 @@ public class DialogueCompressor extends ContextProcessor {
             unpinOffloadEntriesAfterCompression(context, pinnedHandles);
         }
         if (response == null) {
+            if (nullResponseWarned.compareAndSet(false, true)) {
+                String sessionId = context != null ? context.sessionId() : "unknown";
+                Loggers.CONTEXT_ENGINE.warning(
+                        "DialogueCompressor compression returned null response for session {} - "
+                                + "context messages will not be compressed this round. "
+                                + "See earlier warnings for the root cause.",
+                        sessionId);
+            }
             return noOp(incoming);
         }
         ReplacementBuildResult jsonResult = buildJsonReplacements(context, targets, response.getParserContent());
@@ -167,6 +184,15 @@ public class DialogueCompressor extends ContextProcessor {
                 context.setMessages(updatedMessages, true);
                 return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(event, List.of(), null));
             }
+        }
+        String sessionId = context != null ? context.sessionId() : "unknown";
+        if (compressionFailureWarned.compareAndSet(false, true)) {
+            Loggers.CONTEXT_ENGINE.warning(
+                    "DialogueCompressor compression produced no usable replacement for session {} - "
+                            + "LLM response content was empty or unparseable and fallback summary was empty. "
+                            + "Compression will remain a no-op until the model returns valid content. "
+                            + "(this warning is logged once per compressor instance)",
+                    sessionId);
         }
         return noOp(incoming);
     }
@@ -337,6 +363,14 @@ public class DialogueCompressor extends ContextProcessor {
                 new UserMessage(buildTargetsPayload(targets)));
         try {
             if (model == null) {
+                if (modelNullWarned.compareAndSet(false, true)) {
+                    String sessionId = context != null ? context.sessionId() : "unknown";
+                    Loggers.CONTEXT_ENGINE.warning(
+                            "DialogueCompressor skipped compression for session {} - model is null "
+                                    + "(modelClient not configured). Compression will remain inactive "
+                                    + "until a valid modelClient is provided.",
+                            sessionId);
+                }
                 return null;
             }
             AssistantMessage response = model.invoke(modelMessages,
@@ -349,6 +383,13 @@ public class DialogueCompressor extends ContextProcessor {
             recordCompressionUsage(response);
             return response;
         } catch (RuntimeException ex) {
+            if (compressionFailureWarned.compareAndSet(false, true)) {
+                String sessionId = context != null ? context.sessionId() : "unknown";
+                Loggers.CONTEXT_ENGINE.warning(
+                        "DialogueCompressor compression LLM call failed for session {}: {} "
+                                + "(subsequent failures of this kind will not be logged again for this compressor)",
+                        sessionId, ex.getMessage());
+            }
             return null;
         }
     }
