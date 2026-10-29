@@ -311,6 +311,11 @@ public class TaskScheduler {
                 Loggers.CONTROLLER.info("Not all tasks completed, continue");
                 return;
             }
+            // Check after reading statuses: a newly started task may already be terminal
+            // while its callback is still writing output or submitting the next task.
+            if (runningTasks.values().stream().anyMatch(entry -> sessionId.equals(entry.sessionId))) {
+                return;
+            }
             Loggers.CONTROLLER.info("All tasks completed for session {}, sending completion signal", sessionId);
 
             AgentSessionApi session = sessions.get(sessionId);
@@ -580,7 +585,7 @@ public class TaskScheduler {
                             () -> executeTaskWrapper(taskId, session), "task-" + taskId, true);
                     taskThread.start();
 
-                    runningTasks.put(taskId, new RunningTaskEntry(null, taskThread));
+                    runningTasks.put(taskId, new RunningTaskEntry(null, taskThread, task.getSessionId()));
                 } finally {
                     lock.unlock();
                 }
@@ -692,10 +697,12 @@ public class TaskScheduler {
     private static class RunningTaskEntry {
         private volatile TaskExecutor executor;
         private final Thread taskThread;
+        private final String sessionId;
 
-        RunningTaskEntry(TaskExecutor executor, Thread taskThread) {
+        RunningTaskEntry(TaskExecutor executor, Thread taskThread, String sessionId) {
             this.executor = executor;
             this.taskThread = taskThread;
+            this.sessionId = sessionId;
         }
 
         TaskExecutor getExecutor() {

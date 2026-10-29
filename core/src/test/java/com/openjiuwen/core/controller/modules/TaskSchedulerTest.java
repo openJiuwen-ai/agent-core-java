@@ -25,6 +25,8 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
@@ -137,6 +139,57 @@ class TaskSchedulerTest {
                 .containsEntry("payload_key", "payload-value")
                 .containsEntry("task_key", "task-value")
                 .containsEntry("shared", "task-value");
+    }
+
+    @Test
+    void completionSignalWaitsForTaskCompletionCallback() throws Exception {
+        ControllerConfig config = new ControllerConfig();
+        TaskManager taskManager = new TaskManager(config);
+        EventQueue eventQueue = new EventQueue(config);
+        BaseCard card = new BaseCard("agent-1", "agent", "test agent");
+        TaskScheduler scheduler = new TaskScheduler(config, taskManager, new ContextEngine(),
+                new AbilityManager(), eventQueue, card);
+        FakeSession session = new FakeSession("session-1");
+        CountDownLatch callbackStarted = new CountDownLatch(1);
+        CountDownLatch releaseCallback = new CountDownLatch(1);
+        eventQueue.setEventHandler(new RecordingEventHandler() {
+            @Override
+            public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
+                callbackStarted.countDown();
+                try {
+                    if (!releaseCallback.await(3, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("callback was not released");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+                inputs.getSession().writeStream("callback-finished");
+                return Map.of();
+            }
+        });
+        eventQueue.subscribe(card.getId(), session.getSessionId());
+        scheduler.getSessions().put(session.getSessionId(), session);
+        scheduler.getTaskExecutorRegistry().addTaskExecutor("test_task", dependencies ->
+                new TestTaskExecutor(dependencies, List.of(new ControllerOutputChunk(0,
+                        new ControllerOutputPayload(EventType.TASK_COMPLETION.getValue(), List.of())))));
+        try {
+            scheduler.start();
+            taskManager.addTask(task(session.getSessionId(), "task-1", TaskStatus.SUBMITTED));
+            assertThat(callbackStarted.await(3, TimeUnit.SECONDS)).isTrue();
+            scheduler.ensureSessionCompletionSignal(session.getSessionId());
+            assertThat(session.streamSnapshot()).noneMatch(TaskSchedulerTest::isAllTasksProcessed);
+            releaseCallback.countDown();
+            waitUntil(() -> session.streamSnapshot().stream().anyMatch(TaskSchedulerTest::isAllTasksProcessed));
+            List<Object> output = session.streamSnapshot();
+            assertThat(output).contains("callback-finished");
+            assertThat(output.indexOf("callback-finished")).isLessThan(output.size() - 1);
+            assertThat(isAllTasksProcessed(output.get(output.size() - 1))).isTrue();
+        } finally {
+            releaseCallback.countDown();
+            scheduler.stop();
+            eventQueue.stop();
+        }
     }
 
     @Test
@@ -260,7 +313,7 @@ class TaskSchedulerTest {
      * <p>Mirrors Python's event handler callbacks consumed by
      * {@code openjiuwen/core/controller/modules/task_scheduler.py}.</p>
      */
-    private static final class RecordingEventHandler extends EventHandler {
+    private static class RecordingEventHandler extends EventHandler {
         private final AtomicReference<Event> completionEvent = new AtomicReference<>();
 
         @Override
