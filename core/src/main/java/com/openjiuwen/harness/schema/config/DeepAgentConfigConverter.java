@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.schema.config;
 
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -129,6 +130,9 @@ public final class DeepAgentConfigConverter {
         target.setSkills(skills);
         target.setSkillDirectories(new ArrayList<>(skills));
         target.setEnableReadImageMultimodal(legacy.isEnableReadImageMultimodal());
+        if (legacy.getContextEngineConfig() instanceof ContextEngineConfig contextConfig) {
+            target.setContextEngineConfig(contextConfig);
+        }
     }
 
     /**
@@ -177,6 +181,9 @@ public final class DeepAgentConfigConverter {
                 .promptMode(legacy.getPromptMode())
                 .isRestrictToWorkDir(legacy.isRestrictToWorkDir())
                 .workspacePath(resolveWorkspacePath(legacy.getWorkspace()));
+        if (legacy.getContextEngineConfig() instanceof ContextEngineConfig contextConfig) {
+            builder.contextEngineConfig(contextConfig);
+        }
 
         if (legacy.getTools() != null) {
             builder.tools(new ArrayList<>(legacy.getTools()));
@@ -231,6 +238,9 @@ public final class DeepAgentConfigConverter {
             builder.isTaskLoopEnabled(nested.isEnableTaskLoop());
             builder.language(nested.getLanguage() == null ? "cn" : nested.getLanguage());
             builder.promptMode(nested.getPromptMode());
+            if (nested.getContextEngineConfig() != null) {
+                builder.contextEngineConfig(nested.getContextEngineConfig());
+            }
         }
         return builder.build();
     }

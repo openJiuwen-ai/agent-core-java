@@ -445,7 +445,7 @@ class ModelContextMissingTest {
         await(context.addMessages(messages));
 
         assertMessageStats(context.statistic(), new MessageStats(100, 25, 25, 25, 25));
-        assertMessageStats(window(context).getStatistic(), new MessageStats(100, 25, 25, 25, 25));
+        assertMessageStats(window(context).getStatistic(), new MessageStats(40, 10, 10, 10, 10));
     }
 
     @Test

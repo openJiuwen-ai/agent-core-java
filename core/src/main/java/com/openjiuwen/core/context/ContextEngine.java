@@ -6,6 +6,7 @@ package com.openjiuwen.core.context;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressor;
@@ -92,19 +93,77 @@ public class ContextEngine {
         return createContext(contextId, session, null, null, null);
     }
 
+    /**
+     * Creates or returns the pooled context for the given id/session pair.
+     *
+     * <p>On a cache hit the incoming {@code processors} are installed when the
+     * cached context has none, and mismatches with already-installed processors
+     * are logged and ignored. Incoming {@code historyMessages} seed the cached
+     * context only while it is still empty.</p>
+     */
     public ModelContext createContext(String contextId, Object session, List<ProcessorSpec> processors,
                                       List<BaseMessage> historyMessages,
                                       ModelContext.TokenCounterPort tokenCounter) {
         String processedContextId = processContextId(contextId == null ? DEFAULT_CONTEXT_ID : contextId);
         String sessionId = resolveSessionId(session);
         String fullContextId = sessionId + "_" + processedContextId;
-        ModelContext context = contextPool.computeIfAbsent(fullContextId, ignored -> newSessionContext(
-                processedContextId, sessionId, session, processors, historyMessages, tokenCounter));
+        boolean[] created = new boolean[1];
+        ModelContext context = contextPool.computeIfAbsent(fullContextId, ignored -> {
+            created[0] = true;
+            return newSessionContext(
+                    processedContextId, sessionId, session, processors, historyMessages, tokenCounter);
+        });
         if (context instanceof SessionModelContext sessionModelContext) {
             sessionModelContext.setSessionRef(session);
         }
-        loadStateFromSession(context, session, historyMessages);
+        boolean stateLoaded = loadStateFromSession(context, session, historyMessages);
+        if (!created[0] && context instanceof SessionModelContext sessionModelContext) {
+            installProcessorsIfAbsent(sessionModelContext, processors);
+            if (!stateLoaded) {
+                seedHistoryIfEmpty(sessionModelContext, historyMessages);
+            }
+        }
         return context;
+    }
+
+    private void installProcessorsIfAbsent(SessionModelContext context, List<ProcessorSpec> processors) {
+        if (processors == null || processors.isEmpty()) {
+            return;
+        }
+        List<SessionModelContext.ContextProcessorPort> existing = context.getProcessors();
+        if (!existing.isEmpty()) {
+            List<String> existingTypes = existing.stream()
+                    .map(SessionModelContext.ContextProcessorPort::processorType).toList();
+            List<String> incomingTypes = processors.stream().map(ProcessorSpec::processorType).toList();
+            if (!existingTypes.equals(incomingTypes)) {
+                Loggers.CONTEXT_ENGINE.warning(
+                        "Context processors {} already installed; ignoring incoming processors {}",
+                        existingTypes, incomingTypes);
+            }
+            return;
+        }
+        List<SessionModelContext.ContextProcessorPort> instances = new ArrayList<>();
+        for (ProcessorSpec processorSpec : processors) {
+            instances.add(createProcessor(processorSpec.processorType(), processorSpec.config()));
+        }
+        context.reconfigureProcessors(instances);
+    }
+
+    private void seedHistoryIfEmpty(SessionModelContext context, List<BaseMessage> historyMessages) {
+        if (historyMessages == null || historyMessages.isEmpty()) {
+            return;
+        }
+        if (context.length() > 0) {
+            Loggers.CONTEXT_ENGINE.warning(
+                    "Context already has {} messages; ignoring history preset of {} messages",
+                    context.length(), historyMessages.size());
+            return;
+        }
+        Map<String, Object> contextState = new LinkedHashMap<>();
+        contextState.put("messages", new ArrayList<>(historyMessages));
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put(context.contextId(), contextState);
+        context.loadState(state);
     }
 
     private SessionModelContext newSessionContext(String processedContextId, String sessionId, Object session,
@@ -304,13 +363,13 @@ public class ContextEngine {
         }
     }
 
-    private static void loadStateFromSession(ModelContext context, Object session, List<BaseMessage> historyMessages) {
+    private static boolean loadStateFromSession(ModelContext context, Object session, List<BaseMessage> historyMessages) {
         if (session == null || !(context instanceof SessionModelContext sessionModelContext)) {
-            return;
+            return false;
         }
         Map<String, Object> states = asStringObjectMap(readSessionContextState(session).orElse(null));
         if (states == null) {
-            return;
+            return false;
         }
         if (historyMessages != null) {
             Map<String, Object> contextState = asStringObjectMap(states.get(context.contextId()));
@@ -321,6 +380,7 @@ public class ContextEngine {
             states.put(context.contextId(), contextState);
         }
         sessionModelContext.loadState(states);
+        return true;
     }
 
     private static void saveStateToSession(Object session, Map<String, Object> states) {

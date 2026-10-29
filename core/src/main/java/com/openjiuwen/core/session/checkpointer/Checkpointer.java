@@ -318,6 +318,15 @@ public abstract class Checkpointer implements AutoCloseable {
     }
 
     /**
+     * Returns the store path actually used by this checkpointer, or {@code null} when the
+     * backend has no filesystem path (in-memory, remote stores). Callers can use this to
+     * discover silent path rewrites applied during configuration.
+     */
+    public String actualStorePath() {
+        return null;
+    }
+
+    /**
      * Close resources owned by this checkpointer.
      */
     @Override
