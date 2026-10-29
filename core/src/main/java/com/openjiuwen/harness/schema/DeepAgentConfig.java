@@ -599,20 +599,20 @@ public class DeepAgentConfig {
         private final Map<String, Object> metadata = new LinkedHashMap<>();
         private Object contextEngineConfig;
 
-        public Object getContextEngineConfig() {
-            return contextEngineConfig;
-        }
-
-        public void setContextEngineConfig(Object contextEngineConfig) {
-            this.contextEngineConfig = contextEngineConfig;
-        }
-
         public SubAgentConfig() {
         }
 
         public SubAgentConfig(String name, String description, String systemPrompt) {
             this.agentCard = new AgentCard(name, name, description);
             this.systemPrompt = systemPrompt;
+        }
+
+        public Object getContextEngineConfig() {
+            return contextEngineConfig;
+        }
+
+        public void setContextEngineConfig(Object contextEngineConfig) {
+            this.contextEngineConfig = contextEngineConfig;
         }
 
         public AgentCard getAgentCard() {

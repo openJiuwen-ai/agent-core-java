@@ -79,6 +79,8 @@ public class PersistenceCheckpointer extends Checkpointer {
     /**
      * Returns the store path actually used, exposing any rewrite applied at configuration
      * time (e.g. {@code foo} -> {@code foo.db} for sqlite).
+     *
+     * @return the actual store path, or {@code null} when the backend has no filesystem path
      */
     @Override
     public String actualStorePath() {
@@ -122,6 +124,11 @@ public class PersistenceCheckpointer extends Checkpointer {
     /**
      * Logs a WARNING when the actually-used store path differs from the configured one, so
      * callers can discover silent rewrites (e.g. {@code foo} -> {@code foo.db} for sqlite).
+     *
+     * @param actualPath the store path actually used by the backend
+     * @param configuredPath the store path as supplied in the configuration
+     * @param dbType the configured database type, used in the warning message
+     * @return the actual store path, unchanged
      */
     private static String rewrittenPath(String actualPath, String configuredPath, String dbType) {
         if (!Objects.equals(actualPath, configuredPath)) {

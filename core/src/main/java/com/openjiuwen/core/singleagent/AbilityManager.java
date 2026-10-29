@@ -1101,10 +1101,10 @@ public class AbilityManager {
         } catch (ToolInterruptException interrupt) {
             throw interrupt;
         } catch (TimeoutException exception) {
-            Object partial = extractPartialResult(tool);
+            Optional<Object> partial = extractPartialResult(tool);
             String errorMsg = "Tool '" + toolCall.getName() + "' timed out after " + callTimeout + "s";
-            if (partial != null) {
-                errorMsg += "; partial result before timeout: " + buildToolMessageContent(partial);
+            if (partial.isPresent()) {
+                errorMsg += "; partial result before timeout: " + buildToolMessageContent(partial.get());
                 Loggers.AGENT.warning("Tool '" + toolCall.getName()
                         + "' timed out after " + callTimeout + "s; partial progress preserved");
             } else {
@@ -1120,17 +1120,17 @@ public class AbilityManager {
 
     /**
      * Best-effort extraction of progress a tool captured before the timeout; tools that do
-     * not implement the partial-result hook simply yield {@code null}.
+     * not implement the partial-result hook simply yield an empty optional.
      */
-    private static Object extractPartialResult(Tool tool) {
-        if (tool instanceof ExecutionResult.PartialResultProvider provider) {
-            try {
-                return provider.partialResult();
-            } catch (RuntimeException ignored) {
-                return null;
-            }
+    private static Optional<Object> extractPartialResult(Tool tool) {
+        if (!(tool instanceof ExecutionResult.PartialResultProvider provider)) {
+            return Optional.empty();
         }
-        return null;
+        try {
+            return Optional.ofNullable(provider.partialResult());
+        } catch (RuntimeException ignored) {
+            return Optional.empty();
+        }
     }
 
     private static Object invokeWithTimeout(Tool tool, Map<String, Object> inputs, Object session, double timeoutSeconds)
@@ -2067,6 +2067,11 @@ public class AbilityManager {
 
         /** Hook a tool may use to expose progress produced before a timeout cut it off. */
         public interface PartialResultProvider {
+            /**
+             * Returns the progress captured by the tool before a timeout cut it off.
+             *
+             * @return the partial result, or {@code null} when no progress was captured
+             */
             Object partialResult();
         }
     }

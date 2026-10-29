@@ -102,7 +102,8 @@ public class DialogueCompressor extends ContextProcessor {
         if (config != null && config.getModelClient() == null) {
             Loggers.CONTEXT_ENGINE.warning(
                     "DialogueCompressor created without modelClient - compression body will never execute. "
-                            + "Set modelClient (and optionally model) in DialogueCompressorConfig to enable compression.");
+                            + "Set modelClient (and optionally model) in DialogueCompressorConfig "
+                            + "to enable compression.");
         }
     }
 
@@ -145,48 +146,53 @@ public class DialogueCompressor extends ContextProcessor {
             unpinOffloadEntriesAfterCompression(context, pinnedHandles);
         }
         if (response == null) {
-            if (nullResponseWarned.compareAndSet(false, true)) {
-                String sessionId = context != null ? context.sessionId() : "unknown";
-                Loggers.CONTEXT_ENGINE.warning(
-                        "DialogueCompressor compression returned null response for session {} - "
-                                + "context messages will not be compressed this round. "
-                                + "See earlier warnings for the root cause.",
-                        sessionId);
-            }
-            return noOp(incoming);
+            return warnNullResponse(context, incoming);
         }
+        return applyCompressionResponse(context, contextMessages, incoming, targets, response);
+    }
+
+    /**
+     * Logs (once per compressor instance) that the model returned no response and leaves
+     * the context untouched for this round.
+     */
+    private CompletionStage<SessionModelContext.ProcessResult> warnNullResponse(SessionModelContext context,
+                                                                                List<BaseMessage> incoming) {
+        if (nullResponseWarned.compareAndSet(false, true)) {
+            String sessionId = context != null ? context.sessionId() : "unknown";
+            Loggers.CONTEXT_ENGINE.warning(
+                    "DialogueCompressor compression returned null response for session {} - "
+                            + "context messages will not be compressed this round. "
+                            + "See earlier warnings for the root cause.",
+                    sessionId);
+        }
+        return noOp(incoming);
+    }
+
+    /**
+     * Turns the model response into message replacements: structured JSON blocks are preferred,
+     * a plain-text fallback summary is used when the payload is not valid blocks JSON, and a
+     * warning is logged (once per instance) when nothing usable was produced.
+     */
+    private CompletionStage<SessionModelContext.ProcessResult> applyCompressionResponse(
+            SessionModelContext context, List<BaseMessage> contextMessages, List<BaseMessage> incoming,
+            List<CompressTarget> targets, AssistantMessage response) {
         ReplacementBuildResult jsonResult = buildJsonReplacements(context, targets, response.getParserContent());
         if (!jsonResult.replacements().isEmpty()) {
             // C4/C6: per replaced block, handles still referenced by the
             // summary get a TTL extension, vanished ones (orphans) get their
             // TTL capped for fast reclaim.
-            settleReplacementOffloadHandles(context, jsonResult.replacements());
-            List<BaseMessage> updatedMessages = applyReplacements(contextMessages, jsonResult.replacements());
-            ContextEvent event = new ContextEvent(
-                    processorType(),
-                    jsonResult.modifiedIndices(),
-                    extractCompactSummaryFromReplacements(jsonResult.replacements()),
-                    currentCompressionUsage());
-            context.setMessages(updatedMessages, true);
-            return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(event, List.of(), null));
+            return completeWithReplacements(context, contextMessages,
+                    jsonResult.replacements(), jsonResult.modifiedIndices());
         }
         if (!isValidBlocksPayload(response.getParserContent())) {
             Replacement fallback = buildFallbackReplacement(context, targets, response.getContentAsString());
             if (fallback != null) {
-                settleReplacementOffloadHandles(context, List.of(fallback));
-                List<BaseMessage> updatedMessages = applyReplacements(contextMessages, List.of(fallback));
-                List<Integer> modifiedIndices = indexRange(fallback.startIndex(), fallback.endIndex());
-                ContextEvent event = new ContextEvent(
-                        processorType(),
-                        modifiedIndices,
-                        extractCompactSummaryFromReplacements(List.of(fallback)),
-                        currentCompressionUsage());
-                context.setMessages(updatedMessages, true);
-                return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(event, List.of(), null));
+                return completeWithReplacements(context, contextMessages, List.of(fallback),
+                        indexRange(fallback.startIndex(), fallback.endIndex()));
             }
         }
-        String sessionId = context != null ? context.sessionId() : "unknown";
         if (compressionFailureWarned.compareAndSet(false, true)) {
+            String sessionId = context != null ? context.sessionId() : "unknown";
             Loggers.CONTEXT_ENGINE.warning(
                     "DialogueCompressor compression produced no usable replacement for session {} - "
                             + "LLM response content was empty or unparseable and fallback summary was empty. "
@@ -195,6 +201,24 @@ public class DialogueCompressor extends ContextProcessor {
                     sessionId);
         }
         return noOp(incoming);
+    }
+
+    /**
+     * Persists the given replacements into the context messages and returns a completed
+     * stage carrying the resulting {@link ContextEvent}.
+     */
+    private CompletionStage<SessionModelContext.ProcessResult> completeWithReplacements(
+            SessionModelContext context, List<BaseMessage> contextMessages, List<Replacement> replacements,
+            List<Integer> modifiedIndices) {
+        settleReplacementOffloadHandles(context, replacements);
+        List<BaseMessage> updatedMessages = applyReplacements(contextMessages, replacements);
+        ContextEvent event = new ContextEvent(
+                processorType(),
+                modifiedIndices,
+                extractCompactSummaryFromReplacements(replacements),
+                currentCompressionUsage());
+        context.setMessages(updatedMessages, true);
+        return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(event, List.of(), null));
     }
 
     @Override

@@ -129,7 +129,7 @@ public class ContextEngineConfig {
     }
 
     public Integer getMaxContextMessageNum() {
-        return maxContextMessageNum == null ? DEFAULT_MAX_CONTEXT_MESSAGE_NUM : maxContextMessageNum;
+        return Objects.requireNonNullElse(maxContextMessageNum, DEFAULT_MAX_CONTEXT_MESSAGE_NUM);
     }
 
     public void setMaxContextMessageNum(Integer maxContextMessageNum) {
@@ -138,7 +138,7 @@ public class ContextEngineConfig {
     }
 
     public Integer getDefaultWindowMessageNum() {
-        return defaultWindowMessageNum == null ? DEFAULT_WINDOW_MESSAGE_NUM : defaultWindowMessageNum;
+        return Objects.requireNonNullElse(defaultWindowMessageNum, DEFAULT_WINDOW_MESSAGE_NUM);
     }
 
     public void setDefaultWindowMessageNum(Integer defaultWindowMessageNum) {
@@ -147,7 +147,7 @@ public class ContextEngineConfig {
     }
 
     public Integer getDefaultWindowRoundNum() {
-        return defaultWindowRoundNum == null ? DEFAULT_WINDOW_ROUND_NUM : defaultWindowRoundNum;
+        return Objects.requireNonNullElse(defaultWindowRoundNum, DEFAULT_WINDOW_ROUND_NUM);
     }
 
     public void setDefaultWindowRoundNum(Integer defaultWindowRoundNum) {

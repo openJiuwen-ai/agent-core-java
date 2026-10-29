@@ -55,6 +55,9 @@ public class TaskTool extends AbstractHarnessTool {
     /**
      * Declares the subagent timeout on the card so the ability manager honors it instead of
      * falling back to the shorter global default; existing declarations are preserved.
+     *
+     * @param card the tool card to annotate; must not be {@code null}
+     * @return the same card, with the resilience timeout declared
      */
     private static ToolCard withTaskTimeout(ToolCard card) {
         Map<String, Object> properties = card.getProperties() == null
