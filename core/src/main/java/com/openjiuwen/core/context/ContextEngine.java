@@ -60,7 +60,6 @@ public class ContextEngine {
     private final SessionModelContext.SysOperationPort sysOperation;
     private final SessionModelContext.ModelContextWindowTokenProvider modelContextWindowTokenProvider;
     private final Map<String, ModelContext> contextPool = new ConcurrentHashMap<>();
-    /** Last processor declaration installed per pool key; compared on cache-hit align. */
     private final Map<String, List<ProcessorSpec>> installedProcessorSpecs = new ConcurrentHashMap<>();
 
     public ContextEngine() {
