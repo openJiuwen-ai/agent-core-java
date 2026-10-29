@@ -200,7 +200,7 @@ class GitCodeApi:
                 status=exc.code,
                 uncertain=False,
             ) from None
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except OSError as exc:
             uncertain = method != "GET"
             operation = "write" if uncertain else "read"
             raise ApiError(
