@@ -10,6 +10,12 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.sysop.BaseOperation;
 import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.local.LocalCodeOperation;
+import com.openjiuwen.core.sysop.local.LocalFsOperation;
+import com.openjiuwen.core.sysop.local.LocalShellOperation;
+import com.openjiuwen.core.sysop.sandbox.SandboxCodeOperation;
+import com.openjiuwen.core.sysop.sandbox.SandboxFsOperation;
+import com.openjiuwen.core.sysop.sandbox.SandboxShellOperation;
 
 import java.io.IOException;
 import java.net.URL;
@@ -37,6 +43,24 @@ public final class OperationRegistry {
      * @since 0.1.7
      */
     private static final Map<OperationMode, Map<String, OperationDef>> REPOSITORY = new ConcurrentHashMap<>();
+
+    /**
+     * Trusted operation classes that may be registered by name.
+     * <p>
+     * Dynamic class loading is restricted to this explicit allowlist so that only the
+     * application's own {@link BaseOperation} implementations can be registered.
+     * Class names discovered by package scanning that are not in this allowlist are
+     * ignored instead of being reflectively loaded.
+     * 
+     * @since 0.1.7
+     */
+    private static final Map<String, Class<? extends BaseOperation>> TRUSTED_OPERATION_CLASSES = Map.of(
+            "com.openjiuwen.core.sysop.local.LocalShellOperation", LocalShellOperation.class,
+            "com.openjiuwen.core.sysop.local.LocalCodeOperation", LocalCodeOperation.class,
+            "com.openjiuwen.core.sysop.local.LocalFsOperation", LocalFsOperation.class,
+            "com.openjiuwen.core.sysop.sandbox.SandboxShellOperation", SandboxShellOperation.class,
+            "com.openjiuwen.core.sysop.sandbox.SandboxCodeOperation", SandboxCodeOperation.class,
+            "com.openjiuwen.core.sysop.sandbox.SandboxFsOperation", SandboxFsOperation.class);
 
     /**
      * OperationRegistry.
@@ -247,7 +271,6 @@ public final class OperationRegistry {
         }
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * registerClassByName.
      * 
@@ -256,18 +279,15 @@ public final class OperationRegistry {
      * @since 0.1.7
      */
     private static void registerClassByName(String className, OperationMode mode) {
-        try {
-            Class<?> cls = Class.forName(className);
-            if (BaseOperation.class.isAssignableFrom(cls)) {
-                Operation annotation = cls.getAnnotation(Operation.class);
-                if (annotation != null && annotation.mode() == mode) {
-                    REPOSITORY.get(mode).putIfAbsent(annotation.name(),
-                            new OperationDef((Class<? extends BaseOperation>) cls, annotation.name(), annotation.mode(),
-                                    annotation.description()));
-                }
-            }
-        } catch (ClassNotFoundException e) {
-            logger.warning("Operation class not found: " + className);
+        Class<? extends BaseOperation> cls = TRUSTED_OPERATION_CLASSES.get(className);
+        if (cls == null) {
+            logger.warning("Operation class not in trusted allowlist: " + className);
+            return;
+        }
+        Operation annotation = cls.getAnnotation(Operation.class);
+        if (annotation != null && annotation.mode() == mode) {
+            REPOSITORY.get(mode).putIfAbsent(annotation.name(),
+                    new OperationDef(cls, annotation.name(), annotation.mode(), annotation.description()));
         }
     }
 
