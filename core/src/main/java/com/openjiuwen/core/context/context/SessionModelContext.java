@@ -24,6 +24,7 @@ import com.openjiuwen.core.context.offload.api.OffloadService;
 import com.openjiuwen.core.context.offload.compat.OffloadMessageBufferAdapter;
 import com.openjiuwen.core.context.offload.model.OffloadNamespace;
 import com.openjiuwen.core.context.offload.model.OffloadPayload;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
 import java.time.Instant;
@@ -223,6 +224,25 @@ public class SessionModelContext implements ModelContext {
         processors.clear();
         if (newProcessors != null) {
             processors.addAll(newProcessors);
+        }
+        rebindOffloadProcessors();
+    }
+
+    /**
+     * Propagates the already-bound {@link OffloadService} to {@link MessageOffloader}
+     * instances after the processor list is replaced.
+     *
+     * <p>No-op when the v2 pipeline has not been bound yet (legacy mode or before
+     * {@link #bindOffloadService}).</p>
+     */
+    public void rebindOffloadProcessors() {
+        if (offloadService == null) {
+            return;
+        }
+        for (ContextProcessorPort processor : processors) {
+            if (processor instanceof MessageOffloader offloader) {
+                offloader.setOffloadService(offloadService, offloadNamespaceSupplier);
+            }
         }
     }
 

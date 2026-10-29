@@ -1699,14 +1699,19 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         if (engineConfig == null || !engineConfig.isEnableOffload() || !(context instanceof SessionModelContext smc)) {
             return;
         }
+        OffloadConfig offloadConfig = engineConfig.getOffload() == null
+                ? new OffloadConfig()
+                : engineConfig.getOffload();
         if (smc.getOffloadService() != null) {
-            // Context reuse (engine pool): already bound — keep the single shared pipeline.
+            // Context reuse: keep the shared pipeline, but re-inject into any
+            // MessageOffloader instances swapped in by processor realignment.
+            for (MessageOffloader offloader : findOffloaders(smc)) {
+                syncProtectionConfig(offloader, offloadConfig);
+            }
+            smc.rebindOffloadProcessors();
             return;
         }
         try {
-            OffloadConfig offloadConfig = engineConfig.getOffload() == null
-                    ? new OffloadConfig()
-                    : engineConfig.getOffload();
             CompositeOffloadStore compositeStore = buildCompositeStore(offloadConfig);
             OffloadCatalog catalog = new OffloadCatalogImpl();
             OffloadService service = new OffloadServiceImpl(catalog, compositeStore,

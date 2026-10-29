@@ -10,6 +10,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.offload.api.OffloadCatalogImpl;
+import com.openjiuwen.core.context.offload.api.OffloadService;
+import com.openjiuwen.core.context.offload.api.OffloadServiceImpl;
+import com.openjiuwen.core.context.offload.api.OffloadStore;
+import com.openjiuwen.core.context.offload.cleanup.SessionOffloadGate;
+import com.openjiuwen.core.context.offload.model.OffloadBackend;
+import com.openjiuwen.core.context.offload.model.OffloadConfig;
+import com.openjiuwen.core.context.offload.model.OffloadNamespace;
+import com.openjiuwen.core.context.offload.store.CompositeOffloadStore;
+import com.openjiuwen.core.context.offload.store.MemoryOffloadStore;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -24,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Supplier;
 
 /**
  * Focused parity tests for {@link ContextEngine}.
@@ -134,14 +147,20 @@ class ContextEngineTest {
         ContextEngine engine = new ContextEngine(new ContextEngineConfig());
         RecordingSession session = new RecordingSession("session-processor-align");
 
-        SessionModelContext seeded = (SessionModelContext) engine.createContext(
-                "ctx", session, null, null, null);
+        ModelContext seededRaw = engine.createContext("ctx", session, null, null, null);
+        assertThat(seededRaw).isInstanceOf(SessionModelContext.class);
+        if (!(seededRaw instanceof SessionModelContext seeded)) {
+            return;
+        }
         assertThat(seeded.getProcessors()).isEmpty();
 
         List<ContextEngine.ProcessorSpec> processorSpecs = List.of(
                 new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of("enabled", true)));
-        SessionModelContext aligned = (SessionModelContext) engine.createContext(
-                "ctx", session, processorSpecs, null, null);
+        ModelContext alignedRaw = engine.createContext("ctx", session, processorSpecs, null, null);
+        assertThat(alignedRaw).isInstanceOf(SessionModelContext.class);
+        if (!(alignedRaw instanceof SessionModelContext aligned)) {
+            return;
+        }
 
         assertThat(aligned).isSameAs(seeded);
         assertThat(aligned.getProcessors()).hasSize(1);
@@ -163,14 +182,83 @@ class ContextEngineTest {
         List<ContextEngine.ProcessorSpec> processorSpecs = List.of(
                 new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of()));
 
-        SessionModelContext withProcessors = (SessionModelContext) engine.createContext(
-                "ctx", session, processorSpecs, null, null);
-        SessionModelContext reused = (SessionModelContext) engine.createContext(
-                "ctx", session, null, null, null);
+        ModelContext withProcessorsRaw = engine.createContext("ctx", session, processorSpecs, null, null);
+        assertThat(withProcessorsRaw).isInstanceOf(SessionModelContext.class);
+        if (!(withProcessorsRaw instanceof SessionModelContext withProcessors)) {
+            return;
+        }
+        ModelContext reusedRaw = engine.createContext("ctx", session, null, null, null);
+        assertThat(reusedRaw).isInstanceOf(SessionModelContext.class);
+        if (!(reusedRaw instanceof SessionModelContext reused)) {
+            return;
+        }
 
         assertThat(reused).isSameAs(withProcessors);
         assertThat(reused.getProcessors()).hasSize(1);
         assertThat(reused.getProcessors().get(0).processorType()).isEqualTo("T00919CompactProcessor");
+    }
+
+    @Test
+    void createContextCacheHitRealignsWhenProcessorConfigDiffers() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-processor-config");
+
+        List<ContextEngine.ProcessorSpec> firstSpecs = List.of(
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of("version", 1)));
+        ModelContext firstRaw = engine.createContext("ctx", session, firstSpecs, null, null);
+        assertThat(firstRaw).isInstanceOf(SessionModelContext.class);
+        if (!(firstRaw instanceof SessionModelContext context)) {
+            return;
+        }
+        SessionModelContext.ContextProcessorPort firstProcessor = context.getProcessors().get(0);
+
+        List<ContextEngine.ProcessorSpec> secondSpecs = List.of(
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of("version", 2)));
+        engine.createContext("ctx", session, secondSpecs, null, null);
+
+        assertThat(context.getProcessors()).hasSize(1);
+        assertThat(context.getProcessors().get(0)).isNotSameAs(firstProcessor);
+        assertThat(context.getProcessors().get(0).processorType()).isEqualTo("T00919CompactProcessor");
+    }
+
+    @Test
+    void createContextCacheHitRebindsOffloadServiceAfterProcessorRealign() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-offload-rebind");
+        MessageOffloaderConfig configA = new MessageOffloaderConfig();
+        configA.setLargeMessageThreshold(500);
+        List<ContextEngine.ProcessorSpec> firstSpecs = List.of(
+                new ContextEngine.ProcessorSpec("MessageOffloader", configA));
+
+        ModelContext createdRaw = engine.createContext("ctx", session, firstSpecs, null, null);
+        assertThat(createdRaw).isInstanceOf(SessionModelContext.class);
+        if (!(createdRaw instanceof SessionModelContext context)) {
+            return;
+        }
+        assertThat(context.getProcessors().get(0)).isInstanceOf(MessageOffloader.class);
+        if (!(context.getProcessors().get(0) instanceof MessageOffloader firstOffloader)) {
+            return;
+        }
+
+        OffloadService service = memoryOffloadService();
+        Supplier<OffloadNamespace> namespaceSupplier = () -> OffloadNamespace.of("", session.getSessionId(), "ctx");
+        context.bindOffloadService(service, namespaceSupplier);
+        firstOffloader.setOffloadService(service, namespaceSupplier);
+        assertThat(firstOffloader.getOffloadService()).isSameAs(service);
+
+        MessageOffloaderConfig configB = new MessageOffloaderConfig();
+        configB.setLargeMessageThreshold(800);
+        List<ContextEngine.ProcessorSpec> secondSpecs = List.of(
+                new ContextEngine.ProcessorSpec("MessageOffloader", configB));
+        engine.createContext("ctx", session, secondSpecs, null, null);
+
+        assertThat(context.getProcessors().get(0)).isInstanceOf(MessageOffloader.class);
+        if (!(context.getProcessors().get(0) instanceof MessageOffloader secondOffloader)) {
+            return;
+        }
+        assertThat(secondOffloader).isNotSameAs(firstOffloader);
+        assertThat(secondOffloader.getOffloadService()).isSameAs(service);
     }
 
     @Test
@@ -561,6 +649,13 @@ class ContextEngineTest {
 
     private static List<String> contents(List<BaseMessage> messages) {
         return messages.stream().map(BaseMessage::getContentAsString).toList();
+    }
+
+    private static OffloadService memoryOffloadService() {
+        LinkedHashMap<OffloadBackend, OffloadStore> chain = new LinkedHashMap<>();
+        chain.put(OffloadBackend.MEMORY, new MemoryOffloadStore());
+        return new OffloadServiceImpl(new OffloadCatalogImpl(), new CompositeOffloadStore(chain),
+                new SessionOffloadGate(), new OffloadConfig());
     }
 
     private static final class RecordingSession implements ContextEngine.SessionPort {

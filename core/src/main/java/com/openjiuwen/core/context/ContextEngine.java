@@ -60,6 +60,8 @@ public class ContextEngine {
     private final SessionModelContext.SysOperationPort sysOperation;
     private final SessionModelContext.ModelContextWindowTokenProvider modelContextWindowTokenProvider;
     private final Map<String, ModelContext> contextPool = new ConcurrentHashMap<>();
+    /** Last processor declaration installed per pool key; compared on cache-hit align. */
+    private final Map<String, List<ProcessorSpec>> installedProcessorSpecs = new ConcurrentHashMap<>();
 
     public ContextEngine() {
         this(null);
@@ -103,7 +105,8 @@ public class ContextEngine {
                 processedContextId, sessionId, session, processors, historyMessages, tokenCounter));
         if (context instanceof SessionModelContext sessionModelContext) {
             sessionModelContext.setSessionRef(session);
-            alignProcessorsOnCacheHit(sessionModelContext, processors);
+            installedProcessorSpecs.putIfAbsent(fullContextId, copyProcessorSpecs(processors));
+            alignProcessorsOnCacheHit(sessionModelContext, fullContextId, processors);
         }
         loadStateFromSession(context, session, historyMessages);
         return context;
@@ -111,45 +114,57 @@ public class ContextEngine {
 
     /**
      * Aligns cached context processors when a later {@link #createContext} call supplies a different
-     * declaration (e.g. checkpointer seed without processors, then agent init with processors).
+     * declaration (type and/or config), e.g. checkpointer seed without processors then agent init,
+     * or the same types with updated processor configs.
      *
      * <p>{@code null} specs mean the caller did not request a processor update and existing
      * instances are left unchanged.</p>
      *
      * @param context cached session model context
+     * @param fullContextId pool key for this context
      * @param processors requested processor declaration; {@code null} skips alignment
      */
-    private void alignProcessorsOnCacheHit(SessionModelContext context, List<ProcessorSpec> processors) {
+    private void alignProcessorsOnCacheHit(SessionModelContext context, String fullContextId,
+                                           List<ProcessorSpec> processors) {
         if (processors == null) {
             return;
         }
-        if (hasSameProcessorDeclaration(context.getProcessors(), processors)) {
+        List<ProcessorSpec> installed = installedProcessorSpecs.getOrDefault(fullContextId, List.of());
+        if (hasSameProcessorDeclaration(installed, processors)) {
             return;
         }
         context.reconfigureProcessors(createProcessorInstances(processors));
+        installedProcessorSpecs.put(fullContextId, copyProcessorSpecs(processors));
     }
 
     /**
-     * Compares installed processor types with the requested declaration in order.
+     * Compares two processor declarations by ordered type and config equality.
      *
-     * @param installed processors currently on the context
+     * @param installed last installed declaration for the cached context
      * @param requested processor specs from the createContext call
-     * @return {@code true} when sizes and ordered {@code processorType} values match
+     * @return {@code true} when sizes and each {@code (processorType, config)} pair match
      */
-    private static boolean hasSameProcessorDeclaration(
-            List<SessionModelContext.ContextProcessorPort> installed,
-            List<ProcessorSpec> requested) {
+    private static boolean hasSameProcessorDeclaration(List<ProcessorSpec> installed,
+                                                       List<ProcessorSpec> requested) {
         if (installed.size() != requested.size()) {
             return false;
         }
         for (int index = 0; index < installed.size(); index++) {
-            String installedType = installed.get(index).processorType();
-            String requestedType = requested.get(index).processorType();
-            if (!Objects.equals(installedType, requestedType)) {
+            ProcessorSpec left = installed.get(index);
+            ProcessorSpec right = requested.get(index);
+            if (!Objects.equals(left.processorType(), right.processorType())
+                    || !Objects.equals(left.config(), right.config())) {
                 return false;
             }
         }
         return true;
+    }
+
+    private static List<ProcessorSpec> copyProcessorSpecs(List<ProcessorSpec> processors) {
+        if (processors == null || processors.isEmpty()) {
+            return List.of();
+        }
+        return List.copyOf(processors);
     }
 
     private SessionModelContext newSessionContext(String processedContextId, String sessionId, Object session,
@@ -234,16 +249,25 @@ public class ContextEngine {
     public void clearContext(String contextId, String sessionId) {
         if (sessionId == null) {
             contextPool.clear();
+            installedProcessorSpecs.clear();
             return;
         }
 
         if (contextId == null) {
-            contextPool.entrySet().removeIf(entry -> sessionId.equals(entry.getValue().sessionId()));
+            contextPool.entrySet().removeIf(entry -> {
+                if (sessionId.equals(entry.getValue().sessionId())) {
+                    installedProcessorSpecs.remove(entry.getKey());
+                    return true;
+                }
+                return false;
+            });
             return;
         }
 
         String processedContextId = processContextId(contextId);
-        contextPool.remove(sessionId + "_" + processedContextId);
+        String fullContextId = sessionId + "_" + processedContextId;
+        contextPool.remove(fullContextId);
+        installedProcessorSpecs.remove(fullContextId);
     }
 
     public Map<String, Object> saveContexts(Object session) {
