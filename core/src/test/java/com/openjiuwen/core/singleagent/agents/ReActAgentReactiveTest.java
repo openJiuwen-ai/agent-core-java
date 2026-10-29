@@ -55,10 +55,9 @@ class ReActAgentReactiveTest {
     void streamDelegatesThroughConcreteReActAgentStream() throws Exception {
         ReActAgent agent = newAgent("reactive-react-stream");
         Model model = mock(Model.class);
+        AssistantMessageChunk chunk = AssistantMessageChunk.builder().content("reactive stream ok").build();
         when(model.stream(anyList(), any(ModelInvokeOptions.class)))
-                .thenReturn(List.of(
-                        AssistantMessageChunk.builder().content("reactive stream ok").build()
-                ).iterator());
+                .thenReturn(List.of(chunk).iterator());
         agent.setLlm(model);
 
         AgentSessionApi session = new AgentSession("react-stream-session", null, agent.getCard());

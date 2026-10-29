@@ -2226,10 +2226,13 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                 continue;
                             }
                             contextEngine.saveContexts(session);
-                            invokeInputs.setResult(new LinkedHashMap<>(Map.of(
-                                    "output", Objects.toString(aiMessage.getContent(), ""),
-                                    "result_type", "answer"
-                            )));
+                            Map<String, Object> answerResult = new LinkedHashMap<>();
+                            answerResult.put("output", Objects.toString(aiMessage.getContent(), ""));
+                            answerResult.put("result_type", "answer");
+                            if (isLengthCappedFinishReason(aiMessage.getFinishReason())) {
+                                answerResult.put("finish_reason", aiMessage.getFinishReason());
+                            }
+                            invokeInputs.setResult(answerResult);
                             ctx.finish(AgentTerminationReason.TEXT_TERMINATION);
                             break;
                         }
@@ -2579,6 +2582,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         if (result.get("failure") instanceof Map<?, ?> failure) {
             payload.put("failure", failure);
         }
+        if (result.get("finish_reason") != null) {
+            payload.put("finish_reason", result.get("finish_reason"));
+        }
         return payload;
     }
 
@@ -2889,6 +2895,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     return aiMessage;
                 }
                 if (hasReasoningContent(aiMessage)) {
+                    if (isLengthCappedFinishReason(aiMessage.getFinishReason())) {
+                        Loggers.AGENT.warning("ReAct stream hit the length cap with reasoning but no answer "
+                                + "content or tool calls; returning the truncated result as-is");
+                        return aiMessage;
+                    }
                     Loggers.AGENT.warning("ReAct stream completed with reasoning but no answer content or "
                             + "tool calls; falling back to non-stream");
                     return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(),
@@ -3046,6 +3057,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static boolean hasReasoningContent(AssistantMessage message) {
         return message != null && message.getReasoningContent() != null
                 && !message.getReasoningContent().isBlank();
+    }
+
+    static boolean isLengthCappedFinishReason(String finishReason) {
+        return finishReason != null && !finishReason.isBlank() && !"null".equals(finishReason)
+                && (finishReason.equalsIgnoreCase("length") || finishReason.equalsIgnoreCase("max_tokens"));
     }
 
     private static boolean hasIoCause(Throwable throwable) {
