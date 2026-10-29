@@ -156,14 +156,19 @@ class ContextProcessorRailTest {
 
             assertThat(ctx.consumeRetryRequest()).isNotNull();
             assertThat(ctx.getExtra())
-                    .containsEntry(ContextProcessorRail.MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY, Boolean.TRUE);
+                    .containsEntry(AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED, Boolean.TRUE);
+            assertThat(ctx.getExtra())
+                    .containsEntry(AgentCallbackContext.EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY, Boolean.TRUE);
 
             ctx.setException(new RuntimeException("maximum context length exceeded"));
             rail.onModelException(ctx);
             assertThat(ctx.consumeRetryRequest()).isNull();
 
-            // New ReAct model step clears the gate (mirrors ReActAgent.railedModelCall).
-            ctx.getExtra().remove(ContextProcessorRail.MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY);
+            // New ReAct model step: Rails.run sets retryAttempt=0 then beforeModelCall.
+            ctx.setRetryAttempt(0);
+            rail.beforeModelCall(ctx);
+            assertThat(ctx.getExtra())
+                    .doesNotContainKey(AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED);
             ctx.setException(new RuntimeException("maximum context length exceeded"));
             rail.onModelException(ctx);
             assertThat(ctx.consumeRetryRequest()).isNotNull();

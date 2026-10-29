@@ -66,7 +66,6 @@ import java.util.concurrent.TimeUnit;
 public class ContextProcessorRail extends AgentRail {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String DEFAULT_MODEL_KEY = "__default__";
-    static final String MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY = "_model_exception_recovery_attempted";
     static final String STREAM_CHUNKS_EMITTED_KEY = "_stream_chunks_emitted";
 
     private final boolean preset;
@@ -166,9 +165,32 @@ public class ContextProcessorRail extends AgentRail {
 
     @Override
     public void beforeModelCall(AgentCallbackContext context) {
+        resetOverflowRecoveryGates(context);
         refreshTaskStateRuntime(context);
         maybeInjectOffloadSection(context);
         refreshProcessorsForDynamicModel(context);
+    }
+
+    /**
+     * Clears overflow-recovery extras for the current model-call attempt.
+     *
+     * <ul>
+     *   <li>{@code retryAttempt == 0}: new ReAct model step — clear the once-per-chain
+     *       attempted gate so a later iteration can recover again.</li>
+     *   <li>every attempt: clear the pending-retry signal so {@code ModelBackupRail}
+     *       may switch models if a prior compress+retry still failed.</li>
+     * </ul>
+     *
+     * @param context callback context; {@code null} is ignored
+     */
+    private static void resetOverflowRecoveryGates(AgentCallbackContext context) {
+        if (context == null || context.getExtra() == null) {
+            return;
+        }
+        if (context.getRetryAttempt() == 0) {
+            context.getExtra().remove(AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED);
+        }
+        context.getExtra().remove(AgentCallbackContext.EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY);
     }
 
     @Override
@@ -192,12 +214,12 @@ public class ContextProcessorRail extends AgentRail {
      * Compresses context once on provider context-overflow errors and requests a
      * model-call retry when compression changed the context.
      *
-     * <p>Runs before lower-priority rails such as {@code ModelBackupRail} so
-     * compression is attempted first. Within one {@code Rails.run} retry chain
-     * (one ReAct model step), recovery is gated by
-     * {@link #MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY}. {@code ReActAgent.railedModelCall}
-     * clears that key at the start of each new model step so later iterations in
-     * the same invoke can recover again.</p>
+     * <p>Priority 85 runs before {@code ModelBackupRail} (default 50). On success this
+     * sets {@link AgentCallbackContext#EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY}
+     * so backup switching yields for this exception wave (compress first; backup only
+     * if compress+retry still fails). Within one {@code Rails.run} chain, recovery is
+     * gated by {@link AgentCallbackContext#EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED},
+     * cleared in {@link #beforeModelCall} when {@code retryAttempt == 0}.</p>
      *
      * @param context callback context carrying the model exception
      */
@@ -205,7 +227,8 @@ public class ContextProcessorRail extends AgentRail {
         if (context == null || context.getException() == null) {
             return;
         }
-        if (Boolean.TRUE.equals(context.getExtra().get(MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY))) {
+        if (Boolean.TRUE.equals(context.getExtra().get(
+                AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED))) {
             return;
         }
         ContextEngine engine = resolveContextEngine();
@@ -234,7 +257,8 @@ public class ContextProcessorRail extends AgentRail {
         if (!recovered) {
             return;
         }
-        context.getExtra().put(MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY, Boolean.TRUE);
+        context.getExtra().put(AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED, Boolean.TRUE);
+        context.getExtra().put(AgentCallbackContext.EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY, Boolean.TRUE);
         context.requestRetry(0);
     }
 

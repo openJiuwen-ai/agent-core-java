@@ -436,9 +436,6 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     public Object railedModelCall(AgentCallbackContext ctx) {
         prepareModelRequest(ctx);
-        // New ReAct model step: allow one overflow recover+retry chain inside Rails.run.
-        // Must not clear inside doRailedModelCall — that runs again on requestRetry.
-        clearModelExceptionRecoveryGate(ctx);
         return Rails.run(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
@@ -446,19 +443,6 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
                 () -> doRailedModelCall(ctx)
         );
-    }
-
-    /**
-     * Clears the per-model-call overflow recovery gate so a later ReAct iteration
-     * can compress-and-retry again after a prior recovery in the same invoke.
-     *
-     * @param ctx callback context shared across the invoke
-     */
-    private static void clearModelExceptionRecoveryGate(AgentCallbackContext ctx) {
-        if (ctx == null || ctx.getExtra() == null) {
-            return;
-        }
-        ctx.getExtra().remove("_model_exception_recovery_attempted");
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {

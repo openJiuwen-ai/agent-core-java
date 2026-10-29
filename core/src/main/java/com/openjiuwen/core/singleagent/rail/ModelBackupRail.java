@@ -27,7 +27,16 @@ public class ModelBackupRail extends AgentRail {
 
     @Override
     public void onModelException(AgentCallbackContext context) {
-        if (context != null && index < backupModels.size() && setLlm(context.getAgent(), backupModels.get(index))) {
+        if (context == null) {
+            return;
+        }
+        // ContextProcessorRail (higher priority) may have already compressed and
+        // requested retry for a context-overflow error; do not burn a backup slot.
+        if (Boolean.TRUE.equals(context.getExtra().get(
+                AgentCallbackContext.EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY))) {
+            return;
+        }
+        if (index < backupModels.size() && setLlm(context.getAgent(), backupModels.get(index))) {
             index++;
             context.requestRetry(0);
         }
