@@ -435,6 +435,24 @@ class ToolResultBudgetProcessorTest {
         assertThat(processor.saveState()).isEmpty();
     }
 
+    @Test
+    void toolResultAtExactLargeMessageThresholdIsNotOffloaded() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(1000, 10, 5));
+        SessionModelContext context = contextWith(processor, null);
+        ToolMessage exactThreshold = new ToolMessage("x".repeat(30), "tc-eq");
+
+        assertThat(processor.shouldOffloadMessage(exactThreshold, List.of(exactThreshold), context)).isFalse();
+
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("tc-eq", "grep", "{}"),
+                exactThreshold,
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().get(2)).isNotInstanceOf(OffloadMessage.class);
+    }
+
     private static ToolResultBudgetProcessorConfig baseConfig(int tokensThreshold, int largeMessageThreshold,
                                                              int trimSize) {
         ToolResultBudgetProcessorConfig config = new ToolResultBudgetProcessorConfig();

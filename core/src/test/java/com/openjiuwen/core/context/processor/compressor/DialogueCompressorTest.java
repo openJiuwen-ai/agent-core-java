@@ -7,6 +7,21 @@ package com.openjiuwen.core.context.processor.compressor;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.offload.api.OffloadCatalogImpl;
+import com.openjiuwen.core.context.offload.api.OffloadErrorCode;
+import com.openjiuwen.core.context.offload.api.OffloadException;
+import com.openjiuwen.core.context.offload.api.OffloadService;
+import com.openjiuwen.core.context.offload.api.OffloadServiceImpl;
+import com.openjiuwen.core.context.offload.api.OffloadStore;
+import com.openjiuwen.core.context.offload.cleanup.SessionOffloadGate;
+import com.openjiuwen.core.context.offload.model.OffloadBackend;
+import com.openjiuwen.core.context.offload.model.OffloadConfig;
+import com.openjiuwen.core.context.offload.model.OffloadNamespace;
+import com.openjiuwen.core.context.offload.model.OffloadPayload;
+import com.openjiuwen.core.context.offload.model.OffloadRef;
+import com.openjiuwen.core.context.offload.model.OffloadRequest;
+import com.openjiuwen.core.context.offload.store.CompositeOffloadStore;
+import com.openjiuwen.core.context.offload.store.MemoryOffloadStore;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -18,8 +33,12 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -196,6 +215,265 @@ class DialogueCompressorTest {
                 new ToolMessage("r", "call"),
                 new AssistantMessage("done")
         ))).containsExactly(new DialogueCompressor.CompressPair(0, 3));
+    }
+
+    @Test
+    void compressionRoundKeepsCitedOffloadMarkersAndRecordsUsage() {
+        DialogueCompressorConfig config = new DialogueCompressorConfig();
+        config.setMessagesThreshold(2);
+        config.setKeepLastRound(false);
+        String handle = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+        AssistantMessage response = new AssistantMessage("");
+        response.setParserContent(Map.of("blocks", List.of(Map.of(
+                "block_id", "react_1",
+                "summary", "Tool output stays reloadable via [[OFFLOAD: handle=" + handle + ", type=filesystem]]."))));
+        response.setUsageMetadata(UsageMetadata.builder().inputTokens(3).outputTokens(4).totalTokens(7).build());
+        DialogueCompressor compressor = new DialogueCompressor(config, modelReturning(response));
+        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(compressor), null);
+
+        SessionModelContext.ProcessResult result = compressor.onAddMessages(
+                context,
+                List.of(
+                        new UserMessage("Read the file"),
+                        assistantToolCall("tc-1"),
+                        new ToolMessage("Persisted tool result: " + "data ".repeat(150)
+                                + "[[OFFLOAD: handle=" + handle + ", type=filesystem]]", "tc-1"),
+                        new AssistantMessage("Done")),
+                false,
+                Map.of()).toCompletableFuture().join();
+
+        assertThat(result.event()).isNotNull();
+        assertThat(result.event().compactSummary())
+                .contains(DialogueCompressor.DIALOGUE_MEMORY_BLOCK_MARKER)
+                .contains(handle)
+                .doesNotContain("[OFFLOAD MARKERS]");
+        Map<?, ?> usage = (Map<?, ?>) result.event().compressionUsage();
+        assertThat(((Number) usage.get("total_tokens")).longValue()).isEqualTo(7L);
+        List<BaseMessage> updated = context.getMessages();
+        assertThat(updated).hasSize(2);
+        assertThat(updated.get(0).getContentAsString()).isEqualTo("Read the file");
+        assertThat(updated.get(1).getContentAsString())
+                .startsWith(DialogueCompressor.DIALOGUE_MEMORY_BLOCK_MARKER)
+                .contains(handle);
+    }
+
+    @Test
+    void compressionRepairsSummaryThatLostOffloadMarkers() {
+        DialogueCompressorConfig config = new DialogueCompressorConfig();
+        config.setMessagesThreshold(2);
+        config.setKeepLastRound(false);
+        String handle = "b1b2c3d4e5f60718293a4b5c6d7e8f90";
+        AssistantMessage response = new AssistantMessage("");
+        response.setParserContent(Map.of("blocks", List.of(Map.of(
+                "block_id", "react_1",
+                "summary", "Compressed without any marker reference."))));
+        DialogueCompressor compressor = new DialogueCompressor(config, modelReturning(response));
+        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(compressor), null);
+
+        compressor.onAddMessages(
+                context,
+                List.of(
+                        new UserMessage("Read the file"),
+                        assistantToolCall("tc-1"),
+                        new ToolMessage("Persisted tool result: " + "data ".repeat(150)
+                                + "[[OFFLOAD: handle=" + handle + ", type=filesystem]]", "tc-1"),
+                        new AssistantMessage("Done")),
+                false,
+                Map.of()).toCompletableFuture().join();
+
+        List<BaseMessage> updated = context.getMessages();
+        assertThat(updated).hasSize(2);
+        assertThat(updated.get(1).getContentAsString())
+                .startsWith(DialogueCompressor.DIALOGUE_MEMORY_BLOCK_MARKER)
+                .contains("[OFFLOAD MARKERS]")
+                .contains("[[OFFLOAD: handle=" + handle + ", type=filesystem]]");
+    }
+
+    @Test
+    void replacementSettlementExtendsCitedHandlesAndCapsOrphansOnly() {
+        DialogueCompressorConfig config = new DialogueCompressorConfig();
+        config.setMessagesThreshold(2);
+        config.setKeepLastRound(false);
+        String cited = "c1b2c3d4e5f60718293a4b5c6d7e8f90";
+        String orphan = "d1b2c3d4e5f60718293a4b5c6d7e8f90";
+        String skipped = "e1b2c3d4e5f60718293a4b5c6d7e8f90";
+        AssistantMessage response = new AssistantMessage("");
+        response.setParserContent(Map.of("blocks", List.of(Map.of(
+                "block_id", "react_1",
+                "summary", "First round kept [[OFFLOAD: handle=" + cited + ", type=filesystem]]."))));
+        DialogueCompressor compressor = new DialogueCompressor(config, modelReturning(response));
+        RecordingOffloadService service = new RecordingOffloadService();
+        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(compressor), null);
+        context.bindOffloadService(service, () -> OffloadNamespace.of("", "session", "ctx"));
+
+        compressor.onAddMessages(
+                context,
+                List.of(
+                        new UserMessage("Round one"),
+                        assistantToolCall("tc-1"),
+                        new ToolMessage("R1 output: " + "data ".repeat(150)
+                                + "[[OFFLOAD: handle=" + cited + ", type=filesystem]] "
+                                + "[[OFFLOAD: handle=" + orphan + ", type=filesystem]]", "tc-1"),
+                        new AssistantMessage("R1 done"),
+                        new UserMessage("Round two"),
+                        assistantToolCall("tc-2"),
+                        new ToolMessage("R2 output: " + "data ".repeat(150)
+                                + "[[OFFLOAD: handle=" + skipped + ", type=filesystem]]", "tc-2"),
+                        new AssistantMessage("R2 done")),
+                false,
+                Map.of()).toCompletableFuture().join();
+
+        // C1 marker 修复附录先于结算执行：被替换块的 marker 全部保留在 summary 中，
+        // 因此全部走 extendTtl；未被替换的 skipped 不参与结算。
+        assertThat(service.extended).containsExactly(cited, orphan);
+        assertThat(service.orphanCapped).isEmpty();
+        assertThat(service.extended).doesNotContain(skipped);
+        assertThat(service.orphanCapped).doesNotContain(cited, orphan, skipped);
+        assertThat(service.pinned).containsExactly(cited, orphan, skipped);
+    }
+
+    @Test
+    void everyHandleInCompressedBlockStaysReloadableAfterCompression() {
+        OffloadService service = memoryService();
+        OffloadNamespace ns = OffloadNamespace.of("", "compress-session", "compress-ctx");
+        String original = "TC179_ORIGINAL_PAYLOAD_" + "z".repeat(120);
+        String handle = service.save(OffloadRequest.builder()
+                .namespace(ns)
+                .algorithmId("MessageOffloader")
+                .source("tc-1")
+                .messages(List.of(new ToolMessage(original, "tc-1")))
+                .build())
+                .orElseThrow()
+                .handle();
+
+        DialogueCompressorConfig config = new DialogueCompressorConfig();
+        config.setMessagesThreshold(2);
+        config.setKeepLastRound(false);
+        AssistantMessage response = new AssistantMessage("");
+        response.setParserContent(Map.of("blocks", List.of(Map.of(
+                "block_id", "react_1",
+                "summary", "Saved output reloadable via [[OFFLOAD: handle=" + handle + ", type=in_memory]]."))));
+        DialogueCompressor compressor = new DialogueCompressor(config, modelReturning(response));
+        SessionModelContext context = new SessionModelContext("ctx", "compress-session", new ContextEngineConfig(),
+                List.of(), List.of(compressor), null);
+        context.bindOffloadService(service, () -> ns);
+
+        compressor.onAddMessages(
+                context,
+                List.of(
+                        new UserMessage("Read the file"),
+                        assistantToolCall("tc-1"),
+                        new ToolMessage("Persisted tool result: " + "data ".repeat(150)
+                                + "[[OFFLOAD: handle=" + handle + ", type=in_memory]]", "tc-1"),
+                        new AssistantMessage("Done")),
+                false,
+                Map.of()).toCompletableFuture().join();
+
+        assertThat(context.getMessages()).hasSize(2);
+        assertThat(context.getMessages().get(1).getContentAsString()).contains(handle);
+        OffloadPayload payload = service.load(ns, handle, "in_memory");
+        assertThat(payload.messages().toString()).contains(original);
+    }
+
+    @Test
+    void compressionRequestCarriesPreviewAndMarkersButNotFullOriginalText() {
+        DialogueCompressorConfig config = new DialogueCompressorConfig();
+        config.setMessagesThreshold(2);
+        config.setKeepLastRound(false);
+        String handle = "f1b2c3d4e5f60718293a4b5c6d7e8f90";
+        com.openjiuwen.core.context.schema.OffloadToolMessage persisted =
+                new com.openjiuwen.core.context.schema.OffloadToolMessage(
+                        "Output too large (4096 bytes).\nPreview (first 24 chars): TC180_Preview_Sentinel_\n"
+                                + "[[OFFLOAD: handle=" + handle + ", type=filesystem]]",
+                        handle, "filesystem", "tc-1");
+        AtomicReference<List<BaseMessage>> capturedMessages = new AtomicReference<>();
+        AssistantMessage response = new AssistantMessage("");
+        response.setParserContent(Map.of("blocks", List.of(Map.of(
+                "block_id", "react_1",
+                "summary", "File output reloadable via [[OFFLOAD: handle=" + handle + ", type=filesystem]]."))));
+        Model model = new Model((messages, modelConfig, modelClientConfig, options) -> {
+            capturedMessages.set(messages);
+            return CompletableFuture.completedFuture(response);
+        });
+        DialogueCompressor compressor = new DialogueCompressor(config, model);
+        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(compressor), DialogueCompressorTest::sumContentLength);
+
+        compressor.onAddMessages(
+                context,
+                List.of(
+                        new UserMessage("Read the file"),
+                        assistantToolCall("tc-1"),
+                        persisted,
+                        new AssistantMessage("Done")),
+                false,
+                Map.of()).toCompletableFuture().join();
+
+        String requestPayload = capturedMessages.get().stream()
+                .map(BaseMessage::getContentAsString)
+                .reduce("", (left, right) -> left + "\n" + right);
+        assertThat(requestPayload)
+                .contains("[OFFLOAD MARKERS]: copy EVERY")
+                .contains("TC180_Preview_Sentinel_")
+                .contains("[[OFFLOAD: handle=" + handle + ", type=filesystem]]")
+                .contains("tool_call_id=tc-1")
+                .doesNotContain("TC180-never-offloaded-full-body");
+    }
+
+    private static OffloadService memoryService() {
+        LinkedHashMap<OffloadBackend, OffloadStore> chain = new LinkedHashMap<>();
+        chain.put(OffloadBackend.MEMORY, new MemoryOffloadStore());
+        return new OffloadServiceImpl(new OffloadCatalogImpl(), new CompositeOffloadStore(chain),
+                new SessionOffloadGate(), new OffloadConfig());
+    }
+
+    private static final class RecordingOffloadService implements OffloadService {
+        private final List<String> pinned = new ArrayList<>();
+        private final List<String> unpinned = new ArrayList<>();
+        private final List<String> extended = new ArrayList<>();
+        private final List<String> orphanCapped = new ArrayList<>();
+
+        @Override
+        public Optional<OffloadRef> save(OffloadRequest request) {
+            return Optional.empty();
+        }
+
+        @Override
+        public OffloadPayload load(OffloadNamespace ns, String handle, String type) {
+            throw new OffloadException(OffloadErrorCode.OFFLOAD_MISSING, "not wired in this test");
+        }
+
+        @Override
+        public boolean delete(OffloadNamespace ns, String handle) {
+            return false;
+        }
+
+        @Override
+        public void deleteNamespace(OffloadNamespace ns) {
+        }
+
+        @Override
+        public void pin(String handle, Duration duration) {
+            pinned.add(handle);
+        }
+
+        @Override
+        public void unpin(String handle) {
+            unpinned.add(handle);
+        }
+
+        @Override
+        public void extendTtl(String handle, Duration delta) {
+            extended.add(handle);
+        }
+
+        @Override
+        public void capOrphanTtl(String handle) {
+            orphanCapped.add(handle);
+        }
     }
 
     private static List<BaseMessage> reactMessages(String toolContent, String finalAnswer) {
