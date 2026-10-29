@@ -50,7 +50,8 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
         "insufficient_balance", "insufficient balance", "insufficient_quota", "欠费", "余额不足");
     private static final Set<String> CONTEXT_LENGTH_KEYWORDS = Set.of(
         "context_length_exceeded", "prompt_too_long", "max_context_length", "context window",
-        "context length", "maximum context", "too many tokens", "reduce the length");
+        "context length", "maximum context", "too many tokens", "reduce the length",
+        "prompt exceeds max length", "prompt exceeds maximum length");
     private static final Set<String> RATE_LIMIT_KEYWORDS = Set.of(
         "rate limit", "rate_limit", "ratelimit", "too many requests");
     private static final Set<String> TRUNCATION_KEYWORDS = Set.of("premature eof", "bytes received");

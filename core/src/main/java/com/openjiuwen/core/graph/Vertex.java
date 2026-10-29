@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.graph;
+
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.BaseError;
@@ -175,8 +176,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         try {
             LOGGER.info("Begin to call batch-in node [{}]", nodeId);
             if (executable != null && executable.postCommit()) {
-                atomicInvoke(Map.of("config", safeConfig(config), "session", session))
-                        .toCompletableFuture().join();
+                invokeAndCommit(config);
             } else {
                 callBlocking(config);
             }
@@ -209,6 +209,14 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             callStarted = false;
         }
         return future;
+    }
+
+    private void invokeAndCommit(Map<String, Object> config) throws Exception {
+        WorkflowCommitState commitState = AtomicNode.validateSessionAndState(session);
+
+        // The Pregel worker owns this blocking invocation and must be able to interrupt it before checkpointing.
+        callBlocking(config);
+        commitState.commitCmp();
     }
 
     public CompletionStage<Void> call(Map<String, Object> config) {

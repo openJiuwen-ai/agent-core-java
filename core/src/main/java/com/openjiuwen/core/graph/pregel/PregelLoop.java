@@ -192,6 +192,9 @@ public class PregelLoop {
     }
 
     private void saveStateOnError(Exception exception) {
+        if (executor != null && !executor.isQuiescent()) {
+            throw new IllegalStateException("Cannot checkpoint while Pregel workers are still active", exception);
+        }
         Loggers.GRAPH.debug("Failed to run graph super-step[{}], caused by save state", step);
         if (!hasText(config.getSessionId()) || !hasText(config.getNs()) || saver == null) {
             return;
