@@ -280,6 +280,13 @@ class ContextEngineTest {
                 new RuntimeException("maximum output tokens exceeded"))).isFalse();
         assertThat(ContextEngine.isContextOverflowError(
                 new RuntimeException("network timeout"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("context deadline exceeded"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("StatusRuntimeException: DEADLINE_EXCEEDED: context deadline exceeded")))
+                .isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("TimeoutException: context deadline exceeded"))).isFalse();
         assertThat(ContextEngine.isContextOverflowError(null)).isFalse();
     }
 
@@ -361,6 +368,29 @@ class ContextEngineTest {
         boolean recovered = engine.recoverFromModelException(
                 "missing-ctx",
                 session,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                null);
+
+        assertThat(recovered).isFalse();
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenCompressThrowsUnexpectedRuntimeException() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-throw");
+        engine.createContext("ctx", session, null, List.of(new UserMessage("large historical context")), null);
+
+        // Session identity lookup throws a RuntimeException outside the prior typed catch list
+        // (e.g. NPE); recovery must return false instead of propagating it.
+        ContextEngine.SessionPort explodingSession = () -> {
+            throw new NullPointerException("session exploded during recover");
+        };
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                explodingSession,
                 new RuntimeException("maximum context length exceeded"),
                 false,
                 0,

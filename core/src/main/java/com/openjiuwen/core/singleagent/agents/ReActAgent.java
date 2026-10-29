@@ -435,13 +435,18 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     public Object railedModelCall(AgentCallbackContext ctx) {
-        prepareModelRequest(ctx);
         return Rails.run(
                 ctx,
                 AgentCallbackEvent.BEFORE_MODEL_CALL,
                 AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
-                () -> doRailedModelCall(ctx)
+                () -> {
+                    // Rebuild the message window on every attempt so overflow
+                    // compress+retry (and other rails that mutate ModelContext)
+                    // send the post-recovery snapshot, not the pre-failure one.
+                    prepareModelRequest(ctx);
+                    return doRailedModelCall(ctx);
+                }
         );
     }
 

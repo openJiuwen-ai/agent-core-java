@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.context;
 
-import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -33,7 +32,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -282,9 +280,7 @@ public class ContextEngine {
         Object result;
         try {
             result = compressContext(contextId, session, null, null, compressionKwargs);
-        } catch (BaseError | IllegalArgumentException | IllegalStateException | CompletionException
-                 | ClassCastException | UnsupportedOperationException compressFailure) {
-            // Recovery must not replace the original model exception: log and decline retry.
+        } catch (RuntimeException compressFailure) {
             Loggers.CONTEXT_ENGINE.warning(
                     "model context recovery compress failed; preserving original model exception: "
                             + compressFailure.getMessage());

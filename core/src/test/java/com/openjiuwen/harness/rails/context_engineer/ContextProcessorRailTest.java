@@ -11,7 +11,10 @@ import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.compressor.DialogueCompressorConfig;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -30,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Mirrors Python's {@code ContextProcessorRail} in
@@ -178,6 +182,58 @@ class ContextProcessorRailTest {
     }
 
     @Test
+    void railedModelCallRetriesWithCompressedMessagesAfterOverflow() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        AtomicInteger invokeCount = new AtomicInteger();
+        List<List<String>> invokedContents = new ArrayList<>();
+        Model.ModelClient client = (messages, options) -> {
+            invokeCount.incrementAndGet();
+            invokedContents.add(messages.stream().map(BaseMessage::getContentAsString).toList());
+            if (invokeCount.get() == 1) {
+                return CompletableFuture.failedFuture(
+                        new RuntimeException("This model's maximum context length is 1048576 tokens."));
+            }
+            return CompletableFuture.completedFuture(new AssistantMessage("recovered-answer"));
+        };
+
+        ReActAgent agent = new ReActAgent(new AgentCard("overflow-retry", "overflow-retry", "Agent"));
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+        ContextEngine.ProcessorSpec compactSpec =
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", new Object());
+        config.setContextProcessors(List.of(compactSpec));
+        agent.configure(config);
+        agent.setLlm(new Model(client));
+
+        ContextProcessorRail rail = new ContextProcessorRail(List.of(compactSpec), false, null);
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            AgentSessionApi session = new MemorySession("overflow-retry-session");
+            ModelContext modelContext = agent.initContext(session);
+            modelContext.addMessages(new UserMessage("large historical context before compress"))
+                    .toCompletableFuture().join();
+
+            AgentCallbackContext ctx = new AgentCallbackContext(agent);
+            ctx.setSession(session);
+            ctx.setContext(modelContext);
+
+            Object result = agent.callModel(ctx, modelContext, List.of());
+
+            assertThat(result).isInstanceOf(AssistantMessage.class);
+            assertThat(((AssistantMessage) result).getContentAsString()).isEqualTo("recovered-answer");
+            assertThat(invokeCount.get()).isEqualTo(2);
+            assertThat(invokedContents).hasSize(2);
+            assertThat(invokedContents.get(0))
+                    .anyMatch(content -> content.contains("large historical context before compress"));
+            assertThat(invokedContents.get(1))
+                    .anyMatch(content -> content.contains("recovered by test processor"))
+                    .noneMatch(content -> content.contains("large historical context before compress"));
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
     void onModelExceptionSkipsRetryWhenStreamChunksAlreadyEmitted() {
         ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
         ReActAgent agent = new ReActAgent(new AgentCard("overflow-stream", "overflow-stream", "Agent"));
@@ -285,9 +341,13 @@ class ContextProcessorRailTest {
                                                                                 List<BaseMessage> messages,
                                                                                 boolean force,
                                                                                 Map<String, Object> kwargs) {
+            if (force) {
+                // Active overflow recovery must replace history so retry can observe compression.
+                context.setMessages(List.of(new UserMessage("recovered by test processor")), true);
+            }
             return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
                     new CompactEvent(),
-                    messages,
+                    force ? List.of() : messages,
                     null
             ));
         }

@@ -13,7 +13,6 @@ import com.openjiuwen.core.common.eventbus.EventBusHolder;
 import com.openjiuwen.core.common.eventbus.Subscription;
 import com.openjiuwen.core.common.eventbus.events.ModelRemovedEvent;
 import com.openjiuwen.core.common.eventbus.events.ModelUpdatedEvent;
-import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
@@ -54,7 +53,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -238,22 +236,15 @@ public class ContextProcessorRail extends AgentRail {
         }
         boolean streaming = Boolean.TRUE.equals(context.getExtra().get("_streaming"));
         int streamChunksEmitted = readStreamChunksEmitted(context);
-        boolean recovered;
-        try {
-            recovered = engine.recoverFromModelException(
-                    modelContext.contextId(),
-                    context.getSession(),
-                    context.getException(),
-                    streaming,
-                    streamChunksEmitted,
-                    null);
-        } catch (BaseError | IllegalArgumentException | IllegalStateException | CompletionException
-                 | ClassCastException recoveryFailure) {
-            Loggers.AGENT.warning(
-                    "Model exception recovery hook failed; preserving the original model exception: "
-                            + recoveryFailure.getMessage());
-            return;
-        }
+        // recoverFromModelException swallows compress RuntimeExceptions and returns
+        // false; do not let recovery failures replace the original model exception.
+        boolean recovered = engine.recoverFromModelException(
+                modelContext.contextId(),
+                context.getSession(),
+                context.getException(),
+                streaming,
+                streamChunksEmitted,
+                null);
         if (!recovered) {
             return;
         }

@@ -85,15 +85,35 @@ final class ContextOverflowErrorMatcher {
                 return true;
             }
             if (message.contains("too long")
-                    && containsAny(message, List.of("context", "prompt", "input"))) {
+                    && containsAny(message, List.of("context", "prompt", "input"))
+                    && !looksLikeTimeout(message)) {
                 return true;
             }
+            // Require overflow-shaped context terms; bare "context"+"exceed" also
+            // matches gRPC/Go "context deadline exceeded" timeouts — exclude those.
+            // Do not treat output/completion token caps as input-context overflow.
             if ((message.contains("exceed") || message.contains("over limit"))
-                    && containsAny(message, List.of("context", "prompt", "input"))) {
+                    && containsAny(message, List.of(
+                            "context length", "context window", "context limit",
+                            "maximum context", "prompt", "input"))
+                    && !looksLikeTimeout(message)
+                    && !containsAny(message, List.of("output", "completion", "response"))) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Network/RPC timeouts often contain both {@code context} and {@code exceed}
+     * (e.g. {@code context deadline exceeded}) but are not input-length overflows.
+     */
+    private static boolean looksLikeTimeout(String message) {
+        return containsAny(message, List.of(
+                "deadline",
+                "timed out",
+                "timeout",
+                "time out"));
     }
 
     private static List<String> mergePhrases(Collection<String> extraKeywords) {
