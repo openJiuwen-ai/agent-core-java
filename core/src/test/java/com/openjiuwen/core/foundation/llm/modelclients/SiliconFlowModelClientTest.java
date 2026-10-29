@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.foundation.llm.modelclients;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -16,7 +19,10 @@ import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.io.InputStream;
 import java.net.http.HttpClient;
@@ -29,8 +35,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Focused parity tests for {@link SiliconFlowModelClient}.
  *
@@ -38,6 +42,56 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code openjiuwen/core/foundation/llm/model_clients/siliconflow_model_client.py}.</p>
  */
 class SiliconFlowModelClientTest {
+    @ParameterizedTest
+    @CsvSource(textBlock = """
+            length, false, length
+            length, true, length
+            max_tokens, false, max_tokens
+            max_tokens, true, max_tokens
+            max_output_tokens, false, max_output_tokens
+            max_output_tokens, true, max_output_tokens
+            content_filter, false, content_filter
+            content_filter, true, content_filter
+            stop, false, stop
+            stop, true, stop
+            tool_calls, false, tool_calls
+            tool_calls, true, tool_calls
+            vendor_specific, false, vendor_specific
+            vendor_specific, true, vendor_specific
+            <missing>, false, stop
+            <missing>, true, tool_calls
+            <null>, false, stop
+            <null>, true, tool_calls
+            '', false, stop
+            '', true, tool_calls
+            """)
+    void invokePreservesFinishReasonOrFallsBackWhenAbsent(
+            String responseFinishReason, boolean hasToolCalls, String expectedFinishReason) throws Exception {
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "assistant");
+        message.put("content", "answer");
+        if (hasToolCalls) {
+            message.put("tool_calls", List.of(Map.of(
+                    "id", "call-1", "type", "function",
+                    "function", Map.of("name", "lookup", "arguments", "{}"))));
+        }
+        Map<String, Object> choice = new LinkedHashMap<>();
+        choice.put("index", 0);
+        choice.put("message", message);
+        if (!"<missing>".equals(responseFinishReason)) {
+            choice.put("finish_reason", "<null>".equals(responseFinishReason) ? null : responseFinishReason);
+        }
+        Map<String, Object> response = Map.of(
+                "choices", List.of(choice),
+                "usage", Map.of("prompt_tokens", 1, "completion_tokens", 1, "total_tokens", 2));
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        client.nextJson = new ObjectMapper().writeValueAsString(response);
+        AssistantMessage result = client.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+        assertThat(result.getFinishReason()).isEqualTo(expectedFinishReason);
+    }
+
     @Test
     void buildAndSanitizeParamsCleansAssistantToolCalls() {
         RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();

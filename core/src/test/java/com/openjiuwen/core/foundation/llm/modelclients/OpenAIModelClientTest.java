@@ -32,6 +32,7 @@ import org.junit.jupiter.api.parallel.ResourceAccessMode;
 import org.junit.jupiter.api.parallel.ResourceLock;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
@@ -73,6 +74,56 @@ class OpenAIModelClientTest {
 
     /** Serializes regression tests for the former implicit endpoint fallback. */
     private static final String LOCAL_FIXTURE_PORT_LOCK = "openai-local-fixture-ports-8088-8090";
+
+    @ParameterizedTest
+    @CsvSource(textBlock = """
+            length, false, length
+            length, true, length
+            max_tokens, false, max_tokens
+            max_tokens, true, max_tokens
+            max_output_tokens, false, max_output_tokens
+            max_output_tokens, true, max_output_tokens
+            content_filter, false, content_filter
+            content_filter, true, content_filter
+            stop, false, stop
+            stop, true, stop
+            tool_calls, false, tool_calls
+            tool_calls, true, tool_calls
+            vendor_specific, false, vendor_specific
+            vendor_specific, true, vendor_specific
+            <missing>, false, stop
+            <missing>, true, tool_calls
+            <null>, false, stop
+            <null>, true, tool_calls
+            '', false, stop
+            '', true, tool_calls
+            """)
+    void invokePreservesFinishReasonOrFallsBackWhenAbsent(
+            String responseFinishReason, boolean hasToolCalls, String expectedFinishReason) throws Exception {
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "assistant");
+        message.put("content", "answer");
+        if (hasToolCalls) {
+            message.put("tool_calls", List.of(Map.of(
+                    "id", "call-1", "type", "function",
+                    "function", Map.of("name", "lookup", "arguments", "{}"))));
+        }
+        Map<String, Object> choice = new LinkedHashMap<>();
+        choice.put("index", 0);
+        choice.put("message", message);
+        if (!"<missing>".equals(responseFinishReason)) {
+            choice.put("finish_reason", "<null>".equals(responseFinishReason) ? null : responseFinishReason);
+        }
+        Map<String, Object> response = Map.of(
+                "choices", List.of(choice),
+                "usage", Map.of("prompt_tokens", 1, "completion_tokens", 1, "total_tokens", 2));
+        try (MockOpenAiServer server = new MockOpenAiServer(json(response))) {
+            AssistantMessage result = client(server.baseUrl()).invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(result.getFinishReason()).isEqualTo(expectedFinishReason);
+        }
+    }
 
     @Test
     void invokeHttpStatusFailureIsModelErrorAndKeepsSanitizedBodyInErrorMsg() throws Exception {
