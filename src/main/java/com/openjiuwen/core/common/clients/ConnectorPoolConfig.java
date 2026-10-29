@@ -254,7 +254,7 @@ public class ConnectorPoolConfig {
      */
     protected static String md5Hex(String value) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("MD5");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder builder = new StringBuilder(bytes.length * 2);
             for (byte current : bytes) {
@@ -262,7 +262,7 @@ public class ConnectorPoolConfig {
             }
             return builder.toString();
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("MD5 not available", e);
+            throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 }
