@@ -6,6 +6,7 @@ package com.openjiuwen.core.context;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressor;
@@ -23,6 +24,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -239,6 +241,73 @@ public class ContextEngine {
             effectiveKwargs.putIfAbsent("sys_operation", sysOperation);
         }
         return sessionModelContext.compressContext(processorTypes, effectiveKwargs).toCompletableFuture().join();
+    }
+
+    /**
+     * Recovers from a model context-window rejection by compressing once.
+     *
+     * <p>A retry is warranted only when the provider error describes an input/context limit and
+     * {@link #compressContext} returns {@code compressed}. Streaming responses that
+     * already emitted chunks are not recovered (avoids duplicating output).</p>
+     *
+     * @param contextId context id; {@code null} uses the default
+     * @param session session owning the context
+     * @param exception model-call failure
+     * @param streaming whether the failed call was streaming
+     * @param streamChunksEmitted number of stream chunks already visible to the caller
+     * @param kwargs optional compress kwargs; {@code compression_trigger} defaults to
+     *               {@code model_context_overflow}
+     * @return {@code true} when compression succeeded and the caller should retry
+     */
+    public boolean recoverFromModelException(String contextId, Object session, Throwable exception,
+                                             boolean streaming, int streamChunksEmitted,
+                                             Map<String, Object> kwargs) {
+        if (!config.isEnableModelContextOverflowRecovery()) {
+            return false;
+        }
+        if (streaming && streamChunksEmitted > 0) {
+            Loggers.CONTEXT_ENGINE.warning(
+                    "skip model context recovery after streaming output was emitted, stream_chunks_emitted="
+                            + streamChunksEmitted);
+            return false;
+        }
+        if (!isContextOverflowError(exception, config.getExtraContextOverflowKeywords())) {
+            return false;
+        }
+
+        Map<String, Object> compressionKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
+        compressionKwargs.putIfAbsent("compression_trigger", "model_context_overflow");
+        Object result = compressContext(contextId, session, null, null, compressionKwargs);
+        Object resultCode = result instanceof Map<?, ?> map ? map.get("result") : result;
+        if (!SessionModelContext.ACTIVE_COMPRESSION_RESULT_COMPRESSED.equals(resultCode)) {
+            Loggers.CONTEXT_ENGINE.info(
+                    "model context recovery did not change context, result=" + resultCode);
+            return false;
+        }
+        Loggers.CONTEXT_ENGINE.info("model context recovery compressed context");
+        return true;
+    }
+
+    /**
+     * Returns whether {@code exception} describes an input context overflow.
+     *
+     * @param exception provider or wrapped model error
+     * @return {@code true} when the error is treated as recoverable context overflow
+     */
+    public static boolean isContextOverflowError(Throwable exception) {
+        return isContextOverflowError(exception, List.of());
+    }
+
+    /**
+     * Returns whether {@code exception} describes an input context overflow,
+     * including optional extra keyword phrases from configuration.
+     *
+     * @param exception provider or wrapped model error
+     * @param extraKeywords additional phrases; may be {@code null} or empty
+     * @return {@code true} when the error is treated as recoverable context overflow
+     */
+    public static boolean isContextOverflowError(Throwable exception, Collection<String> extraKeywords) {
+        return ContextOverflowErrorMatcher.matches(exception, extraKeywords);
     }
 
     public void clearContext() {

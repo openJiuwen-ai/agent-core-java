@@ -262,6 +262,98 @@ class ContextEngineTest {
     }
 
     @Test
+    void isContextOverflowErrorDetectsProviderAndBailianMessages() {
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("This model's maximum context length is 1048576 tokens."))).isTrue();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("Range of input length should be [1, 1000000]"))).isTrue();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("输入长度超过限制"))).isTrue();
+
+        RuntimeException wrapped = new RuntimeException("model call failed",
+                new RuntimeException("maximum context length is 8192"));
+        assertThat(ContextEngine.isContextOverflowError(wrapped)).isTrue();
+
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("insufficient_quota: billing limit reached"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("maximum output tokens exceeded"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("network timeout"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(null)).isFalse();
+    }
+
+    @Test
+    void isContextOverflowErrorHonorsExtraKeywordsFromArgument() {
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("custom_vendor_overflow_signal"), List.of())).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("custom_vendor_overflow_signal"),
+                List.of("custom_vendor_overflow_signal"))).isTrue();
+    }
+
+    @Test
+    void recoverFromModelExceptionCompressesContextOnce() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover");
+        engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context")),
+                null);
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isTrue();
+    }
+
+    @Test
+    void recoverFromModelExceptionSkipsPartialStream() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-stream");
+        ModelContext context = engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context")),
+                null);
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                true,
+                1,
+                null);
+
+        assertThat(recovered).isFalse();
+        assertThat(context.getMessages(null, true).get(0).getContentAsString())
+                .isEqualTo("large historical context");
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenCompressionNoop() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-noop");
+        engine.createContext("ctx", session, null, List.of(new UserMessage("keep")), null);
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isFalse();
+    }
+
+    @Test
     void unknownProcessorAndMissingContextRaiseContextExecutionError() {
         ContextEngine engine = new ContextEngine(new ContextEngineConfig());
         RecordingSession session = new RecordingSession("session-error");

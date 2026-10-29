@@ -8,7 +8,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.compressor.DialogueCompressorConfig;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -19,10 +22,14 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Mirrors Python's {@code ContextProcessorRail} in
@@ -124,6 +131,72 @@ class ContextProcessorRailTest {
         assertThat(ctx.getExtra()).containsEntry("offload_section_enabled", true);
     }
 
+    @Test
+    void onModelExceptionRequestsRetryAfterOverflowCompression() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ReActAgent agent = new ReActAgent(new AgentCard("overflow-recover", "overflow-recover", "Agent"));
+        ReActAgentConfig config = new ReActAgentConfig();
+        ContextEngine.ProcessorSpec compactSpec =
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", new Object());
+        config.setContextProcessors(List.of(compactSpec));
+        agent.configure(config);
+
+        ContextProcessorRail rail = new ContextProcessorRail(List.of(compactSpec), false, null);
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            AgentSessionApi session = new MemorySession("overflow-session");
+            ModelContext modelContext = agent.initContext(session);
+
+            AgentCallbackContext ctx = new AgentCallbackContext(agent);
+            ctx.setSession(session);
+            ctx.setContext(modelContext);
+            ctx.setException(new RuntimeException("maximum context length exceeded"));
+
+            rail.onModelException(ctx);
+
+            assertThat(ctx.consumeRetryRequest()).isNotNull();
+            assertThat(ctx.getExtra())
+                    .containsEntry(ContextProcessorRail.MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY, Boolean.TRUE);
+
+            ctx.setException(new RuntimeException("maximum context length exceeded"));
+            rail.onModelException(ctx);
+            assertThat(ctx.consumeRetryRequest()).isNull();
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void onModelExceptionSkipsRetryWhenStreamChunksAlreadyEmitted() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ReActAgent agent = new ReActAgent(new AgentCard("overflow-stream", "overflow-stream", "Agent"));
+        ReActAgentConfig config = new ReActAgentConfig();
+        ContextEngine.ProcessorSpec compactSpec =
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", new Object());
+        config.setContextProcessors(List.of(compactSpec));
+        agent.configure(config);
+
+        ContextProcessorRail rail = new ContextProcessorRail(List.of(compactSpec), false, null);
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            AgentSessionApi session = new MemorySession("overflow-stream-session");
+            ModelContext modelContext = agent.initContext(session);
+
+            AgentCallbackContext ctx = new AgentCallbackContext(agent);
+            ctx.setSession(session);
+            ctx.setContext(modelContext);
+            ctx.getExtra().put("_streaming", Boolean.TRUE);
+            ctx.getExtra().put(ContextProcessorRail.STREAM_CHUNKS_EMITTED_KEY, 1);
+            ctx.setException(new RuntimeException("maximum context length exceeded"));
+
+            rail.onModelException(ctx);
+
+            assertThat(ctx.consumeRetryRequest()).isNull();
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
     private static final class MockAgent extends BaseAgent {
         @SuppressWarnings("checkstyle:MemberName")
         private final ReactAgent react_agent = new ReactAgent();
@@ -150,5 +223,69 @@ class ContextProcessorRailTest {
 
     private static final class ReactAgent {
         private final ReActAgentConfig config = new ReActAgentConfig();
+    }
+
+    private static final class MemorySession implements AgentSessionApi, ContextEngine.SessionPort {
+        private final String sessionId;
+        private final Map<String, Object> state = new LinkedHashMap<>();
+        private final List<Object> stream = new ArrayList<>();
+
+        private MemorySession(String sessionId) {
+            this.sessionId = sessionId;
+        }
+
+        @Override
+        public String getSessionId() {
+            return sessionId;
+        }
+
+        @Override
+        public Object getState(String key) {
+            return state.get(key);
+        }
+
+        @Override
+        public void updateState(Map<String, Object> data) {
+            state.putAll(data);
+        }
+
+        @Override
+        public void writeStream(Object data) {
+            stream.add(data);
+        }
+
+        @Override
+        public Iterator<Object> streamIterator() {
+            return stream.iterator();
+        }
+    }
+
+    private static final class RecordingCompactProcessor implements SessionModelContext.ContextProcessorPort {
+        private RecordingCompactProcessor(Object config) {
+        }
+
+        @Override
+        public String processorType() {
+            return "T00919CompactProcessor";
+        }
+
+        @Override
+        public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
+                                                                                List<BaseMessage> messages,
+                                                                                boolean force,
+                                                                                Map<String, Object> kwargs) {
+            return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                    new CompactEvent(),
+                    messages,
+                    null
+            ));
+        }
+    }
+
+    private static final class CompactEvent implements SessionModelContext.ContextProcessorEventPort {
+        @Override
+        public String compactSummary() {
+            return "recovered by test processor";
+        }
     }
 }

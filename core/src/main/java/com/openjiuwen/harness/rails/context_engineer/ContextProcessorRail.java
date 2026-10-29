@@ -13,6 +13,8 @@ import com.openjiuwen.core.common.eventbus.EventBusHolder;
 import com.openjiuwen.core.common.eventbus.Subscription;
 import com.openjiuwen.core.common.eventbus.events.ModelRemovedEvent;
 import com.openjiuwen.core.common.eventbus.events.ModelUpdatedEvent;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionMemoryConfig;
@@ -52,6 +54,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -63,6 +66,8 @@ import java.util.concurrent.TimeUnit;
 public class ContextProcessorRail extends AgentRail {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String DEFAULT_MODEL_KEY = "__default__";
+    static final String MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY = "_model_exception_recovery_attempted";
+    static final String STREAM_CHUNKS_EMITTED_KEY = "_stream_chunks_emitted";
 
     private final boolean preset;
     private final List<ContextEngine.ProcessorSpec> userProcessors = new ArrayList<>();
@@ -180,6 +185,62 @@ public class ContextProcessorRail extends AgentRail {
     public void onModelException(AgentCallbackContext context) {
         refreshTaskStateRuntime(context);
         fixIncompleteToolContext(context);
+        tryRecoverFromContextOverflow(context);
+    }
+
+    /**
+     * Compresses context once on provider context-overflow errors and requests a
+     * model-call retry when compression changed the context.
+     *
+     * <p>Runs before lower-priority rails such as {@code ModelBackupRail} so
+     * compression is attempted first. Same-round recovery is gated by
+     * {@link #MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY}.</p>
+     *
+     * @param context callback context carrying the model exception
+     */
+    private void tryRecoverFromContextOverflow(AgentCallbackContext context) {
+        if (context == null || context.getException() == null) {
+            return;
+        }
+        if (Boolean.TRUE.equals(context.getExtra().get(MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY))) {
+            return;
+        }
+        ContextEngine engine = resolveContextEngine();
+        ModelContext modelContext = context.getContext();
+        if (engine == null || modelContext == null) {
+            return;
+        }
+        boolean streaming = Boolean.TRUE.equals(context.getExtra().get("_streaming"));
+        int streamChunksEmitted = readStreamChunksEmitted(context);
+        boolean recovered;
+        try {
+            recovered = engine.recoverFromModelException(
+                    modelContext.contextId(),
+                    context.getSession(),
+                    context.getException(),
+                    streaming,
+                    streamChunksEmitted,
+                    null);
+        } catch (BaseError | IllegalArgumentException | IllegalStateException | CompletionException
+                 | ClassCastException recoveryFailure) {
+            Loggers.AGENT.warning(
+                    "Model exception recovery hook failed; preserving the original model exception: "
+                            + recoveryFailure.getMessage());
+            return;
+        }
+        if (!recovered) {
+            return;
+        }
+        context.getExtra().put(MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY, Boolean.TRUE);
+        context.requestRetry(0);
+    }
+
+    private static int readStreamChunksEmitted(AgentCallbackContext context) {
+        Object value = context.getExtra().get(STREAM_CHUNKS_EMITTED_KEY);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
     }
 
     public List<ContextEngine.ProcessorSpec> getAllProcessors() {

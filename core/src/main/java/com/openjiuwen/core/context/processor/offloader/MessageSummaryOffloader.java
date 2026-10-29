@@ -31,7 +31,6 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -48,14 +47,6 @@ public class MessageSummaryOffloader extends MessageOffloader {
     public static final String TRUNCATED_MARKER = "...[TRUNCATED]...";
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    private static final List<String> CONTEXT_OVERFLOW_KEYWORDS = List.of(
-            "context length",
-            "token limit",
-            "too long",
-            "exceeds",
-            "maximum context",
-            "context window"
-    );
 
     private static final String ADAPTIVE_OFFLOAD_PROMPT_TEMPLATE = """
             # Adaptive Information Compression Expert
@@ -466,13 +457,7 @@ public class MessageSummaryOffloader extends MessageOffloader {
     }
 
     boolean isContextOverflowError(Throwable exc) {
-        String errorMessage = String.valueOf(exc).toLowerCase(Locale.ROOT);
-        for (String keyword : CONTEXT_OVERFLOW_KEYWORDS) {
-            if (errorMessage.contains(keyword)) {
-                return true;
-            }
-        }
-        return false;
+        return ContextEngine.isContextOverflowError(exc);
     }
 
     private AssistantMessage invokeModel(List<BaseMessage> messages) {

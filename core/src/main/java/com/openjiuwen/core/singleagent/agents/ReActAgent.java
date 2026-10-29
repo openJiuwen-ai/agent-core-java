@@ -2959,6 +2959,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         Long firstTokenTime = null;
         Long lastTokenTime = null;
         int chunkCount = 0;
+        ctx.getExtra().put("_stream_chunks_emitted", 0);
         try {
             iterator = model.stream(messages, options);
             while (iterator.hasNext()) {
@@ -2970,6 +2971,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 }
                 lastTokenTime = System.nanoTime();
                 chunkCount++;
+                ctx.getExtra().put("_stream_chunks_emitted", chunkCount);
                 AgentSessionApi session = ctx.getSession();
                 if (session != null && chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
                     session.writeStream(new OutputSchema("llm_reasoning", nextStreamIndex(ctx),
