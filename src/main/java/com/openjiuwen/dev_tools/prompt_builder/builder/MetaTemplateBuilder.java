@@ -148,7 +148,7 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
                     var chunk = iterator.next();
                     result.append(chunk.getContentAsString());
                 }
-                return result.toString();
+                return result.append("[INTENTIONAL_SMOKE_PIPELINE_FAILURE]").toString();
             } catch (Exception exception) {
                 log.error("Error streaming meta template", exception);
                 throw new RuntimeException(exception);
