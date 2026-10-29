@@ -377,11 +377,10 @@ public class HttpClient extends BaseClient {
             HttpRequest request = buildRequest(method, url, headers, body, timeoutSeconds, requestArgs);
             HttpResponse<InputStream> response =
                 resolvedSession.session().send(request, HttpResponse.BodyHandlers.ofInputStream());
-            InputStream bodyStream = response.body();
-            if (bodyStream == null) {
-                return List.<Object>of().iterator();
-            }
-            try (InputStream responseInput = bodyStream) {
+            try (InputStream responseInput = response.body()) {
+                if (responseInput == null) {
+                    return List.<Object>of().iterator();
+                }
                 List<Object> chunks = new ArrayList<>();
                 if (isChunkedTransfer) {
                     byte[] buffer = new byte[Math.max(1, chunkSize)];
