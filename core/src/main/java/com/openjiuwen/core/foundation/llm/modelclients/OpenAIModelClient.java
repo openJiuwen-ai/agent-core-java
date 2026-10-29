@@ -11,6 +11,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
 import com.openjiuwen.core.foundation.llm.classification.ErrorBodyParser;
 import com.openjiuwen.core.foundation.llm.classification.FirstSegmentRetryIterator;
@@ -25,6 +26,7 @@ import com.openjiuwen.core.foundation.llm.classification.RetryContext;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreakerSnapshot;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryListener;
 import com.openjiuwen.core.foundation.llm.modelclients.errors.ErrorResponseBodySanitizer;
@@ -40,6 +42,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.openjiuwen.core.foundation.llm.utils.RequestSanitizer;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -47,8 +50,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
-import java.net.ConnectException;
-import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -72,6 +73,7 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -170,6 +172,17 @@ public class OpenAIModelClient extends BaseModelClient
         this.retrier = retrier;
         this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
         this.circuitBreaker = circuitBreaker;
+    }
+
+    /**
+     * Sample this client's circuit breaker without exposing its mutation methods.
+     *
+     * @return a present immutable diagnostic sample, with independently sampled fields
+     * @since 0.1.17
+     */
+    @Override
+    public Optional<ModelCircuitBreakerSnapshot> getCircuitBreakerSnapshot() {
+        return Optional.of(circuitBreaker.snapshot());
     }
 
     @Override
@@ -538,7 +551,8 @@ public class OpenAIModelClient extends BaseModelClient
                         "parse_response",
                         sensitiveValues);
             }
-            Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
+
+            Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", logValue(responseData)));
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
             return assistantMessage;
         } catch (BaseError exception) {
@@ -1356,21 +1370,8 @@ public class OpenAIModelClient extends BaseModelClient
     private <T> HttpResponse<T> sendGenerationRequest(String path, Float timeout, String authorization,
             Map<String, String> requestHeaders, HttpResponse.BodyHandler<T> bodyHandler)
             throws IOException, InterruptedException {
-        try {
-            return httpClient.send(buildGetRequest(modelClientConfig.getApiBase(), path, timeout,
-                    authorization, requestHeaders), bodyHandler);
-        } catch (IOException exception) {
-            String fallbackApiBase = localFixtureFallbackApiBase(exception);
-            if (fallbackApiBase == null) {
-                throw exception;
-            }
-            return ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                    .withSsl()
-                    .withProxy()
-                    .build()
-                    .send(buildGetRequest(fallbackApiBase, path, timeout, authorization, requestHeaders),
-                            bodyHandler);
-        }
+        return httpClient.send(buildGetRequest(modelClientConfig.getApiBase(), path, timeout,
+                authorization, requestHeaders), bodyHandler);
     }
 
     protected AssistantMessage parseResponse(Map<String, Object> response, BaseOutputParser parser) {
@@ -1611,7 +1612,12 @@ public class OpenAIModelClient extends BaseModelClient
     private static final class LoggingFirstChunkIterator
             implements Iterator<AssistantMessageChunk>, AutoCloseable {
         private final Iterator<AssistantMessageChunk> delegate;
+        private final long startedNanos = System.nanoTime();
         private boolean isFirstLogged;
+        private boolean isEndLogged;
+        private int chunkCount;
+        private String finishReason;
+        private UsageMetadata lastUsage;
 
         private LoggingFirstChunkIterator(Iterator<AssistantMessageChunk> delegate) {
             this.delegate = delegate;
@@ -1619,12 +1625,23 @@ public class OpenAIModelClient extends BaseModelClient
 
         @Override
         public boolean hasNext() {
-            return delegate.hasNext();
+            boolean hasMore = delegate.hasNext();
+            if (!hasMore) {
+                logEnd("completed");
+            }
+            return hasMore;
         }
 
         @Override
         public AssistantMessageChunk next() {
             AssistantMessageChunk chunk = delegate.next();
+            chunkCount++;
+            if (chunk.getFinishReason() != null && !chunk.getFinishReason().isBlank()) {
+                finishReason = chunk.getFinishReason();
+            }
+            if (chunk.getUsageMetadata() != null) {
+                lastUsage = chunk.getUsageMetadata();
+            }
             if (!isFirstLogged) {
                 isFirstLogged = true;
                 Loggers.LLM.info("OpenAI API stream first chunk. {}", chunk);
@@ -1634,6 +1651,7 @@ public class OpenAIModelClient extends BaseModelClient
 
         @Override
         public void close() {
+            logEnd("cancelled");
             if (delegate instanceof Closeable closeable) {
                 try {
                     closeable.close();
@@ -1642,48 +1660,32 @@ public class OpenAIModelClient extends BaseModelClient
                 }
             }
         }
+
+        private void logEnd(String reason) {
+            if (isEndLogged) {
+                return;
+            }
+            isEndLogged = true;
+            long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
+            if ("cancelled".equals(reason)) {
+                Loggers.LLM.info(
+                        "OpenAI API stream cancelled. chunkCount={}, finishReason={}, usage={}, durationMs={}",
+                        chunkCount, finishReason, lastUsage, durationMs);
+            } else {
+                Loggers.LLM.info(
+                        "OpenAI API stream end. chunkCount={}, finishReason={}, usage={}, durationMs={}",
+                        chunkCount, finishReason, lastUsage, durationMs);
+            }
+        }
     }
 
     private HttpResponse<InputStream> sendStreamAttempt(
             PreparedRequest preparedRequest,
             int retryCount,
             double idleSeconds) throws IOException, InterruptedException {
-        HttpResponse<InputStream> response;
-        try {
-            response = httpClient.send(
-                    buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
-                    IdleBoundInputStream.bodyHandler(idleSeconds)
-            );
-        } catch (IOException exception) {
-            String fallbackApiBase = localFixtureFallbackApiBase(exception);
-            if (fallbackApiBase == null) {
-                throw exception;
-            }
-            response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                    .withSsl()
-                    .withProxy()
-                    .build()
-                    .send(
-                            buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                            IdleBoundInputStream.bodyHandler(idleSeconds)
-                    );
-        }
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String fallbackApiBase = localFixtureFallbackApiBase(response.statusCode());
-            if (fallbackApiBase != null) {
-                readBodyWithIdleTimeout(response.body(),
-                        ModelTimeoutResolver.resolveStreamIdleSeconds(modelClientConfig), true);
-                response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                        .withSsl()
-                        .withProxy()
-                        .build()
-                        .send(
-                                buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                                IdleBoundInputStream.bodyHandler(idleSeconds)
-                        );
-            }
-        }
-        return response;
+        return httpClient.send(
+                buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
+                IdleBoundInputStream.bodyHandler(idleSeconds));
     }
 
     private Iterator<AssistantMessageChunk> tracingIterator(
@@ -1700,7 +1702,8 @@ public class OpenAIModelClient extends BaseModelClient
             Map<String, Object> params,
             String authorization,
             Map<String, String> requestHeaders) throws JsonProcessingException {
-        String bodyJson = OBJECT_MAPPER.writeValueAsString(requestBodyParams(params));
+        Map<String, Object> sanitized = RequestSanitizer.sanitizeChatRequest(requestBodyParams(params));
+        String bodyJson = OBJECT_MAPPER.writeValueAsString(sanitized);
         return new PreparedRequest(
                 path,
                 bodyJson,
@@ -1740,45 +1743,6 @@ public class OpenAIModelClient extends BaseModelClient
             Duration timeout,
             String authorization,
             Map<String, String> extraHeaders) {
-    }
-
-    private String localFixtureFallbackApiBase(IOException exception) {
-        if (!isConnectionFailure(exception) || modelClientConfig.isVerifySsl()) {
-            return null;
-        }
-        return localFixtureFallbackApiBase();
-    }
-
-    private String localFixtureFallbackApiBase(int statusCode) {
-        if (statusCode < 400 || modelClientConfig.isVerifySsl()) {
-            return null;
-        }
-        return localFixtureFallbackApiBase();
-    }
-
-    private String localFixtureFallbackApiBase() {
-        try {
-            URI uri = URI.create(modelClientConfig.getApiBase());
-            String host = uri.getHost();
-            if (host == null || uri.getPort() != 8088 || !InetAddress.getByName(host).isLoopbackAddress()) {
-                return null;
-            }
-            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
-            return uri.getScheme() + "://" + host + ":8090" + path;
-        } catch (RuntimeException | java.net.UnknownHostException ignored) {
-            return null;
-        }
-    }
-
-    private static boolean isConnectionFailure(IOException exception) {
-        Throwable current = exception;
-        while (current != null) {
-            if (current instanceof ConnectException) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
     }
 
     private static void validateAuthorizationHeader(String authorization) {
@@ -2804,5 +2768,12 @@ public class OpenAIModelClient extends BaseModelClient
             return !map.isEmpty();
         }
         return true;
+    }
+
+    private static String logValue(Object value) {
+        if (UserConfig.isSensitive()) {
+            return "[redacted]";
+        }
+        return String.valueOf(value);
     }
 }

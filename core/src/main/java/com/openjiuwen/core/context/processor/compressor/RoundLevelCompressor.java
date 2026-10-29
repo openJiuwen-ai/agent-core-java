@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
@@ -977,8 +978,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         }
         int headChars = Math.max((int) (keptChars * truncateHeadRatio), 0);
         int tailChars = Math.max(keptChars - headChars, 0);
-        String head = text.substring(0, Math.min(headChars, text.length()));
-        String tail = tailChars > 0 ? text.substring(Math.max(text.length() - tailChars, 0)) : "";
+        String head = TextTruncate.safePrefix(text, Math.min(headChars, text.length()));
+        String tail = tailChars > 0 ? TextTruncate.safeSuffix(text, tailChars) : "";
         if (!head.isEmpty() && !tail.isEmpty()) {
             return head + "\n" + truncatedMarker + "\n" + tail;
         }

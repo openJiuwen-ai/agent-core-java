@@ -1394,6 +1394,10 @@ public final class Runner {
                     agentSession.preRun(inputKwargs(inputs));
                     return new PreparedAgent(legacyAgent, agentSession, agentSession);
                 }
+                if (agent instanceof DeepAgent deepAgent) {
+                    agentSession.preRun(inputKwargs(inputs));
+                    return new PreparedAgent(deepAgent, agentSession, agentSession);
+                }
             }
 
             Map<String, Object> inputMap = asStringObjectMap(inputs);

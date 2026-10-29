@@ -53,8 +53,10 @@ public class TaskLoopEventExecutor extends TaskExecutor {
         }
         try {
             Map<String, Object> result = invokeReactAgent(reactAgent, inputs, session);
+            String eventType = "interrupt".equals(result.get("result_type"))
+                    ? EventType.TASK_INTERACTION.getValue() : EventType.TASK_COMPLETION.getValue();
             ControllerOutputPayload payload = new ControllerOutputPayload(
-                    EventType.TASK_COMPLETION.getValue(),
+                    eventType,
                     List.of(new DataFrame.JsonDataFrame(result)),
                     Map.of("task_id", taskId)
             );

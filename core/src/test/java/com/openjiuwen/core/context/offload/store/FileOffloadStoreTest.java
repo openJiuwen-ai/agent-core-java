@@ -191,6 +191,79 @@ class FileOffloadStoreTest {
     }
 
     @Test
+    void attackStringFamilyStaysInsideWorkspaceAndStaysLoadable() throws IOException {
+        // TC_241: traversal/injection family across every namespace segment —
+        // bare "..", ".", empty string, space-wrapped, path separators, colon
+        // (Windows stream syntax) and reserved punctuation. Sanitization is a
+        // normalization (not a rejection): each variant still saves, stays
+        // inside the workspace, and round-trips via its own handle.
+        List<String> attacks = List.of("..", ".", "", " ../../etc ", "a:b", "a\\b", "s<>|:*?", "s?\"x");
+        for (int i = 0; i < attacks.size(); i++) {
+            String attack = attacks.get(i);
+            String handle = "attack-" + i;
+            OffloadNamespace evil = OffloadNamespace.of(attack, attack, attack);
+            OffloadPayload payload = OffloadPayload.create(handle, evil,
+                    List.of(new UserMessage("payload for attack " + i)), null);
+
+            store.save(evil, handle, payload, null);
+            assertTrue(store.exists(evil, handle), "sanitized namespace must stay addressable: " + attack);
+
+            Path target = Path.of(FileOffloadStore.resolveFilePath(tempDir, evil, handle));
+            Path workspace = tempDir.toAbsolutePath().normalize();
+            assertTrue(target.startsWith(workspace),
+                    "attacked namespace must resolve inside the workspace: " + target);
+            Path relative = workspace.relativize(target);
+            for (Path segment : relative) {
+                String name = segment.toString();
+                assertFalse(".".equals(name) || "..".equals(name),
+                        "no traversal segment may survive: " + name + " for " + attack);
+                assertTrue(name.matches("[A-Za-z0-9._\\-]+"),
+                        "segment charset must stay filesystem-safe: " + name + " for " + attack);
+            }
+
+            OffloadPayload loaded = store.load(evil, handle);
+            assertEquals("payload for attack " + i, loaded.messages().get(0).get("content"),
+                    "sanitized namespace must round-trip verbatim: " + attack);
+            assertTrue(loaded.sha256Matches());
+        }
+    }
+
+    @Test
+    void persistedFileIsPlaintextVerbatimPayloadWithContractFields() throws IOException {
+        // TC_242: audit view — read the on-disk artifact directly (no store
+        // load path): it is plaintext JSON carrying the full verbatim content
+        // plus the schema contract fields, so ops can audit storage without
+        // the agent, and the store never transforms content silently.
+        String secret = "SK-TC242-AUDIT-PLACEHOLDER-KEY";
+        OffloadPayload payload = OffloadPayload.create(HANDLE, NS,
+                List.of(new UserMessage(secret)), Duration.ofSeconds(60).toMillis());
+
+        store.save(NS, HANDLE, payload, Duration.ofSeconds(60));
+
+        Path target = Path.of(FileOffloadStore.resolveFilePath(tempDir, NS, HANDLE));
+        String raw = Files.readString(target);
+        // Plaintext: the verbatim secret is directly visible in the file.
+        assertTrue(raw.contains(secret), "on-disk payload must be plaintext verbatim: " + raw);
+        // Contract fields, fixed order: schema_version, offload_handle,
+        // namespace, created_at, expires_at, content_sha256, messages.
+        String[] expectedOrder = {"schema_version", "offload_handle", "namespace",
+                "created_at", "expires_at", "content_sha256", "messages"};
+        int cursor = -1;
+        for (String field : expectedOrder) {
+            int at = raw.indexOf("\"" + field + "\"", cursor + 1);
+            assertTrue(at >= 0, "contract field must be present: " + field + " in " + raw);
+            assertTrue(at > cursor, "contract field order must be fixed: " + field);
+            cursor = at;
+        }
+        // Round-trip parity: the file is exactly the payload's own serialization.
+        OffloadPayload reparsed = OffloadPayload.deserializeJson(raw);
+        assertEquals(payload.contentSha256(), reparsed.contentSha256());
+        assertEquals(HANDLE, reparsed.offloadHandle());
+        assertEquals("2", reparsed.schemaVersion());
+        assertTrue(reparsed.sha256Matches());
+    }
+
+    @Test
     void lockedSaveRoundTripsAndLeavesNoLockOrTmpBehind() throws IOException {
         // T20: enableFileLock=true wraps the publish in a sidecar lock; the
         // observable contract is unchanged (save → load round trip) and no

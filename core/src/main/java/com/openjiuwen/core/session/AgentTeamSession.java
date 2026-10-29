@@ -131,6 +131,11 @@ public class AgentTeamSession implements AgentSessionApi {
     }
 
     @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        return inner.streamWriterManager().streamIterator(failure);
+    }
+
+    @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();
     }

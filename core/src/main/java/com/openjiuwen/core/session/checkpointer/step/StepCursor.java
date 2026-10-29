@@ -25,6 +25,9 @@ public class StepCursor {
     /** Session state key under which the cursor map is stored. */
     public static final String STATE_KEY = "step_cursor";
 
+    /** Session state key under which the latest failed-step cursor is stored. */
+    public static final String FAILED_STATE_KEY = "step_cursor_failed";
+
     private long seq;
     private String stepType;
     private String stepName;
@@ -155,6 +158,29 @@ public class StepCursor {
         Object agentPartition = state.get(State.AGENT_STATE_KEY);
         if (agentPartition instanceof Map<?, ?> agentMap) {
             return fromMap(agentMap.get(STATE_KEY));
+        }
+        return null;
+    }
+
+    /**
+     * Read the latest failed-step cursor from a session state snapshot, using
+     * the same top-level-then-agent-partition lookup as {@link #fromState}.
+     *
+     * @param state full state map as returned by {@code session.state().getState()}, may be null
+     * @return the failed cursor stored under {@link #FAILED_STATE_KEY},
+     *         or null when absent or malformed
+     */
+    public static StepCursor failedFromState(Map<String, Object> state) {
+        if (state == null) {
+            return null;
+        }
+        StepCursor cursor = fromMap(state.get(FAILED_STATE_KEY));
+        if (cursor != null) {
+            return cursor;
+        }
+        Object agentPartition = state.get(State.AGENT_STATE_KEY);
+        if (agentPartition instanceof Map<?, ?> agentMap) {
+            return fromMap(agentMap.get(FAILED_STATE_KEY));
         }
         return null;
     }

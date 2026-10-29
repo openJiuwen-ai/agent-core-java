@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggingUtils;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
@@ -193,6 +194,13 @@ public class AgentSession implements AgentSessionApi {
     }
 
     @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        Iterator<Object> iterator = inner.streamWriterManager().streamIterator(failure);
+        closeStream();
+        return iterator;
+    }
+
+    @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();
         DecoratorFramework callbackFramework;
@@ -211,6 +219,8 @@ public class AgentSession implements AgentSessionApi {
         if (preRunDone) {
             return this;
         }
+        // Bind logging trace_id so concurrent sessions can be distinguished in MDC.
+        LoggingUtils.setSessionId(getSessionId());
         Map<String, Object> callbackKwargs = new LinkedHashMap<>();
         callbackKwargs.put("session_id", getSessionId());
         callbackKwargs.put("card", card);
@@ -253,12 +263,17 @@ public class AgentSession implements AgentSessionApi {
         if (postRunDone) {
             return this;
         }
-        if (closeStreamOnPostRun) {
-            closeStream();
+        try {
+            commit();
+            postRunDone = true;
+            return this;
+        } finally {
+            // Restore default so pooled threads do not leak the prior session id.
+            LoggingUtils.setSessionId();
+            if (closeStreamOnPostRun) {
+                closeStream();
+            }
         }
-        commit();
-        postRunDone = true;
-        return this;
     }
 
     @Override

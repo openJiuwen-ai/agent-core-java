@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.context.processor.offloader;
 
+import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
@@ -243,7 +244,7 @@ public class ToolResultBudgetProcessor extends MessageOffloader {
         }
 
         OffloadTarget target = newBudgetOffloadHandleAndPath(context);
-        String preview = text.substring(0, Math.min(budgetConfig.getTrimSize(), text.length()));
+        String preview = TextTruncate.safePrefix(text, budgetConfig.getTrimSize());
         boolean hasMore = text.length() > budgetConfig.getTrimSize();
         String pendingContent = buildPersistedOutputMessage(text.length(), "pending", preview, hasMore);
 
@@ -344,7 +345,7 @@ public class ToolResultBudgetProcessor extends MessageOffloader {
         }
         String marker = String.format(OFFLOAD_MESSAGE_MARKER, ref.handle(), ref.type(),
                 ref.pathOrKey() == null ? "None" : ref.pathOrKey());
-        String preview = originalText.substring(0, Math.min(budgetConfig.getTrimSize(), originalText.length()));
+        String preview = TextTruncate.safePrefix(originalText, budgetConfig.getTrimSize());
         boolean hasMore = originalText.length() > budgetConfig.getTrimSize();
         String persistedContent = buildPersistedOutputMessage(originalText.length(), marker, preview, hasMore);
         return OffloadMessages.createOffloadMessage(source.getRole(), persistedContent,

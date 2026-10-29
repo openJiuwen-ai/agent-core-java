@@ -10,6 +10,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -21,6 +22,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.SSLSession;
 
@@ -36,6 +39,7 @@ final class TieredTimeoutStubServer implements AutoCloseable {
 
     private final HttpServer server;
     private final StubScript script;
+    private final CountDownLatch closed = new CountDownLatch(1);
 
     private TieredTimeoutStubServer(StubScript script) throws IOException {
         this.script = script;
@@ -157,14 +161,18 @@ final class TieredTimeoutStubServer implements AutoCloseable {
 
     @Override
     public void close() {
+        // stop() joins the default HTTP dispatcher, so release its scripted waits first.
+        closed.countDown();
         server.stop(0);
     }
 
     private void handle(HttpExchange exchange) throws IOException {
-        sleepQuietly(script.headerDelayMillis);
-        exchange.getResponseHeaders().add("Content-Type", script.contentType);
-        exchange.sendResponseHeaders(script.status, 0);
         try (exchange) {
+            if (awaitClose(script.headerDelayMillis)) {
+                return;
+            }
+            exchange.getResponseHeaders().add("Content-Type", script.contentType);
+            exchange.sendResponseHeaders(script.status, 0);
             if (script.status != 200) {
                 exchange.getResponseBody().write("{\"error\":\"stub failure\"}".getBytes(StandardCharsets.UTF_8));
                 exchange.getResponseBody().flush();
@@ -174,11 +182,13 @@ final class TieredTimeoutStubServer implements AutoCloseable {
             for (int index = 0; index < events.size(); index++) {
                 writeEvent(exchange, events.get(index));
                 if (index < events.size() - 1 || script.isSilentAfterEvents) {
-                    sleepQuietly(script.gapMillis);
+                    if (awaitClose(script.gapMillis)) {
+                        return;
+                    }
                 }
             }
             if (script.isSilentAfterEvents) {
-                sleepQuietly(Math.max(script.gapMillis, HANG_AFTER_SCRIPT_MILLIS));
+                awaitClose(Math.max(script.gapMillis, HANG_AFTER_SCRIPT_MILLIS));
             }
         }
     }
@@ -189,15 +199,14 @@ final class TieredTimeoutStubServer implements AutoCloseable {
         exchange.getResponseBody().flush();
     }
 
-    private static void sleepQuietly(long millis) {
-        if (millis <= 0L) {
-            return;
-        }
+    private boolean awaitClose(long millis) throws InterruptedIOException {
         try {
-            Thread.sleep(millis);
+            return closed.await(Math.max(millis, 0L), TimeUnit.MILLISECONDS);
         } catch (InterruptedException exception) {
-            // Stub teardown may interrupt the hang; swallowing is intentional in tests.
-            return;
+            // Propagate cancellation through the HTTP handler's IOException contract.
+            InterruptedIOException failure = new InterruptedIOException("Interrupted while awaiting stub closure");
+            failure.initCause(exception);
+            throw failure;
         }
     }
 

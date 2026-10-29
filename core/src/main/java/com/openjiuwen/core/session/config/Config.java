@@ -7,10 +7,8 @@ package com.openjiuwen.core.session.config;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.session.constants.SessionConstants;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -70,9 +68,19 @@ public class Config implements SessionConfigAccess {
         return key == null ? defaultValue : env.getOrDefault(key, defaultValue);
     }
 
+    /**
+     * Returns a shallow copy of the environment map.
+     *
+     * <p>Adding or removing top-level entries does not affect this configuration. Values,
+     * including nested maps and lists, retain their original references. Callers are
+     * responsible for synchronization of shared mutable values and for copying values
+     * when an independent snapshot is required.</p>
+     *
+     * @return a new map containing the current environment entries
+     */
     @Override
     public Map<String, Object> getEnvs() {
-        return deepCopyMap(env);
+        return new HashMap<>(env);
     }
 
     @Override
@@ -155,31 +163,5 @@ public class Config implements SessionConfigAccess {
         } catch (NumberFormatException exception) {
             Loggers.SESSION.warning("Invalid env value: envKey={}, value={}", envKey, value);
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> deepCopyMap(Map<String, Object> source) {
-        return (Map<String, Object>) deepCopy(source);
-    }
-
-    private Object deepCopy(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> copy = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                copy.put(String.valueOf(entry.getKey()), deepCopy(entry.getValue()));
-            }
-            return copy;
-        }
-        if (value instanceof List<?> list) {
-            List<Object> copy = new ArrayList<>(list.size());
-            for (Object item : list) {
-                copy.add(deepCopy(item));
-            }
-            return copy;
-        }
-        return value;
     }
 }

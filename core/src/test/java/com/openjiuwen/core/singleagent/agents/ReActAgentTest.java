@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.agents;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -791,6 +792,123 @@ class ReActAgentTest {
         return agent;
     }
 
+    /** TC_006-UT: enableReload 双腿——false 时 reloader 工具不进 AbilityManager，true 时注册。 */
+    @org.junit.jupiter.api.Test
+    void reloaderToolAbilityListFollowsEnableReloadSwitch() {
+        java.util.function.Function<Boolean, ReActAgent> agentWithReload = enableReload -> {
+            ReActAgent agent = new ReActAgent(new AgentCard("tc006-reload-" + enableReload, "test", "desc"));
+            ReActAgentConfig config = new ReActAgentConfig();
+            config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+            config.setContextEngineConfig(ContextEngineConfig.builder()
+                    .enableReload(enableReload)
+                    .build());
+            agent.configure(config);
+            return agent;
+        };
+
+        ReActAgent disabledAgent = agentWithReload.apply(false);
+        disabledAgent.initContext(new MemorySession("tc006-disabled"));
+        assertFalse(disabledAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "enableReload=false must leave the reloader tool out of the ability list");
+        assertTrue(disabledAgent.getAbilityManager().getTools().keySet().stream()
+                        .noneMatch(name -> name.contains("reload")),
+                "no reload-flavored tool may be registered when reload is disabled");
+
+        ReActAgent enabledAgent = agentWithReload.apply(true);
+        enabledAgent.initContext(new MemorySession("tc006-enabled"));
+        assertTrue(enabledAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "enableReload=true must register the reloader tool in the ability list");
+    }
+
+    /** TC_204-UT: enableReload × enableOffload 四开关组合矩阵——工具面与服务面的正交行为。 */
+    @org.junit.jupiter.api.Test
+    void contextSwitchMatrixKeepsReloadToolFaceAndOffloadServiceFaceOrthogonal() {
+        java.util.function.BiFunction<Boolean, Boolean, ReActAgent> agentWithSwitches = (enableReload, enableOffload) -> {
+            ReActAgent agent = new ReActAgent(new AgentCard("tc204-" + enableReload + "-" + enableOffload, "test", "desc"));
+            ReActAgentConfig config = new ReActAgentConfig();
+            config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+            com.openjiuwen.core.context.offload.model.OffloadConfig offloadConfig =
+                    new com.openjiuwen.core.context.offload.model.OffloadConfig();
+            offloadConfig.setPrimaryBackend(com.openjiuwen.core.context.offload.model.OffloadBackend.MEMORY);
+            offloadConfig.setRecentMessageProtectionCount(0);
+            config.setContextEngineConfig(ContextEngineConfig.builder()
+                    .enableReload(enableReload)
+                    .enableOffload(enableOffload)
+                    .offload(offloadConfig)
+                    .build());
+            config.setContextProcessors(enableOffload
+                    ? List.of(new ContextEngine.ProcessorSpec("MessageOffloader",
+                            new com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig()))
+                    : List.of());
+            agent.configure(config);
+            return agent;
+        };
+
+        ReActAgent neitherAgent = agentWithSwitches.apply(false, false);
+        neitherAgent.initContext(new MemorySession("tc204-neither"));
+        assertFalse(neitherAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "reload off must keep the reloader tool out of the ability list");
+        assertNull(neitherAgent.getOffloadService(), "offload off must keep the v2 service unbound");
+
+        ReActAgent reloadOnlyAgent = agentWithSwitches.apply(true, false);
+        reloadOnlyAgent.initContext(new MemorySession("tc204-reload-only"));
+        assertTrue(reloadOnlyAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "reload on must register the reloader tool even when offload is off");
+        assertNull(reloadOnlyAgent.getOffloadService(), "offload off must keep the v2 service unbound");
+
+        ReActAgent offloadOnlyAgent = agentWithSwitches.apply(false, true);
+        offloadOnlyAgent.initContext(new MemorySession("tc204-offload-only"));
+        assertFalse(offloadOnlyAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "reload off must keep the reloader tool out even when offload is on");
+        assertNotNull(offloadOnlyAgent.getOffloadService(), "offload on must bind the v2 service");
+        offloadOnlyAgent.close();
+
+        ReActAgent bothAgent = agentWithSwitches.apply(true, true);
+        bothAgent.initContext(new MemorySession("tc204-both"));
+        assertTrue(bothAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "reload on must register the reloader tool when offload is on");
+        assertNotNull(bothAgent.getOffloadService(), "offload on must bind the v2 service");
+        bothAgent.close();
+    }
+
+    /** TC_211-UT: CD-011 魔数语义——默认值不覆盖 offloader 配置，非默认值透传。 */
+    @org.junit.jupiter.api.Test
+    void syncProtectionConfigOverwritesOnlyNonDefaultPipelineValues() throws Exception {
+        ReActAgent agent = new ReActAgent(new AgentCard("tc211-cd011", "test", "desc"));
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+        agent.configure(config);
+
+        java.lang.reflect.Method sync = ReActAgent.class.getDeclaredMethod("syncProtectionConfig",
+                com.openjiuwen.core.context.processor.offloader.MessageOffloader.class,
+                com.openjiuwen.core.context.offload.model.OffloadConfig.class);
+        sync.setAccessible(true);
+
+        com.openjiuwen.core.context.offload.model.OffloadConfig defaultPipeline =
+                new com.openjiuwen.core.context.offload.model.OffloadConfig();
+        com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig keepTarget =
+                new com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig();
+        keepTarget.setRecentMessageProtectionCount(2);
+        keepTarget.setProtectedToolNames(List.of("tc211_custom_tool"));
+        com.openjiuwen.core.context.processor.offloader.MessageOffloader offloader =
+                new com.openjiuwen.core.context.processor.offloader.MessageOffloader(keepTarget);
+        sync.invoke(null, offloader, defaultPipeline);
+        assertEquals(2, offloader.getConfig().getRecentMessageProtectionCount(),
+                "default protection count (5) must not overwrite the offloader's own value");
+        assertEquals(List.of("tc211_custom_tool"), offloader.getConfig().getProtectedToolNames(),
+                "default protected tool names must not overwrite the offloader's own list");
+
+        com.openjiuwen.core.context.offload.model.OffloadConfig customPipeline =
+                new com.openjiuwen.core.context.offload.model.OffloadConfig();
+        customPipeline.setRecentMessageProtectionCount(3);
+        customPipeline.setProtectedToolNames(List.of("tc211_pipeline_tool"));
+        sync.invoke(null, offloader, customPipeline);
+        assertEquals(3, offloader.getConfig().getRecentMessageProtectionCount(),
+                "non-default protection count must propagate to the offloader");
+        assertEquals(List.of("tc211_pipeline_tool"), offloader.getConfig().getProtectedToolNames(),
+                "non-default protected tool names must propagate to the offloader");
+    }
+
     private static AgentCallbackContext modelCallContext(ReActAgent agent, String sessionId) {
         AgentCallbackContext context = new AgentCallbackContext(agent);
         context.setSession(new MemorySession(sessionId));
@@ -867,7 +985,9 @@ class ReActAgentTest {
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             streamOptions = options;
             streamMessages = new ArrayList<>(messages);
-            return List.of(AssistantMessageChunk.builder().content("streamed").build()).iterator();
+            List<AssistantMessageChunk> chunks = List.of(
+                    AssistantMessageChunk.builder().content("streamed").build());
+            return chunks.iterator();
         }
 
         private int invokeCount() {

@@ -6,6 +6,7 @@ package com.openjiuwen.harness.schema.config;
 
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.harness.kvcache.KVCacheSubagentLifecycle;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.security.ToolPermissionHost;
@@ -45,6 +46,11 @@ public class DeepAgentConfig {
     private int maxParallelToolCalls = 3;
     @Builder.Default
     private boolean shouldFailTaskOnToolError = true;
+    /**
+     * Step-level checkpoint policy shared by the inner ReActAgent and the
+     * task-loop round (PHASE) boundaries. Null keeps {@code STEP_AUTO}.
+     */
+    private StepCheckpointPolicy stepCheckpointPolicy;
     @Builder.Default
     private boolean isTaskLoopEnabled = false;
     @Builder.Default

@@ -182,6 +182,44 @@ public abstract class Checkpointer implements AutoCloseable {
     }
 
     /**
+     * Persist a failed step boundary: writes the cursor into the session state
+     * under {@link StepCursor#FAILED_STATE_KEY} and flushes the full snapshot,
+     * mirroring {@link #stepCompleted} for the failure path.
+     *
+     * <p>The main cursor under {@link StepCursor#STATE_KEY} keeps pointing at
+     * the last completed step, so resume and {@link #lastCompletedStep}
+     * semantics are untouched - the failed cursor is an observability record
+     * of where the task died, never a resumption point.</p>
+     *
+     * @param session session whose step failed
+     * @param cursor cursor describing the failed step
+     */
+    public void stepFailed(BaseSession session, StepCursor cursor) {
+        if (session == null || cursor == null || session.state() == null) {
+            return;
+        }
+        Map<String, Object> update = new LinkedHashMap<>();
+        update.put(StepCursor.FAILED_STATE_KEY, cursor.toMap());
+        session.state().update(update);
+        postAgentExecute(session);
+    }
+
+    /**
+     * Return the last persisted failed-step cursor for the session.
+     *
+     * @param session session to inspect
+     * @return the failed cursor, or null when no failed step has been persisted
+     */
+    public StepCursor lastFailedStep(BaseSession session) {
+        if (session == null || session.state() == null) {
+            return null;
+        }
+        Object state = session.state().get(StepCursor.FAILED_STATE_KEY);
+        StepCursor cursor = StepCursor.fromMap(state);
+        return cursor == null ? null : cursor;
+    }
+
+    /**
      * Scan persisted sessions whose last step cursor is still RUNNING, i.e.
      * tasks left behind by a crashed or restarted process. Used by recovery
      * and the runtime dead-step sweeper.

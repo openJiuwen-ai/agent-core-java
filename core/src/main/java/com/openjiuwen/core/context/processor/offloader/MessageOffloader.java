@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
@@ -216,7 +217,7 @@ public class MessageOffloader extends ContextProcessor {
     CompletionStage<BaseMessage> offloadMessage(BaseMessage message, SessionModelContext context,
                                                 Map<String, Object> kwargs) {
         String content = (String) message.getContent();
-        String trimmedContent = content.substring(0, Math.min(config.getTrimSize(), content.length())) + OMIT_STRING;
+        String trimmedContent = TextTruncate.safePrefix(content, config.getTrimSize()) + OMIT_STRING;
         Map<String, Object> extraFields = new LinkedHashMap<>(message.modelDump());
         extraFields.remove("role");
         extraFields.remove("content");
@@ -266,8 +267,8 @@ public class MessageOffloader extends ContextProcessor {
         try {
             // postTokenCount = the token footprint of what stays context-visible
             // after offloading (preview + marker), AC-6-04.
-            String preview = message.getContentAsString().substring(0,
-                    Math.min(config.getTrimSize(), message.getContentAsString().length())) + OMIT_STRING;
+            String preview = TextTruncate.safePrefix(message.getContentAsString(), config.getTrimSize())
+                    + OMIT_STRING;
             long postTokens = ContextUtils.estimateTokens(preview + markerSuffix());
             OffloadRequest request = OffloadRequest.builder()
                     .namespace(resolveNamespace(context))
@@ -383,18 +384,43 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     /**
-     * @return {@code true} when the message metadata carries the
-     * {@code openjiuwen.offload_done=true} flag (架构文档 §7.2.1 ①).
+     * @return {@code true} when the message carries the
+     * {@code openjiuwen.offload_done=true} flag (架构文档 §7.2.1 ①) —
+     * via its metadata or via the trailing text line that
+     * {@code withOffloadDoneMetadata} appends to reloaded tool output.
      */
     static boolean isOffloadDone(BaseMessage message) {
         Map<String, Object> metadata = message == null ? null : message.getMetadata();
-        if (metadata == null) {
+        if (metadata != null) {
+            Object flag = metadata.get(OFFLOAD_DONE_METADATA_KEY);
+            // 共享约定 5: the flag value is the string "true"; Boolean.TRUE is
+            // accepted too so programmatic writers keep working.
+            if (Boolean.TRUE.equals(flag) || "true".equalsIgnoreCase(String.valueOf(flag))) {
+                return true;
+            }
+        }
+        return hasOffloadDoneTailLine(message);
+    }
+
+    /**
+     * @return {@code true} when the message text ends with the
+     * {@code openjiuwen.offload_done=true} trailer line appended to reload
+     * results (共享约定 5), mirroring the flag into the anti-recursion check.
+     */
+    private static boolean hasOffloadDoneTailLine(BaseMessage message) {
+        if (message == null) {
             return false;
         }
-        Object flag = metadata.get(OFFLOAD_DONE_METADATA_KEY);
-        // 共享约定 5: the flag value is the string "true"; Boolean.TRUE is
-        // accepted too so programmatic writers keep working.
-        return Boolean.TRUE.equals(flag) || "true".equalsIgnoreCase(String.valueOf(flag));
+        String content = message.getContentAsString();
+        if (content == null) {
+            return false;
+        }
+        int lineStart = content.lastIndexOf(OFFLOAD_DONE_METADATA_KEY);
+        if (lineStart < 0) {
+            return false;
+        }
+        String tail = content.substring(lineStart).trim();
+        return (OFFLOAD_DONE_METADATA_KEY + "=true").equalsIgnoreCase(tail);
     }
 
     /**

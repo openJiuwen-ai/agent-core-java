@@ -253,6 +253,35 @@ class RunnerTest {
     }
 
     @Test
+    void runDeepAgentRetainsCallerSessionAndEnvironment() {
+        RecordingDeepAgent agent = new RecordingDeepAgent();
+        AgentSession caller = AgentSession.createAgentSession("caller-invoke",
+                Map.of("request-context", "current-request"), agent.getCard());
+
+        Object result = Runner.runAgent(agent, Map.of("query", "hello"), caller, null);
+
+        assertEquals(Map.of("query", "hello"), result);
+        assertSame(caller, agent.lastSession);
+        assertEquals("current-request", agent.lastSession.getEnvs().get("request-context"));
+        assertTrue(caller.isPreRunDone());
+    }
+
+    @Test
+    void streamDeepAgentRetainsCallerSessionAndEnvironment() {
+        RecordingDeepAgent agent = new RecordingDeepAgent();
+        AgentSession caller = AgentSession.createAgentSession("caller-stream",
+                Map.of("request-context", "current-request"), agent.getCard());
+
+        Iterator<Object> stream = Runner.runAgentStreaming(agent, Map.of("query", "hello"), caller, null,
+                List.of(StreamMode.OUTPUT));
+
+        assertEquals(List.of("stream-output"), drain(stream));
+        assertSame(caller, agent.lastSession);
+        assertEquals("current-request", agent.lastSession.getEnvs().get("request-context"));
+        assertTrue(caller.isPreRunDone());
+    }
+
+    @Test
     void runAgentTeamRejectsUnknownTeamName() {
         assertThrows(RuntimeException.class, () -> Runner.runAgentTeam(
                 "no-such-team",

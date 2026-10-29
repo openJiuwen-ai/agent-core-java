@@ -8,11 +8,15 @@ import com.openjiuwen.core.session.constants.SessionConstants;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -69,17 +73,26 @@ class ConfigTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void getEnvsReturnsDeepCopy() {
+    void getEnvsCopiesTopLevelMapAndRetainsNestedReferences() {
         Config config = new Config();
         Map<String, Object> nested = new LinkedHashMap<>();
         nested.put("inner", "value");
-        config.setEnvs(Map.of("nested", nested));
+        List<String> events = new ArrayList<>();
+        config.setEnvs(Map.of("nested", nested, "events", events));
 
         Map<String, Object> envs = config.getEnvs();
-        ((Map<String, Object>) envs.get("nested")).put("inner", "changed");
+        assertNotSame(envs, config.getEnvs());
+        assertSame(nested, envs.get("nested"));
+        assertSame(events, envs.get("events"));
+        envs.remove("nested");
+        envs.put("snapshot-only", true);
+        assertSame(nested, config.getEnv("nested"));
+        assertFalse(config.getEnvs().containsKey("snapshot-only"));
 
-        assertEquals("value", ((Map<?, ?>) config.getEnv("nested")).get("inner"));
+        nested.put("inner", "changed");
+        events.add("completed");
+        assertEquals(Map.of("inner", "changed"), config.getEnvs().get("nested"));
+        assertEquals(List.of("completed"), config.getEnvs().get("events"));
     }
 
     @Test

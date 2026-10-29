@@ -8,6 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.context.offload.api.OffloadErrorCode;
 import com.openjiuwen.core.context.offload.api.OffloadException;
@@ -15,11 +18,15 @@ import com.openjiuwen.core.context.offload.api.OffloadStore;
 import com.openjiuwen.core.context.offload.model.OffloadBackend;
 import com.openjiuwen.core.context.offload.model.OffloadNamespace;
 import com.openjiuwen.core.context.offload.model.OffloadPayload;
+import com.openjiuwen.core.context.offload.model.OffloadRef;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -94,6 +101,32 @@ class CompositeOffloadStoreTest {
 
         assertEquals(OffloadBackend.MEMORY, outcome.backend());
         assertTrue(fallback.exists(NS, HANDLE));
+    }
+
+    @Test
+    void fileFailureFallsThroughToRedisBackend(@TempDir Path tempDir) throws IOException {
+        // TC_041-UT: FILESYSTEM 失败→REDIS 成功的显式组合，save 凭据
+        // backend=REDIS、marker type=redis、pathOrKey 为 redis 风格存储键。
+        Path blockedRoot = tempDir.resolve("blocked-root");
+        Files.writeString(blockedRoot, "occupies the path");
+        Jedis jedis = mock(Jedis.class);
+        when(jedis.set(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString())).thenReturn("OK");
+        JedisPool pool = mock(JedisPool.class);
+        when(pool.getResource()).thenReturn(jedis);
+        FileOffloadStore failing = new FileOffloadStore(blockedRoot);
+        RedisOffloadStore redisFallback = new RedisOffloadStore(pool);
+        CompositeOffloadStore composite = new CompositeOffloadStore(chainOf(failing, redisFallback));
+
+        CompositeOffloadStore.ChainedSaveOutcome outcome =
+                composite.saveWithFallback(NS, HANDLE, payload(), null);
+
+        assertEquals(OffloadBackend.REDIS, outcome.backend());
+        assertEquals(NS.toRedisKey(HANDLE), outcome.pathOrKey());
+        assertEquals("redis", OffloadRef.markerType(outcome.backend()));
+        verify(jedis).set(org.mockito.ArgumentMatchers.eq(NS.toRedisKey(HANDLE)),
+                org.mockito.ArgumentMatchers.anyString());
+        redisFallback.close();
     }
 
     @Test

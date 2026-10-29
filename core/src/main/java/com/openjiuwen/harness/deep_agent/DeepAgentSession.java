@@ -11,6 +11,7 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -18,27 +19,73 @@ import java.util.Map;
  * DeepAgent product session. Delegates to the official {@link AgentSession} facade
  * so state, stream, and lifecycle share one kernel.
  *
+ * <p>The legacy {@code config} constructor argument accepts an environment map whose keys
+ * must be non-null strings. Invalid keys fail construction with {@link IllegalArgumentException}.
+ * Other configuration objects retain the default environment behavior.</p>
+ *
  * @since 0.1.14
  */
 public class DeepAgentSession implements AgentSessionApi {
 
     private final AgentSession facade;
-    private Map<String, Object> envs;
 
     public DeepAgentSession(String sessionId) {
         this.facade = new AgentSession(sessionId, null, null);
     }
 
+    /**
+     * Creates a session with request environments in the backing configuration.
+     *
+     * @param sessionId session identifier
+     * @param config environment map with non-null String keys; null or non-Map values use defaults
+     * @param card agent card
+     * @throws IllegalArgumentException if an environment map contains a null or non-String key
+     * @since 0.1.17
+     */
     public DeepAgentSession(String sessionId, Object config, AgentCard card) {
-        this.facade = new AgentSession(sessionId, null, card);
+        this.facade = new AgentSession(sessionId, environments(config), card);
     }
 
+    /**
+     * Creates a session using the legacy stream-mode constructor.
+     *
+     * @param sessionId session identifier
+     * @param config environment map with non-null String keys; null or non-Map values use defaults
+     * @param card agent card
+     * @param streamModes legacy stream modes, currently ignored
+     * @throws IllegalArgumentException if an environment map contains a null or non-String key
+     * @since 0.1.17
+     */
     public DeepAgentSession(String sessionId, Object config, AgentCard card, List<StreamMode> streamModes) {
-        this.facade = new AgentSession(sessionId, null, card);
+        this(sessionId, config, card);
     }
 
+    /**
+     * Creates a session using the legacy checkpointer constructor.
+     *
+     * @param sessionId session identifier
+     * @param config environment map with non-null String keys; null or non-Map values use defaults
+     * @param checkpointer legacy checkpointer, currently ignored
+     * @param card agent card
+     * @throws IllegalArgumentException if an environment map contains a null or non-String key
+     * @since 0.1.17
+     */
     public DeepAgentSession(String sessionId, Object config, Object checkpointer, AgentCard card) {
-        this.facade = new AgentSession(sessionId, null, card);
+        this(sessionId, config, card);
+    }
+
+    private static Map<String, Object> environments(Object config) {
+        if (!(config instanceof Map<?, ?> values)) {
+            return Map.of();
+        }
+        Map<String, Object> envs = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : values.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                throw new IllegalArgumentException("Environment keys must be strings");
+            }
+            envs.put(key, entry.getValue());
+        }
+        return envs;
     }
 
     @Override
@@ -64,6 +111,11 @@ public class DeepAgentSession implements AgentSessionApi {
     @Override
     public Iterator<Object> streamIterator() {
         return facade.streamIterator();
+    }
+
+    @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        return facade.streamIterator(failure);
     }
 
     @Override
@@ -126,11 +178,24 @@ public class DeepAgentSession implements AgentSessionApi {
         return facade.getInner();
     }
 
+    /**
+     * Returns the environment snapshot used by the underlying session.
+     *
+     * @return environment snapshot
+     * @since 0.1.17
+     */
+    @Override
     public Map<String, Object> getEnvs() {
-        return envs != null ? envs : facade.getEnvs();
+        return facade.getEnvs();
     }
 
+    /**
+     * Merges environment values into the underlying session configuration.
+     *
+     * @param envs values to merge; {@code null} leaves existing values unchanged
+     * @since 0.1.17
+     */
     public void setEnvs(Map<String, Object> envs) {
-        this.envs = envs;
+        facade.getInner().config().setEnvs(envs);
     }
 }

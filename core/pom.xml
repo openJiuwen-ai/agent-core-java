@@ -468,10 +468,8 @@
                     <groups>${surefire.groups}</groups>
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                     <forkedProcessTimeoutInSeconds>1800</forkedProcessTimeoutInSeconds>
-                    <!-- Single fork with reuse: classes run concurrently inside one JVM via
-                         JUnit 5 parallel execution (see junit-platform.properties). Forking per
-                         class would negate the in-JVM parallelism and add JVM startup overhead
-                         across 2000+ test classes. -->
+                    <!-- Reuse one JVM to avoid per-class startup overhead. JUnit execution is
+                         serial because tests use process-global state (see junit-platform.properties). -->
                     <forkCount>1</forkCount>
                     <reuseForks>true</reuseForks>
                 </configuration>

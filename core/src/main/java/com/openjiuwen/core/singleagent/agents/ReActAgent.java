@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.agents;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
@@ -2268,6 +2269,12 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                         iterationDurationMillis(ctx)));
                     } catch (RuntimeException exception) {
                         iterationFailureLogged = true;
+                        stepCheckpointTrigger.stepCompleted(
+                                typedBaseSession(session),
+                                null,
+                                null,
+                                new StepBoundary("ITERATION", "iteration-" + iterationNumber, StepStatus.FAILED,
+                                        iterationDurationMillis(ctx)));
                         Loggers.AGENT.exception(
                                 "ReAct iteration %d/%d failed"
                                         .formatted(iterationNumber, ctx.getMaxIterations()),
@@ -3663,7 +3670,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     private static String truncate(String text, int maxLength) {
-        return text.length() <= maxLength ? text : text.substring(0, maxLength);
+        return TextTruncate.safePrefix(text, maxLength);
     }
 
     private static double roundMillis(double nanos) {
