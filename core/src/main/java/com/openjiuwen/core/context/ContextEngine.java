@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.context;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -277,7 +279,17 @@ public class ContextEngine {
 
         Map<String, Object> compressionKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
         compressionKwargs.putIfAbsent("compression_trigger", "model_context_overflow");
-        Object result = compressContext(contextId, session, null, null, compressionKwargs);
+        Object result;
+        try {
+            result = compressContext(contextId, session, null, null, compressionKwargs);
+        } catch (BaseError | IllegalArgumentException | IllegalStateException | CompletionException
+                 | ClassCastException | UnsupportedOperationException compressFailure) {
+            // Recovery must not replace the original model exception: log and decline retry.
+            Loggers.CONTEXT_ENGINE.warning(
+                    "model context recovery compress failed; preserving original model exception: "
+                            + compressFailure.getMessage());
+            return false;
+        }
         Object resultCode = result instanceof Map<?, ?> map ? map.get("result") : result;
         if (!SessionModelContext.ACTIVE_COMPRESSION_RESULT_COMPRESSED.equals(resultCode)) {
             Loggers.CONTEXT_ENGINE.info(

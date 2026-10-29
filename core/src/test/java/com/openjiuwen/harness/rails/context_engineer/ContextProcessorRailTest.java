@@ -161,6 +161,12 @@ class ContextProcessorRailTest {
             ctx.setException(new RuntimeException("maximum context length exceeded"));
             rail.onModelException(ctx);
             assertThat(ctx.consumeRetryRequest()).isNull();
+
+            // New ReAct model step clears the gate (mirrors ReActAgent.railedModelCall).
+            ctx.getExtra().remove(ContextProcessorRail.MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY);
+            ctx.setException(new RuntimeException("maximum context length exceeded"));
+            rail.onModelException(ctx);
+            assertThat(ctx.consumeRetryRequest()).isNotNull();
         } finally {
             agent.unregisterRail(rail).toCompletableFuture().join();
         }

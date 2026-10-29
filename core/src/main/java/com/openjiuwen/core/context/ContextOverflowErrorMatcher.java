@@ -6,6 +6,7 @@ package com.openjiuwen.core.context;
 
 import com.openjiuwen.core.common.exception.BaseError;
 
+import java.lang.reflect.InaccessibleObjectException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.IdentityHashMap;
@@ -181,7 +182,7 @@ final class ContextOverflowErrorMatcher {
             var field = value.getClass().getDeclaredField(fieldName);
             field.setAccessible(true);
             return field.get(value);
-        } catch (NoSuchFieldException | IllegalAccessException | SecurityException ignored) {
+        } catch (ReflectiveOperationException | SecurityException | InaccessibleObjectException ignored) {
             return null;
         }
     }

@@ -193,8 +193,11 @@ public class ContextProcessorRail extends AgentRail {
      * model-call retry when compression changed the context.
      *
      * <p>Runs before lower-priority rails such as {@code ModelBackupRail} so
-     * compression is attempted first. Same-round recovery is gated by
-     * {@link #MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY}.</p>
+     * compression is attempted first. Within one {@code Rails.run} retry chain
+     * (one ReAct model step), recovery is gated by
+     * {@link #MODEL_EXCEPTION_RECOVERY_ATTEMPTED_KEY}. {@code ReActAgent.railedModelCall}
+     * clears that key at the start of each new model step so later iterations in
+     * the same invoke can recover again.</p>
      *
      * @param context callback context carrying the model exception
      */

@@ -354,6 +354,22 @@ class ContextEngineTest {
     }
 
     @Test
+    void recoverFromModelExceptionReturnsFalseWhenContextMissing() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-missing");
+
+        boolean recovered = engine.recoverFromModelException(
+                "missing-ctx",
+                session,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                null);
+
+        assertThat(recovered).isFalse();
+    }
+
+    @Test
     void unknownProcessorAndMissingContextRaiseContextExecutionError() {
         ContextEngine engine = new ContextEngine(new ContextEngineConfig());
         RecordingSession session = new RecordingSession("session-error");
