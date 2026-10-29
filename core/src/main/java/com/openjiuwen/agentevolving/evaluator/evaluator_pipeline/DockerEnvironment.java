@@ -186,6 +186,18 @@ public class DockerEnvironment {
             int commandTimeout,
             String workdir,
             Map<String, String> env) {
+        return exec(List.of("bash", "-c", command), commandTimeout, workdir, env);
+    }
+
+    /** Executes literal arguments inside the container without shell interpretation. */
+    public CompletableFuture<ExecResult> exec(
+            List<String> command,
+            int commandTimeout,
+            String workdir,
+            Map<String, String> env) {
+        if (command == null || command.isEmpty()) {
+            throw new IllegalArgumentException("Command arguments must not be empty");
+        }
         if (!isRunning()) {
             return CompletableFuture.completedFuture(new ExecResult("", "No container running", -1, false));
         }
@@ -204,9 +216,7 @@ public class DockerEnvironment {
             }
         }
         argv.add(containerId);
-        argv.add("bash");
-        argv.add("-c");
-        argv.add(command);
+        argv.addAll(command);
         return runCommand(argv, commandTimeout).thenApply(result -> new ExecResult(
                 result.getStdout(),
                 result.getStderr(),

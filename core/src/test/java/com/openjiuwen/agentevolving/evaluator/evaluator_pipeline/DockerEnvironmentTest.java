@@ -28,6 +28,51 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DockerEnvironmentTest {
 
     @Test
+    void execArgumentsPreserveLiteralPaths(@TempDir Path tempDir) throws Exception {
+        DockerEnvironment environment = new DockerEnvironment("local") {
+            @Override
+            protected String resolveDockerPath() {
+                return "docker";
+            }
+
+            @Override
+            protected CompletableFuture<ExecResult> runCommand(List<String> command, int timeout) {
+                int start = command.indexOf("local-container") + 1;
+                try {
+                    Process process = new ProcessBuilder(command.subList(start, command.size())).directory(tempDir.toFile()).start();
+                    String stdout = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    String stderr = new String(process.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    return CompletableFuture.completedFuture(new ExecResult(stdout, stderr, process.waitFor(), false));
+                } catch (Exception exception) {
+                    return CompletableFuture.failedFuture(exception);
+                }
+            }
+        };
+        environment.setContainerIdForTesting("local-container");
+        Path path = tempDir.resolve("space ' ; $(touch INJECTED) `echo bad`\nline");
+        ExecResult created = environment.exec(List.of("mkdir", "-p", "--", path.toString()), 10, null, null).join();
+        assertTrue(created.isSuccess(), created.getStderr());
+        assertTrue(Files.isDirectory(path));
+        Path file = path.resolve("-file.txt");
+        Files.writeString(file, "literal content");
+        assertEquals("literal content", environment.exec(List.of("cat", "--", file.toString()), 10, null, null)
+                .join().getStdout());
+        assertFalse(Files.exists(tempDir.resolve("INJECTED")));
+    }
+
+    @Test
+    void execArgumentsKeepDockerOptionsAndTimeout() {
+        FakeDockerEnvironment environment = new FakeDockerEnvironment("test-image");
+        environment.setContainerIdForTesting("container-id");
+        environment.queueResult(new ExecResult("", "timed out", -1, true));
+        ExecResult result = environment.exec(List.of("cat", "--", "/path with spaces"), 12,
+                "/work dir", Map.of("KEY", "value; literal")).join();
+        assertEquals(List.of("/usr/bin/docker", "exec", "-w", "/work dir", "-e", "KEY=value; literal",
+                "container-id", "cat", "--", "/path with spaces"), environment.getLastCommand());
+        assertTrue(result.isTimedOut());
+    }
+
+    @Test
     void testDefaultValues() {
         FakeDockerEnvironment environment = new FakeDockerEnvironment("test-image");
 

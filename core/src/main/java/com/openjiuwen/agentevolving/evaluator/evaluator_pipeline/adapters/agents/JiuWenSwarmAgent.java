@@ -162,7 +162,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
             awaitResult(env.exec("uv --version", 30, null, null));
             LOGGER.info("  uv verified");
 
-            awaitResult(env.exec("mkdir -p " + CONFIG_DIR, 10, null, null));
+            awaitResult(env.exec(List.of("mkdir", "-p", "--", CONFIG_DIR), 10, null, null));
             awaitResult(env.exec("export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple", 10, null, null));
             awaitResult(env.exec("export PIP_TIMEOUT=120", 10, null, null));
             awaitResult(env.exec("export PIP_DEFAULT_TIMEOUT=120", 10, null, null));
@@ -260,7 +260,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                     }
                     String skillName = skillSubdir.getFileName().toString();
                     String containerSkillDir = SKILL_DIR + "/" + skillName;
-                    awaitResult(env.exec("mkdir -p " + containerSkillDir, 10, null, null));
+                    awaitResult(env.exec(List.of("mkdir", "-p", "--", containerSkillDir), 10, null, null));
                     copyExistingFile(env, skillMd, containerSkillDir + "/SKILL.md");
                     loadedSkills.add(skillName);
                     LOGGER.info("    Loaded skill: {}", skillName);
@@ -396,13 +396,13 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
             Map<String, String> evolutionContents = new LinkedHashMap<>();
             Map<String, Map<String, String>> capturedEvolutionFiles = new LinkedHashMap<>();
 
-            ExecResult evoResult = awaitResult(env.exec("find " + SKILL_DIR + " -name 'evolutions.json' 2>/dev/null", 30, null, null));
+            ExecResult evoResult = awaitResult(env.exec(List.of("find", SKILL_DIR, "-name", "evolutions.json", "-print0"), 30, null, null));
             if (evoResult.isSuccess() && !evoResult.getStdout().isBlank()) {
-                List<String> evoFiles = nonBlankLines(evoResult.getStdout());
+                List<String> evoFiles = filePaths(evoResult.getStdout());
                 LOGGER.info("  Found {} evolutions.json files", evoFiles.size());
                 for (String evoFile : evoFiles) {
                     String skillName = Path.of(evoFile).getParent().getFileName().toString();
-                    ExecResult readResult = awaitResult(env.exec("cat " + evoFile, 30, null, null));
+                    ExecResult readResult = awaitResult(env.exec(List.of("cat", "--", evoFile), 30, null, null));
                     if (readResult.isSuccess()) {
                         evolutionContents.put(skillName, readResult.getStdout());
                         LOGGER.info("  {}/evolutions.json: {} chars", skillName, readResult.getStdout().length());
@@ -411,12 +411,12 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
             }
 
             capturedEvolutionJson.clear();
-            ExecResult evoJsonResult = awaitResult(env.exec("find " + WORKSPACE_DIR + " -name 'evolution.json' 2>/dev/null", 30, null, null));
+            ExecResult evoJsonResult = awaitResult(env.exec(List.of("find", WORKSPACE_DIR, "-name", "evolution.json", "-print0"), 30, null, null));
             if (evoJsonResult.isSuccess() && !evoJsonResult.getStdout().isBlank()) {
-                List<String> evoJsonFiles = nonBlankLines(evoJsonResult.getStdout());
+                List<String> evoJsonFiles = filePaths(evoJsonResult.getStdout());
                 LOGGER.info("  Found {} evolution.json files", evoJsonFiles.size());
                 for (String evoJsonFile : evoJsonFiles) {
-                    ExecResult readResult = awaitResult(env.exec("cat " + evoJsonFile, 30, null, null));
+                    ExecResult readResult = awaitResult(env.exec(List.of("cat", "--", evoJsonFile), 30, null, null));
                     if (readResult.isSuccess()) {
                         String filename = Path.of(evoJsonFile).getFileName().toString();
                         capturedEvolutionJson.put(filename, readResult.getStdout());
@@ -425,15 +425,15 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 }
             }
 
-            ExecResult evoMdResult = awaitResult(env.exec("find " + SKILL_DIR + " -path '*/evolution/*.md' 2>/dev/null", 30, null, null));
+            ExecResult evoMdResult = awaitResult(env.exec(List.of("find", SKILL_DIR, "-path", "*/evolution/*.md", "-print0"), 30, null, null));
             if (evoMdResult.isSuccess() && !evoMdResult.getStdout().isBlank()) {
-                List<String> evoMdFiles = nonBlankLines(evoMdResult.getStdout());
+                List<String> evoMdFiles = filePaths(evoMdResult.getStdout());
                 LOGGER.info("  Found {} evolution/*.md files", evoMdFiles.size());
                 for (String mdFile : evoMdFiles) {
                     Path mdPath = Path.of(mdFile);
                     String skillName = mdPath.getParent().getParent().getFileName().toString();
                     String filename = mdPath.getFileName().toString();
-                    ExecResult readResult = awaitResult(env.exec("cat " + mdFile, 30, null, null));
+                    ExecResult readResult = awaitResult(env.exec(List.of("cat", "--", mdFile), 30, null, null));
                     if (readResult.isSuccess()) {
                         capturedEvolutionFiles.computeIfAbsent(skillName, ignored -> new LinkedHashMap<>())
                                 .put(filename, readResult.getStdout());
@@ -442,7 +442,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 }
             }
 
-            ExecResult skillResult = awaitResult(env.exec("find " + SKILL_DIR + " -name 'SKILL.md' 2>/dev/null", 30, null, null));
+            ExecResult skillResult = awaitResult(env.exec(List.of("find", SKILL_DIR, "-name", "SKILL.md", "-print0"), 30, null, null));
             if (!skillResult.isSuccess() || skillResult.getStdout().isBlank()) {
                 SkillDelta delta = new SkillDelta();
                 delta.setEvolutions(evolutionContents);
@@ -451,9 +451,9 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
             }
 
             Map<String, String> createdSkills = new LinkedHashMap<>();
-            for (String skillFile : nonBlankLines(skillResult.getStdout())) {
+            for (String skillFile : filePaths(skillResult.getStdout())) {
                 String skillName = Path.of(skillFile).getParent().getFileName().toString();
-                ExecResult readResult = awaitResult(env.exec("cat " + skillFile, 30, null, null));
+                ExecResult readResult = awaitResult(env.exec(List.of("cat", "--", skillFile), 30, null, null));
                 if (readResult.isSuccess()) {
                     createdSkills.put(skillName, readResult.getStdout());
                 }
@@ -1013,7 +1013,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
             String evolutionContent,
             Map<String, String> evolutionFiles) {
         String skillDir = SKILL_DIR + "/" + skillName;
-        awaitResult(env.exec("mkdir -p " + skillDir, 10, null, null));
+        awaitResult(env.exec(List.of("mkdir", "-p", "--", skillDir), 10, null, null));
         if (!copyTempFile(env, "skill_" + skillName, skillContent, skillDir + "/SKILL.md")) {
             LOGGER.error("  Failed to load skill: {}", skillName);
             return false;
@@ -1027,7 +1027,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
         }
         if (evolutionFiles != null && !evolutionFiles.isEmpty()) {
             String evolutionDir = skillDir + "/evolution";
-            awaitResult(env.exec("mkdir -p " + evolutionDir, 10, null, null));
+            awaitResult(env.exec(List.of("mkdir", "-p", "--", evolutionDir), 10, null, null));
             for (Map.Entry<String, String> entry : evolutionFiles.entrySet()) {
                 if (copyTempFile(env, "evolution_" + skillName + "_" + sanitizeFileName(entry.getKey()),
                         entry.getValue(), evolutionDir + "/" + entry.getKey())) {
@@ -1052,18 +1052,19 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 "~/.jiuwenswarm/llm.log"
         );
         for (String llmPath : llmSearchPaths) {
-            ExecResult result = awaitResult(env.exec("cat " + llmPath + " 2>/dev/null | tail -4000", 10, null, null));
+            ExecResult result = awaitResult(tailLog(env, llmPath));
             if (result.isSuccess() && !result.getStdout().isBlank()) {
                 llmLogsFound.put("llm.log", result.getStdout());
                 LOGGER.info("  Found llm.log from {} ({} chars)", llmPath, result.getStdout().length());
                 return llmLogsFound;
             }
         }
-        captureLogsFromFind(env, "find ~/.jiuwenswarm -name 'llm.log' -type f 2>/dev/null", llmLogsFound);
+        captureLogsFromFind(env, List.of("bash", "-c",
+                "find \"$HOME/.jiuwenswarm\" -name llm.log -type f -print0"), llmLogsFound);
         if (!llmLogsFound.isEmpty()) {
             return llmLogsFound;
         }
-        captureLogsFromFind(env, "find " + WORKSPACE_DIR + " -name 'llm.log' -type f 2>/dev/null", llmLogsFound);
+        captureLogsFromFind(env, List.of("find", WORKSPACE_DIR, "-name", "llm.log", "-type", "f", "-print0"), llmLogsFound);
         if (!llmLogsFound.isEmpty()) {
             return llmLogsFound;
         }
@@ -1076,7 +1077,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 "/root/logs/run/jiuwen.jsonl",
                 "/app/logs/run/jiuwen.log",
                 "/app/logs/run/jiuwen.jsonl")) {
-            ExecResult result = awaitResult(env.exec("cat " + ojPath + " 2>/dev/null | tail -4000", 10, null, null));
+            ExecResult result = awaitResult(tailLog(env, ojPath));
             if (result.isSuccess() && !result.getStdout().isBlank()) {
                 String ojName = Path.of(ojPath).getFileName().toString();
                 llmLogsFound.put("llm_" + ojName, result.getStdout());
@@ -1087,14 +1088,23 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
         return llmLogsFound;
     }
 
-    private void captureLogsFromFind(DockerEnvironment env, String findCommand, Map<String, String> output) {
+    private java.util.concurrent.CompletableFuture<ExecResult> tailLog(DockerEnvironment env, String path) {
+        if (path.startsWith("~/")) {
+            // Only this fixed script is interpreted; the path is a separate positional argument.
+            return env.exec(List.of("bash", "-c", "tail -n 4000 -- \"$HOME/$1\"", "tail-log", path.substring(2)),
+                    10, null, null);
+        }
+        return env.exec(List.of("tail", "-n", "4000", "--", path), 10, null, null);
+    }
+
+    private void captureLogsFromFind(DockerEnvironment env, List<String> findCommand, Map<String, String> output) {
         ExecResult searchResult = awaitResult(env.exec(findCommand, 15, null, null));
         if (!searchResult.isSuccess() || searchResult.getStdout().isBlank()) {
             return;
         }
-        List<String> foundPaths = nonBlankLines(searchResult.getStdout());
+        List<String> foundPaths = filePaths(searchResult.getStdout());
         for (String foundPath : foundPaths.stream().limit(3).collect(Collectors.toList())) {
-            ExecResult result = awaitResult(env.exec("cat " + foundPath + " 2>/dev/null | tail -4000", 10, null, null));
+            ExecResult result = awaitResult(tailLog(env, foundPath));
             if (result.isSuccess() && !result.getStdout().isBlank()) {
                 String safeName = foundPaths.size() > 1 ? foundPath.replace("/root/.jiuwenswarm/", "")
                         .replace("/home/", "").replace('/', '_') : "llm.log";
@@ -1167,9 +1177,9 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
         return future.join();
     }
 
-    private static List<String> nonBlankLines(String text) {
-        return Pattern.compile("\\R").splitAsStream(text)
-                .map(String::trim)
+    private static List<String> filePaths(String text) {
+        // find -print0 preserves whitespace and embedded newlines in filenames.
+        return Pattern.compile("\\x00").splitAsStream(text)
                 .filter(line -> !line.isEmpty())
                 .collect(Collectors.toList());
     }

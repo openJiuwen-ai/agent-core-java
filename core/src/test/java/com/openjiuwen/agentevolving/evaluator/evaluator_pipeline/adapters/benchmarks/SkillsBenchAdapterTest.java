@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.adapters.benchmarks;
 
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.CommandRecordingEnvironment;
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.DockerEnvironment;
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.EvalResult;
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.ExecResult;
@@ -33,6 +34,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code openjiuwen/agent_evolving/evaluator/evaluator_pipeline/adapters/benchmarks/skillsbench.py}.</p>
  */
 class SkillsBenchAdapterTest {
+
+    @Test
+    void prepareEnvironmentUsesLiteralWorkspaceAndChildPaths(@TempDir Path tempDir) throws Exception {
+        String workspace = "/workspace ' ; $(touch INJECTED)";
+        Path testsDir = Files.createDirectories(tempDir.resolve("tests"));
+        Files.createDirectories(testsDir.resolve("cases ; `id`"));
+        Task task = new Task("task", "run", Map.of(), Map.of(
+                "task_dir", tempDir.toString(), "tests_dir", testsDir.toString()), false, List.of());
+        SkillsBenchAdapter adapter = new SkillsBenchAdapter(Map.of("workspace_dir", workspace));
+        CommandRecordingEnvironment env = new CommandRecordingEnvironment();
+        adapter.prepareEnvironment(task, env).join();
+        assertTrue(env.commands.contains(List.of("mkdir", "-p", "--", workspace)));
+        assertTrue(env.commands.contains(List.of("mkdir", "-p", "--", workspace + "/tests/cases ; `id`")));
+        assertTrue(env.commands.contains(List.of("ln", "-sf", "--", workspace + "/tests", "/tests")));
+        assertTrue(env.commands.contains(List.of("ln", "-sf", "--", workspace + "/logs", "/logs")));
+    }
 
     @Test
     void defaultInitUsesPythonDefaults() throws Exception {
@@ -172,9 +189,9 @@ class SkillsBenchAdapterTest {
 
         adapter.prepareEnvironment(task, env).join();
 
-        assertTrue(env.commands.contains("mkdir -p /workspace"));
-        assertTrue(env.commands.contains("ln -sf /workspace/tests /tests 2>/dev/null || true"));
-        assertTrue(env.commands.contains("ln -sf /workspace/logs /logs 2>/dev/null || true"));
+        assertTrue(env.commands.contains("mkdir -p -- /workspace"));
+        assertTrue(env.commands.contains("ln -sf -- /workspace/tests /tests"));
+        assertTrue(env.commands.contains("ln -sf -- /workspace/logs /logs"));
         assertTrue(env.copiedTargets.contains("/workspace/tests/test.sh"));
         assertTrue(env.copiedTargets.contains("/workspace/tests/cases/sample.txt"));
         assertTrue(env.copiedTargets.contains("/workspace/input.json"));
@@ -310,6 +327,12 @@ class SkillsBenchAdapterTest {
         private RecordingDockerEnvironment(ExecResult execResult) {
             super("fake-image");
             this.execResult = execResult;
+        }
+
+        @Override
+        public CompletableFuture<ExecResult> exec(List<String> command, int commandTimeout, String workdir,
+                Map<String, String> env) {
+            return exec(String.join(" ", command), commandTimeout, workdir, env);
         }
 
         @Override

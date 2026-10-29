@@ -5,8 +5,10 @@
 package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.adapters.agents;
 
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.AgentContext;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.CommandRecordingEnvironment;
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.EvalResult;
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.IterationResult;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.Task;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -18,6 +20,56 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JiuWenSwarmAgentTest {
+
+    @Test
+    void runReadsDiscoveredLogsAsLiteralPaths() {
+        JiuWenSwarmAgent agent = new JiuWenSwarmAgent(Map.of());
+        CommandRecordingEnvironment env = new CommandRecordingEnvironment();
+        String file = "/workspace/logs ' ; $(touch INJECTED)\nline/llm.log";
+        env.stdout = command -> {
+            if (String.join(" ", command).contains("find")) {
+                return file + "\0";
+            }
+            if (command.equals(List.of("tail", "-n", "4000", "--", file))) {
+                return "log content";
+            }
+            return "";
+        };
+        var result = agent.run(env, new Task("task", "run", Map.of(), Map.of(), false, List.of()),
+                new AgentContext()).join();
+        assertEquals(Map.of("llm.log", "log content"), result.getLlmLogs());
+    }
+
+    @Test
+    void skillPathsArePassedAsLiteralArguments() {
+        JiuWenSwarmAgent agent = new JiuWenSwarmAgent(Map.of());
+        CommandRecordingEnvironment env = new CommandRecordingEnvironment();
+        String name = "skill ' ; $(touch INJECTED) `id`";
+        assertEquals(1, agent.loadSkills(env, Map.of(name, "content"), Map.of(),
+                Map.of(name, Map.of("notes.md", "notes"))).join());
+        assertTrue(env.commands.contains(List.of("mkdir", "-p", "--", "/root/.jiuwenswarm/agent/workspace/skills/" + name)));
+        assertTrue(env.commands.contains(List.of("mkdir", "-p", "--", "/root/.jiuwenswarm/agent/workspace/skills/" + name + "/evolution")));
+    }
+
+    @Test
+    void captureSkillsPreservesMetacharactersAndNewlinesInFindResults() {
+        JiuWenSwarmAgent agent = new JiuWenSwarmAgent(Map.of());
+        CommandRecordingEnvironment env = new CommandRecordingEnvironment();
+        String name = "skill ' ; $(touch INJECTED)\nnext line ";
+        String file = "/root/.jiuwenswarm/agent/workspace/skills/" + name + "/SKILL.md";
+        env.stdout = command -> {
+            if (String.join(" ", command).contains("SKILL.md") && !command.get(0).equals("cat")) {
+                return file + "\0";
+            }
+            if (command.equals(List.of("cat", "--", file))) {
+                return "# literal skill";
+            }
+            return "";
+        };
+        var delta = agent.captureSkills(env).join();
+        assertEquals(Map.of(name, "# literal skill"), delta.getSkills());
+        assertTrue(env.commands.contains(List.of("cat", "--", file)));
+    }
 
     @Test
     void validateConfigAndDefaultModelMirrorPythonDefaults() {
