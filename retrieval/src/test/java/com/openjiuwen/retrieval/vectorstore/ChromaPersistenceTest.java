@@ -1,11 +1,16 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.retrieval.vector_store;
+package com.openjiuwen.retrieval.vectorstore;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.retrieval.common.StoreType;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.retrieval.vector_store.ChromaVectorStore;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,12 +22,33 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+/**
+ * Verifies persistent Chroma collections across clients and concurrent updates.
+ *
+ * @since 2026-10-28
+ */
 class ChromaPersistenceTest {
     @TempDir
     Path storage;
+
+    @Test
+    void existingVersionOneFileRemainsReadableAfterAdapterEncapsulation() throws Exception {
+        store("docs");
+        Path database;
+        try (var files = Files.list(storage)) {
+            database = files.filter(file -> file.toString().endsWith(".json")).findFirst().orElseThrow();
+        }
+        Files.writeString(database, """
+                {"version":1,"collections":{"docs":{"configuration":{},"rows":[
+                  {"id":"saved","embedding":[1.0,0.0],"document":"existing document",
+                   "metadata":{"source":"version-one"}}
+                ]}}}
+                """);
+        ChromaVectorStore recovered = store("docs");
+        Map<String, Object> results = recovered.getCollection().query(null, "existing document", 10, Map.of());
+        assertThat(results.get("ids")).isEqualTo(List.of(List.of("saved")));
+        assertThat(results.get("documents")).isEqualTo(List.of(List.of("existing document")));
+    }
 
     @Test
     void newlyCreatedClientReadsAndDeletesPreviouslyStoredVectors() {

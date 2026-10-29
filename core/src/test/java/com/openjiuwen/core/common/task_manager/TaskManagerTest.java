@@ -4,9 +4,13 @@
 
 package com.openjiuwen.core.common.task_manager;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.common.exception.ExecutionError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -16,14 +20,11 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Focused parity tests for {@link TaskManager}.
@@ -35,65 +36,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code tests/unit_tests/core/common/test_task_manager.py}.</p>
  */
 class TaskManagerTest {
-
-    @Test
-    void scopeHonorsCatchExceptionsWhileKeepingFailureAndTimeoutStates() {
-        TaskManager manager = TaskManager.getInstance();
-        CountDownLatch release = new CountDownLatch(1);
-        Task failed;
-        Task timeout;
-        try (TaskManager.TaskGroupScope ignored = manager.taskGroup()) {
-            failed = manager.createTask(() -> { throw new IllegalStateException("expected failure"); },
-                    "caught-failure", null, null, null, Map.of(), true);
-            timeout = manager.createTask(() -> { release.await(); return "late"; },
-                    "caught-timeout", null, null, 0.05, Map.of(), true);
-        } finally {
-            release.countDown();
-        }
-        assertThat(failed.getStatus()).isEqualTo(TaskStatus.FAILED);
-        assertThat(failed.getException()).isInstanceOf(IllegalStateException.class);
-        assertThat(timeout.getStatus()).isEqualTo(TaskStatus.TIMEOUT);
-        assertThat(timeout.getException()).isInstanceOf(java.util.concurrent.TimeoutException.class);
-        assertThat(TaskContext.getTaskGroup()).isNull();
-    }
-
-    @Test
-    void scopeStillPropagatesUncaughtTaskFailure() {
-        TaskManager manager = TaskManager.getInstance();
-        IllegalArgumentException failure = new IllegalArgumentException("uncaught failure");
-        assertThatThrownBy(() -> {
-            try (TaskManager.TaskGroupScope ignored = manager.taskGroup()) {
-                manager.createTask(() -> { throw failure; }, "uncaught-failure", null, null, null, Map.of(), false);
-            }
-        }).isInstanceOf(CompletionException.class).hasCause(failure);
-        assertThat(manager.getTask("uncaught-failure").getStatus()).isEqualTo(TaskStatus.FAILED);
-        assertThat(TaskContext.getTaskGroup()).isNull();
-    }
-
-    @Test
-    void scopeCancellationRecordsImmediateParentAndCancelsLateChildren() throws Exception {
-        TaskManager manager = TaskManager.getInstance();
-        CountDownLatch release = new CountDownLatch(1);
-        try (TaskManager.TaskGroupScope scope = manager.taskGroup()) {
-            Task root = manager.createTask(() -> { release.await(); return "root"; });
-            TaskContext.ContextToken<String> parent = TaskContext.setCurrentTaskId(root.getTaskId());
-            try {
-                Task child = manager.createTask(() -> { release.await(); return "child"; });
-                scope.cancel();
-                Task late = manager.createTask(() -> "late");
-                assertThat(root.getCancelledBy()).isEqualTo(root.getTaskId());
-                assertThat(child.getCancelledBy()).isEqualTo(root.getTaskId());
-                assertThat(child.getCancelReason()).isEqualTo("manual_cancel");
-                assertThat(late.getStatus()).isEqualTo(TaskStatus.CANCELLED);
-                assertThat(late.getCancelledBy()).isEqualTo(root.getTaskId());
-            } finally {
-                TaskContext.resetCurrentTaskId(parent);
-            }
-        } finally {
-            release.countDown();
-        }
-    }
-
     private static final List<String> PYTHON_TESTS = List.of(
             "test_create_task_without_task_group",
             "test_create_task",
@@ -154,6 +96,75 @@ class TaskManagerTest {
             "test_task_manager_005",
             "test_task_manager_008"
     );
+
+    @Test
+    void scopeHonorsCatchExceptionsWhileKeepingFailureAndTimeoutStates() {
+        TaskManager manager = TaskManager.getInstance();
+        CountDownLatch release = new CountDownLatch(1);
+        Task failed;
+        Task timeout;
+        try (TaskManager.TaskGroupScope ignored = manager.taskGroup()) {
+            failed = manager.createTask(() -> {
+                throw new IllegalStateException("expected failure");
+            }, "caught-failure", null, null, null, Map.of(), true);
+            timeout = manager.createTask(() -> {
+                release.await();
+                return "late";
+            }, "caught-timeout", null, null, 0.05, Map.of(), true);
+        } finally {
+            release.countDown();
+        }
+        assertThat(failed.getStatus()).isEqualTo(TaskStatus.FAILED);
+        assertThat(failed.getException()).isInstanceOf(IllegalStateException.class);
+        assertThat(timeout.getStatus()).isEqualTo(TaskStatus.TIMEOUT);
+        assertThat(timeout.getException()).isInstanceOf(java.util.concurrent.TimeoutException.class);
+        assertThat(TaskContext.getTaskGroup()).isNull();
+    }
+
+    @Test
+    void scopeStillPropagatesUncaughtTaskFailure() {
+        TaskManager manager = TaskManager.getInstance();
+        IllegalArgumentException failure = new IllegalArgumentException("uncaught failure");
+        assertThatThrownBy(() -> {
+            try (TaskManager.TaskGroupScope ignored = manager.taskGroup()) {
+                manager.createTask(() -> {
+                    throw failure;
+                }, "uncaught-failure", null, null, null, Map.of(), false);
+            }
+        }).isInstanceOf(CompletionException.class).hasCause(failure);
+        assertThat(manager.getTask("uncaught-failure").getStatus()).isEqualTo(TaskStatus.FAILED);
+        assertThat(TaskContext.getTaskGroup()).isNull();
+    }
+
+    @Test
+    void scopeCancellationRecordsImmediateParentAndCancelsLateChildren() throws Exception {
+        TaskManager manager = TaskManager.getInstance();
+        CountDownLatch release = new CountDownLatch(1);
+        try (TaskManager.TaskGroupScope scope = manager.taskGroup()) {
+            Task root = manager.createTask(() -> {
+                release.await();
+                return "root";
+            });
+            TaskContext.ContextToken<String> parent = TaskContext.setCurrentTaskId(root.getTaskId());
+            try {
+                Task child = manager.createTask(() -> {
+                    release.await();
+                    return "child";
+                });
+                scope.cancel();
+                Task late = manager.createTask(() -> "late");
+                assertThat(root.getCancelledBy()).isEqualTo(root.getTaskId());
+                assertThat(child.getCancelledBy()).isEqualTo(root.getTaskId());
+                assertThat(child.getCancelReason()).isEqualTo("manual_cancel");
+                assertThat(late.getStatus()).isEqualTo(TaskStatus.CANCELLED);
+                assertThat(late.getCancelledBy()).isEqualTo(root.getTaskId());
+            } finally {
+                TaskContext.resetCurrentTaskId(parent);
+            }
+        } finally {
+            release.countDown();
+        }
+    }
 
     @AfterEach
     void tearDown() {

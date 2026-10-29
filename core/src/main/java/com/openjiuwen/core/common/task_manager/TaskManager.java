@@ -9,7 +9,6 @@ import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.ExecutionError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
-
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 
 import java.time.Duration;
@@ -620,9 +619,9 @@ public class TaskManager {
 
         private void cancelTrackedTask(Task task, String initiator) {
             String parentId = task.getParentTaskId();
-            boolean parentInScope = parentId != null && trackedTasks.stream()
+            boolean isParentInScope = parentId != null && trackedTasks.stream()
                     .anyMatch(parent -> parentId.equals(parent.getTaskId()));
-            cancelTask(task.getTaskId(), "manual_cancel", parentInScope ? parentId : initiator);
+            cancelTask(task.getTaskId(), "manual_cancel", isParentInScope ? parentId : initiator);
         }
 
         @Override

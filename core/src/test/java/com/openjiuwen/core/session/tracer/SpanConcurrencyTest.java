@@ -1,30 +1,53 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.session.tracer;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.BrokenBarrierException;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
+/**
+ * Verifies concurrent child trace registration and detached snapshots.
+ *
+ * @since 2026-10-28
+ */
 class SpanConcurrencyTest {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    @Test
+    void unsetAndExplicitlyEmptyChildrenKeepDifferentJsonRepresentations() {
+        Span span = new Span();
+        assertThat(span.getChildInvokesId()).isNull();
+        assertThat(OBJECT_MAPPER.valueToTree(span).has("childInvokes")).isFalse();
+        span.setChildInvokesId(List.of());
+        assertThat(span.getChildInvokesId()).isEmpty();
+        assertThat(OBJECT_MAPPER.valueToTree(span).get("childInvokes").isArray()).isTrue();
+        span.setChildInvokesId(null);
+        assertThat(OBJECT_MAPPER.valueToTree(span).has("childInvokes")).isFalse();
+    }
+
     @Test
     void parallelChildrenAndSnapshotsDoNotLoseOrCorruptTraceIds() throws Exception {
         AtomicInteger threadIds = new AtomicInteger();
         ThreadPoolExecutor workers = new ThreadPoolExecutor(8, 8, 0, TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(8), task -> new Thread(task, "span-regression-" + threadIds.incrementAndGet()));
+                new ArrayBlockingQueue<>(8), task ->
+                        new Thread(task, "span-regression-" + threadIds.incrementAndGet()));
         try {
             for (int round = 0; round < 10; round++) {
                 Span span = new Span();
@@ -36,7 +59,7 @@ class SpanConcurrencyTest {
                         try {
                             start.await(5, TimeUnit.SECONDS);
                         } catch (InterruptedException error) {
-                            Thread.currentThread().interrupt();
+                            InterruptSignals.restoreCurrentThread();
                             throw new IllegalStateException(error);
                         } catch (BrokenBarrierException | TimeoutException error) {
                             throw new IllegalStateException(error);

@@ -4,6 +4,13 @@
 
 package com.openjiuwen.core.graph;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
@@ -20,18 +27,14 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-/** Tests completion frames when the batch and stream sides of one vertex overlap. */
+/**
+ * Tests completion frames when the batch and stream sides of one vertex overlap.
+ *
+ * @since 2026-10-28
+ */
 class VertexStreamCompletionTest {
-
     @Test
     void batchCallDoesNotDiscardOrFlushPendingStreamCompletion() throws Exception {
-        PausedStreamExecutable executable = new PausedStreamExecutable();
         Vertex.VertexActorManager actorManager = mock(Vertex.VertexActorManager.class);
         Vertex.VertexSession session = mock(Vertex.VertexSession.class);
         when(session.nodeSession("mixed")).thenReturn(session);
@@ -44,6 +47,7 @@ class VertexStreamCompletionTest {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(2), runnable ->
                         new Thread(runnable, "vertex-completion-test-" + threadId.incrementAndGet()));
+        PausedStreamExecutable executable = new PausedStreamExecutable();
         Vertex vertex = new Vertex("mixed", executable, executor);
         vertex.init(session);
 
@@ -108,7 +112,7 @@ class VertexStreamCompletionTest {
             try {
                 assertTrue(finishStream.await(5, TimeUnit.SECONDS));
             } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
+                InterruptSignals.restoreCurrentThread();
                 throw new AssertionError("Interrupted while waiting for stream completion", exception);
             }
         }

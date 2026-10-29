@@ -4,6 +4,10 @@
 
 package com.openjiuwen.core.graph.store;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -13,11 +17,12 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-/** Regression for a completed sibling deleting a concurrently saved resume checkpoint. */
+/**
+ * Regression for a completed sibling deleting a concurrently saved resume checkpoint.
+ *
+ * @since 2026-10-28
+ */
 class InMemoryStoreConcurrencyTest {
-
     @Test
     void deletingCompletedBranchDoesNotLoseConcurrentSiblingCheckpoint() throws Exception {
         InMemoryStore store = new InMemoryStore();
@@ -66,7 +71,7 @@ class InMemoryStoreConcurrencyTest {
             try {
                 assertThat(continueCopy.await(5, TimeUnit.SECONDS)).isTrue();
             } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
+                InterruptSignals.restoreCurrentThread();
                 throw new AssertionError("Interrupted while copying checkpoint", exception);
             }
             return super.getNs();

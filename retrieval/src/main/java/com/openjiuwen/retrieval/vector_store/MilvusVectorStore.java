@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.retrieval.vector_store;
@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -18,9 +19,9 @@ import com.openjiuwen.core.foundation.store.vector_fields.MilvusVectorField;
 import com.openjiuwen.core.foundation.store.vector_fields.VectorField;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
-import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore.DeleteFilter;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore.VectorStoreFilter;
+import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.retrieval.utils.CommonUtils;
 import com.openjiuwen.retrieval.utils.FusionUtils;
 
@@ -54,12 +55,12 @@ import io.milvus.v2.service.vector.response.SearchResp;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -291,23 +292,18 @@ public class MilvusVectorStore implements VectorStore {
         if (!"default".equals(dbName)) {
             builder.dbName(dbName);
         }
-        MilvusClientV2 createdClient = null;
-        try {
-            createdClient = openClient(builder.build(), pathOrUri);
+        try (ClientAttempt attempt = new ClientAttempt(openClient(builder.build(), pathOrUri))) {
+            MilvusClientV2 createdClient = attempt.client;
             if (!"default".equals(dbName)) {
                 if (!createdClient.listDatabases().getDatabaseNames().contains(dbName)) {
                     createdClient.createDatabase(CreateDatabaseReq.builder().databaseName(dbName).build());
                 }
                 createdClient.useDatabase(dbName);
             }
-            return createdClient;
+            return attempt.release();
         } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            closeFailedClient(createdClient, error);
+            InterruptSignals.restoreCurrentThread();
             throw new IllegalStateException("Interrupted while switching Milvus database", error);
-        } catch (RuntimeException error) {
-            closeFailedClient(createdClient, error);
-            throw error;
         }
     }
 
@@ -326,12 +322,23 @@ public class MilvusVectorStore implements VectorStore {
         }
     }
 
-    private static void closeFailedClient(MilvusClientV2 client, Exception failure) {
-        if (client != null) {
-            try {
+    private static final class ClientAttempt implements AutoCloseable {
+        private final MilvusClientV2 client;
+        private boolean hasTransferredOwnership;
+
+        private ClientAttempt(MilvusClientV2 client) {
+            this.client = client;
+        }
+
+        private MilvusClientV2 release() {
+            hasTransferredOwnership = true;
+            return client;
+        }
+
+        @Override
+        public void close() {
+            if (!hasTransferredOwnership) {
                 client.close();
-            } catch (Exception closeError) {
-                failure.addSuppressed(closeError);
             }
         }
     }

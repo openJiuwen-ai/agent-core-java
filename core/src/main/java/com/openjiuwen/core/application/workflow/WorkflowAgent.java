@@ -15,8 +15,8 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.WorkflowCancellation;
-import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.TraceSchema;
@@ -524,7 +524,8 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
             try (var invocation = controller.beginInvocation(inputMap, session)) {
                 AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
                 AgentSessionApi activeSession = Objects.requireNonNullElse(session, createdSession);
-                return invokeController(inputMap, activeSession, streamModes, createdSession, invocation.cancellation());
+                return invokeController(inputMap, activeSession, streamModes, createdSession,
+                        invocation.cancellation());
             }
         }
         AgentSession createdSession = session == null ? createCompatibilitySession(inputMap) : null;
@@ -537,12 +538,15 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
                                               WorkflowCancellation cancellation) {
         activeSession.updateState(Map.of("__workflow_interaction_outputs__", new ArrayList<>()));
         Map<String, Object> submittedInteractions = submittedInteractionInputs(inputMap, activeSession);
-        AgentSession captureSession = activeSession instanceof AgentSession agentSession ? agentSession : null;
         Object result;
         try {
-            result = getController() instanceof com.openjiuwen.core.application.workflow_agent.WorkflowController controller
-                    ? controller.invoke(inputMap, activeSession, streamModes, cancellation).toCompletableFuture().join()
-                    : super.invoke(inputMap, activeSession).toCompletableFuture().join();
+            if (getController() instanceof
+                    com.openjiuwen.core.application.workflow_agent.WorkflowController controller) {
+                result = controller.invoke(inputMap, activeSession, streamModes, cancellation)
+                        .toCompletableFuture().join();
+            } else {
+                result = super.invoke(inputMap, activeSession).toCompletableFuture().join();
+            }
         } catch (CompletionException | CancellationException failure) {
             if (streamModes != null) {
                 throw new StreamInvocationFailure(activeSession, failure);
@@ -550,6 +554,7 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
             throw failure;
         }
         ControllerOutput output = toControllerOutput(result);
+        AgentSession captureSession = activeSession instanceof AgentSession agentSession ? agentSession : null;
         List<Object> streamChunks = captureSession == null ? List.of() : closeAndCollect(captureSession);
         if (output.getDataAsMap() != null && "cancelled".equals(output.getDataAsMap().get("status"))) {
             // Do not publish an obsolete interaction or save a cancelled request as a completed turn.

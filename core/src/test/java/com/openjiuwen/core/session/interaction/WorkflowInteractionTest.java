@@ -3,6 +3,9 @@
  */
 package com.openjiuwen.core.session.interaction;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.internal.NodeSession;
@@ -14,17 +17,16 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link WorkflowInteraction}.
@@ -45,7 +47,7 @@ class WorkflowInteractionTest {
                 } catch (java.util.concurrent.BrokenBarrierException | java.util.concurrent.TimeoutException error) {
                     throw new IllegalStateException(error);
                 } catch (InterruptedException error) {
-                    Thread.currentThread().interrupt();
+                    InterruptSignals.restoreCurrentThread();
                     throw new IllegalStateException(error);
                 }
                 return node.popWorkflowState(Constant.INTERACTIVE_INPUT);

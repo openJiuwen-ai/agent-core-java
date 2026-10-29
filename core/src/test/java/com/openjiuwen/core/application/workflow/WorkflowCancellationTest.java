@@ -4,8 +4,13 @@
 
 package com.openjiuwen.core.application.workflow;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
 import com.openjiuwen.core.application.workflow_agent.WorkflowController;
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.session.AgentSession;
@@ -34,39 +39,44 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-/** Exercises the production controller and graph, without a controller that simulates cancellation. */
+/**
+ * Exercises the production controller and graph, without a controller that simulates cancellation.
+ *
+ * @since 2026-10-28
+ */
 @Timeout(40)
 class WorkflowCancellationTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void replacementStopsNodesAndAllowsSameWorkflowToRestartAndResume(boolean stream) throws Exception {
+    void replacementStopsNodesAndAllowsSameWorkflowToRestartAndResume(boolean isStreaming) throws Exception {
         String session = UUID.randomUUID().toString();
         BlockingNode node = new BlockingNode();
         WorkflowAgent agent = agent(node);
-        CompletableFuture<Object> previous = CompletableFuture.supplyAsync(() -> call(agent, session, "block", stream));
+        CompletableFuture<Object> previous = CompletableFuture.supplyAsync(
+                () -> call(agent, session, "block", isStreaming));
         try {
             assertThat(node.entered.await(10, TimeUnit.SECONDS)).isTrue();
-            Object replacement = call(agent, session, "next", stream);
+            Object replacement = call(agent, session, "next", isStreaming);
             assertThat(node.exited.getCount()).isZero();
             assertThat(node.wasInterrupted.get()).isTrue();
             assertThat(String.valueOf(replacement)).contains("__interaction__");
             Object cancelled = previous.get(10, TimeUnit.SECONDS);
-            if (stream) {
-                List<?> chunks = ((List<?>) cancelled).stream().filter(OutputSchema.class::isInstance).toList();
+            if (isStreaming) {
+                List<?> received = assertInstanceOf(List.class, cancelled);
+                List<?> chunks = received.stream().filter(OutputSchema.class::isInstance).toList();
                 assertThat(chunks).hasSize(1);
-                OutputSchema terminal = (OutputSchema) chunks.get(0);
+                OutputSchema terminal = assertInstanceOf(OutputSchema.class, chunks.get(0));
                 assertThat(terminal.getType()).isEqualTo("workflow_final");
-                assertThat(((Map<?, ?>) terminal.getPayload()).get("status")).isEqualTo("cancelled");
+                Map<?, ?> payload = assertInstanceOf(Map.class, terminal.getPayload());
+                assertThat(payload.get("status")).isEqualTo("cancelled");
             } else {
-                assertThat(((Map<?, ?>) cancelled).get("status")).isEqualTo("cancelled");
-                assertThat(((Map<?, ?>) cancelled).get("conversation_id")).isEqualTo(session);
+                Map<?, ?> payload = assertInstanceOf(Map.class, cancelled);
+                assertThat(payload.get("status")).isEqualTo("cancelled");
+                assertThat(payload.get("conversation_id")).isEqualTo(session);
             }
             InteractiveInput answer = new InteractiveInput();
             answer.update("ask", "accepted");
-            assertThat(String.valueOf(call(agent, session, answer, stream))).contains("accepted");
+            assertThat(String.valueOf(call(agent, session, answer, isStreaming))).contains("accepted");
         } finally {
             node.release.countDown();
             previous.get(10, TimeUnit.SECONDS);
@@ -118,7 +128,7 @@ class WorkflowCancellationTest {
         WorkflowAgent agent = agent(new BlockingNode());
         try {
             assertThatThrownBy(() -> call(agent, session, "fail", false)).hasMessageContaining("failure-for-test");
-            WorkflowController controller = (WorkflowController) agent.getController();
+            WorkflowController controller = assertInstanceOf(WorkflowController.class, agent.getController());
             try (var next = controller.beginInvocation(Map.of("conversation_id", session), null)) {
                 assertThat(next.cancellation().isCancelled()).isFalse();
             }
@@ -129,10 +139,32 @@ class WorkflowCancellationTest {
 
     @Test
     void cancelledResumeDoesNotReplayTheDiscardedAnswer() throws Exception {
-        String session = UUID.randomUUID().toString();
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        WorkflowAgent agent = agent(new BlockingNode(), new WorkflowComponent<Object, Object>() {
+        WorkflowAgent agent = agent(new BlockingNode(), blockingQuestioner(entered, release));
+        String session = UUID.randomUUID().toString();
+        assertThat(String.valueOf(call(agent, session, "next", false))).contains("__interaction__");
+        InteractiveInput discarded = new InteractiveInput();
+        discarded.update("ask", "discard-me");
+        CompletableFuture<Object> previous = CompletableFuture.supplyAsync(
+                () -> call(agent, session, discarded, false));
+        try {
+            assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+            InteractiveInput replacement = new InteractiveInput();
+            replacement.update("ask", "accepted");
+            String result = String.valueOf(call(agent, session, replacement, false));
+            assertThat(result).contains("accepted").doesNotContain("discard-me");
+            Map<?, ?> cancelled = assertInstanceOf(Map.class, previous.get(10, TimeUnit.SECONDS));
+            assertThat(cancelled.get("status")).isEqualTo("cancelled");
+        } finally {
+            release.countDown();
+            previous.get(10, TimeUnit.SECONDS);
+            CheckpointerFactory.getCheckpointer().release(session);
+        }
+    }
+
+    private WorkflowComponent<Object, Object> blockingQuestioner(CountDownLatch entered, CountDownLatch release) {
+        return new WorkflowComponent<Object, Object>() {
             @Override
             public Object invoke(Object inputs, NodeSessionApi activeSession, ModelContext context) {
                 Object answer = activeSession.interact("confirm");
@@ -143,28 +175,12 @@ class WorkflowCancellationTest {
                             throw new IllegalStateException("Resume was not cancelled");
                         }
                     } catch (InterruptedException cancelled) {
-                        Thread.currentThread().interrupt();
+                        InterruptSignals.restoreCurrentThread();
                     }
                 }
                 return Map.of("answer", answer);
             }
-        });
-        assertThat(String.valueOf(call(agent, session, "next", false))).contains("__interaction__");
-        InteractiveInput discarded = new InteractiveInput();
-        discarded.update("ask", "discard-me");
-        CompletableFuture<Object> previous = CompletableFuture.supplyAsync(() -> call(agent, session, discarded, false));
-        try {
-            assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
-            InteractiveInput replacement = new InteractiveInput();
-            replacement.update("ask", "accepted");
-            String result = String.valueOf(call(agent, session, replacement, false));
-            assertThat(result).contains("accepted").doesNotContain("discard-me");
-            assertThat(((Map<?, ?>) previous.get(10, TimeUnit.SECONDS)).get("status")).isEqualTo("cancelled");
-        } finally {
-            release.countDown();
-            previous.get(10, TimeUnit.SECONDS);
-            CheckpointerFactory.getCheckpointer().release(session);
-        }
+        };
     }
 
     private WorkflowAgent agent(BlockingNode node) {
@@ -191,15 +207,18 @@ class WorkflowCancellationTest {
         return agent;
     }
 
-    private Object call(WorkflowAgent agent, String session, Object query, boolean stream) {
+    private Object call(WorkflowAgent agent, String session, Object query, boolean isStreaming) {
         Map<String, Object> input = Map.of("query", query, "conversation_id", session);
-        if (stream) {
+        if (isStreaming) {
             List<Object> chunks = new ArrayList<>();
             agent.stream(input, null, List.of(StreamMode.OUTPUT)).forEachRemaining(chunks::add);
             return chunks;
         }
         Object result = agent.invoke(input, null).toCompletableFuture().join();
-        return result instanceof com.openjiuwen.core.controller.schema.ControllerOutput output ? output.getData() : result;
+        if (result instanceof com.openjiuwen.core.controller.schema.ControllerOutput output) {
+            return output.getData();
+        }
+        return result;
     }
 
     private static final class BlockingNode extends WorkflowComponent<Object, Object> {
@@ -210,7 +229,7 @@ class WorkflowCancellationTest {
 
         @Override
         public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
-            Object query = ((Map<?, ?>) inputs).get("query");
+            Object query = assertInstanceOf(Map.class, inputs).get("query");
             if ("fail".equals(query)) {
                 throw new IllegalStateException("failure-for-test");
             }

@@ -14,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.annotation.Nullable;
+
 /**
  * Mirrors Python's {@code Span} in
  * {@code openjiuwen/core/session/tracer/span.py}.
@@ -317,6 +319,13 @@ public class Span {
         this.parentInvokeId = parentInvokeId;
     }
 
+    /**
+     * Returns a defensive snapshot of recorded child invocations.
+     * An unset value remains {@code null} so JSON omits {@code childInvokes}, matching the tracer wire contract.
+     *
+     * @return child invocation IDs, or {@code null} when no child list has been recorded
+     */
+    @Nullable
     public List<String> getChildInvokesId() {
         synchronized (childInvokesLock) {
             return childInvokesId == null ? null : new ArrayList<>(childInvokesId);

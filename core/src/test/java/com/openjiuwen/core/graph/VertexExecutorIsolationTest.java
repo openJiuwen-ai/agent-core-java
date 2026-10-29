@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.session.BaseSession;
 
 import org.junit.jupiter.api.Test;
@@ -33,13 +34,13 @@ import java.util.concurrent.TimeoutException;
 class VertexExecutorIsolationTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void call_withBlockedNode_allowsUnrelatedNodeToComplete(boolean useExplicitNullExecutor) throws Exception {
+    void call_withBlockedNode_allowsUnrelatedNodeToComplete(boolean shouldUseNullExecutor) throws Exception {
         ProbeExecutable blocked = new ProbeExecutable(1);
-        Vertex waiting = createVertex("waiting", blocked, useExplicitNullExecutor);
+        Vertex waiting = createVertex("waiting", blocked, shouldUseNullExecutor);
         try (PausedCall paused = new PausedCall(blocked, waiting.call(Map.of()).toCompletableFuture())) {
             assertThat(blocked.started.get(5, TimeUnit.SECONDS)).isNotInstanceOf(ForkJoinWorkerThread.class);
             ProbeExecutable independent = new ProbeExecutable(0);
-            Vertex ready = createVertex("ready", independent, useExplicitNullExecutor);
+            Vertex ready = createVertex("ready", independent, shouldUseNullExecutor);
             ready.call(Map.of()).toCompletableFuture().get(5, TimeUnit.SECONDS);
             assertThat(independent.started.get(5, TimeUnit.SECONDS)).isNotInstanceOf(ForkJoinWorkerThread.class);
             assertThat(paused.completion).isNotDone();
@@ -59,9 +60,9 @@ class VertexExecutorIsolationTest {
         verify(session.state()).setOutputs(Map.of("result", "ok"));
     }
 
-    private Vertex createVertex(String nodeId, ProbeExecutable executable, boolean useExplicitNullExecutor) {
+    private Vertex createVertex(String nodeId, ProbeExecutable executable, boolean shouldUseNullExecutor) {
         Vertex vertex;
-        if (useExplicitNullExecutor) {
+        if (shouldUseNullExecutor) {
             vertex = new Vertex(nodeId, executable, null);
         } else {
             vertex = new Vertex(nodeId, executable);
@@ -94,7 +95,7 @@ class VertexExecutorIsolationTest {
                     throw new IllegalStateException("Test did not release the blocked node");
                 }
             } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
+                InterruptSignals.restoreCurrentThread();
                 throw new IllegalStateException("Node execution was unexpectedly interrupted", exception);
             }
             return Map.of("result", "ok");
