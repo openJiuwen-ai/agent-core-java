@@ -167,6 +167,14 @@ class RuleBasedModelErrorClassifierTest {
     }
 
     @Test
+    void classify_headerParserNoBytesMarker_temporaryRetryable() {
+        ModelCallClassification result = classifier.classify(ModelErrorFacts.ofThrowable(
+            new IOException("HTTP/1.1 header parser received no bytes"), true));
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
+        assertThat(result.isRetryable()).isTrue();
+    }
+
+    @Test
     void classify_truncationMarkerInside4xxBody_staysPermanent() {
         // Given a 400 whose server-written body echoes a truncation marker, When
         // classified, Then the permanent-4xx rule still wins over the keyword rule
