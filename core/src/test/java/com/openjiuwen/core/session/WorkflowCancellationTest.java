@@ -41,7 +41,7 @@ class WorkflowCancellationTest {
     }
 
     @Test
-    void nestedRegistrationsClearOnlyInvocationOwnedInterruptsAtTheOutermostExit() {
+    void nestedRegistrationsClearOwnedInterruptAtOutermostExit() {
         WorkflowCancellation control = new WorkflowCancellation();
         assertThat(Thread.currentThread().isInterrupted()).isFalse();
         try (var outer = control.register()) {

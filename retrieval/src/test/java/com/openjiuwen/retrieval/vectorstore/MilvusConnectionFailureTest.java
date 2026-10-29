@@ -34,7 +34,7 @@ import java.util.Map;
  */
 class MilvusConnectionFailureTest {
     @Test
-    void databaseInitializationFailureClosesTheClientAndKeepsTheOriginalFailure() {
+    void databaseFailureClosesClientAndKeepsOriginalFailure() {
         IllegalArgumentException failure = new IllegalArgumentException("database rejected");
         try (MockedConstruction<MilvusClientV2> clients = mockConstruction(MilvusClientV2.class,
                 (client, context) -> when(client.listDatabases()).thenThrow(failure))) {

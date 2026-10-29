@@ -836,7 +836,8 @@ public class ChromaVectorStore implements VectorStore {
                     output.force(true);
                 }
                 try {
-                    Files.move(temporary, dataFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                    Files.move(temporary, dataFile, StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING);
                 } catch (AtomicMoveNotSupportedException ignored) {
                     // Readers also hold the sidecar lock on filesystems without atomic replacement.
                     Files.move(temporary, dataFile, StandardCopyOption.REPLACE_EXISTING);
@@ -847,11 +848,11 @@ public class ChromaVectorStore implements VectorStore {
         }
 
         private static CollectionState requiredCollection(DatabaseState state, String name) {
-            CollectionState collection = state.collections().get(name);
-            if (collection == null) {
+            CollectionState savedCollection = state.collections().get(name);
+            if (savedCollection == null) {
                 throw new IllegalArgumentException("Collection does not exist: " + name);
             }
-            return collection;
+            return savedCollection;
         }
 
         private static String databaseId(String name) {
@@ -874,7 +875,8 @@ public class ChromaVectorStore implements VectorStore {
         private record DatabaseState(int version, Map<String, CollectionState> collections) {
         }
 
-        private record CollectionState(Map<String, Object> configuration, List<InMemoryChromaCollectionAdapter.StoredDocument> rows) {
+        private record CollectionState(Map<String, Object> configuration,
+                List<InMemoryChromaCollectionAdapter.StoredDocument> rows) {
         }
 
         private final class PersistentCollection implements ChromaCollectionAdapter {
@@ -897,8 +899,8 @@ public class ChromaVectorStore implements VectorStore {
             @Override
             public void add(List<String> ids, List<List<Double>> embeddings, List<String> documents,
                     List<Map<String, Object>> metadatas) {
-                access(true, collection -> {
-                    collection.add(ids, embeddings, documents, metadatas);
+                access(true, memoryCollection -> {
+                    memoryCollection.add(ids, embeddings, documents, metadatas);
                     return null;
                 });
             }
@@ -906,13 +908,13 @@ public class ChromaVectorStore implements VectorStore {
             @Override
             public Map<String, Object> query(List<Double> embedding, String text, int count,
                     Map<String, Object> arguments) {
-                return access(false, collection -> collection.query(embedding, text, count, arguments));
+                return access(false, memoryCollection -> memoryCollection.query(embedding, text, count, arguments));
             }
 
             @Override
             public void delete(List<String> ids, Map<String, Object> arguments) {
-                access(true, collection -> {
-                    collection.delete(ids, arguments);
+                access(true, memoryCollection -> {
+                    memoryCollection.delete(ids, arguments);
                     return null;
                 });
             }
@@ -920,13 +922,13 @@ public class ChromaVectorStore implements VectorStore {
             private <T> T access(boolean shouldWrite, Function<InMemoryChromaCollectionAdapter, T> operation) {
                 return transaction(shouldWrite, state -> {
                     CollectionState saved = requiredCollection(state, name);
-                    InMemoryChromaCollectionAdapter collection = new InMemoryChromaCollectionAdapter(
+                    InMemoryChromaCollectionAdapter memoryCollection = new InMemoryChromaCollectionAdapter(
                             name, saved.configuration());
-                    collection.restoreRows(saved.rows());
-                    T result = operation.apply(collection);
+                    memoryCollection.restoreRows(saved.rows());
+                    T result = operation.apply(memoryCollection);
                     if (shouldWrite) {
                         state.collections().put(name,
-                                new CollectionState(collection.configuration(), collection.snapshotRows()));
+                                new CollectionState(memoryCollection.configuration(), memoryCollection.snapshotRows()));
                     }
                     return result;
                 });

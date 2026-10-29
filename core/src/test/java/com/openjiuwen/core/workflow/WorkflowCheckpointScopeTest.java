@@ -58,7 +58,7 @@ class WorkflowCheckpointScopeTest {
     }
 
     @Test
-    void successfulInvocationKeepsItsCheckpointEvenIfCancellationArrivesAtCompletion() {
+    void completedInvocationKeepsCheckpointAfterCancellation() {
         Store store = storeWith(Optional.empty());
         WorkflowCancellation control = new WorkflowCancellation();
         try (WorkflowCheckpointScope scope = new WorkflowCheckpointScope(control, store, "session", "workflow")) {

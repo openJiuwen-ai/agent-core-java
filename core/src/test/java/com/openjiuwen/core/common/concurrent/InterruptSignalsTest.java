@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Timeout;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
@@ -46,16 +47,16 @@ class InterruptSignalsTest {
                 return Thread.currentThread().isInterrupted();
             }
         });
-        Thread worker = new Thread(operation, "interrupt-signal-regression");
-        worker.start();
+        ExecutorService worker = OpenJiuwenExecutors.newBoundedModulePool("interrupt-signal-regression", 1, 1, true);
         try {
+            worker.execute(operation);
             signal.get(5, TimeUnit.SECONDS).run();
             assertThat(operation.get(5, TimeUnit.SECONDS)).isTrue();
             assertThat(Thread.currentThread().isInterrupted()).isFalse();
         } finally {
             stop.countDown();
-            worker.join(5000);
-            assertThat(worker.isAlive()).isFalse();
+            worker.shutdownNow();
+            assertThat(worker.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
         }
     }
 }

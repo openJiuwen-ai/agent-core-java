@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.workflow;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
