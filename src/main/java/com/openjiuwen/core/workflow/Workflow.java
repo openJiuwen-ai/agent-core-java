@@ -925,8 +925,10 @@ public class Workflow {
                     return ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, "timeout",
                             formatTimeoutSeconds(configuredTimeoutMs), "reason", "");
                 }
-                executionTimedOut.set(true);
-                return buildWorkflowExecutionTimeout(executeTimeoutText);
+                // Frame timeout not configured and no execution deadline reached: report the
+                // effective receive timeout instead of a misleading execution timeout.
+                return ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                        formatTimeoutSeconds(receiveTimeoutMs), "reason", "");
             }
 
             private void terminateStream(RuntimeException terminalError) {
@@ -1613,17 +1615,21 @@ public class Workflow {
     }
 
     /**
-     * resolveReceiveTimeoutMillis.
-     * 
+     * resolveReceiveTimeoutMillis. Always yields a positive receive timeout:
+     * when no execution deadline exists and the frame timeout is not configured
+     * (non-positive), the framework default receive timeout applies instead of
+     * an unbounded wait. Package-private so tests can lock the mapping.
+     *
      * @param configuredTimeoutMs configuredTimeoutMs
      * @param executionDeadlineNanos executionDeadlineNanos
      * @return the result
      * @since 0.1.7
      */
-    private long resolveReceiveTimeoutMillis(long configuredTimeoutMs, long executionDeadlineNanos) {
+    long resolveReceiveTimeoutMillis(long configuredTimeoutMs, long executionDeadlineNanos) {
         long remainingExecutionMs = remainingExecutionMillis(executionDeadlineNanos);
         if (remainingExecutionMs < 0) {
-            return configuredTimeoutMs;
+            return configuredTimeoutMs > 0 ? configuredTimeoutMs
+                    : AsyncStreamQueue.DEFAULT_RECEIVE_TIMEOUT_MS;
         }
         long cappedExecutionMs = Math.max(1L, remainingExecutionMs);
         if (configuredTimeoutMs <= 0) {

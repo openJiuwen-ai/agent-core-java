@@ -13,6 +13,7 @@ import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.internal.RouterSession;
+import com.openjiuwen.core.session.stream.AsyncStreamQueue;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.component.BranchComponent;
@@ -34,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /**
@@ -376,6 +378,27 @@ class WorkflowTest {
 
     private static WorkflowSessionApi newSession() {
         return new WorkflowSessionApi(null, UUID.randomUUID().toString(), Map.of());
+    }
+
+    @Test
+    @DisplayName("resolveReceiveTimeoutMillis always yields a positive timeout")
+    void testResolveReceiveTimeoutMillisPositive() {
+        Workflow flow = new Workflow();
+
+        // No execution deadline and frame timeout not configured: framework default applies.
+        assertEquals(AsyncStreamQueue.DEFAULT_RECEIVE_TIMEOUT_MS, flow.resolveReceiveTimeoutMillis(-1L, -1L));
+        assertEquals(AsyncStreamQueue.DEFAULT_RECEIVE_TIMEOUT_MS, flow.resolveReceiveTimeoutMillis(0L, -1L));
+
+        // Configured frame timeout passes through when no deadline exists.
+        assertEquals(5000L, flow.resolveReceiveTimeoutMillis(5000L, -1L));
+
+        // The deadline caps the wait even when the frame timeout is not configured.
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(10_000L);
+        long capped = flow.resolveReceiveTimeoutMillis(-1L, deadline);
+        assertTrue(capped > 0 && capped <= 10_000L, "deadline should cap the wait, got " + capped);
+
+        // A configured timeout shorter than the remaining deadline wins.
+        assertEquals(5000L, flow.resolveReceiveTimeoutMillis(5000L, deadline));
     }
 
     private static Map<String, Object> mapWithNullableValues(String key1, Object value1, String key2, Object value2) {

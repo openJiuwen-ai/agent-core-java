@@ -34,11 +34,12 @@ public class AsyncStreamQueue {
     public static final int DEFAULT_MAX_SEND_RETRIES = 5;
 
     /**
-     * DEFAULT_RECEIVE_TIMEOUT_MS.
-     * 
+     * DEFAULT_RECEIVE_TIMEOUT_MS. Positive by design: a consumer must never
+     * block forever waiting on a producer that will never send another frame.
+     *
      * @since 0.1.7
      */
-    public static final long DEFAULT_RECEIVE_TIMEOUT_MS = -1;
+    public static final long DEFAULT_RECEIVE_TIMEOUT_MS = 600_000L;
 
     /**
      * DEFAULT_CLOSE_TIMEOUT_MS.
@@ -50,10 +51,22 @@ public class AsyncStreamQueue {
     /**
      * Default bounded capacity used when no explicit size is provided.
      * Prevents unbounded memory growth when a consumer disconnects or slows down.
-     * 
+     *
      * @since 0.1.7
      */
     public static final int DEFAULT_MAX_SIZE = 1024;
+
+    /**
+     * DEFAULT_CRITICAL_SEND_TOTAL_TIMEOUT_MS. Total bound for sending a critical
+     * frame: when the queue stays full this long, the oldest data frames are
+     * evicted just enough to admit the critical frame (e.g. END_FRAME) so the
+     * producer thread returns instead of spinning forever on a dead consumer;
+     * the backlog is cleared fully only when concurrent producers refill every
+     * freed slot.
+     *
+     * @since 0.1.14.post2
+     */
+    public static final long DEFAULT_CRITICAL_SEND_TOTAL_TIMEOUT_MS = 60_000L;
 
     private final BlockingQueue<Object> streamQueue;
 
@@ -138,20 +151,37 @@ public class AsyncStreamQueue {
     }
 
     /**
-     * Send a critical frame that must never be silently dropped (e.g. the
-     * END_FRAME sentinel). Blocks until the frame is accepted or the queue is
-     * closed. A silently dropped END_FRAME would leave consumers blocked
-     * forever on {@link #receive()}, so critical frames get unbounded wait
-     * (backpressure) instead of the bounded-retry-and-drop behavior of
-     * {@link #send(Object)}.
-     * 
+     * Send a critical frame (e.g. the END_FRAME sentinel) with backpressure
+     * instead of the bounded-retry-and-drop behavior of {@link #send(Object)}:
+     * the send keeps retrying while the queue is full, but the total wait is
+     * bounded by {@link #DEFAULT_CRITICAL_SEND_TOTAL_TIMEOUT_MS}. When the queue
+     * stays full that long, the oldest data frames are evicted just enough to
+     * admit the critical frame so the producer thread returns; the backlog is
+     * cleared fully only when concurrent producers refill every freed slot. In
+     * the rare race where admission still fails after that clearing, the
+     * critical frame is dropped and the drop is logged at error level; consumers
+     * then end on their receive timeout instead of the dropped frame.
+     *
      * @param data the critical frame to send
      * @since 0.1.7
      */
     public void sendCritical(Object data) {
+        sendCritical(data, DEFAULT_CRITICAL_SEND_TOTAL_TIMEOUT_MS);
+    }
+
+    /**
+     * Send a critical frame with an explicit total budget in milliseconds.
+     * Package-private so tests can exercise the timeout path quickly.
+     *
+     * @param data the critical frame to send
+     * @param totalTimeoutMs total time budget for the whole send in milliseconds
+     * @since 0.1.14.post2
+     */
+    void sendCritical(Object data, long totalTimeoutMs) {
         if (isClosed.get()) {
             throw new IllegalStateException("StreamQueue is already isClosed");
         }
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(totalTimeoutMs);
         while (!isClosed.get()) {
             try {
                 if (streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -163,14 +193,65 @@ public class AsyncStreamQueue {
                 Loggers.SESSION.error("Critical stream data send interrupted");
                 return;
             }
+            if (System.nanoTime() >= deadlineNanos) {
+                forceCriticalAfterTimeout(data, totalTimeoutMs);
+                return;
+            }
         }
         throw new IllegalStateException("StreamQueue is already isClosed");
     }
 
     /**
+     * Admit the critical frame with minimal eviction so the producer thread can
+     * return. A non-blocking offer is attempted first (zero loss when a slot is
+     * already free); then head data frames are evicted one by one, only as many
+     * as needed to admit the frame and never more than the backlog snapshot
+     * taken on entry. Only when concurrent producers refill every freed slot is
+     * the full backlog cleared as a last resort. Data frames already use
+     * bounded-retry-and-drop semantics in {@link #send(Object)}; the critical
+     * frame takes the freed capacity.
+     *
+     * @param data the critical frame to admit
+     * @param totalTimeoutMs total wait already spent in milliseconds
+     * @since 0.1.14.post2
+     */
+    private void forceCriticalAfterTimeout(Object data, long totalTimeoutMs) {
+        int backlog = streamQueue.size();
+        int evictedFrames = 0;
+        boolean isAdmitted = streamQueue.offer(data);
+        while (!isAdmitted && evictedFrames < backlog) {
+            if (streamQueue.poll() != null) {
+                evictedFrames++;
+            }
+            isAdmitted = streamQueue.offer(data);
+        }
+        if (isAdmitted) {
+            Loggers.SESSION.error("Critical frame forced after {}ms total wait; evicted {} head frames",
+                    totalTimeoutMs, evictedFrames);
+            return;
+        }
+        forceClear();
+        boolean isFallbackAdmitted = false;
+        try {
+            isFallbackAdmitted = streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (isFallbackAdmitted) {
+            Loggers.SESSION.error("Critical frame forced after {}ms total wait; cleared full backlog of {} frames",
+                    totalTimeoutMs, backlog);
+        } else {
+            Loggers.SESSION.error("Critical frame dropped after {}ms total wait; cleared full backlog of {} frames",
+                    totalTimeoutMs, backlog);
+        }
+    }
+
+    /**
      * Receive data from the queue.
-     * 
-     * @param timeoutMs timeout in milliseconds, -1 for no timeout
+     *
+     * @param timeoutMs timeout in milliseconds; non-positive values fall back to
+     *                  {@link #DEFAULT_RECEIVE_TIMEOUT_MS} so a consumer never
+     *                  blocks forever on a dead producer
      * @return the received data, or null if no data available within timeout
      * @since 0.1.7
      */
@@ -179,13 +260,9 @@ public class AsyncStreamQueue {
             throw new IllegalStateException("StreamQueue is already isClosed");
         }
 
+        long effectiveTimeoutMs = resolveEffectiveReceiveTimeoutMs(timeoutMs);
         try {
-            if (timeoutMs <= 0) {
-                // No timeout - block until data available
-                return streamQueue.take();
-            } else {
-                return streamQueue.poll(timeoutMs, TimeUnit.MILLISECONDS);
-            }
+            return streamQueue.poll(effectiveTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             Loggers.SESSION.error("Stream data receive interrupted");
@@ -201,6 +278,20 @@ public class AsyncStreamQueue {
      */
     public Object receive() {
         return receive(DEFAULT_RECEIVE_TIMEOUT_MS);
+    }
+
+    /**
+     * Resolve the effective receive timeout: non-positive values fall back to
+     * {@link #DEFAULT_RECEIVE_TIMEOUT_MS} so a consumer never blocks forever on
+     * a dead producer. Package-private static so tests can lock the fallback
+     * mapping without waiting for the default timeout itself.
+     *
+     * @param timeoutMs requested timeout in milliseconds
+     * @return the timeout to poll with, always positive
+     * @since 0.1.14.post2
+     */
+    static long resolveEffectiveReceiveTimeoutMs(long timeoutMs) {
+        return timeoutMs > 0 ? timeoutMs : DEFAULT_RECEIVE_TIMEOUT_MS;
     }
 
     /**
