@@ -520,6 +520,27 @@ public class RunnerImpl {
         CwdContext.reset();
     }
 
+    /**
+     * Re-enter an already-initialized tenant scope on the current thread.
+     * Unlike {@link #bindTenantContext(TenantContext)} this does not touch the tenant workspace on
+     * disk, so it stays cheap enough to be called around every iterator operation.
+     *
+     * @param ctx tenant context, nullable
+     * @since 0.1.7
+     */
+    private void applyTenantContext(TenantContext ctx) {
+        if (ctx == null || !ctx.isTenantAware()) {
+            return;
+        }
+        TenantContextHolder.setCurrentTenant(ctx);
+        if (workspaceResolver != null) {
+            String tenantWorkspace = workspaceResolver.resolveWorkspaceRoot(ctx).toString();
+            CwdContext.setWorkspace(tenantWorkspace);
+            CwdContext.setOriginalCwd(tenantWorkspace);
+            CwdContext.setTenantRoot(workspaceResolver.resolveTenantRoot(ctx).toString());
+        }
+    }
+
     private Optional<TenantContext> resolveTenantContext(Object session, TenantContext explicitTenantCtx) {
         if (explicitTenantCtx != null) {
             return Optional.of(explicitTenantCtx);
@@ -570,16 +591,17 @@ public class RunnerImpl {
      */
     public Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
             ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
-        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
-        boolean isSuccessful = false;
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        if (resolved.isEmpty()) {
+            return runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs);
+        }
+        TenantContext ctx = resolved.get();
+        bindTenantContext(ctx);
         try {
             Iterator<WorkflowChunk> inner = runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs);
-            isSuccessful = true;
-            return wrapTenantUnbindIterator(inner);
+            return wrapTenantScopeIterator(inner, ctx);
         } finally {
-            if (!isSuccessful) {
-                unbindTenantContext();
-            }
+            unbindTenantContext();
         }
     }
 
@@ -620,16 +642,17 @@ public class RunnerImpl {
      */
     public Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
             List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
-        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
-        boolean isSuccessful = false;
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        if (resolved.isEmpty()) {
+            return runAgentStreaming(agent, inputs, session, context, streamModes, envs);
+        }
+        TenantContext ctx = resolved.get();
+        bindTenantContext(ctx);
         try {
             Iterator<Object> inner = runAgentStreaming(agent, inputs, session, context, streamModes, envs);
-            isSuccessful = true;
-            return wrapTenantUnbindIterator(inner);
+            return wrapTenantScopeIterator(inner, ctx);
         } finally {
-            if (!isSuccessful) {
-                unbindTenantContext();
-            }
+            unbindTenantContext();
         }
     }
 
@@ -670,16 +693,17 @@ public class RunnerImpl {
      */
     public Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
             ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
-        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
-        boolean isSuccessful = false;
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        if (resolved.isEmpty()) {
+            return runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes, envs);
+        }
+        TenantContext ctx = resolved.get();
+        bindTenantContext(ctx);
         try {
             Iterator<Object> inner = runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes, envs);
-            isSuccessful = true;
-            return wrapTenantUnbindIterator(inner);
+            return wrapTenantScopeIterator(inner, ctx);
         } finally {
-            if (!isSuccessful) {
-                unbindTenantContext();
-            }
+            unbindTenantContext();
         }
     }
 
@@ -734,15 +758,25 @@ public class RunnerImpl {
         }
         TenantContext captured = resolved.get();
         return deferWithSessionCleanup(sessRef -> {
+            Object agentInstance;
+            AgentSessionApi sess;
             bindTenantContext(captured);
-            Object agentInstance = prepareAgent(agent);
-            AgentSessionApi sess = prepareAgentSession(agentInstance, inputs, session, streamModes);
-            sessRef.set(sess);
+            try {
+                agentInstance = prepareAgent(agent);
+                sess = prepareAgentSession(agentInstance, inputs, session, streamModes);
+                sessRef.set(sess);
+            } finally {
+                unbindTenantContext();
+            }
             return ReactiveAdapters.fromAutoCloseableIterator(
-                () -> streamAgent(agentInstance, inputs, sess, context, streamModes));
+                () -> wrapTenantScopeIterator(streamAgent(agentInstance, inputs, sess, context, streamModes), captured));
         }, (AgentSessionApi sess) -> {
-            sess.postRun();
-            unbindTenantContext();
+            applyTenantContext(captured);
+            try {
+                sess.postRun();
+            } finally {
+                unbindTenantContext();
+            }
         });
     }
 
@@ -1391,56 +1425,52 @@ public class RunnerImpl {
         return new AgentTeamStreamingIterator(delegate, activation);
     }
 
-    @SuppressWarnings("unchecked")
-    private <T> Iterator<T> wrapTenantUnbindIterator(Iterator<T> delegate) {
-        class TenantUnbindIterator implements Iterator<T>, AutoCloseable {
-            private boolean isUnbound;
-
+    /**
+     * Wrap a streaming iterator so that every delegate call runs inside the caller's tenant scope.
+     * The bind/unbind pair stays on the thread that actually drives the iterator, so a lazily
+     * consumed stream can never leave tenant state behind on the thread that created it.
+     *
+     * @param delegate underlying iterator
+     * @param tenantCtx tenant context already initialized by the streaming entry
+     * @param <T> chunk type
+     * @return iterator scoped to the tenant
+     * @since 0.1.7
+     */
+    private <T> Iterator<T> wrapTenantScopeIterator(Iterator<T> delegate, TenantContext tenantCtx) {
+        class TenantScopeIterator implements Iterator<T>, AutoCloseable {
             @Override
             public boolean hasNext() {
-                boolean hasNext = delegate.hasNext();
-                if (!hasNext) {
-                    unbind();
+                applyTenantContext(tenantCtx);
+                try {
+                    return delegate.hasNext();
+                } finally {
+                    unbindTenantContext();
                 }
-                return hasNext;
             }
 
             @Override
             public T next() {
+                applyTenantContext(tenantCtx);
                 try {
-                    T next = delegate.next();
-                    if (!delegate.hasNext()) {
-                        unbind();
-                    }
-                    return next;
-                } catch (NoSuchElementException e) {
-                    unbind();
-                    throw e;
-                } catch (RuntimeException e) {
-                    unbind();
-                    throw e;
-                }
-            }
-
-            private void unbind() {
-                if (!isUnbound) {
+                    return delegate.next();
+                } finally {
                     unbindTenantContext();
-                    isUnbound = true;
                 }
             }
 
             @Override
             public void close() throws Exception {
+                applyTenantContext(tenantCtx);
                 try {
                     if (delegate instanceof AutoCloseable closeable) {
                         closeable.close();
                     }
                 } finally {
-                    unbind();
+                    unbindTenantContext();
                 }
             }
         }
-        return new TenantUnbindIterator();
+        return new TenantScopeIterator();
     }
 
     private final class AgentTeamStreamingIterator implements Iterator<Object>, AutoCloseable {

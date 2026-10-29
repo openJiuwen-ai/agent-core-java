@@ -193,34 +193,33 @@ class RunnerImplTenantTest {
     }
 
     @Test
-    @DisplayName("runAgentStreaming: tenantUnbindIterator delays unbind until iterator exhausted")
-    void testRunAgentStreaming_tenantUnbindIterator_delaysUnbind() {
+    @DisplayName("runAgentStreaming: caller thread has no tenant residue after return")
+    void testRunAgentStreaming_hasNoTenantResidueAfterReturn() {
         RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
                 .tenantDataRoot(tempDir.toString()).build();
-        runner = new RunnerImpl("stream-delay", config);
+        runner = new RunnerImpl("stream-scope", config);
         runner.start();
 
         TenantContext tenantCtx = TenantContext.builder().tenantId("stream_tenant").build();
         MultiItemStreamAgent agent = new MultiItemStreamAgent();
-        String sessionId = "stream_delay_session";
+        String sessionId = "stream_scope_session";
         trackSession(sessionId);
 
         Iterator<Object> iterator = runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null,
                 null, null, tenantCtx);
 
-        assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
-        assertThat(TenantContextHolder.getCurrentTenant().getTenantId()).isEqualTo("stream_tenant");
+        // BUG-0006：断言方向已反转。原用例断言「返回后调用线程仍持有租户」，
+        // 把「跨线程延迟解绑」这一缺陷行为固化成了金标，与 INV-1（同线程作用域）
+        // 和 INV-4（消费后无残留）直接冲突。现改为断言不变量：绑定线程返回后无残留；
+        // 消费期租户可见性改由 RunnerStreamingTenantUnbindTest#B4 独立覆盖。
+        assertThat(TenantContextHolder.getCurrentTenant()).isNull();
+        assertThat(CwdContext.getTenantRoot()).isNull();
 
         assertThat(iterator.hasNext()).isTrue();
-        assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
         iterator.next();
-
         assertThat(iterator.hasNext()).isTrue();
-        assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
         iterator.next();
-
         assertThat(iterator.hasNext()).isTrue();
-        assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
         iterator.next();
 
         assertThat(TenantContextHolder.getCurrentTenant()).isNull();
