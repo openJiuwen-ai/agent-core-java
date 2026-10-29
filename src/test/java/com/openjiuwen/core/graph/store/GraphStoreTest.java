@@ -15,6 +15,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -332,6 +334,20 @@ class GraphStoreTest {
             @SuppressWarnings("unchecked")
             Map<String, Object> restoredValue = (Map<String, Object>) restoredInterrupt.getValue().getValue();
             assertEquals(output, restoredValue.get("payload"));
+        }
+
+        @Test
+        @DisplayName("Java serializer rejects classes outside the deserialization allowlist")
+        void testRejectsClassOutsideAllowlist() throws Exception {
+            Serializer serializer = Serializer.create("java");
+            byte[] bytes;
+            try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+                oos.writeObject(new java.net.URL("https://example.com"));
+                bytes = bos.toByteArray();
+            }
+            Serializer.TypedBytes data = new Serializer.TypedBytes("java", bytes);
+            assertThrows(Serializer.SerializationException.class, () -> serializer.loadsTyped(data));
         }
 
         @Test
