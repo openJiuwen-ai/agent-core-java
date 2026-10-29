@@ -182,7 +182,7 @@ public class SessionConfig {
         normalized.put("raise_for_status", isRaiseForStatusEnabled);
         normalized.put("trust_env", isTrustEnvEnabled);
         normalized.put("extend_args", new TreeMap<>(extendArgs));
-        return ConnectorPoolConfig.md5Hex(normalized.toString());
+        return ConnectorPoolConfig.sha256Hex(normalized.toString());
     }
 
     /**
