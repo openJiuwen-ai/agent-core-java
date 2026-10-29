@@ -109,6 +109,8 @@ import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -2516,15 +2518,23 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         if (!(actualIdle instanceof Number idleTimeout)) {
             return;
         }
-        long delayMs = Math.max(0L, Math.round(delaySeconds * 1000.0D));
+        long delayMs = guardrailDelayMillis(delaySeconds);
         renewModelCallTimeout(context, idleTimeout.longValue(), delayMs);
+    }
+
+    private static long guardrailDelayMillis(double delaySeconds) {
+        long roundedMillis = BigDecimal.valueOf(delaySeconds)
+                .multiply(BigDecimal.valueOf(1000L))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValue();
+        return Math.max(0L, roundedMillis);
     }
 
     private static Map<String, Object> guardrailRetryPayload(int retryCount, int maxRetries, double delaySeconds) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("retry_count", retryCount);
         payload.put("max_retries", maxRetries);
-        payload.put("delay_ms", Math.max(0L, Math.round(delaySeconds * 1000.0D)));
+        payload.put("delay_ms", guardrailDelayMillis(delaySeconds));
         payload.put("delay_source", "guardrail");
         payload.put("message", "模型调用预算耗尽，护栏层发起整轮重试 %d/%d".formatted(retryCount, maxRetries));
         payload.put("retry_tier", "rail");
