@@ -44,6 +44,9 @@ public abstract class Checkpointer implements AutoCloseable {
     }
 
     public static String agentId(BaseSession session) {
+        if (session instanceof CheckpointSnapshotSession snapshot) {
+            return snapshot.agentId();
+        }
         return stringIdentity(session, "agentId");
     }
 
@@ -159,7 +162,17 @@ public abstract class Checkpointer implements AutoCloseable {
         Map<String, Object> update = new LinkedHashMap<>();
         update.put(StepCursor.STATE_KEY, cursor.toMap());
         session.state().update(update);
-        postAgentExecute(session);
+        boolean isSaved = false;
+        try {
+            postAgentExecute(session);
+            isSaved = true;
+        } finally {
+            if (!isSaved) {
+                Map<String, Object> rollback = new LinkedHashMap<>();
+                rollback.put(StepCursor.STATE_KEY, previous == null ? null : previous.toMap());
+                session.state().update(rollback);
+            }
+        }
     }
 
     /**
@@ -182,9 +195,8 @@ public abstract class Checkpointer implements AutoCloseable {
     }
 
     /**
-     * Persist a failed step boundary: writes the cursor into the session state
-     * under {@link StepCursor#FAILED_STATE_KEY} and flushes the full snapshot,
-     * mirroring {@link #stepCompleted} for the failure path.
+     * Persist failure evidence on the last committed snapshot, without publishing
+     * live messages or tool state from an incomplete step.
      *
      * <p>The main cursor under {@link StepCursor#STATE_KEY} keeps pointing at
      * the last completed step, so resume and {@link #lastCompletedStep}
@@ -200,8 +212,11 @@ public abstract class Checkpointer implements AutoCloseable {
         }
         Map<String, Object> update = new LinkedHashMap<>();
         update.put(StepCursor.FAILED_STATE_KEY, cursor.toMap());
+        CheckpointSnapshotSession snapshot = new CheckpointSnapshotSession(session);
+        preAgentExecute(snapshot, null);
+        snapshot.state().update(update);
+        postAgentExecute(snapshot);
         session.state().update(update);
-        postAgentExecute(session);
     }
 
     /**

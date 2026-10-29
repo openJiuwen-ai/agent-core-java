@@ -3,6 +3,8 @@
  */
 
 package com.openjiuwen.core.graph.pregel;
+
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.openjiuwen.core.graph.store.PendingNode;
@@ -16,6 +18,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Runs Pregel node tasks and collects success/failure state.
@@ -25,11 +30,15 @@ import java.util.concurrent.ExecutorService;
  */
 public class TaskExecutorPool {
 
+    private static final long STOP_TIMEOUT_SECONDS = 30;
+
     private final PregelConfig config;
     private final ExecutorService executorService;
     private final List<Message> succeedMessages = new ArrayList<>();
     private final Map<String, PendingNode> failed = new LinkedHashMap<>();
     private final Map<CompletableFuture<Object>, PregelNode> runningTasks = new ConcurrentHashMap<>();
+
+    private final Map<CompletableFuture<Object>, PregelTaskExecution> executions = new ConcurrentHashMap<>();
 
     public TaskExecutorPool(PregelConfig config) {
         this.config = config;
@@ -43,14 +52,9 @@ public class TaskExecutorPool {
      * @param version node version
      */
     public void submit(PregelNode node, int version) {
-        CompletableFuture<Object> task = CompletableFuture.supplyAsync(() -> {
-            try {
-                return new NodeTask(node, config, version).run();
-            } catch (Exception error) {
-                throw new CompletionException(error);
-            }
-        }, executorService);
-        runningTasks.put(task, node);
+        PregelTaskExecution execution = new PregelTaskExecution(node, config, version, executorService);
+        executions.put(execution.result(), execution);
+        runningTasks.put(execution.result(), node);
     }
 
     /**
@@ -80,26 +84,11 @@ public class TaskExecutorPool {
                 }
             }
             for (CompletableFuture<Object> task : completed) {
-                PregelNode node = runningTasks.remove(task);
-                TaskOutcome outcome = readOutcome(task);
-                if (outcome.error() != null) {
-                    commitFailure(node, outcome.error());
-                    if (firstError == null) {
-                        firstError = outcome.error();
-                    }
+                TaskOutcome outcome = collect(task);
+                if (outcome.error() != null && firstError == null) {
+                    firstError = outcome.error();
                 } else if (outcome.result() instanceof GraphInterrupt graphInterrupt) {
-                    commitFailure(node, graphInterrupt);
-                    if (interrupt == null) {
-                        interrupt = graphInterrupt;
-                    } else {
-                        interrupt = mergeInterrupts(interrupt, graphInterrupt);
-                    }
-                } else {
-                    @SuppressWarnings("unchecked")
-                    List<Message> messages = (List<Message>) outcome.result();
-                    if (messages != null) {
-                        succeedMessages.addAll(messages);
-                    }
+                    interrupt = interrupt == null ? graphInterrupt : mergeInterrupts(interrupt, graphInterrupt);
                 }
             }
 
@@ -114,26 +103,38 @@ public class TaskExecutorPool {
     }
 
     /**
-     * Cancel all still-running tasks.
+     * Request cancellation, await worker exit, and collect every completed outcome.
+     * Nodes that finish normally during cancellation retain their routing messages.
+     *
+     * @throws IllegalStateException if a worker does not stop or the waiting caller is interrupted
      */
     public void cancelAll() {
         cancelRemaining();
     }
 
     /**
-     * Clear success, failure, and running task state.
+     * Stop owned work before clearing success, failure, and running task state.
+     *
+     * @throws IllegalStateException if owned work cannot be stopped safely
      */
     public void clear() {
+        cancelRemaining();
         succeedMessages.clear();
         failed.clear();
         runningTasks.clear();
     }
 
     /**
-     * Shuts down the underlying worker executor (issue #70).
+     * Stop owned work and shut down the underlying worker executor.
+     *
+     * @throws IllegalStateException if owned work cannot be stopped safely
      */
     public void shutdown() {
-        executorService.shutdownNow();
+        try {
+            cancelRemaining();
+        } finally {
+            executorService.shutdownNow();
+        }
     }
 
     public List<Message> getSucceedMessages() {
@@ -148,16 +149,46 @@ public class TaskExecutorPool {
         return new LinkedHashMap<>(runningTasks);
     }
 
+    boolean isQuiescent() {
+        return executions.values().stream().allMatch(PregelTaskExecution::isStopped);
+    }
+
     private void cancelRemaining() {
-        for (Map.Entry<CompletableFuture<Object>, PregelNode> entry : new ArrayList<>(runningTasks.entrySet())) {
-            CompletableFuture<Object> task = entry.getKey();
-            PregelNode node = entry.getValue();
-            if (!task.isDone() && !task.isCancelled()) {
-                task.cancel(true);
-                commitFailure(node, new CancellationException());
-            }
-            runningTasks.remove(task);
+        List<CompletableFuture<Object>> tasks = new ArrayList<>(runningTasks.keySet());
+        tasks.forEach(task -> executions.get(task).cancel());
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(STOP_TIMEOUT_SECONDS);
+        for (CompletableFuture<Object> task : tasks) {
+            awaitStopped(task, deadline);
         }
+        tasks.forEach(this::collect);
+    }
+
+    private void awaitStopped(CompletableFuture<Object> task, long deadline) {
+        try {
+            executions.get(task).awaitStopped(deadline);
+        } catch (InterruptedException error) {
+            InterruptSignals.restoreCurrentThread();
+            throw new IllegalStateException("Interrupted while stopping Pregel workers", error);
+        } catch (ExecutionException | TimeoutException error) {
+            throw new IllegalStateException("Pregel worker did not stop before checkpoint", error);
+        }
+    }
+
+    private TaskOutcome collect(CompletableFuture<Object> task) {
+        awaitStopped(task, System.nanoTime() + TimeUnit.SECONDS.toNanos(STOP_TIMEOUT_SECONDS));
+        TaskOutcome outcome = readOutcome(task);
+        PregelNode node = runningTasks.remove(task);
+        executions.remove(task);
+        if (outcome.error() != null) {
+            commitFailure(node, outcome.error());
+        } else if (outcome.result() instanceof GraphInterrupt interrupt) {
+            commitFailure(node, interrupt);
+        } else if (outcome.result() instanceof List<?> messages) {
+            for (Object message : messages) {
+                succeedMessages.add((Message) message);
+            }
+        }
+        return outcome;
     }
 
     private void commitFailure(PregelNode node, Exception error) {
