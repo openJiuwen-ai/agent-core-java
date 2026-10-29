@@ -70,6 +70,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OpenAIModelClientTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     /** Serializes regression tests for the former implicit endpoint fallback. */
     private static final String LOCAL_FIXTURE_PORT_LOCK = "openai-local-fixture-ports-8088-8090";
 

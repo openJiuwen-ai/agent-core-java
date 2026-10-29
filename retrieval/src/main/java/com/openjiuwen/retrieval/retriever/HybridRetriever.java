@@ -133,7 +133,7 @@ public class HybridRetriever implements Retriever {
                     topK,
                     resolveAlpha(options),
                     VectorStore.VectorStoreFilter.none(),
-                    Map.of()
+                    options
             ));
         }
         if (MODE_VECTOR.equals(mode)) {
@@ -149,15 +149,15 @@ public class HybridRetriever implements Retriever {
                     queryVector,
                     topK,
                     VectorStore.VectorStoreFilter.none(),
-                    Map.of()
+                    options
             ));
             if (searchResults.isEmpty()) {
-                return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), Map.of()));
+                return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), options));
             }
             return searchResults;
         }
         if (MODE_SPARSE.equals(mode)) {
-            return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), Map.of()));
+            return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), options));
         }
         throw ErrorHelper.buildError(
                 StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,

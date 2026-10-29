@@ -16,22 +16,40 @@ import com.openjiuwen.core.foundation.store.vector_fields.ChromaVectorField;
 import com.openjiuwen.core.foundation.store.vector_fields.VectorField;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
-import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore.DeleteFilter;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore.VectorStoreFilter;
+import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.retrieval.utils.FusionUtils;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
@@ -180,6 +198,11 @@ public class ChromaVectorStore implements VectorStore {
         return collection;
     }
 
+    private String targetCollection(Map<String, Object> options) {
+        Object requested = options == null ? null : options.get("collection_name");
+        return requested == null ? collectionName : String.valueOf(requested);
+    }
+
     private static String defaultCompatPath(VectorStoreConfig config) {
         String collection = config == null || config.getCollectionName() == null
                 ? "default_collection"
@@ -192,7 +215,10 @@ public class ChromaVectorStore implements VectorStore {
                                                    String token,
                                                    Map<String, Object> kwargs) {
         String activeDatabase = databaseName == null || databaseName.isBlank() ? DEFAULT_DATABASE : databaseName;
-        return new InMemoryChromaClientAdapter(activeDatabase, pathOrUri);
+        if (pathOrUri != null && pathOrUri.startsWith("memory://")) {
+            return new InMemoryChromaClientAdapter(activeDatabase, pathOrUri);
+        }
+        return new PersistentChromaClientAdapter(activeDatabase, pathOrUri);
     }
 
     @Override
@@ -240,7 +266,7 @@ public class ChromaVectorStore implements VectorStore {
                                                            VectorStoreFilter filters,
                                                            Map<String, Object> kwargs) {
         return CompletableFuture.supplyAsync(() -> {
-            ChromaCollectionAdapter latestCollection = client.getCollection(collectionName);
+            ChromaCollectionAdapter latestCollection = client.getCollection(targetCollection(kwargs));
             Map<String, Object> results = latestCollection.query(queryVector, null, topK, buildQueryArgs(filters));
             return chromaResultToSearchResults(results, "vector");
         }, IO_EXECUTOR);
@@ -253,7 +279,7 @@ public class ChromaVectorStore implements VectorStore {
                                                                  Map<String, Object> kwargs) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                ChromaCollectionAdapter latestCollection = client.getCollection(collectionName);
+                ChromaCollectionAdapter latestCollection = client.getCollection(targetCollection(kwargs));
                 Map<String, Object> results = latestCollection.query(null, queryText, topK, buildQueryArgs(filters));
                 if (hasRows(results)) {
                     return chromaResultToSearchResults(results, "sparse");
@@ -714,9 +740,202 @@ public class ChromaVectorStore implements VectorStore {
     }
 
     /**
-     * Mirrors Python's default ChromaDB client creation boundary in
-     * {@code openjiuwen/core/retrieval/vector_store/chroma_store.py}.
+     * Stores the Java Chroma adapter's collections in a versioned JSON file.
+     * This format is independent of Python Chroma's SQLite files.
+     *
+     * @since 2026-10-28
      */
+    private static final class PersistentChromaClientAdapter implements ChromaClientAdapter {
+        private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+        private static final List<Object> FILE_LOCKS = createLocks();
+        private static final int FORMAT_VERSION = 1;
+
+        private final Path dataFile;
+        private final Path lockFile;
+        private final Object processLock;
+
+        private PersistentChromaClientAdapter(String databaseName, String directory) {
+            if (directory == null || directory.isBlank()) {
+                throw new IllegalArgumentException("A Chroma persistence directory is required");
+            }
+            try {
+                Path root = Files.createDirectories(Path.of(directory).toAbsolutePath().normalize()).toRealPath();
+                dataFile = root.resolve("jiuwen-chroma-" + databaseId(databaseName) + ".json");
+                lockFile = root.resolve(dataFile.getFileName() + ".lock");
+                processLock = FILE_LOCKS.get(Math.floorMod(dataFile.hashCode(), FILE_LOCKS.size()));
+            } catch (IOException error) {
+                throw new UncheckedIOException("Cannot open Chroma persistence directory", error);
+            }
+        }
+
+        @Override
+        public ChromaCollectionAdapter getCollection(String name) {
+            transaction(false, state -> requiredCollection(state, name));
+            return new PersistentCollection(name);
+        }
+
+        @Override
+        public ChromaCollectionAdapter getOrCreateCollection(String name, Map<String, Object> configuration) {
+            Objects.requireNonNull(name, "name");
+            transaction(true, state -> state.collections().computeIfAbsent(name,
+                    ignored -> new CollectionState(new LinkedHashMap<>(configuration), new ArrayList<>())));
+            return new PersistentCollection(name);
+        }
+
+        @Override
+        public void deleteCollection(String name) {
+            transaction(true, state -> state.collections().remove(name));
+        }
+
+        @Override
+        public List<ChromaCollectionAdapter> listCollections() {
+            return transaction(false, state -> state.collections().keySet().stream()
+                    .<ChromaCollectionAdapter>map(PersistentCollection::new).toList());
+        }
+
+        private <T> T transaction(boolean shouldWrite, Function<DatabaseState, T> operation) {
+            synchronized (processLock) {
+                try (FileChannel channel = FileChannel.open(lockFile, StandardOpenOption.CREATE,
+                        StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+                     FileLock fileLock = channel.lock()) {
+                    if (!fileLock.isValid() || Files.isSymbolicLink(dataFile)) {
+                        throw new IOException("Invalid Chroma persistence file or lock");
+                    }
+                    DatabaseState state = load();
+                    if (state == null || state.version() != FORMAT_VERSION || state.collections() == null) {
+                        throw new IOException("Unsupported Chroma persistence format");
+                    }
+                    T result = operation.apply(state);
+                    if (shouldWrite) {
+                        save(state);
+                    }
+                    return result;
+                } catch (IOException error) {
+                    throw new UncheckedIOException("Chroma persistence operation failed", error);
+                }
+            }
+        }
+
+        private DatabaseState load() throws IOException {
+            if (!Files.exists(dataFile, LinkOption.NOFOLLOW_LINKS)) {
+                return new DatabaseState(FORMAT_VERSION, new LinkedHashMap<>());
+            }
+            try (InputStream input = Files.newInputStream(dataFile, LinkOption.NOFOLLOW_LINKS)) {
+                return OBJECT_MAPPER.readValue(input, DatabaseState.class);
+            }
+        }
+
+        private void save(DatabaseState state) throws IOException {
+            Path temporary = Files.createTempFile(dataFile.getParent(), ".jiuwen-chroma-", ".tmp");
+            try {
+                try (FileChannel output = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                    ByteBuffer bytes = ByteBuffer.wrap(OBJECT_MAPPER.writeValueAsBytes(state));
+                    while (bytes.hasRemaining()) {
+                        output.write(bytes);
+                    }
+                    output.force(true);
+                }
+                try {
+                    Files.move(temporary, dataFile, StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException ignored) {
+                    // Readers also hold the sidecar lock on filesystems without atomic replacement.
+                    Files.move(temporary, dataFile, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(temporary);
+            }
+        }
+
+        private static CollectionState requiredCollection(DatabaseState state, String name) {
+            CollectionState savedCollection = state.collections().get(name);
+            if (savedCollection == null) {
+                throw new IllegalArgumentException("Collection does not exist: " + name);
+            }
+            return savedCollection;
+        }
+
+        private static String databaseId(String name) {
+            try {
+                return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                        .digest(name.getBytes(StandardCharsets.UTF_8)));
+            } catch (NoSuchAlgorithmException error) {
+                throw new IllegalStateException("SHA-256 is unavailable", error);
+            }
+        }
+
+        private static List<Object> createLocks() {
+            List<Object> locks = new ArrayList<>(64);
+            for (int index = 0; index < 64; index++) {
+                locks.add(new Object());
+            }
+            return List.copyOf(locks);
+        }
+
+        private record DatabaseState(int version, Map<String, CollectionState> collections) {
+        }
+
+        private record CollectionState(Map<String, Object> configuration,
+                List<InMemoryChromaCollectionAdapter.StoredDocument> rows) {
+        }
+
+        private final class PersistentCollection implements ChromaCollectionAdapter {
+            private final String name;
+
+            private PersistentCollection(String name) {
+                this.name = name;
+            }
+
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Map<String, Object> configuration() {
+                return access(false, InMemoryChromaCollectionAdapter::configuration);
+            }
+
+            @Override
+            public void add(List<String> ids, List<List<Double>> embeddings, List<String> documents,
+                    List<Map<String, Object>> metadatas) {
+                access(true, memoryCollection -> {
+                    memoryCollection.add(ids, embeddings, documents, metadatas);
+                    return null;
+                });
+            }
+
+            @Override
+            public Map<String, Object> query(List<Double> embedding, String text, int count,
+                    Map<String, Object> arguments) {
+                return access(false, memoryCollection -> memoryCollection.query(embedding, text, count, arguments));
+            }
+
+            @Override
+            public void delete(List<String> ids, Map<String, Object> arguments) {
+                access(true, memoryCollection -> {
+                    memoryCollection.delete(ids, arguments);
+                    return null;
+                });
+            }
+
+            private <T> T access(boolean shouldWrite, Function<InMemoryChromaCollectionAdapter, T> operation) {
+                return transaction(shouldWrite, state -> {
+                    CollectionState saved = requiredCollection(state, name);
+                    InMemoryChromaCollectionAdapter memoryCollection = new InMemoryChromaCollectionAdapter(
+                            name, saved.configuration());
+                    memoryCollection.restoreRows(saved.rows());
+                    T result = operation.apply(memoryCollection);
+                    if (shouldWrite) {
+                        state.collections().put(name,
+                                new CollectionState(memoryCollection.configuration(), memoryCollection.snapshotRows()));
+                    }
+                    return result;
+                });
+            }
+        }
+    }
+
     static final class InMemoryChromaClientAdapter implements ChromaClientAdapter {
         private final Map<String, InMemoryChromaCollectionAdapter> collections = new LinkedHashMap<>();
         private final String databaseName;
@@ -775,6 +994,16 @@ public class ChromaVectorStore implements VectorStore {
         InMemoryChromaCollectionAdapter(String name, Map<String, Object> configuration) {
             this.name = name;
             this.configuration = configuration;
+        }
+
+        List<StoredDocument> snapshotRows() {
+            return new ArrayList<>(rowsById.values());
+        }
+
+        void restoreRows(List<StoredDocument> rows) {
+            for (StoredDocument row : rows) {
+                rowsById.put(row.id(), row);
+            }
         }
 
         @Override
@@ -1041,7 +1270,7 @@ public class ChromaVectorStore implements VectorStore {
          * Mirrors Python's transient Chroma document payload in
          * {@code openjiuwen/core/retrieval/vector_store/chroma_store.py}.
          */
-        private record StoredDocument(String id,
+        record StoredDocument(String id,
                                       List<Double> embedding,
                                       String document,
                                       Map<String, Object> metadata) {

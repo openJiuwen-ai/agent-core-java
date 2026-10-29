@@ -9,7 +9,6 @@ import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.ExecutionError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
-
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 
 import java.time.Duration;
@@ -26,6 +25,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -117,10 +117,25 @@ public class TaskManager {
             registry.add(task);
         }
 
-        CompletableFuture<Object> future = task.execute(callable, this::triggerStatusEvent, catchExceptions,
-                executorService);
+        // Register before scheduling, but observe execution's catchExceptions policy on scope exit.
+        CompletableFuture<Object> scopeCompletion = new CompletableFuture<>();
+        trackInCurrentGroup(task, scopeCompletion);
+        CompletableFuture<Object> future;
+        try {
+            future = task.execute(callable, this::triggerStatusEvent, catchExceptions, executorService);
+        } catch (RejectedExecutionException rejected) {
+            task.fail(rejected);
+            scopeCompletion.completeExceptionally(rejected);
+            throw rejected;
+        }
+        future.whenComplete((result, error) -> {
+            if (error == null) {
+                scopeCompletion.complete(result);
+            } else {
+                scopeCompletion.completeExceptionally(error);
+            }
+        });
         scheduleTimeout(task, future);
-        trackInCurrentGroup(task, future);
         triggerEvent(TaskManagerEvents.TASK_CREATED, task);
         LOGGER.fine(() -> "Created task " + actualTaskId + " name=" + name + " parent=" + task.getParentTaskId());
         return task;
@@ -155,10 +170,9 @@ public class TaskManager {
         if (task == null || task.isTerminal()) {
             return false;
         }
-        if (cancelledBy != null) {
-            task.setCancelledBy(cancelledBy);
+        if (!task.markCancelled(reason == null ? "manual_cancel" : reason, cancelledBy)) {
+            return false;
         }
-        task.markCancelled(reason == null ? "manual_cancel" : reason, cancelledBy);
         CompletableFuture<?> future = task.getExecutionFuture();
         if (future != null && !future.isDone()) {
             future.cancel(true);
@@ -576,6 +590,9 @@ public class TaskManager {
         private void track(Task task, CompletableFuture<?> future) {
             trackedTasks.add(task);
             trackedFutures.add(future);
+            if (cancelled) {
+                cancelTrackedTask(task, TaskContext.getCurrentTaskId());
+            }
         }
 
         /**
@@ -596,8 +613,15 @@ public class TaskManager {
             String cancelledBy = TaskContext.getCurrentTaskId();
             // Python tg.cancel_scope.cancel() marks tracked tasks as manual_cancel, not parent_cancelled.
             for (Task task : trackedTasks) {
-                cancelTask(task.getTaskId(), "manual_cancel", cancelledBy);
+                cancelTrackedTask(task, cancelledBy);
             }
+        }
+
+        private void cancelTrackedTask(Task task, String initiator) {
+            String parentId = task.getParentTaskId();
+            boolean isParentInScope = parentId != null && trackedTasks.stream()
+                    .anyMatch(parent -> parentId.equals(parent.getTaskId()));
+            cancelTask(task.getTaskId(), "manual_cancel", isParentInScope ? parentId : initiator);
         }
 
         @Override

@@ -1296,7 +1296,8 @@ public class DeepAgent implements AutoCloseable {
      * <p>Releases this instance's claim on the globally registered tool
      * entry; the entry is removed only when no other owner remains, so a
      * destroying instance cannot break another instance's tool
-     * resolution.</p>
+     * resolution. The model-visible binding is removed only if it still
+     * points to this tool's resource ID; a different same-name binding is preserved.</p>
      *
      * @param tool tool
      * @since 0.1.7
@@ -1305,7 +1306,10 @@ public class DeepAgent implements AutoCloseable {
         if (tool == null) {
             return;
         }
-        agent.getAbilityManager().remove(tool.getCard().getName());
+        ToolCard current = agent.getAbilityManager().getTools().get(tool.getCard().getName());
+        if (current != null && Objects.equals(current.getId(), tool.getCard().getId())) {
+            agent.getAbilityManager().remove(tool.getCard().getName());
+        }
         Runner.resourceMgr().removeToolOwnedBy(tool.getCard().getId(), ownerToken);
         registeredTools.remove(tool);
     }

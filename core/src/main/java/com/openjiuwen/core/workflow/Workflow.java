@@ -3,25 +3,25 @@
  */
 
 package com.openjiuwen.core.workflow;
-import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.graph.CompiledGraph;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.graph.CompiledGraph;
 import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.PregelGraph;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.graph.pregel.Interrupt;
-import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
+import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.runner.callback.CallbackDecorators;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.WorkflowEvents;
@@ -32,11 +32,11 @@ import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.state.InMemoryState;
+import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.stream.AsyncStreamQueue;
 import com.openjiuwen.core.session.stream.CustomSchema;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.core.session.state.InMemoryState;
-import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
@@ -49,8 +49,8 @@ import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -1382,7 +1382,14 @@ public class Workflow {
         java.util.Map<String, Object> graphInputs = new java.util.HashMap<>();
         graphInputs.put(Constant.INPUTS_KEY, inputs != null ? inputs : Map.of());
         graphInputs.put(Constant.CONFIG_KEY, config);
-        return typedCompiled.invoke(graphInputs, session);
+        var cancellation = com.openjiuwen.core.session.WorkflowCancellation.from(session);
+        var graphStore = session.checkpointer() == null ? null : session.checkpointer().graphStore();
+        try (WorkflowCheckpointScope checkpoint = new WorkflowCheckpointScope(
+                cancellation, graphStore, session.sessionId(), card.getId())) {
+            Object result = typedCompiled.invoke(graphInputs, session);
+            checkpoint.complete();
+            return result;
+        }
     }
 
     private RuntimeException wrapWorkflowException(Exception e) {
@@ -1558,6 +1565,8 @@ public class Workflow {
 
         @Override
         public void postWorkflowExecute(BaseSession session, Map<String, Object> result, Exception exception) {
+            // Preserve the last completed interaction checkpoint, not a half-consumed cancelled input.
+            com.openjiuwen.core.session.WorkflowCancellation.check(session);
             delegate.postWorkflowExecute(session, result, exception);
         }
     }

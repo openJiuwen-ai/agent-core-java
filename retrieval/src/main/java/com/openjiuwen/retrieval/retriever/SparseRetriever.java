@@ -46,7 +46,7 @@ public class SparseRetriever implements Retriever {
         if (!MODE_SPARSE.equals(actualMode)) {
             throw unsupportedMode(actualMode);
         }
-        List<RetrievalResult> searchResults = fetchSparseResults(query, topK);
+        List<RetrievalResult> searchResults = fetchSparseResults(query, topK, options == null ? Map.of() : options);
         return searchResults.stream()
                 .map(SparseRetriever::toRetrievalResult)
                 .toList();
@@ -80,7 +80,7 @@ public class SparseRetriever implements Retriever {
         if (!MODE_SPARSE.equals(actualMode)) {
             throw unsupportedMode(actualMode);
         }
-        return fetchSparseResults(query, topK).stream()
+        return fetchSparseResults(query, topK, options == null ? Map.of() : options).stream()
                 .map(SparseRetriever::toSearchResult)
                 .toList();
     }
@@ -97,8 +97,8 @@ public class SparseRetriever implements Retriever {
         }
     }
 
-    private List<RetrievalResult> fetchSparseResults(String query, int topK) {
-        return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), Map.of()));
+    private List<RetrievalResult> fetchSparseResults(String query, int topK, Map<String, Object> options) {
+        return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), options));
     }
 
     private RuntimeException unsupportedMode(String mode) {

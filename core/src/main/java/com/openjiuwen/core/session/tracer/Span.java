@@ -14,12 +14,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.annotation.Nullable;
+
 /**
  * Mirrors Python's {@code Span} in
  * {@code openjiuwen/core/session/tracer/span.py}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Span {
+    private final Object childInvokesLock = new Object();
+
     @JsonProperty("traceId")
     private String traceId;
 
@@ -82,10 +86,12 @@ public class Span {
      * @param childInvokeId child invoke id
      */
     public void appendChildInvokeId(String childInvokeId) {
-        if (childInvokesId == null) {
-            childInvokesId = new ArrayList<>();
+        synchronized (childInvokesLock) {
+            if (childInvokesId == null) {
+                childInvokesId = new ArrayList<>();
+            }
+            childInvokesId.add(childInvokeId);
         }
-        childInvokesId.add(childInvokeId);
     }
 
     /**
@@ -113,7 +119,7 @@ public class Span {
         copy.error = deepCopyMap(error);
         copy.invokeId = invokeId;
         copy.parentInvokeId = parentInvokeId;
-        copy.childInvokesId = childInvokesId == null ? null : new ArrayList<>(childInvokesId);
+        copy.childInvokesId = getChildInvokesId();
         copy.status = status;
         copy.onInvokeData = deepCopyMapList(onInvokeData);
     }
@@ -167,7 +173,7 @@ public class Span {
             case "child_invokes_id":
             case "childInvokes":
                 if (value instanceof List<?>) {
-                    childInvokesId = (List<String>) value;
+                    setChildInvokesId((List<String>) value);
                 }
                 break;
             case "status":
@@ -313,12 +319,23 @@ public class Span {
         this.parentInvokeId = parentInvokeId;
     }
 
+    /**
+     * Returns a defensive snapshot of recorded child invocations.
+     * An unset value remains {@code null} so JSON omits {@code childInvokes}, matching the tracer wire contract.
+     *
+     * @return child invocation IDs, or {@code null} when no child list has been recorded
+     */
+    @Nullable
     public List<String> getChildInvokesId() {
-        return childInvokesId;
+        synchronized (childInvokesLock) {
+            return childInvokesId == null ? null : new ArrayList<>(childInvokesId);
+        }
     }
 
     public void setChildInvokesId(List<String> childInvokesId) {
-        this.childInvokesId = childInvokesId;
+        synchronized (childInvokesLock) {
+            this.childInvokesId = childInvokesId == null ? null : new ArrayList<>(childInvokesId);
+        }
     }
 
     public String getStatus() {

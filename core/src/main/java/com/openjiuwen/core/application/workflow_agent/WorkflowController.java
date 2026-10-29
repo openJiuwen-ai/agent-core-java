@@ -6,6 +6,7 @@ package com.openjiuwen.core.application.workflow_agent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.constants.TaskType;
 import com.openjiuwen.core.common.exception.BaseError;
@@ -27,9 +28,11 @@ import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.WorkflowCancellation;
 import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.CustomSchema;
@@ -42,12 +45,14 @@ import com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowKeys;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -58,6 +63,11 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
@@ -79,7 +89,7 @@ public class WorkflowController {
     private WorkflowDetector workflowDetector;
     private List<Object> workflows = new ArrayList<>();
     private Object sourceAgent;
-    private Map<String, Object> detectedWorkflowArguments = new LinkedHashMap<>();
+    private final ConcurrentMap<InvocationKey, Invocation> invocations = new ConcurrentHashMap<>();
 
     public WorkflowController() {
         this(null, null, null);
@@ -117,21 +127,138 @@ public class WorkflowController {
 
     public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi activeSession,
                                           List<StreamMode> streamModes) {
+        try (Invocation invocation = beginInvocation(inputs, activeSession)) {
+            return invoke(inputs, activeSession, streamModes, invocation.cancellation());
+        }
+    }
+
+    /**
+     * Own the entire invocation, including session persistence in compatibility facades.
+     * Replacements wait for the previous invocation's cleanup before loading session state.
+     *
+     * @param inputs request data used to resolve the conversation when no session is supplied
+     * @param activeSession current session, or {@code null} for compatibility callers
+     * @return invocation scope that must be closed after session persistence
+     * @throws IllegalStateException if the previous invocation cannot be drained safely
+     */
+    public Invocation beginInvocation(Map<String, Object> inputs, AgentSessionApi activeSession) {
+        String conversationId;
+        if (activeSession == null) {
+            conversationId = "default_session";
+            if (inputs != null) {
+                conversationId = String.valueOf(inputs.getOrDefault("conversation_id", "default_session"));
+            }
+        } else {
+            conversationId = activeSession.getSessionId();
+        }
+        var tenant = activeSession != null && activeSession.getTenantContext() != null
+                ? activeSession.getTenantContext() : TenantContextHolder.getCurrentTenant();
+        String tenantId = tenant == null ? null : tenant.getTenantId();
+        InvocationKey key = new InvocationKey(tenantId, conversationId);
+        Invocation invocation = new Invocation(key);
+        Invocation previous = invocations.put(key, invocation);
+        if (previous != null) {
+            previous.cancellation.cancel();
+            try {
+                previous.finished.get(30, TimeUnit.SECONDS);
+            } catch (InterruptedException failure) {
+                InterruptSignals.restoreCurrentThread();
+                abandonReplacement(invocation, previous);
+                throw new IllegalStateException("Interrupted while waiting for the previous workflow", failure);
+            } catch (ExecutionException | TimeoutException failure) {
+                abandonReplacement(invocation, previous);
+                throw new IllegalStateException("Previous workflow has not stopped safely", failure);
+            }
+        }
+        return invocation;
+    }
+
+    private void abandonReplacement(Invocation invocation, Invocation previous) {
+        invocation.cancellation.cancel();
+
+        // Keep the drain barrier until the actual predecessor finishes, even if this caller times out.
+        previous.finished.whenComplete((ignored, failure) -> {
+            if (failure == null) {
+                invocation.finished.complete(null);
+                invocations.remove(invocation.key, invocation);
+            } else {
+                invocation.finished.completeExceptionally(failure);
+            }
+        });
+    }
+
+    private record InvocationKey(String tenantId, String conversationId) { }
+
+    /**
+     * Owns cancellation and the completion barrier for one tenant's conversation.
+     */
+    public final class Invocation implements AutoCloseable {
+        private final InvocationKey key;
+        private final WorkflowCancellation cancellation = new WorkflowCancellation();
+        private final CompletableFuture<Void> finished = new CompletableFuture<>();
+
+        private Invocation(InvocationKey key) {
+            this.key = key;
+        }
+
+        /**
+         * Returns the cancellation control shared by this invocation's workflow nodes.
+         *
+         * @return invocation cancellation control
+         */
+        public WorkflowCancellation cancellation() {
+            return cancellation;
+        }
+
+        /**
+         * Drains registered nodes before allowing another invocation to use the same checkpoint.
+         *
+         * @throws IllegalStateException if draining times out or is interrupted
+         */
+        @Override
+        public void close() {
+            try {
+                cancellation.awaitQuiescence(Duration.ofSeconds(30));
+                finished.complete(null);
+                invocations.remove(key, this);
+            } catch (IllegalStateException failure) {
+                // A non-cooperative node must not overlap a replacement using its checkpoint.
+                finished.completeExceptionally(failure);
+                throw failure;
+            }
+        }
+    }
+
+    /**
+     * Executes a request using the caller-owned cancellation scope.
+     *
+     * @param inputs request data; {@code null} is treated as an empty request
+     * @param activeSession session used for workflow state and output
+     * @param streamModes requested output modes, or {@code null} for invocation without streaming
+     * @param cancellation control held until the caller finishes persisting session state
+     * @return completed workflow response, cancellation response, or exceptional completion
+     */
+    public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi activeSession,
+                                          List<StreamMode> streamModes, WorkflowCancellation cancellation) {
+        Intent intent = null;
         try {
+            cancellation.checkCancelled();
             refreshConfigFromSourceAgent();
             if (agentConfig == null || isBlank(agentConfig.getId())) {
                 throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
                         "error_msg", "Workflow not found");
             }
             Map<String, Object> effectiveInputs = inputs == null ? Map.of() : inputs;
-            SessionPort sessionPort = sessionPort(activeSession);
+            SessionPort sessionPort = sessionPort(activeSession, cancellation);
             Event event = eventFromInputs(effectiveInputs);
-            Intent intent = intentDetection(event, sessionPort);
+            intent = intentDetection(event, sessionPort);
+            cancellation.checkCancelled();
             if (intent.getIntentType() == IntentType.RESUME_TASK) {
                 Object resumeOutput = handleResume(event, intent, sessionPort);
                 if (resumeOutput != null) {
                     return CompletableFuture.completedFuture(resumeOutput);
                 }
+
                 // Set task status to INPUT_REQUIRED so workflow engine resumes from interrupt point
                 intent.getTask().setStatus(TaskStatus.INPUT_REQUIRED);
             }
@@ -145,29 +272,45 @@ public class WorkflowController {
             Object workflowInputs = workflowInputsFor(event, intent, effectiveInputs, workflow, sessionPort);
             rememberCurrentWorkflow(intent.getWorkflow(), sessionPort);
             com.openjiuwen.core.workflow.WorkflowOutput output =
-                    invokeWorkflow(workflow, workflowInputs, activeSession, streamModes);
-            if (isWorkflowInterrupted(output)) {
-                Object interactionData = output.getResult();
-                List<?> interactions = interactionData instanceof List<?> list ? list : List.of(interactionData);
-                interruptTask(intent.getTask(), sessionPort, interactions, effectiveInputs.get("query"));
-                if (streamModes != null) {
-                    return CompletableFuture.completedFuture(output);
-                }
-                return CompletableFuture.completedFuture(allInteractions(interactions));
-            }
-            clearInterruptedState(intent.getTask(), sessionPort);
-            if (streamModes != null && containsStreamSchema(output.getResult())) {
-                return CompletableFuture.completedFuture(output);
-            }
-            return CompletableFuture.completedFuture(Map.of(
-                    "result_type", "answer",
-                    "output", output
-            ));
+                    invokeWorkflow(workflow, workflowInputs, activeSession, streamModes, cancellation);
+            cancellation.checkCancelled();
+            return CompletableFuture.completedFuture(workflowResponse(output, intent, sessionPort,
+                    effectiveInputs.get("query"), streamModes));
         } catch (RuntimeException error) {
-            CompletableFuture<Object> failed = new CompletableFuture<>();
-            failed.completeExceptionally(error);
-            return failed;
+            if (cancellation.isCancelled()) {
+                return CompletableFuture.completedFuture(cancellationResponse(intent, activeSession));
+            }
+            return CompletableFuture.failedFuture(error);
         }
+    }
+
+    private Object workflowResponse(com.openjiuwen.core.workflow.WorkflowOutput output, Intent intent,
+            SessionPort sessionPort, Object query, List<StreamMode> streamModes) {
+        if (isWorkflowInterrupted(output)) {
+            Object interactionData = output.getResult();
+            List<?> interactions = interactionData instanceof List<?> list ? list : List.of(interactionData);
+            interruptTask(intent.getTask(), sessionPort, interactions, query);
+            if (streamModes != null) {
+                return output;
+            }
+            return allInteractions(interactions);
+        }
+        clearInterruptedState(intent.getTask(), sessionPort);
+        if (streamModes != null && containsStreamSchema(output.getResult())) {
+            return output;
+        }
+        return Map.of("result_type", "answer", "output", output);
+    }
+
+    private Map<String, Object> cancellationResponse(Intent intent, AgentSessionApi activeSession) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "cancelled");
+        result.put("conversation_id", activeSession == null ? "" : activeSession.getSessionId());
+        if (intent != null && intent.getTask() != null) {
+            result.put("task_id", intent.getTask().getTaskId());
+            result.put("workflow_id", intent.getTask().getInput().getTargetId());
+        }
+        return result;
     }
 
     private boolean containsStreamSchema(Object result) {
@@ -186,18 +329,19 @@ public class WorkflowController {
             Workflow workflow,
             Object workflowInputs,
             AgentSessionApi activeSession,
-            List<StreamMode> streamModes) {
-        Object session = workflowSession(activeSession);
+            List<StreamMode> streamModes, WorkflowCancellation cancellation) {
+        WorkflowSession workflowSession = cancellableWorkflowSession(activeSession, cancellation);
         ModelContext modelContext = workflowContext(workflow, activeSession).orElse(null);
         if (streamModes == null) {
-            return workflow.invoke(workflowInputs, session, modelContext);
+            return workflow.invoke(workflowInputs, workflowSession, modelContext);
         }
         List<StreamMode> modes = streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes;
-        Iterator<? extends Object> stream = workflow.stream(workflowInputs, session, modelContext, modes);
+        Iterator<? extends Object> stream = workflow.stream(workflowInputs, workflowSession, modelContext, modes);
         List<Object> chunks = new ArrayList<>();
         boolean hasInteraction = false;
         Object finalResult = null;
         while (stream.hasNext()) {
+            cancellation.checkCancelled();
             Object chunk = stream.next();
             chunks.add(chunk);
             if (chunk instanceof OutputSchema outputSchema) {
@@ -316,8 +460,13 @@ public class WorkflowController {
         return filterWorkflowInputs(originalInputs, workflow);
     }
 
-    private SessionPort sessionPort(AgentSessionApi activeSession) {
+    private SessionPort sessionPort(AgentSessionApi activeSession, WorkflowCancellation cancellation) {
         return new SessionPort() {
+            @Override
+            public WorkflowCancellation cancellation() {
+                return cancellation;
+            }
+
             @Override
             public Optional<AgentSessionApi> agentSession() {
                 return Optional.ofNullable(activeSession);
@@ -399,6 +548,15 @@ public class WorkflowController {
             result.add(String.valueOf(item));
         }
         return result;
+    }
+
+    private WorkflowSession cancellableWorkflowSession(AgentSessionApi activeSession,
+            WorkflowCancellation cancellation) {
+        Object sessionSource = workflowSession(activeSession);
+        if (!(sessionSource instanceof WorkflowSession workflowSession)) {
+            throw new IllegalStateException("Session facade did not create a WorkflowSession");
+        }
+        return cancellation.attach(workflowSession);
     }
 
     private Object workflowSession(AgentSessionApi activeSession) {
@@ -576,6 +734,9 @@ public class WorkflowController {
             }
             return workflows.get(0);
         } catch (RuntimeException e) {
+            if (activeSession != null && activeSession.cancellation() != null) {
+                activeSession.cancellation().checkCancelled();
+            }
             LOGGER.warning("Intent detection failed: " + e.getMessage() + ", using first workflow");
             return workflows.get(0);
         }
@@ -615,7 +776,9 @@ public class WorkflowController {
                         .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
                         .build(), activeSession);
         IntentModelResult result = parseIntentModelResult(message == null ? "" : message.getContentAsString());
-        detectedWorkflowArguments = result.arguments();
+        Map<String, Object> arguments = new LinkedHashMap<>(event.getContent().getExtensions());
+        arguments.putAll(result.arguments());
+        event.getContent().setExtensions(arguments);
         int selected = result.selected();
         return selected <= 0 || selected > candidates.size() ? null : candidates.get(selected - 1);
     }
@@ -633,7 +796,7 @@ public class WorkflowController {
                                                ModelInvokeOptions options, SessionPort activeSession) {
         AgentSessionApi candidate = activeSession == null ? null : activeSession.agentSession().orElse(null);
         if (!(candidate instanceof AgentSession session)) {
-            return model.invoke(messages, options).toCompletableFuture().join();
+            return awaitModel(model.invoke(messages, options), activeSession);
         }
         Tracer tracer = session.getInner().tracer();
         TraceAgentSpan span = tracer.getTracerAgentSpanManager().createAgentSpan(session.getInner().span());
@@ -648,8 +811,8 @@ public class WorkflowController {
         Map<String, Object> extra = new LinkedHashMap<>(options.getExtraFields());
         extra.put("tracer_record_data", record);
         try {
-            AssistantMessage result = model.invoke(messages, options.toBuilder().extraFields(extra).build())
-                    .toCompletableFuture().join();
+            AssistantMessage result = awaitModel(model.invoke(messages, options.toBuilder().extraFields(extra).build()),
+                    activeSession);
             Map<String, Object> completed = new LinkedHashMap<>();
             completed.put("span", span);
             completed.put("outputs", result);
@@ -659,6 +822,11 @@ public class WorkflowController {
             tracer.trigger(Tracer.TRACE_AGENT, "on_llm_error", Map.of("span", span, "error", error));
             throw error;
         }
+    }
+
+    private static AssistantMessage awaitModel(CompletionStage<AssistantMessage> result, SessionPort session) {
+        return session != null && session.cancellation() != null
+                ? session.cancellation().await(result) : result.toCompletableFuture().join();
     }
 
     private List<BaseMessage> intentDetectionMessages(Event event, List<WorkflowSchema> candidates,
@@ -804,10 +972,6 @@ public class WorkflowController {
 
         Map<String, Object> userData = new LinkedHashMap<>();
         userData.put(requiredKey, query);
-        if (detectedWorkflowArguments != null && !detectedWorkflowArguments.isEmpty()) {
-            userData.putAll(detectedWorkflowArguments);
-            detectedWorkflowArguments = new LinkedHashMap<>();
-        }
         if (event != null && event.getContent() != null && event.getContent().getExtensions() != null) {
             userData.putAll(event.getContent().getExtensions());
         }
@@ -1398,6 +1562,10 @@ public class WorkflowController {
      * {@code openjiuwen/core/application/workflow_agent/workflow_controller.py}.
      */
     public interface SessionPort {
+        default WorkflowCancellation cancellation() {
+            return null;
+        }
+
         /**
          * Expose the session for model tracing when this port wraps a runtime session.
          *
