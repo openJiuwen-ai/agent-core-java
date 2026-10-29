@@ -4,11 +4,17 @@
 
 package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.adapters.benchmarks;
 
-import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.CommandRecordingEnvironment;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.DockerEnvironment;
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.EvalResult;
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.ExecResult;
 import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.Task;
+import com.openjiuwen.agentevolving.testing.CommandRecordingEnvironment;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,11 +27,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertIterableEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * <p>Mirrors Python's {@code TestSkillsBenchAdapter*} in
@@ -45,10 +46,10 @@ class SkillsBenchAdapterTest {
         SkillsBenchAdapter adapter = new SkillsBenchAdapter(Map.of("workspace_dir", workspace));
         CommandRecordingEnvironment env = new CommandRecordingEnvironment();
         adapter.prepareEnvironment(task, env).join();
-        assertTrue(env.commands.contains(List.of("mkdir", "-p", "--", workspace)));
-        assertTrue(env.commands.contains(List.of("mkdir", "-p", "--", workspace + "/tests/cases ; `id`")));
-        assertTrue(env.commands.contains(List.of("ln", "-sf", "--", workspace + "/tests", "/tests")));
-        assertTrue(env.commands.contains(List.of("ln", "-sf", "--", workspace + "/logs", "/logs")));
+        assertTrue(env.getCommands().contains(List.of("mkdir", "-p", "--", workspace)));
+        assertTrue(env.getCommands().contains(List.of("mkdir", "-p", "--", workspace + "/tests/cases ; `id`")));
+        assertTrue(env.getCommands().contains(List.of("ln", "-sf", "--", workspace + "/tests", "/tests")));
+        assertTrue(env.getCommands().contains(List.of("ln", "-sf", "--", workspace + "/logs", "/logs")));
     }
 
     @Test

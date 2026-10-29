@@ -4,22 +4,24 @@
 
 package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.io.UncheckedIOException;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's evaluator-pipeline docker environment tests in
@@ -39,11 +41,14 @@ class DockerEnvironmentTest {
             protected CompletableFuture<ExecResult> runCommand(List<String> command, int timeout) {
                 int start = command.indexOf("local-container") + 1;
                 try {
-                    Process process = new ProcessBuilder(command.subList(start, command.size())).directory(tempDir.toFile()).start();
-                    String stdout = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-                    String stderr = new String(process.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    Process process = new ProcessBuilder(command.subList(start, command.size()))
+                            .directory(tempDir.toFile()).start();
+                    String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
                     return CompletableFuture.completedFuture(new ExecResult(stdout, stderr, process.waitFor(), false));
-                } catch (Exception exception) {
+                } catch (InterruptedException exception) {
+                    throw new AssertionError("Interrupted while executing the local regression command", exception);
+                } catch (IOException exception) {
                     return CompletableFuture.failedFuture(exception);
                 }
             }

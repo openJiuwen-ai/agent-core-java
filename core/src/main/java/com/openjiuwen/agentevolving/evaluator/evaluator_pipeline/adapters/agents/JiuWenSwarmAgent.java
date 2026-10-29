@@ -49,6 +49,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
     static final String WORKSPACE_DIR = "/workspace";
     private static final LoggerProtocol LOGGER = Loggers.COMMON;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Pattern FILE_PATH_SEPARATOR = Pattern.compile("\\x00");
 
     private String resolvedSkillName = "";
     private List<String> allSkillNames = new ArrayList<>();
@@ -396,7 +397,8 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
             Map<String, String> evolutionContents = new LinkedHashMap<>();
             Map<String, Map<String, String>> capturedEvolutionFiles = new LinkedHashMap<>();
 
-            ExecResult evoResult = awaitResult(env.exec(List.of("find", SKILL_DIR, "-name", "evolutions.json", "-print0"), 30, null, null));
+            ExecResult evoResult = awaitResult(env.exec(
+                    List.of("find", SKILL_DIR, "-name", "evolutions.json", "-print0"), 30, null, null));
             if (evoResult.isSuccess() && !evoResult.getStdout().isBlank()) {
                 List<String> evoFiles = filePaths(evoResult.getStdout());
                 LOGGER.info("  Found {} evolutions.json files", evoFiles.size());
@@ -411,7 +413,8 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
             }
 
             capturedEvolutionJson.clear();
-            ExecResult evoJsonResult = awaitResult(env.exec(List.of("find", WORKSPACE_DIR, "-name", "evolution.json", "-print0"), 30, null, null));
+            ExecResult evoJsonResult = awaitResult(env.exec(
+                    List.of("find", WORKSPACE_DIR, "-name", "evolution.json", "-print0"), 30, null, null));
             if (evoJsonResult.isSuccess() && !evoJsonResult.getStdout().isBlank()) {
                 List<String> evoJsonFiles = filePaths(evoJsonResult.getStdout());
                 LOGGER.info("  Found {} evolution.json files", evoJsonFiles.size());
@@ -425,7 +428,8 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 }
             }
 
-            ExecResult evoMdResult = awaitResult(env.exec(List.of("find", SKILL_DIR, "-path", "*/evolution/*.md", "-print0"), 30, null, null));
+            ExecResult evoMdResult = awaitResult(env.exec(
+                    List.of("find", SKILL_DIR, "-path", "*/evolution/*.md", "-print0"), 30, null, null));
             if (evoMdResult.isSuccess() && !evoMdResult.getStdout().isBlank()) {
                 List<String> evoMdFiles = filePaths(evoMdResult.getStdout());
                 LOGGER.info("  Found {} evolution/*.md files", evoMdFiles.size());
@@ -442,7 +446,8 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 }
             }
 
-            ExecResult skillResult = awaitResult(env.exec(List.of("find", SKILL_DIR, "-name", "SKILL.md", "-print0"), 30, null, null));
+            ExecResult skillResult = awaitResult(env.exec(
+                    List.of("find", SKILL_DIR, "-name", "SKILL.md", "-print0"), 30, null, null));
             if (!skillResult.isSuccess() || skillResult.getStdout().isBlank()) {
                 SkillDelta delta = new SkillDelta();
                 delta.setEvolutions(evolutionContents);
@@ -1064,7 +1069,8 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
         if (!llmLogsFound.isEmpty()) {
             return llmLogsFound;
         }
-        captureLogsFromFind(env, List.of("find", WORKSPACE_DIR, "-name", "llm.log", "-type", "f", "-print0"), llmLogsFound);
+        captureLogsFromFind(env, List.of("find", WORKSPACE_DIR, "-name", "llm.log", "-type", "f", "-print0"),
+                llmLogsFound);
         if (!llmLogsFound.isEmpty()) {
             return llmLogsFound;
         }
@@ -1179,7 +1185,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
 
     private static List<String> filePaths(String text) {
         // find -print0 preserves whitespace and embedded newlines in filenames.
-        return Pattern.compile("\\x00").splitAsStream(text)
+        return FILE_PATH_SEPARATOR.splitAsStream(text)
                 .filter(line -> !line.isEmpty())
                 .collect(Collectors.toList());
     }

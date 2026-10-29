@@ -213,6 +213,12 @@ public class ExperienceScorer {
     /**
      * Suggests experience maintenance actions using optional, untrusted user intent as background.
      * The intent is limited to 1000 characters and escaped inside a data block.
+     *
+     * @param skillName skill being maintained
+     * @param skillSummary current skill description
+     * @param records scored experience records to simplify
+     * @param userIntent optional untrusted background intent
+     * @return proposed experience maintenance actions
      */
     public CompletionStage<List<Map<String, Object>>> simplify(
             String skillName,

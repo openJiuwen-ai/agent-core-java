@@ -189,7 +189,16 @@ public class DockerEnvironment {
         return exec(List.of("bash", "-c", command), commandTimeout, workdir, env);
     }
 
-    /** Executes literal arguments inside the container without shell interpretation. */
+    /**
+     * Executes literal arguments inside the container without shell interpretation.
+     *
+     * @param command executable and its literal arguments
+     * @param commandTimeout timeout in seconds
+     * @param workdir container working directory, or null for the default
+     * @param env additional environment variables, or null
+     * @return asynchronous execution result
+     * @throws IllegalArgumentException if command is null or empty
+     */
     public CompletableFuture<ExecResult> exec(
             List<String> command,
             int commandTimeout,

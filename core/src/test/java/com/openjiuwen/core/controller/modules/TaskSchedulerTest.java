@@ -147,66 +147,20 @@ class TaskSchedulerTest {
     @ParameterizedTest
     @EnumSource(value = EventType.class, names = {"TASK_COMPLETION", "TASK_INTERACTION", "TASK_FAILED"})
     void completionSignalWaitsForTaskResultCallback(EventType eventType) throws Exception {
-        ControllerConfig config = new ControllerConfig();
-        TaskManager taskManager = new TaskManager(config);
-        EventQueue eventQueue = new EventQueue(config);
-        BaseCard card = new BaseCard("agent-1", "agent", "test agent");
-        TaskScheduler scheduler = new TaskScheduler(config, taskManager, new ContextEngine(),
-                new AbilityManager(), eventQueue, card);
-        FakeSession session = new FakeSession("session-1");
-        CountDownLatch callbackStarted = new CountDownLatch(1);
-        CountDownLatch releaseCallback = new CountDownLatch(1);
-        eventQueue.setEventHandler(new RecordingEventHandler() {
-            @Override
-            public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
-                return handleResult(inputs);
-            }
-
-            @Override
-            public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
-                return handleResult(inputs);
-            }
-
-            @Override
-            public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
-                return handleResult(inputs);
-            }
-
-            private Map<String, Object> handleResult(EventHandlerInput inputs) {
-                callbackStarted.countDown();
-                try {
-                    if (!releaseCallback.await(3, TimeUnit.SECONDS)) {
-                        throw new IllegalStateException("callback was not released");
-                    }
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException(exception);
-                }
-                inputs.getSession().writeStream("callback-finished");
-                return Map.of();
-            }
-        });
-        eventQueue.subscribe(card.getId(), session.getSessionId());
-        scheduler.getSessions().put(session.getSessionId(), session);
-        scheduler.getTaskExecutorRegistry().addTaskExecutor("test_task", dependencies ->
-                new TestTaskExecutor(dependencies, List.of(new ControllerOutputChunk(0,
-                        new ControllerOutputPayload(eventType.getValue(), List.of())))));
-        try {
-            scheduler.start();
-            taskManager.addTask(task(session.getSessionId(), "task-1", TaskStatus.SUBMITTED));
-            assertThat(callbackStarted.await(3, TimeUnit.SECONDS)).isTrue();
-            scheduler.ensureSessionCompletionSignal(session.getSessionId());
-            assertThat(session.streamSnapshot()).noneMatch(TaskSchedulerTest::isAllTasksProcessed);
-            releaseCallback.countDown();
-            waitUntil(() -> session.streamSnapshot().stream().anyMatch(TaskSchedulerTest::isAllTasksProcessed));
-            List<Object> output = session.streamSnapshot();
+        BlockingResultHandler handler = new BlockingResultHandler();
+        try (SchedulerFixture fixture = new SchedulerFixture(handler)) {
+            fixture.registerResultExecutor(eventType);
+            fixture.scheduler.start();
+            fixture.taskManager.addTask(task(fixture.session.getSessionId(), "task-1", TaskStatus.SUBMITTED));
+            assertThat(handler.started.await(3, TimeUnit.SECONDS)).isTrue();
+            fixture.scheduler.ensureSessionCompletionSignal(fixture.session.getSessionId());
+            assertThat(fixture.session.streamSnapshot()).noneMatch(TaskSchedulerTest::isAllTasksProcessed);
+            handler.release.complete(null);
+            waitUntil(() -> fixture.session.streamSnapshot().stream().anyMatch(TaskSchedulerTest::isAllTasksProcessed));
+            List<Object> output = fixture.session.streamSnapshot();
             assertThat(output).contains("callback-finished");
             assertThat(output.indexOf("callback-finished")).isLessThan(output.size() - 1);
             assertThat(isAllTasksProcessed(output.get(output.size() - 1))).isTrue();
-        } finally {
-            releaseCallback.countDown();
-            scheduler.stop();
-            eventQueue.stop();
         }
     }
 
@@ -231,58 +185,37 @@ class TaskSchedulerTest {
     @ParameterizedTest
     @EnumSource(value = TaskStatus.class, names = {"CANCELED", "PAUSED"})
     void completionSignalDoesNotWaitForStoppedWorker(TaskStatus stoppedStatus) throws Exception {
-        ControllerConfig config = new ControllerConfig();
-        TaskManager taskManager = new TaskManager(config);
-        EventQueue eventQueue = new EventQueue(config);
-        BaseCard card = new BaseCard("agent-1", "agent", "test agent");
-        TaskScheduler scheduler = new TaskScheduler(config, taskManager, new ContextEngine(),
-                new AbilityManager(), eventQueue, card);
-        FakeSession session = new FakeSession("session-1");
-        CompletableFuture<Void> workerResult = new CompletableFuture<>();
-        CountDownLatch workerStarted = new CountDownLatch(1);
-        CountDownLatch stopRequested = new CountDownLatch(1);
-        AtomicReference<Boolean> stopped = new AtomicReference<>();
-        eventQueue.setEventHandler(new RecordingEventHandler() {
-            @Override
-            public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
-                stopped.set(stoppedStatus == TaskStatus.CANCELED
-                        ? scheduler.cancelTask("worker") : scheduler.pauseTask("worker"));
-                stopRequested.countDown();
-                return Map.of();
+        try (SchedulerFixture fixture = new SchedulerFixture(new RecordingEventHandler())) {
+            CountDownLatch stopRequested = new CountDownLatch(1);
+            AtomicReference<Boolean> stopped = new AtomicReference<>();
+            fixture.eventQueue.setEventHandler(new RecordingEventHandler() {
+                @Override
+                public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
+                    stopped.set(stoppedStatus == TaskStatus.CANCELED
+                            ? fixture.scheduler.cancelTask("worker") : fixture.scheduler.pauseTask("worker"));
+                    stopRequested.countDown();
+                    return Map.of();
+                }
+            });
+            fixture.registerResultExecutor(EventType.TASK_COMPLETION);
+            BlockedTaskExecutor worker = fixture.registerBlockedExecutor();
+            try {
+                fixture.scheduler.start();
+                Task task = new Task(fixture.session.getSessionId(), "worker", "blocked");
+                task.setStatus(TaskStatus.SUBMITTED);
+                fixture.taskManager.addTask(task);
+                assertThat(worker.started.await(3, TimeUnit.SECONDS)).isTrue();
+                fixture.taskManager.addTask(task(fixture.session.getSessionId(), "finishing", TaskStatus.SUBMITTED));
+                assertThat(stopRequested.await(3, TimeUnit.SECONDS)).isTrue();
+                assertThat(stopped.get()).isTrue();
+                waitUntil(() -> fixture.session.streamSnapshot().stream()
+                        .anyMatch(TaskSchedulerTest::isAllTasksProcessed));
+                assertThat(worker.result).isNotDone();
+                assertThat(fixture.taskManager.getTask(TaskFilter.byTaskId("worker")).get(0).getStatus())
+                        .isEqualTo(stoppedStatus);
+            } finally {
+                worker.result.complete(null);
             }
-        });
-        eventQueue.subscribe(card.getId(), session.getSessionId());
-        scheduler.getSessions().put(session.getSessionId(), session);
-        scheduler.getTaskExecutorRegistry().addTaskExecutor("blocked", dependencies ->
-                new TestTaskExecutor(dependencies) {
-                    @Override
-                    public Iterator<ControllerOutputChunk> executeAbility(String taskId, AgentSessionApi taskSession) {
-                        workerStarted.countDown();
-                        // join(), as used by asynchronous executors, does not stop on interrupt.
-                        workerResult.join();
-                        return Collections.emptyIterator();
-                    }
-                });
-        scheduler.getTaskExecutorRegistry().addTaskExecutor("test_task", dependencies ->
-                new TestTaskExecutor(dependencies, List.of(new ControllerOutputChunk(0,
-                        new ControllerOutputPayload(EventType.TASK_COMPLETION.getValue(), List.of())))));
-        try {
-            scheduler.start();
-            Task worker = new Task(session.getSessionId(), "worker", "blocked");
-            worker.setStatus(TaskStatus.SUBMITTED);
-            taskManager.addTask(worker);
-            assertThat(workerStarted.await(3, TimeUnit.SECONDS)).isTrue();
-            taskManager.addTask(task(session.getSessionId(), "finishing-task", TaskStatus.SUBMITTED));
-            assertThat(stopRequested.await(3, TimeUnit.SECONDS)).isTrue();
-            assertThat(stopped.get()).isTrue();
-            waitUntil(() -> session.streamSnapshot().stream().anyMatch(TaskSchedulerTest::isAllTasksProcessed));
-            assertThat(workerResult).isNotDone();
-            assertThat(taskManager.getTask(TaskFilter.byTaskId("worker")).get(0).getStatus())
-                    .isEqualTo(stoppedStatus);
-        } finally {
-            workerResult.complete(null);
-            scheduler.stop();
-            eventQueue.stop();
         }
     }
 
@@ -302,6 +235,90 @@ class TaskSchedulerTest {
 
         assertThat(session.streamSnapshot()).hasSize(1);
         assertThat(isAllTasksProcessed(session.streamSnapshot().get(0))).isTrue();
+    }
+
+    private static final class SchedulerFixture implements AutoCloseable {
+        private final ControllerConfig config = new ControllerConfig();
+        private final TaskManager taskManager = new TaskManager(config);
+        private final EventQueue eventQueue = new EventQueue(config);
+        private final BaseCard card = new BaseCard("agent-1", "agent", "test agent");
+        private final TaskScheduler scheduler = new TaskScheduler(config, taskManager, new ContextEngine(),
+                new AbilityManager(), eventQueue, card);
+        private final FakeSession session = new FakeSession("session-1");
+        private final RecordingEventHandler handler;
+
+        private SchedulerFixture(RecordingEventHandler handler) {
+            this.handler = handler;
+            eventQueue.setEventHandler(handler);
+            eventQueue.subscribe(card.getId(), session.getSessionId());
+            scheduler.getSessions().put(session.getSessionId(), session);
+        }
+
+        private void registerResultExecutor(EventType eventType) {
+            scheduler.getTaskExecutorRegistry().addTaskExecutor("test_task", dependencies ->
+                    new TestTaskExecutor(dependencies, List.of(new ControllerOutputChunk(0,
+                            new ControllerOutputPayload(eventType.getValue(), List.of())))));
+        }
+
+        private BlockedTaskExecutor registerBlockedExecutor() {
+            BlockedTaskExecutor executor = new BlockedTaskExecutor(new TaskExecutorDependencies(
+                    config, new AbilityManager(), new ContextEngine(), taskManager, eventQueue));
+            scheduler.getTaskExecutorRegistry().addTaskExecutor("blocked", dependencies -> executor);
+            return executor;
+        }
+
+        @Override
+        public void close() {
+            if (handler instanceof BlockingResultHandler blockingHandler) {
+                blockingHandler.release.complete(null);
+            }
+            scheduler.stop();
+            eventQueue.stop();
+        }
+    }
+
+    private static final class BlockingResultHandler extends RecordingEventHandler {
+        private final CountDownLatch started = new CountDownLatch(1);
+        private final CompletableFuture<Void> release = new CompletableFuture<>();
+
+        @Override
+        public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
+            return handleResult(inputs);
+        }
+
+        @Override
+        public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
+            return handleResult(inputs);
+        }
+
+        @Override
+        public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
+            return handleResult(inputs);
+        }
+
+        private Map<String, Object> handleResult(EventHandlerInput inputs) {
+            started.countDown();
+            release.join();
+            inputs.getSession().writeStream("callback-finished");
+            return Map.of();
+        }
+    }
+
+    private static final class BlockedTaskExecutor extends TestTaskExecutor {
+        private final CountDownLatch started = new CountDownLatch(1);
+        private final CompletableFuture<Void> result = new CompletableFuture<>();
+
+        private BlockedTaskExecutor(TaskExecutorDependencies dependencies) {
+            super(dependencies);
+        }
+
+        @Override
+        public Iterator<ControllerOutputChunk> executeAbility(String taskId, AgentSessionApi session) {
+            started.countDown();
+            // Asynchronous executors using join() do not stop on interrupt.
+            result.join();
+            return Collections.emptyIterator();
+        }
     }
 
     private static TaskScheduler scheduler(ControllerConfig config, TaskManager taskManager) {

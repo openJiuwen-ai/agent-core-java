@@ -80,6 +80,7 @@ public class TaskScheduler {
      */
     private final Map<String, RunningTaskEntry> runningTasks = new ConcurrentHashMap<>();
     private final ReentrantLock lock = new ReentrantLock();
+
     // Guarded by lock; callback completion and the idle decision must use the same snapshot.
     private final Map<String, Integer> pendingTaskCallbacks = new HashMap<>();
 
