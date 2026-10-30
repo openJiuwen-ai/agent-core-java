@@ -744,7 +744,6 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private void postStream(Iterator<Object> resultsIterator, ComponentAbility ability) throws Exception {
         if (ability == ComponentAbility.STREAM && executable instanceof End end
                 && !end.hasResponseTemplate() && streamCalled()) {
-
             // Plain End emits live fields before its batch trailer. Template End needs both sources concurrently.
             waitForStreamDone();
             WorkflowCancellation.check(session);
