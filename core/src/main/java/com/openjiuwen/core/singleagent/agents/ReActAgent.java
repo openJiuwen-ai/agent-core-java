@@ -436,7 +436,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     public Object railedModelCall(AgentCallbackContext ctx) {
         // Populate ModelCallInputs before BEFORE_MODEL_CALL so rails can inspect
-        // the current request messages (security/tracing/observability).
+        // and edit the current request messages (security/tracing/observability).
+        // Do not rebuild on attempt 0 after those rails run — that would wipe
+        // BEFORE_MODEL_CALL edits (Python builds the final window inside the
+        // railed body from the post-rail prompt, while Java keeps rail-edited
+        // inputs as the request snapshot).
         prepareModelRequest(ctx);
         return Rails.run(
                 ctx,
@@ -444,10 +448,12 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
                 () -> {
-                    // Rebuild again on every attempt so overflow compress+retry
-                    // (and other rails that mutate ModelContext) send the
+                    // On Rails.run retries (e.g. overflow compress+requestRetry),
+                    // rebuild from ModelContext so the provider sees the
                     // post-recovery snapshot rather than the pre-failure one.
-                    prepareModelRequest(ctx);
+                    if (ctx.getRetryAttempt() > 0) {
+                        prepareModelRequest(ctx);
+                    }
                     return doRailedModelCall(ctx);
                 }
         );

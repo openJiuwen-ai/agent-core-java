@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 /**
@@ -301,13 +302,15 @@ class ContextEngineTest {
 
     @Test
     void recoverFromModelExceptionCompressesContextOnce() {
+        RecordingCompactProcessor.resetForceInvokeCount();
         ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
         ContextEngine engine = new ContextEngine(new ContextEngineConfig());
         RecordingSession session = new RecordingSession("session-recover");
-        engine.createContext("ctx", session,
+        ModelContext context = engine.createContext("ctx", session,
                 List.of(new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of())),
-                List.of(new UserMessage("large historical context")),
+                List.of(new UserMessage("large historical context that must shrink")),
                 null);
+        int beforeFootprint = ContextEngine.estimateContextFootprint(context.getMessages(null, true));
 
         boolean recovered = engine.recoverFromModelException(
                 "ctx",
@@ -318,6 +321,35 @@ class ContextEngineTest {
                 Map.of("return_state", true));
 
         assertThat(recovered).isTrue();
+        assertThat(RecordingCompactProcessor.forceInvokeCount()).isEqualTo(1);
+        assertThat(contents(context.getMessages(null, true)))
+                .containsExactly("recorded by test processor");
+        assertThat(ContextEngine.estimateContextFootprint(context.getMessages(null, true)))
+                .isLessThan(beforeFootprint);
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenProcessorEventDoesNotShrinkContext() {
+        ContextEngine.registerProcessor("T00919NonShrinkingCompactProcessor",
+                NonShrinkingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-nonshrink");
+        ModelContext context = engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919NonShrinkingCompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context")),
+                null);
+        List<String> beforeContents = contents(context.getMessages(null, true));
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isFalse();
+        assertThat(contents(context.getMessages(null, true))).isEqualTo(beforeContents);
     }
 
     @Test
@@ -835,10 +867,19 @@ class ContextEngineTest {
      * {@code openjiuwen/core/context_engine/context_engine.py}.</p>
      */
     private static final class RecordingCompactProcessor implements SessionModelContext.ContextProcessorPort {
+        private static final AtomicInteger FORCE_INVOKE_COUNT = new AtomicInteger();
         private final Object config;
 
         private RecordingCompactProcessor(Object config) {
             this.config = config;
+        }
+
+        private static void resetForceInvokeCount() {
+            FORCE_INVOKE_COUNT.set(0);
+        }
+
+        private static int forceInvokeCount() {
+            return FORCE_INVOKE_COUNT.get();
         }
 
         @Override
@@ -851,9 +892,47 @@ class ContextEngineTest {
                                                                                 List<BaseMessage> messages,
                                                                                 boolean force,
                                                                                 Map<String, Object> kwargs) {
+            if (force) {
+                FORCE_INVOKE_COUNT.incrementAndGet();
+                context.setMessages(List.of(new UserMessage("recorded by test processor")), true);
+                return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                        new RecordingEvent(config),
+                        List.of(),
+                        null
+                ));
+            }
             return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
-                    new RecordingEvent(config),
+                    null,
                     messages,
+                    null
+            ));
+        }
+    }
+
+    /**
+     * Emits a compression event without reducing context footprint.
+     */
+    private static final class NonShrinkingCompactProcessor implements SessionModelContext.ContextProcessorPort {
+        private NonShrinkingCompactProcessor(Object config) {
+        }
+
+        @Override
+        public String processorType() {
+            return "T00919NonShrinkingCompactProcessor";
+        }
+
+        @Override
+        public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
+                                                                                List<BaseMessage> messages,
+                                                                                boolean force,
+                                                                                Map<String, Object> kwargs) {
+            if (force) {
+                // Same-size rewrite: event present but footprint does not shrink.
+                context.setMessages(List.of(new UserMessage("large historical context")), true);
+            }
+            return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                    new RecordingEvent("non-shrink"),
+                    force ? List.of() : messages,
                     null
             ));
         }

@@ -246,9 +246,11 @@ public class ContextEngine {
     /**
      * Recovers from a model context-window rejection by compressing once.
      *
-     * <p>A retry is warranted only when the provider error describes an input/context limit and
-     * {@link #compressContext} returns {@code compressed}. Streaming responses that
-     * already emitted chunks are not recovered (avoids duplicating output).</p>
+     * <p>A retry is warranted only when the provider error describes an input/context limit,
+     * {@link #compressContext} returns {@code compressed}, and the context footprint
+     * (message count + content size) strictly shrinks. A processor that emits an event
+     * without reducing size must not trigger retry. Streaming responses that already
+     * emitted chunks are not recovered (avoids duplicating output).</p>
      *
      * @param contextId context id; {@code null} uses the default
      * @param session session owning the context
@@ -257,7 +259,7 @@ public class ContextEngine {
      * @param streamChunksEmitted number of stream chunks already visible to the caller
      * @param kwargs optional compress kwargs; {@code compression_trigger} defaults to
      *               {@code model_context_overflow}
-     * @return {@code true} when compression succeeded and the caller should retry
+     * @return {@code true} when compression shrank the context and the caller should retry
      */
     public boolean recoverFromModelException(String contextId, Object session, Throwable exception,
                                              boolean streaming, int streamChunksEmitted,
@@ -277,8 +279,15 @@ public class ContextEngine {
 
         Map<String, Object> compressionKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
         compressionKwargs.putIfAbsent("compression_trigger", "model_context_overflow");
-        Object result;
+        final String effectiveContextId = contextId == null ? DEFAULT_CONTEXT_ID : contextId;
+        final String resolvedSessionId;
+        final int beforeFootprint;
+        final Object result;
         try {
+            resolvedSessionId = session != null ? resolveSessionId(session) : DEFAULT_SESSION_ID;
+            ModelContext modelContext = getContext(effectiveContextId, resolvedSessionId);
+            beforeFootprint = estimateContextFootprint(
+                    modelContext == null ? List.of() : modelContext.getMessages(null, true));
             result = compressContext(contextId, session, null, null, compressionKwargs);
         } catch (RuntimeException compressFailure) {
             // Intentional broad catch: recovery must never replace the original model
@@ -295,8 +304,41 @@ public class ContextEngine {
                     "model context recovery did not change context, result=" + resultCode);
             return false;
         }
+        ModelContext afterContext = getContext(effectiveContextId, resolvedSessionId);
+        int afterFootprint = estimateContextFootprint(
+                afterContext == null ? List.of() : afterContext.getMessages(null, true));
+        if (afterFootprint >= beforeFootprint) {
+            Loggers.CONTEXT_ENGINE.info(
+                    "model context recovery did not shrink context, before_footprint="
+                            + beforeFootprint + ", after_footprint=" + afterFootprint);
+            return false;
+        }
         Loggers.CONTEXT_ENGINE.info("model context recovery compressed context");
         return true;
+    }
+
+    /**
+     * Estimates recoverable context size for overflow recovery decisions.
+     *
+     * <p>Combines message count with total content length so a same-count rewrite that
+     * does not shrink text (or grows it) is treated as ineffective compression.</p>
+     *
+     * @param messages context messages; {@code null} is treated as empty
+     * @return non-negative footprint score
+     */
+    static int estimateContextFootprint(List<BaseMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int contentChars = 0;
+        for (BaseMessage message : messages) {
+            if (message == null) {
+                continue;
+            }
+            String content = message.getContentAsString();
+            contentChars += content == null ? 0 : content.length();
+        }
+        return messages.size() + contentChars;
     }
 
     /**

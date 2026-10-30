@@ -150,6 +150,8 @@ class ContextProcessorRailTest {
         try {
             AgentSessionApi session = new MemorySession("overflow-session");
             ModelContext modelContext = agent.initContext(session);
+            modelContext.setMessages(
+                    List.of(new UserMessage("large historical context that must shrink")), true);
 
             AgentCallbackContext ctx = new AgentCallbackContext(agent);
             ctx.setSession(session);
@@ -173,6 +175,8 @@ class ContextProcessorRailTest {
             rail.beforeModelCall(ctx);
             assertThat(ctx.getExtra())
                     .doesNotContainKey(AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED);
+            modelContext.setMessages(
+                    List.of(new UserMessage("another large historical context for next recovery")), true);
             ctx.setException(new RuntimeException("maximum context length exceeded"));
             rail.onModelException(ctx);
             assertThat(ctx.consumeRetryRequest()).isNotNull();
