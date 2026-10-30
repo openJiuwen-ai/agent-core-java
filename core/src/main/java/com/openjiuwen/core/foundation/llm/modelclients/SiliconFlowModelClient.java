@@ -428,6 +428,32 @@ public class SiliconFlowModelClient extends BaseModelClient {
     }
 
     /**
+     * Tells whether a data frame carries a terminal finish_reason even when the chunk
+     * parser drops the frame for lacking delta content. The JSON is inspected rather
+     * than the raw text because non-terminal frames carry a null finish_reason.
+     *
+     * @param data data frame payload without the {@code data:} prefix
+     * @return true when the first choice declares a truthy finish_reason
+     */
+    private boolean declaresFinishReason(String data) {
+        try {
+            Map<String, Object> chunkData = parseJsonObject(data);
+            List<?> choices = asList(chunkData.get("choices"));
+            if (choices.isEmpty()) {
+                return false;
+            }
+            Map<String, Object> choice = asObjectMap(choices.get(0));
+            Object finishReason = choice.get("finish_reason");
+            // The string sentinel "null" (used when the frame omits finish_reason) must
+            // not count as a terminal state; only a truthy, non-sentinel value does.
+            return isPythonTruthy(finishReason) && !"null".equals(String.valueOf(finishReason));
+        } catch (JsonProcessingException | ClassCastException | IllegalStateException
+                | IndexOutOfBoundsException exception) {
+            return false;
+        }
+    }
+
+    /**
      * Sends a non-streaming POST to the chat completions endpoint with idle-bounded body read.
      *
      * @param payload request payload
@@ -802,6 +828,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         private boolean isEffectiveFirstSegmentReceived;
         private boolean isDone;
         private boolean isClosed;
+        private boolean isTerminated;
 
         SiliconFlowSseIterator(InputStream inputStream, double idleSeconds) {
             this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
@@ -855,30 +882,65 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         throw errorFrameException(data);
                     }
                     if ("[DONE]".equals(data)) {
+                        isTerminated = true;
                         break;
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(line);
                     if (chunk != null) {
+                        markTerminatedIfFinished(chunk);
                         shouldKeepOpen = true;
                         isEffectiveFirstSegmentReceived = true;
                         return Optional.of(chunk);
                     }
+                    if (declaresFinishReason(data)) {
+                        // Frames without delta content still terminate the stream when
+                        // they carry a finish_reason; the chunk parser drops them.
+                        isTerminated = true;
+                    }
                 }
-                finish();
-                return Optional.empty();
+                return finishOrFailEarly();
             } catch (IOException exception) {
                 finish();
-                throwIfIdleTimeout(exception);
-                if (exception instanceof InterruptedIOException
-                        && !(exception instanceof SocketTimeoutException)) {
-                    // SocketTimeoutException is a read timeout, not a cancellation.
-                    throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
+                throwIfCancellation(exception);
+                if (isTerminated) {
+                    // The SSE content already ended with a terminal finish_reason or [DONE];
+                    // a body read that fails after that point — for example a chunked body
+                    // closed without its terminating 0-chunk — is a normal end of stream.
+                    return Optional.empty();
                 }
+                throwIfIdleTimeout(exception);
                 throw classifiedStreamFailure(exception);
             } finally {
                 if (!shouldKeepOpen) {
                     close();
                 }
+            }
+        }
+
+        private void markTerminatedIfFinished(AssistantMessageChunk chunk) {
+            if (chunk != null && !"null".equals(chunk.getFinishReason())) {
+                // A terminal finish_reason ends the SSE content even when the
+                // server omits the [DONE] frame.
+                isTerminated = true;
+            }
+        }
+
+        private Optional<AssistantMessageChunk> finishOrFailEarly() throws IOException {
+            if (!isTerminated) {
+                // The body ended without [DONE] or a terminal finish_reason. Report
+                // the truncation through the catch machinery below instead of
+                // returning partial content as success.
+                throw new IOException("premature eof: stream ended without termination marker");
+            }
+            finish();
+            return Optional.empty();
+        }
+
+        private void throwIfCancellation(Exception exception) {
+            if (exception instanceof InterruptedIOException
+                    && !(exception instanceof SocketTimeoutException)) {
+                // SocketTimeoutException is a read timeout, not a cancellation.
+                throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
             }
         }
 

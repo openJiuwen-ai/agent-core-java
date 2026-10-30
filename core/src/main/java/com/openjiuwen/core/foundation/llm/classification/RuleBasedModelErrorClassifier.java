@@ -55,7 +55,7 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
     private static final Set<String> RATE_LIMIT_KEYWORDS = Set.of(
         "rate limit", "rate_limit", "ratelimit", "too many requests");
     private static final Set<String> TRUNCATION_KEYWORDS =
-        Set.of("premature eof", "bytes received", "received no bytes");
+        Set.of("premature eof", "bytes received", "received no bytes", "chunked transfer encoding");
 
     private final List<ClassificationRule> rules;
 
@@ -204,10 +204,28 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
         // not flip the permanent classification.
         Integer status = facts.httpStatus();
         boolean isKeywordSignal = status == null || status < STATUS_4XX_LOW;
-        if (isKeywordSignal && containsAny(facts, TRUNCATION_KEYWORDS)) {
+        // A body reader closed mid-stream reports the exact message "closed"; that
+        // marker is matched exactly because the generic word is far too broad for
+        // the keyword set.
+        boolean isClosedSignal = isKeywordSignal && hasExactClosedMessage(facts);
+        if (isKeywordSignal && (isClosedSignal || containsAny(facts, TRUNCATION_KEYWORDS))) {
             return Optional.of(temporary(true));
         }
         return Optional.empty();
+    }
+
+    private static boolean hasExactClosedMessage(ModelErrorFacts facts) {
+        Throwable cursor = facts.throwable();
+        int depth = 0;
+        while (cursor != null && depth < MAX_CAUSE_DEPTH) {
+            String message = cursor.getMessage();
+            if (message != null && "closed".equalsIgnoreCase(message.trim())) {
+                return true;
+            }
+            cursor = cursor.getCause();
+            depth++;
+        }
+        return false;
     }
 
     private static Optional<ModelCallClassification> ruleRateLimitKeywords(ModelErrorFacts facts) {
