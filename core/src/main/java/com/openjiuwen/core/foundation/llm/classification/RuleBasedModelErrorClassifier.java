@@ -55,7 +55,8 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
     private static final Set<String> RATE_LIMIT_KEYWORDS = Set.of(
         "rate limit", "rate_limit", "ratelimit", "too many requests");
     private static final Set<String> TRUNCATION_KEYWORDS =
-        Set.of("premature eof", "bytes received", "received no bytes");
+        Set.of("premature eof", "bytes received", "received no bytes", "closed",
+            "chunked transfer encoding");
 
     private final List<ClassificationRule> rules;
 
