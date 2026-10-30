@@ -354,6 +354,14 @@ class ModelClientStreamTerminationTest {
                     out.write("\r\n".getBytes(StandardCharsets.US_ASCII));
                 }
                 out.flush();
+                // Hold the socket briefly so the client reads the completed chunk (and
+                // records the terminal finish_reason) before the abrupt close without a
+                // terminating 0-chunk is observed as a chunked-body cut.
+                try {
+                    Thread.sleep(150L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
                 // Leaving the try block closes the socket with no terminating 0-chunk,
                 // ending the chunked body mid-stream like an abrupt peer close.
             } catch (IOException exception) {
