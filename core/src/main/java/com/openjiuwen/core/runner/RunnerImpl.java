@@ -769,7 +769,8 @@ public class RunnerImpl {
                 unbindTenantContext();
             }
             return ReactiveAdapters.fromAutoCloseableIterator(
-                () -> wrapTenantScopeIterator(streamAgent(agentInstance, inputs, sess, context, streamModes), captured));
+                    () -> wrapTenantScopeIterator(
+                            streamAgent(agentInstance, inputs, sess, context, streamModes), captured));
         }, (AgentSessionApi sess) -> {
             applyTenantContext(captured);
             try {
