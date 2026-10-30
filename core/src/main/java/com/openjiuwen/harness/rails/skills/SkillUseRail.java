@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.rails.skills;
 
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -21,6 +22,7 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.tools.CodeTool;
 import com.openjiuwen.harness.tools.FilesystemTools;
 import com.openjiuwen.harness.tools.shell.bash.BashTool;
+import com.openjiuwen.harness.tools.shell.bash.PermissionMode;
 import com.openjiuwen.harness.tools.skills.ListSkillTool;
 import com.openjiuwen.harness.tools.skills.SkillDescriptor;
 import com.openjiuwen.harness.tools.skills.SkillTool;
@@ -402,7 +404,9 @@ public class SkillUseRail extends DeepAgentRail {
         }
         registerOwnedTool(agent, new FilesystemTools.ReadFileTool(resolveWorkspaceRoot(agent)));
         registerOwnedTool(agent, new CodeTool(null));
-        registerOwnedTool(agent, new BashTool());
+        Object operation = getSysOperation();
+        registerOwnedTool(agent, new BashTool(operation instanceof SysOperation sysOperation ? sysOperation : null,
+                PermissionMode.AUTO));
     }
 
     private boolean shouldRegisterFallbackTools(DeepAgent agent) {

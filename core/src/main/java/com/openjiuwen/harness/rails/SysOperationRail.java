@@ -17,6 +17,7 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.tools.CodeTool;
 import com.openjiuwen.harness.tools.FilesystemTools;
 import com.openjiuwen.harness.tools.shell.bash.BashTool;
+import com.openjiuwen.harness.tools.shell.bash.PermissionMode;
 import com.openjiuwen.harness.tools.shell.powershell.PowerShellTool;
 
 import java.nio.file.Path;
@@ -84,7 +85,7 @@ public class SysOperationRail extends DeepAgentRail {
         addTool(new FilesystemTools.GlobTool(workspaceRoot), "glob", "GlobTool", agentId);
         addTool(new FilesystemTools.ListDirTool(workspaceRoot), "list_files", "ListDirTool", agentId);
         addTool(new FilesystemTools.GrepTool(workspaceRoot), "grep", "GrepTool", agentId);
-        addTool(new BashTool(), "bash", "BashTool", agentId);
+        addTool(new BashTool(operation, PermissionMode.AUTO), "bash", "BashTool", agentId);
         if (isWindows()) {
             addTool(new PowerShellTool(operation), "powershell", "PowerShellTool", agentId);
         }
