@@ -23,10 +23,31 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
 
     private final Pregel pregel;
     private final GraphCheckpointer checkpointer;
+    private final PregelGraph pregelGraph;
+    private final BaseSession compileSession;
+    private final Map<String, Object> compileOptions;
 
     public CompiledGraph(Pregel pregel, GraphCheckpointer checkpointer) {
+        this(pregel, checkpointer, null, null, null);
+    }
+
+    /**
+     * Creates a CompiledGraph with per-run session context.
+     *
+     * @param pregel         the compiled Pregel engine (shared, statically compiled)
+     * @param checkpointer   checkpointer derived from the compile-argument session
+     * @param pregelGraph    the owning PregelGraph (for per-run vertex init)
+     * @param compileSession the session passed to {@code compile()} (per-run)
+     * @param compileOptions the options map passed to {@code compile()}
+     */
+    public CompiledGraph(Pregel pregel, GraphCheckpointer checkpointer,
+                         PregelGraph pregelGraph, BaseSession compileSession,
+                         Map<String, Object> compileOptions) {
         this.pregel = pregel;
         this.checkpointer = checkpointer;
+        this.pregelGraph = pregelGraph;
+        this.compileSession = compileSession;
+        this.compileOptions = compileOptions;
     }
 
     @Override
@@ -35,6 +56,12 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
         PregelConfig pregelConfig = normalizeConfig(config, session);
         Exception exception = null;
         Map<String, Object> result = null;
+
+        // Per-run vertex init: bind every vertex to the session of this
+        // invocation so nodes read/write the correct workflow state.
+        // Previously compile() did this once and stored the session on the
+        // shared PregelGraph, which a second compile would overwrite.
+        initVerticesForRun(session);
 
         try {
             if (isMain && checkpointer != null) {
@@ -61,6 +88,24 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
             throw ex;
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
+        }
+    }
+
+    /**
+     * Initialize vertices with the invocation session.
+     *
+     * <p>Falls back to the compile-argument session when the invocation
+     * session is not a VertexSession (e.g. null or a plain BaseSession),
+     * preserving backward compatibility for callers that pass session only
+     * at compile time.
+     */
+    private void initVerticesForRun(BaseSession session) {
+        if (pregelGraph == null) {
+            return;
+        }
+        BaseSession effectiveSession = session != null ? session : compileSession;
+        if (effectiveSession instanceof Vertex.VertexSession vertexSession) {
+            pregelGraph.initVertices(vertexSession, compileOptions);
         }
     }
 

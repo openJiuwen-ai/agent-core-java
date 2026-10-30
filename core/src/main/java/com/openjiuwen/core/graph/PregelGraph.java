@@ -42,7 +42,6 @@ public class PregelGraph extends Graph {
     private final Map<String, Map<String, Branch>> branches = new LinkedHashMap<>();
     private final Map<String, Set<String>> branchTargets = new LinkedHashMap<>();
     private CompiledGraph.GraphCheckpointer checkpointer;
-    private BaseSession session;
 
     @Override
     public PregelGraph startNode(String nodeId) {
@@ -142,14 +141,14 @@ public class PregelGraph extends Graph {
     @Override
     public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
         Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
-        if (session instanceof Vertex.VertexSession vertexSession) {
-            for (Vertex node : nodes.values()) {
-                node.init(vertexSession, options);
-            }
-        }
 
+        // afterStep captures the compile-argument session so each CompiledGraph
+        // commits to its own workflow state. The closure is only wired into the
+        // Pregel on first compilation; subsequent compiles reuse the existing
+        // Pregel and pass a per-run session to CompiledGraph, which performs
+        // per-run vertex init before invoking the engine.
         Consumer<PregelLoop> afterStep = loop -> {
-            if (this.session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
+            if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
                 CompiledGraph.WorkflowState state = runtimeSession.workflowState();
                 if (state != null) {
                     state.commit();
@@ -168,8 +167,7 @@ public class PregelGraph extends Graph {
             }
             pregel = compilePregel(graphStore, afterStep);
         }
-        this.session = session;
-        return new CompiledGraph(pregel, checkpointer);
+        return new CompiledGraph(pregel, checkpointer, this, session, options);
     }
 
     public Pregel compilePregel(Store graphStore, Consumer<PregelLoop> stepCallback) {
@@ -216,6 +214,22 @@ public class PregelGraph extends Graph {
     public void reset() {
         for (Vertex node : nodes.values()) {
             node.reset();
+        }
+    }
+
+    /**
+     * Initialize every vertex with the given per-run session.
+     *
+     * <p>Called by {@link CompiledGraph} before each invocation so vertices
+     * bind to the session of the current run rather than a stale session left
+     * by a previous compile on the shared graph.
+     *
+     * @param session per-run vertex session
+     * @param options compile options (may contain context)
+     */
+    void initVertices(Vertex.VertexSession session, Map<String, Object> options) {
+        for (Vertex node : nodes.values()) {
+            node.init(session, options);
         }
     }
 
