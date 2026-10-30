@@ -261,10 +261,11 @@ class ReActAgentModelRetryOutputTest {
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             assertThat(options.getRetryListener()).isNotNull();
             options.getRetryListener().onRetry(retryEvent);
-            return List.of(AssistantMessageChunk.builder()
+            AssistantMessageChunk chunk = AssistantMessageChunk.builder()
                     .content("ok")
                     .finishReason("stop")
-                    .build()).iterator();
+                    .build();
+            return List.of(chunk).iterator();
         }
     }
 

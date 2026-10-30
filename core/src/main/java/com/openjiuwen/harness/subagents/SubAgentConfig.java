@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.subagents;
 
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.SysOperation;
@@ -118,6 +119,9 @@ public class SubAgentConfig {
     @Builder.Default
     private boolean isRestrictToWorkDir = true;
 
+    /** Optional context engine bounds; when null the parent's config is inherited instead. */
+    private ContextEngineConfig contextEngineConfig;
+
     /**
      * setEnableTaskLoop.
      * 
@@ -174,7 +178,9 @@ public class SubAgentConfig {
                 .permissionHost(permissionHost)
                 .promptMode(promptMode).sysOperation(sysOperation)
                 .factoryKwargs(new LinkedHashMap<>(factoryKwargs)).workspacePath(workspacePath)
-                .isRestrictToWorkDir(isRestrictToWorkDir).build();
+                .isRestrictToWorkDir(isRestrictToWorkDir)
+                .contextEngineConfig(contextEngineConfig)
+                .build();
     }
 
     /**

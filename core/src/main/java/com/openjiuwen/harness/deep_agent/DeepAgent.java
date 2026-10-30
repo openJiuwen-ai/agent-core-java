@@ -349,6 +349,9 @@ public class DeepAgent implements AutoCloseable {
                 .configureMaxParallelToolCalls(this.config.getMaxParallelToolCalls())
                 .configureFailTaskOnToolError(this.config.isShouldFailTaskOnToolError());
         runtimeConfig.setEnableKvCacheAffinity(this.config.isEnableKvCacheAffinity());
+        if (this.config.getContextEngineConfig() != null) {
+            runtimeConfig.setContextEngineConfig(this.config.getContextEngineConfig());
+        }
         runtimeConfig.setStepCheckpointPolicy(this.config.getStepCheckpointPolicy());
         applyModelConfig(runtimeConfig, this.config.getModel());
         applyBackendConfig(runtimeConfig, this.config.getBackend());
@@ -2237,6 +2240,9 @@ public class DeepAgent implements AutoCloseable {
         }
         if (childConfig.getPromptMode() == null || childConfig.getPromptMode().isBlank()) {
             childConfig.setPromptMode(config.getPromptMode());
+        }
+        if (childConfig.getContextEngineConfig() == null) {
+            childConfig.setContextEngineConfig(config.getContextEngineConfig());
         }
         // A dynamically created subagent runs under its own conversation id,
         // but it remains part of the parent's KVC-affinity lifecycle (Python
