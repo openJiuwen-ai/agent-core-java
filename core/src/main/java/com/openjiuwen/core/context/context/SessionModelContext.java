@@ -1045,12 +1045,14 @@ public class SessionModelContext implements ModelContext {
         return rounds;
     }
 
-    private static int findLastNDialogueRound(List<BaseMessage> messages, int n) {
+    private static int findLastNDialogueRound(List<BaseMessage> messages, int roundLimit) {
         List<List<Integer>> rounds = findAllDialogueRound(messages);
-        if (rounds.isEmpty()) {
+
+        // Retain the history prefix unless the round limit actually requires trimming.
+        if (rounds.size() <= roundLimit) {
             return -1;
         }
-        return rounds.get(Math.min(n, rounds.size()) - 1).get(0);
+        return rounds.get(roundLimit - 1).get(0);
     }
 
     private static int findContiguousUserGroupStart(List<BaseMessage> messages, int userIndex) {

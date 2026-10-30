@@ -26,6 +26,7 @@ import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
+import com.openjiuwen.core.workflow.component.End;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -741,6 +742,13 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     }
 
     private void postStream(Iterator<Object> resultsIterator, ComponentAbility ability) throws Exception {
+        if (ability == ComponentAbility.STREAM && executable instanceof End end
+                && !end.hasResponseTemplate() && streamCalled()) {
+
+            // Plain End emits live fields before its batch trailer. Template End needs both sources concurrently.
+            waitForStreamDone();
+            WorkflowCancellation.check(session);
+        }
         boolean subGraph = session.subGraph();
         VertexActorManager actorManager = session.actorManager();
         Object outputSchema = nodeConfig.streamIoConfigs().outputsSchema();
@@ -1281,7 +1289,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     }
 
     private boolean isEndComponent() {
-        return executable instanceof com.openjiuwen.core.workflow.component.End;
+        return executable instanceof End;
     }
 
     private void emitEvent(String event, Map<String, Object> payload) {

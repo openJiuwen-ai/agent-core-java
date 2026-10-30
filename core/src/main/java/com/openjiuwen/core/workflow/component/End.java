@@ -96,6 +96,15 @@ public class End extends WorkflowComponent implements Vertex.MixConfigurable {
         return mix;
     }
 
+    /**
+     * Reports whether batch and stream inputs share a response template renderer.
+     *
+     * @return {@code true} when both input sources must be allowed to render concurrently
+     */
+    public boolean hasResponseTemplate() {
+        return template != null;
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     public Object invoke(Object inputs, BaseSession session, ModelContext context) {
