@@ -114,6 +114,7 @@ import java.math.RoundingMode;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -124,12 +125,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
@@ -162,6 +165,13 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static final String MODEL_CALL_TIMEOUT_LEASE_ID_KEY = "_model_call_timeout_lease_id";
     private static final String MODEL_CALL_IDLE_TIMEOUT_MS_KEY = "_model_call_idle_timeout_ms";
     private static final String MODEL_CALL_INVOCATION_OWNER_KEY = "_model_call_invocation_owner";
+
+    /** Extra key that marks a cancellation requested through the stream close hook. */
+    private static final String CANCEL_REQUESTED_KEY = "_cancel_requested";
+
+    /** Cancel flags for background streams, keyed weakly by session identity. */
+    private static final Map<Object, AtomicBoolean> CANCEL_FLAGS =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Stateless normalizer shared by all structured multimodal entry inputs. */
     private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
@@ -2278,6 +2288,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     Loggers.AGENT.info("ReAct iteration {}/{} started",
                             iterationNumber, ctx.getMaxIterations());
                     try {
+                        if (isCancelRequested(ctx)) {
+                            applyCancelledResult(ctx, session, invokeInputs);
+                            break;
+                        }
                         List<String> steering = ctx.drainSteering();
                         if (!steering.isEmpty()) {
                             context.addMessages(new UserMessage("[STEERING] " + String.join("\n", steering)))
@@ -2289,8 +2303,16 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                         try {
                             modelResult = callModel(ctx, context, tools);
                         } catch (RuntimeException exception) {
+                            if (isCancelRequested(ctx)) {
+                                applyCancelledResult(ctx, session, invokeInputs);
+                                break;
+                            }
                             ctx.finish(AgentTerminationReason.MODEL_ERROR);
                             throw exception;
+                        }
+                        if (isCancelRequested(ctx)) {
+                            applyCancelledResult(ctx, session, invokeInputs);
+                            break;
                         }
                         ForceFinishRequest finish = ctx.consumeForceFinish();
                         boolean hasForceFinishSignal = ctx.consumeForceFinishSignal();
@@ -2350,6 +2372,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                         List<AbilityManager.ExecutionResult> results = executeToolCall(
                                 ctx, toolCalls, session, context);
                         activateSkillsLoadedByToolCalls(toolCalls, results, session);
+                        if (isCancelRequested(ctx)) {
+                            applyCancelledResult(ctx, session, invokeInputs);
+                            break;
+                        }
                         if (completeToolExecutionTurn(
                                 ctx,
                                 context,
@@ -2418,6 +2444,32 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             }
             return result;
         } catch (RuntimeException exception) {
+            if (isCancelRequested(ctx)) {
+                Thread.interrupted();
+                contextEngine.saveContexts(session);
+                invokeInputs.setResult(cancelledInvokeResult());
+                if (ctx != null && ctx.getTerminationReason() == null) {
+                    ctx.finish(AgentTerminationReason.CANCELLED);
+                }
+                if (initializationComplete && ctx.getEvent() != AgentCallbackEvent.AFTER_INVOKE) {
+                    ctx.setInputs(invokeInputs);
+                    ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
+                }
+                if (initializationComplete && streaming) {
+                    try {
+                        Map<String, Object> cancelResult = cancelledInvokeResult();
+                        writeInvokeResultToStreamInternal(cancelResult, session, streamIndexRef(ctx));
+                        return cancelResult;
+                    } catch (RuntimeException streamingCancelFailure) {
+                        Loggers.AGENT.exception(
+                                "ReActAgent streaming cancel result write failed",
+                                streamingCancelFailure
+                        );
+                        throw streamingCancelFailure;
+                    }
+                }
+                return invokeInputs.getResult();
+            }
             if (ctx != null && ctx.getTerminationReason() == null) {
                 ctx.finish(AgentTerminationReason.ERROR);
             }
@@ -2769,15 +2821,82 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     private Iterator<Object> startBackgroundStream(Object inputs, AgentSessionApi session) {
         String streamThreadName = resolveStreamWorkerThreadName(inputs);
+        Object cancelKey = cancelFlagKey(session);
+        AtomicBoolean cancelFlag = new AtomicBoolean(false);
+        CANCEL_FLAGS.put(cancelKey, cancelFlag);
         Future<?> streamFuture;
         try {
             streamFuture = STREAM_EXECUTOR.submit(() -> runNamedStreamingInvoke(inputs, session, streamThreadName));
         } catch (RejectedExecutionException exception) {
+            CANCEL_FLAGS.remove(cancelKey);
             writeInvokeResultToStreamInternal(buildErrorResult(exception), session);
             closeStreamAndCommit(session);
             return session.streamIterator();
         }
-        return OperatorStream.wrap(session.streamIterator(), () -> streamFuture.cancel(true));
+        return OperatorStream.wrap(session.streamIterator(), () -> {
+            cancelFlag.set(true);
+            streamFuture.cancel(true);
+        });
+    }
+
+    /**
+     * Requests cancellation of the invocation running on the given session so the
+     * ReAct loop stops before the next model or tool call.
+     *
+     * <p>The cancel flag is registered when a background stream is started via
+     * {@link #stream(Object, AgentSessionApi, List)} for sessions that run in
+     * the background. Calling this method before the stream has been started is
+     * a no-op because no flag has been registered yet.</p>
+     *
+     * @param session invocation session carrying the cancel flag; must be a
+     *                session whose background stream is already in flight
+     */
+    public static void requestCancel(AgentSessionApi session) {
+        if (session == null) {
+            return;
+        }
+        AtomicBoolean flag = CANCEL_FLAGS.get(cancelFlagKey(session));
+        if (flag != null) {
+            flag.set(true);
+        }
+    }
+
+    private static Object cancelFlagKey(AgentSessionApi session) {
+        return session == null ? Object.class : session;
+    }
+
+    private static boolean isCancelRequested(AgentCallbackContext ctx) {
+        if (ctx == null) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(ctx.getExtra().get(CANCEL_REQUESTED_KEY))) {
+            return true;
+        }
+        AgentSessionApi session = ctx.getSession();
+        AtomicBoolean flag = session == null ? null : CANCEL_FLAGS.get(cancelFlagKey(session));
+        return flag != null && flag.get();
+    }
+
+    private static void markCancelled(AgentCallbackContext ctx) {
+        if (ctx != null) {
+            ctx.getExtra().put(CANCEL_REQUESTED_KEY, Boolean.TRUE);
+        }
+    }
+
+    private static Map<String, Object> cancelledInvokeResult() {
+        return new LinkedHashMap<>(Map.of(
+                "output", "Cancelled by user",
+                "result_type", "cancelled"
+        ));
+    }
+
+    private void applyCancelledResult(AgentCallbackContext ctx, AgentSessionApi session,
+                                      InvokeInputs invokeInputs) {
+        Thread.interrupted();
+        markCancelled(ctx);
+        contextEngine.saveContexts(session);
+        invokeInputs.setResult(cancelledInvokeResult());
+        ctx.finish(AgentTerminationReason.CANCELLED);
     }
 
     private void runNamedStreamingInvoke(Object inputs, AgentSessionApi session, String streamThreadName) {
@@ -2788,6 +2907,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             runStreamingInvoke(inputs, session, false);
         } finally {
             worker.setName(previousName);
+            CANCEL_FLAGS.remove(cancelFlagKey(session));
         }
     }
 
