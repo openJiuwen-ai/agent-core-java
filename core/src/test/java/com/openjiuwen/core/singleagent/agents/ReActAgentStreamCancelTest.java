@@ -15,9 +15,11 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +34,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Verifies that closing the stream iterator during tool execution stops the
- * agent instead of feeding the cancelled tool message back into the model.
+ * agent instead of feeding the cancelled tool message back into the model,
+ * and that the cancelled result carries the correct result_type and does not
+ * poison the session for subsequent invocations.
  */
 class ReActAgentStreamCancelTest {
 
@@ -141,7 +145,12 @@ class ReActAgentStreamCancelTest {
         agent.getAbilityManager().add(List.of(tool.getCard()));
     }
 
-    private static int cancelDuringTool(boolean parallelSafe) throws Exception {
+    /**
+     * Runs a streaming invocation, cancels by closing the iterator during tool
+     * execution, then drains remaining stream chunks and returns the collected
+     * result along with the model call count.
+     */
+    private static CancelResult cancelDuringTool(boolean parallelSafe) throws Exception {
         String toolName = "slow_tool_" + parallelSafe + "_" + UUID.randomUUID();
         CountingClient client = new CountingClient(toolName);
         ReActAgent agent = newAgent("cancel_agent_" + UUID.randomUUID(), client);
@@ -155,15 +164,18 @@ class ReActAgentStreamCancelTest {
         session.preRun(Map.of("inputs", inputs));
 
         Iterator<Object> iterator = agent.stream(inputs, session, List.of());
-        // Wait until the first model response was produced, so the tool is
-        // running when the stream is closed.
         assertThat(client.firstCallDone.await(10, TimeUnit.SECONDS)).isTrue();
         Thread.sleep(300);
         if (iterator instanceof AutoCloseable closeable) {
             closeable.close();
         }
         Thread.sleep(SETTLE_MS);
-        return client.calls.get();
+
+        List<Object> drained = new ArrayList<>();
+        while (iterator.hasNext()) {
+            drained.add(iterator.next());
+        }
+        return new CancelResult(client.calls.get(), drained, session);
     }
 
     /**
@@ -172,9 +184,9 @@ class ReActAgentStreamCancelTest {
      */
     @Test
     void streamCloseDuringParallelSafeToolStopsModelCalls() throws Exception {
-        int calls = cancelDuringTool(true);
-        assertThat(calls)
-                .as("parallelSafe=true: LLM calls after cancel (1 = stopped, 2 = kept running) = %s", calls)
+        CancelResult result = cancelDuringTool(true);
+        assertThat(result.modelCalls)
+                .as("parallelSafe=true: LLM calls after cancel (1 = stopped, 2 = kept running) = %s", result.modelCalls)
                 .isEqualTo(1);
     }
 
@@ -183,9 +195,81 @@ class ReActAgentStreamCancelTest {
      */
     @Test
     void streamCloseDuringSerialToolStopsModelCalls() throws Exception {
-        int calls = cancelDuringTool(false);
-        assertThat(calls)
-                .as("parallelSafe=false: LLM calls after cancel (1 = stopped, 2 = kept running) = %s", calls)
+        CancelResult result = cancelDuringTool(false);
+        assertThat(result.modelCalls)
+                .as("parallelSafe=false: LLM calls after cancel (1 = stopped, 2 = kept running) = %s", result.modelCalls)
                 .isEqualTo(1);
+    }
+
+    /**
+     * The final streamed chunk after cancellation must carry
+     * result_type=cancelled, not result_type=error.
+     */
+    @Test
+    void streamCancelProducesCancelledResultType() throws Exception {
+        CancelResult result = cancelDuringTool(true);
+        String lastResultType = result.lastResultType();
+        assertThat(lastResultType)
+                .as("result_type after cancel (expected 'cancelled', got '%s')", lastResultType)
+                .isEqualTo("cancelled");
+    }
+
+    /**
+     * After a cancelled invocation, the same session must be reusable: a new
+     * stream() call must not be permanently poisoned by the previous cancel flag.
+     */
+    @Test
+    void sessionReusableAfterCancel() throws Exception {
+        String toolName = "reuse_tool_" + UUID.randomUUID();
+        CountingClient client = new CountingClient(toolName);
+        ReActAgent agent = newAgent("reuse_agent_" + UUID.randomUUID(), client);
+        registerTool(agent, slowTool(toolName, true));
+
+        Map<String, Object> inputs1 = Map.of(
+                "query", "go",
+                "conversation_id", "reuse-cancel-" + UUID.randomUUID());
+        AgentSession session = AgentSession.createAgentSession(
+                String.valueOf(inputs1.get("conversation_id")), null, agent.getCard());
+        session.preRun(Map.of("inputs", inputs1));
+
+        Iterator<Object> iterator1 = agent.stream(inputs1, session, List.of());
+        assertThat(client.firstCallDone.await(10, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(300);
+        if (iterator1 instanceof AutoCloseable closeable) {
+            closeable.close();
+        }
+        Thread.sleep(SETTLE_MS);
+        int callsAfterFirstCancel = client.calls.get();
+        assertThat(callsAfterFirstCancel).isEqualTo(1);
+
+        // Second invocation on the same session must not be poisoned.
+        CountingClient client2 = new CountingClient(toolName);
+        agent.setLlm(new Model(client2));
+        Map<String, Object> inputs2 = Map.of(
+                "query", "again",
+                "conversation_id", inputs1.get("conversation_id"));
+        Iterator<Object> iterator2 = agent.stream(inputs2, session, List.of());
+        Thread.sleep(SETTLE_MS);
+        assertThat(client2.calls.get())
+                .as("session must not be poisoned: second invocation should call the model at least once")
+                .isGreaterThanOrEqualTo(1);
+    }
+
+    private record CancelResult(int modelCalls, List<Object> drainedChunks, AgentSession session) {
+        String lastResultType() {
+            for (int i = drainedChunks.size() - 1; i >= 0; i--) {
+                Object chunk = drainedChunks.get(i);
+                if (chunk instanceof OutputSchema outputSchema) {
+                    Object payload = outputSchema.getPayload();
+                    if (payload instanceof Map<?, ?> map) {
+                        Object rt = map.get("result_type");
+                        if (rt != null) {
+                            return String.valueOf(rt);
+                        }
+                    }
+                }
+            }
+            return null;
+        }
     }
 }

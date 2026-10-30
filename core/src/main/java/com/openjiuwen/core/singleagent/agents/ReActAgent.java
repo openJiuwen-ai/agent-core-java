@@ -2298,6 +2298,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                             ctx.finish(AgentTerminationReason.MODEL_ERROR);
                             throw exception;
                         }
+                        if (isCancelRequested(ctx)) {
+                            applyCancelledResult(ctx, session, invokeInputs);
+                            break;
+                        }
                         ForceFinishRequest finish = ctx.consumeForceFinish();
                         boolean hasForceFinishSignal = ctx.consumeForceFinishSignal();
                         if (finish != null || hasForceFinishSignal) {
@@ -2428,6 +2432,32 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             }
             return result;
         } catch (RuntimeException exception) {
+            if (isCancelRequested(ctx)) {
+                Thread.interrupted();
+                contextEngine.saveContexts(session);
+                invokeInputs.setResult(cancelledInvokeResult());
+                if (ctx != null && ctx.getTerminationReason() == null) {
+                    ctx.finish(AgentTerminationReason.CANCELLED);
+                }
+                if (initializationComplete && ctx.getEvent() != AgentCallbackEvent.AFTER_INVOKE) {
+                    ctx.setInputs(invokeInputs);
+                    ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
+                }
+                if (initializationComplete && streaming) {
+                    try {
+                        Map<String, Object> cancelResult = cancelledInvokeResult();
+                        writeInvokeResultToStreamInternal(cancelResult, session, streamIndexRef(ctx));
+                        return cancelResult;
+                    } catch (RuntimeException streamingCancelFailure) {
+                        Loggers.AGENT.exception(
+                                "ReActAgent streaming cancel result write failed",
+                                streamingCancelFailure
+                        );
+                        throw streamingCancelFailure;
+                    }
+                }
+                return invokeInputs.getResult();
+            }
             if (ctx != null && ctx.getTerminationReason() == null) {
                 ctx.finish(AgentTerminationReason.ERROR);
             }
@@ -2780,7 +2810,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private Iterator<Object> startBackgroundStream(Object inputs, AgentSessionApi session) {
         String streamThreadName = resolveStreamWorkerThreadName(inputs);
         Object cancelKey = cancelFlagKey(session);
-        AtomicBoolean cancelFlag = CANCEL_FLAGS.computeIfAbsent(cancelKey, key -> new AtomicBoolean(false));
+        AtomicBoolean cancelFlag = new AtomicBoolean(false);
+        CANCEL_FLAGS.put(cancelKey, cancelFlag);
         Future<?> streamFuture;
         try {
             streamFuture = STREAM_EXECUTOR.submit(() -> runNamedStreamingInvoke(inputs, session, streamThreadName));
@@ -2800,7 +2831,13 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
      * Requests cancellation of the invocation running on the given session so the
      * ReAct loop stops before the next model or tool call.
      *
-     * @param session invocation session carrying the cancel flag
+     * <p>The cancel flag is registered when a background stream is started via
+     * {@link #stream(Object, AgentSessionApi, List)} for sessions that run in
+     * the background. Calling this method before the stream has been started is
+     * a no-op because no flag has been registered yet.</p>
+     *
+     * @param session invocation session carrying the cancel flag; must be a
+     *                session whose background stream is already in flight
      */
     public static void requestCancel(AgentSessionApi session) {
         if (session == null) {
@@ -2858,6 +2895,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             runStreamingInvoke(inputs, session, false);
         } finally {
             worker.setName(previousName);
+            CANCEL_FLAGS.remove(cancelFlagKey(session));
         }
     }
 
