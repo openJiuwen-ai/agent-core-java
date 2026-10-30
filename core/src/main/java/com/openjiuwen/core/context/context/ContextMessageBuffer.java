@@ -114,19 +114,19 @@ public class ContextMessageBuffer {
         if (contextMessages.size() <= maxBufferSize * 2) {
             return;
         }
-        contextMessages = new ArrayList<>(contextMessages.subList(maxBufferSize, contextMessages.size()));
-        if (historyMessagesSize == 0 || maxBufferSize > historyMessagesSize) {
+        // Drop at least the oldest maxBufferSize messages; skip further if the cut
+        // would leave orphan ToolMessages at the head of the retained buffer.
+        int cut = ContextUtils.skipLeadingOrphanToolMessages(contextMessages, maxBufferSize);
+        int dropped = cut;
+        contextMessages = new ArrayList<>(contextMessages.subList(cut, contextMessages.size()));
+        if (historyMessagesSize == 0 || dropped >= historyMessagesSize) {
             historyMessagesSize = 0;
             return;
         }
-        historyMessagesSize -= maxBufferSize;
+        historyMessagesSize -= dropped;
     }
 
     private static List<BaseMessage> tail(List<BaseMessage> messages, int size) {
-        if (size <= 0) {
-            return new ArrayList<>();
-        }
-        int start = Math.max(0, messages.size() - size);
-        return new ArrayList<>(messages.subList(start, messages.size()));
+        return ContextUtils.alignedTail(messages, size);
     }
 }
