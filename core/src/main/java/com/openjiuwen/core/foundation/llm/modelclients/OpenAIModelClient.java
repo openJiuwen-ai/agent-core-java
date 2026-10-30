@@ -2139,6 +2139,7 @@ public class OpenAIModelClient extends BaseModelClient
         private String pendingToolCallFinishReason = "null";
         private boolean isFirstSegmentReceived;
         private boolean closed;
+        private boolean isTerminated;
 
         private boolean isEffectiveFirstSegmentReceived;
 
@@ -2194,6 +2195,7 @@ public class OpenAIModelClient extends BaseModelClient
                         return finalToolCallChunk();
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(parseJsonObject(data), toolCallStates);
+                    markTerminatedIfFinished(chunk);
                     if (chunk == null) {
                         continue;
                     }
@@ -2206,27 +2208,65 @@ public class OpenAIModelClient extends BaseModelClient
                     isEffectiveFirstSegmentReceived = true;
                     return parsedChunk;
                 }
-                close();
-                return finalToolCallChunk();
+                return finishOrFailEarly();
             } catch (IOException | IllegalStateException | IllegalArgumentException | ClassCastException
                     | IndexOutOfBoundsException exception) {
                 close();
-                if (exception instanceof IOException ioException) {
-                    throwIfIdleTimeout(ioException);
+                throwIfCancellation(exception);
+                if (exception instanceof IOException ioException
+                        && isNormalEndAfterTermination(ioException)) {
+                    return finalToolCallChunk();
                 }
-                if (exception instanceof InterruptedIOException
-                        && !(exception instanceof SocketTimeoutException)) {
-                    // SocketTimeoutException is a read timeout, not a cancellation.
-                    throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
-                }
-                String detail = errorDetail(exception);
-                Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
-                throw classifiedStreamFailure(exception);
+                throw classifiedFailure(exception);
             } finally {
                 if (!shouldKeepOpen) {
                     close();
                 }
             }
+        }
+
+        private boolean isNormalEndAfterTermination(IOException exception) {
+            if (isTerminated) {
+                // The SSE content already ended with a terminal finish_reason or [DONE];
+                // a body read that fails after that point — for example a chunked body
+                // closed without its terminating 0-chunk — is a normal end of stream.
+                return true;
+            }
+            throwIfIdleTimeout(exception);
+            return false;
+        }
+
+        private void markTerminatedIfFinished(AssistantMessageChunk chunk) {
+            if (chunk != null && !"null".equals(chunk.getFinishReason())) {
+                // A terminal finish_reason ends the SSE content even when the
+                // server omits the [DONE] frame.
+                isTerminated = true;
+            }
+        }
+
+        private AssistantMessageChunk finishOrFailEarly() throws IOException {
+            close();
+            if (!isTerminated) {
+                // The body ended without [DONE] or a terminal finish_reason. Report
+                // the truncation through the catch machinery below instead of
+                // returning partial content as success.
+                throw new IOException("premature eof: stream ended without termination marker");
+            }
+            return finalToolCallChunk();
+        }
+
+        private void throwIfCancellation(Exception exception) {
+            if (exception instanceof InterruptedIOException
+                    && !(exception instanceof SocketTimeoutException)) {
+                // SocketTimeoutException is a read timeout, not a cancellation.
+                throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
+            }
+        }
+
+        private BaseError classifiedFailure(Exception exception) {
+            String detail = errorDetail(exception);
+            Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
+            return classifiedStreamFailure(exception);
         }
 
         private void throwIfIdleTimeout(IOException exception) {

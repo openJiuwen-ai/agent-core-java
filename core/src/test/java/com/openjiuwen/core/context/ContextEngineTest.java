@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 /**
@@ -259,6 +260,175 @@ class ContextEngineTest {
         }
         assertThat(secondOffloader).isNotSameAs(firstOffloader);
         assertThat(secondOffloader.getOffloadService()).isSameAs(service);
+    }
+
+    @Test
+    void isContextOverflowErrorDetectsProviderAndBailianMessages() {
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("This model's maximum context length is 1048576 tokens."))).isTrue();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("Range of input length should be [1, 1000000]"))).isTrue();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("输入长度超过限制"))).isTrue();
+
+        RuntimeException wrapped = new RuntimeException("model call failed",
+                new RuntimeException("maximum context length is 8192"));
+        assertThat(ContextEngine.isContextOverflowError(wrapped)).isTrue();
+
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("insufficient_quota: billing limit reached"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("maximum output tokens exceeded"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("network timeout"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("context deadline exceeded"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("StatusRuntimeException: DEADLINE_EXCEEDED: context deadline exceeded")))
+                .isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("TimeoutException: context deadline exceeded"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(null)).isFalse();
+    }
+
+    @Test
+    void isContextOverflowErrorHonorsExtraKeywordsFromArgument() {
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("custom_vendor_overflow_signal"), List.of())).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("custom_vendor_overflow_signal"),
+                List.of("custom_vendor_overflow_signal"))).isTrue();
+    }
+
+    @Test
+    void recoverFromModelExceptionCompressesContextOnce() {
+        RecordingCompactProcessor.resetForceInvokeCount();
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover");
+        ModelContext context = engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context that must shrink")),
+                null);
+        int beforeFootprint = ContextEngine.estimateContextFootprint(context.getMessages(null, true));
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isTrue();
+        assertThat(RecordingCompactProcessor.forceInvokeCount()).isEqualTo(1);
+        assertThat(contents(context.getMessages(null, true)))
+                .containsExactly("recorded by test processor");
+        assertThat(ContextEngine.estimateContextFootprint(context.getMessages(null, true)))
+                .isLessThan(beforeFootprint);
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenProcessorEventDoesNotShrinkContext() {
+        ContextEngine.registerProcessor("T00919NonShrinkingCompactProcessor",
+                NonShrinkingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-nonshrink");
+        ModelContext context = engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919NonShrinkingCompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context")),
+                null);
+        List<String> beforeContents = contents(context.getMessages(null, true));
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isFalse();
+        assertThat(contents(context.getMessages(null, true))).isEqualTo(beforeContents);
+    }
+
+    @Test
+    void recoverFromModelExceptionSkipsPartialStream() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-stream");
+        ModelContext context = engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context")),
+                null);
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                true,
+                1,
+                null);
+
+        assertThat(recovered).isFalse();
+        assertThat(context.getMessages(null, true).get(0).getContentAsString())
+                .isEqualTo("large historical context");
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenCompressionNoop() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-noop");
+        engine.createContext("ctx", session, null, List.of(new UserMessage("keep")), null);
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isFalse();
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenContextMissing() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-missing");
+
+        boolean recovered = engine.recoverFromModelException(
+                "missing-ctx",
+                session,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                null);
+
+        assertThat(recovered).isFalse();
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenCompressThrowsUnexpectedRuntimeException() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-throw");
+        engine.createContext("ctx", session, null, List.of(new UserMessage("large historical context")), null);
+
+        // Session identity lookup throws a RuntimeException outside the prior typed catch list
+        // (e.g. NPE); recovery must return false instead of propagating it.
+        ContextEngine.SessionPort explodingSession = () -> {
+            throw new NullPointerException("session exploded during recover");
+        };
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                explodingSession,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                null);
+
+        assertThat(recovered).isFalse();
     }
 
     @Test
@@ -697,10 +867,19 @@ class ContextEngineTest {
      * {@code openjiuwen/core/context_engine/context_engine.py}.</p>
      */
     private static final class RecordingCompactProcessor implements SessionModelContext.ContextProcessorPort {
+        private static final AtomicInteger FORCE_INVOKE_COUNT = new AtomicInteger();
         private final Object config;
 
         private RecordingCompactProcessor(Object config) {
             this.config = config;
+        }
+
+        private static void resetForceInvokeCount() {
+            FORCE_INVOKE_COUNT.set(0);
+        }
+
+        private static int forceInvokeCount() {
+            return FORCE_INVOKE_COUNT.get();
         }
 
         @Override
@@ -713,9 +892,47 @@ class ContextEngineTest {
                                                                                 List<BaseMessage> messages,
                                                                                 boolean force,
                                                                                 Map<String, Object> kwargs) {
+            if (force) {
+                FORCE_INVOKE_COUNT.incrementAndGet();
+                context.setMessages(List.of(new UserMessage("recorded by test processor")), true);
+                return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                        new RecordingEvent(config),
+                        List.of(),
+                        null
+                ));
+            }
             return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
-                    new RecordingEvent(config),
+                    null,
                     messages,
+                    null
+            ));
+        }
+    }
+
+    /**
+     * Emits a compression event without reducing context footprint.
+     */
+    private static final class NonShrinkingCompactProcessor implements SessionModelContext.ContextProcessorPort {
+        private NonShrinkingCompactProcessor(Object config) {
+        }
+
+        @Override
+        public String processorType() {
+            return "T00919NonShrinkingCompactProcessor";
+        }
+
+        @Override
+        public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
+                                                                                List<BaseMessage> messages,
+                                                                                boolean force,
+                                                                                Map<String, Object> kwargs) {
+            if (force) {
+                // Same-size rewrite: event present but footprint does not shrink.
+                context.setMessages(List.of(new UserMessage("large historical context")), true);
+            }
+            return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                    new RecordingEvent("non-shrink"),
+                    force ? List.of() : messages,
                     null
             ));
         }

@@ -175,6 +175,27 @@ class RuleBasedModelErrorClassifierTest {
     }
 
     @Test
+    void classify_bodyReaderClosedMarker_temporaryRetryable() {
+        // Given a body reader closed mid-stream (an abrupt peer cut on a chunked body
+        // surfaces as a plain IOException with message "closed"), When classified,
+        // Then it is temporary and retryable
+        ModelCallClassification result = classifier.classify(
+            ModelErrorFacts.ofThrowable(new IOException("closed"), true));
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
+        assertThat(result.isRetryable()).isTrue();
+    }
+
+    @Test
+    void classify_chunkedBodyCutMarker_temporaryRetryable() {
+        // Given a chunked body cut off mid-stream, When classified, Then it is
+        // temporary and retryable (the JDK reports the state as a plain IOException)
+        ModelCallClassification result = classifier.classify(ModelErrorFacts.ofThrowable(
+            new IOException("chunked transfer encoding, state: READING_LENGTH"), true));
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
+        assertThat(result.isRetryable()).isTrue();
+    }
+
+    @Test
     void classify_truncationMarkerInside4xxBody_staysPermanent() {
         // Given a 400 whose server-written body echoes a truncation marker, When
         // classified, Then the permanent-4xx rule still wins over the keyword rule

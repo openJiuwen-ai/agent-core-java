@@ -50,6 +50,30 @@ import java.util.concurrent.atomic.AtomicReference;
  * @since 2026-10-30
  */
 class VertexEndOutputOrderTest {
+    @Test
+    void batchWaitsForScheduledStreamBeforeReadingItsCompletion() throws Exception {
+        try (Fixture fixture = new Fixture(null, List.of(6), 0)) {
+            CountDownLatch checkingStartup = new CountDownLatch(1);
+            CountDownLatch streamReady = new CountDownLatch(1);
+            doAnswer(invocation -> {
+                checkingStartup.countDown();
+                assertTrue(streamReady.await(5, TimeUnit.SECONDS));
+                return null;
+            }).when(fixture.manager).awaitStreamReady("end");
+            Future<Void> batch = fixture.startBatch();
+            assertTrue(checkingStartup.await(5, TimeUnit.SECONDS));
+            assertThat(fixture.vertex.streamCallCount()).isZero();
+            assertThat(fixture.frames).isEmpty();
+            fixture.startStream();
+            streamReady.countDown();
+            fixture.releaseSource.countDown();
+            fixture.finish(batch);
+            assertThat(fixture.nextPayload()).isEqualTo(Map.of("output", Map.of("result", 6)));
+            assertThat(fixture.nextPayload()).isEqualTo(trailer());
+            assertThat(fixture.frames).isEmpty();
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {0, 1})
     void batchTrailerWaitsForStreamWithoutBufferingLiveFrames(int pauseAt) throws Exception {
@@ -160,6 +184,30 @@ class VertexEndOutputOrderTest {
         }
     }
 
+    @Test
+    void preparedTemplateLiteralIsEmittedBeforeTheFollowingBatchValue() throws Exception {
+        EndConfig config = new EndConfig("value={{result}}; final={{final_result}}");
+        try (Fixture fixture = new Fixture(config, List.of(6, 9), 0)) {
+            fixture.pauseTemplateLiteral = true;
+            fixture.releaseSource.countDown();
+            fixture.startStream();
+            Future<Void> batch = fixture.startBatch();
+            assertTrue(fixture.templateLiteralPrepared.await(5, TimeUnit.SECONDS));
+            StringBuilder rendered = new StringBuilder();
+            for (int index = 0; index < 3; index++) {
+                rendered.append(((Map<?, ?>) fixture.nextPayload()).get("response"));
+            }
+            assertThat(rendered.toString()).isEqualTo("value=69");
+            assertThat(fixture.frames.poll(200, TimeUnit.MILLISECONDS)).isNull();
+            fixture.releaseTemplateLiteral.countDown();
+            fixture.finish(batch);
+            while (!fixture.frames.isEmpty()) {
+                rendered.append(((Map<?, ?>) fixture.nextPayload()).get("response"));
+            }
+            assertThat(rendered.toString()).isEqualTo("value=69; final=done");
+        }
+    }
+
     private static Map<String, Object> trailer() {
         return Map.of("output", Collections.singletonMap("final_result", null));
     }
@@ -168,13 +216,17 @@ class VertexEndOutputOrderTest {
         private final CountDownLatch sourceWaiting = new CountDownLatch(1);
         private final CountDownLatch releaseSource = new CountDownLatch(1);
         private final CountDownLatch batchEntered = new CountDownLatch(1);
+        private final CountDownLatch templateLiteralPrepared = new CountDownLatch(1);
+        private final CountDownLatch releaseTemplateLiteral = new CountDownLatch(1);
         private final BlockingQueue<Object> frames = new ArrayBlockingQueue<>(16);
         private final AtomicReference<Exception> streamError = new AtomicReference<>();
         private final WorkflowCancellation cancellation = new WorkflowCancellation();
+        private final Vertex.VertexActorManager manager = mock(Vertex.VertexActorManager.class);
         private final ThreadPoolExecutor executor;
         private final Vertex vertex;
         private Future<?> stream;
         private IllegalStateException sourceFailure;
+        private boolean pauseTemplateLiteral;
 
         private Fixture(EndConfig config, List<Integer> values, int pauseAt) throws Exception {
             AtomicInteger threadId = new AtomicInteger();
@@ -186,12 +238,16 @@ class VertexEndOutputOrderTest {
                 public Iterator<Object> onStream(Object inputs, BaseSession session, Object... kwargs) {
                     Iterator<Object> output = super.onStream(inputs, session, kwargs);
                     batchEntered.countDown();
-                    return output;
+                    return templateIterator(output, true);
+                }
+
+                @Override
+                public Iterator<Object> onTransform(Object inputs, BaseSession session, Object... kwargs) {
+                    return templateIterator(super.onTransform(inputs, session, kwargs), false);
                 }
             };
             Vertex.VertexSession session = mock(Vertex.VertexSession.class);
             Vertex.VertexState state = mock(Vertex.VertexState.class);
-            Vertex.VertexActorManager manager = mock(Vertex.VertexActorManager.class);
             StreamEmitter emitter = mock(StreamEmitter.class);
             when(session.nodeSession("end")).thenReturn(session);
             when(session.state()).thenReturn(state);
@@ -247,12 +303,40 @@ class VertexEndOutputOrderTest {
         }
 
         private void awaitSource() {
+            awaitRelease(releaseSource);
+        }
+
+        private void awaitRelease(CountDownLatch release) {
             try {
-                assertTrue(releaseSource.await(5, TimeUnit.SECONDS));
+                assertTrue(release.await(5, TimeUnit.SECONDS));
             } catch (InterruptedException exception) {
                 InterruptSignals.restoreCurrentThread();
                 throw new IllegalStateException("End source interrupted", exception);
             }
+        }
+
+        private Iterator<Object> templateIterator(Iterator<Object> output, boolean batch) {
+            return new Iterator<>() {
+                @Override
+                public boolean hasNext() {
+                    if (pauseTemplateLiteral && batch) {
+                        awaitRelease(templateLiteralPrepared);
+                    }
+                    return output.hasNext();
+                }
+
+                @Override
+                public Object next() {
+                    Object frame = output.next();
+                    if (pauseTemplateLiteral && !batch && frame instanceof OutputSchema schema
+                            && schema.getPayload() instanceof Map<?, ?> payload
+                            && "; final=".equals(payload.get("response"))) {
+                        templateLiteralPrepared.countDown();
+                        awaitRelease(releaseTemplateLiteral);
+                    }
+                    return frame;
+                }
+            };
         }
 
         private void startStream() throws InterruptedException {
@@ -282,6 +366,8 @@ class VertexEndOutputOrderTest {
         @Override
         public void close() throws InterruptedException {
             releaseSource.countDown();
+            templateLiteralPrepared.countDown();
+            releaseTemplateLiteral.countDown();
             executor.shutdownNow();
             assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
         }

@@ -403,7 +403,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 List<String> evoFiles = filePaths(evoResult.getStdout());
                 LOGGER.info("  Found {} evolutions.json files", evoFiles.size());
                 for (String evoFile : evoFiles) {
-                    String skillName = Path.of(evoFile).getParent().getFileName().toString();
+                    String skillName = remoteParentName(evoFile);
                     ExecResult readResult = awaitResult(env.exec(List.of("cat", "--", evoFile), 30, null, null));
                     if (readResult.isSuccess()) {
                         evolutionContents.put(skillName, readResult.getStdout());
@@ -421,7 +421,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 for (String evoJsonFile : evoJsonFiles) {
                     ExecResult readResult = awaitResult(env.exec(List.of("cat", "--", evoJsonFile), 30, null, null));
                     if (readResult.isSuccess()) {
-                        String filename = Path.of(evoJsonFile).getFileName().toString();
+                        String filename = remoteFileName(evoJsonFile);
                         capturedEvolutionJson.put(filename, readResult.getStdout());
                         LOGGER.info("  Captured {}: {} chars", evoJsonFile, readResult.getStdout().length());
                     }
@@ -434,9 +434,9 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 List<String> evoMdFiles = filePaths(evoMdResult.getStdout());
                 LOGGER.info("  Found {} evolution/*.md files", evoMdFiles.size());
                 for (String mdFile : evoMdFiles) {
-                    Path mdPath = Path.of(mdFile);
-                    String skillName = mdPath.getParent().getParent().getFileName().toString();
-                    String filename = mdPath.getFileName().toString();
+                    // .../skills/<skill>/evolution/<file.md>
+                    String skillName = remoteParentName(remoteParentPath(mdFile));
+                    String filename = remoteFileName(mdFile);
                     ExecResult readResult = awaitResult(env.exec(List.of("cat", "--", mdFile), 30, null, null));
                     if (readResult.isSuccess()) {
                         capturedEvolutionFiles.computeIfAbsent(skillName, ignored -> new LinkedHashMap<>())
@@ -457,7 +457,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
 
             Map<String, String> createdSkills = new LinkedHashMap<>();
             for (String skillFile : filePaths(skillResult.getStdout())) {
-                String skillName = Path.of(skillFile).getParent().getFileName().toString();
+                String skillName = remoteParentName(skillFile);
                 ExecResult readResult = awaitResult(env.exec(List.of("cat", "--", skillFile), 30, null, null));
                 if (readResult.isSuccess()) {
                     createdSkills.put(skillName, readResult.getStdout());
@@ -1085,7 +1085,7 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
                 "/app/logs/run/jiuwen.jsonl")) {
             ExecResult result = awaitResult(tailLog(env, ojPath));
             if (result.isSuccess() && !result.getStdout().isBlank()) {
-                String ojName = Path.of(ojPath).getFileName().toString();
+                String ojName = remoteFileName(ojPath);
                 llmLogsFound.put("llm_" + ojName, result.getStdout());
                 LOGGER.info("  Found LLM log from {} as llm_{} ({} chars)", ojPath, ojName, result.getStdout().length());
                 break;
@@ -1188,6 +1188,66 @@ public class JiuWenSwarmAgent extends BaseAgentAdapter {
         return FILE_PATH_SEPARATOR.splitAsStream(text)
                 .filter(line -> !line.isEmpty())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Parses container/remote POSIX paths without {@link Path}.
+     *
+     * <p>Host {@code Path.of} rejects characters that are legal inside a Linux
+     * container (notably embedded newlines on Windows).</p>
+     *
+     * @param remotePath absolute or relative remote path; may be {@code null}
+     * @return final path segment, or empty string
+     */
+    static String remoteFileName(String remotePath) {
+        String normalized = stripTrailingSlashes(remotePath);
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        int slash = normalized.lastIndexOf('/');
+        return slash >= 0 ? normalized.substring(slash + 1) : normalized;
+    }
+
+    /**
+     * Returns the parent directory path of a remote POSIX path.
+     *
+     * @param remotePath absolute or relative remote path; may be {@code null}
+     * @return parent path, or empty string when none
+     */
+    static String remoteParentPath(String remotePath) {
+        String normalized = stripTrailingSlashes(remotePath);
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        int slash = normalized.lastIndexOf('/');
+        if (slash < 0) {
+            return "";
+        }
+        if (slash == 0) {
+            return "/";
+        }
+        return normalized.substring(0, slash);
+    }
+
+    /**
+     * Returns the file name of the parent directory for a remote POSIX path.
+     *
+     * @param remotePath absolute or relative remote path; may be {@code null}
+     * @return parent directory name, or empty string
+     */
+    static String remoteParentName(String remotePath) {
+        return remoteFileName(remoteParentPath(remotePath));
+    }
+
+    private static String stripTrailingSlashes(String remotePath) {
+        if (remotePath == null || remotePath.isEmpty()) {
+            return "";
+        }
+        String normalized = remotePath;
+        while (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private static List<Map<String, Object>> castMessageList(Object value) {

@@ -14,6 +14,8 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -271,6 +273,27 @@ class OpenAIModelClientTest {
             assertThat(String.valueOf(typed.getParams().get("error_msg")))
                     .contains("HTTP 429", "safe stream failure", "[REDACTED]")
                     .doesNotContain("sk-stream-secret");
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void streamEndingWithoutTerminationFrameIsRetryableTruncation() throws Exception {
+        // Given a length-delimited SSE body that stops after a content frame, with no
+        // terminal finish_reason and no [DONE]
+        String sse = "data: " + json(Map.of("choices", List.of(Map.of(
+                "delta", Map.of("content", "partial"))))) + "\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, sse, "text/event-stream"))) {
+            Throwable error = catchThrowable(() -> iteratorToList(client(server.baseUrl(), 0, Map.of())
+                    .stream(List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())));
+
+            // Then the truncation is a retryable temporary failure, not a silent success
+            BaseError typed = requireModelError(error);
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+            Map<?, ?> details = (Map<?, ?>) typed.getDetails();
+            assertThat(details.get(ModelCallClassification.DETAIL_CATEGORY))
+                    .isEqualTo(ModelErrorCategory.TEMPORARY);
+            assertThat(details.get(ModelCallClassification.DETAIL_RETRYABLE)).isEqualTo(true);
             assertThat(server.requests).hasSize(1);
         }
     }
@@ -985,14 +1008,25 @@ class OpenAIModelClientTest {
     }
 
     @Test
-    void successfulSseResponseIsNotReplayedAfterEarlyEof() throws Exception {
+    void earlyEofAfterFirstSegmentIsSurfacedWithoutReplay() throws Exception {
+        // Given a stream cut off after a non-terminal content frame, with retry budget left
         String partialSse = "data: " + json(Map.of("choices", List.of(Map.of(
                 "delta", Map.of("content", "partial"), "finish_reason", "null")))) + "\n\n";
         try (MockOpenAiServer server = new MockOpenAiServer(response(200, partialSse, "text/event-stream"))) {
-            List<AssistantMessageChunk> chunks = iteratorToList(client(server.baseUrl(), 1, Map.of()).stream(
-                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+            OpenAIModelClient client = client(server.baseUrl(), 1, Map.of());
 
-            assertThat(chunks).singleElement().extracting(AssistantMessageChunk::getContent).isEqualTo("partial");
+            // When the body ends early after the first segment
+            Throwable error = catchThrowable(() -> iteratorToList(client.stream(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>())));
+
+            // Then the truncation is surfaced as a retryable failure, and the started
+            // stream is not replayed as a whole call after its first segment
+            BaseError typed = requireModelError(error);
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+            Map<?, ?> details = (Map<?, ?>) typed.getDetails();
+            assertThat(details.get(ModelCallClassification.DETAIL_CATEGORY))
+                    .isEqualTo(ModelErrorCategory.TEMPORARY);
+            assertThat(details.get(ModelCallClassification.DETAIL_RETRYABLE)).isEqualTo(true);
             assertThat(server.requests).hasSize(1);
         }
     }

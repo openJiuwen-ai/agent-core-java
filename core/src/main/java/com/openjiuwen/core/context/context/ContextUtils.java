@@ -323,12 +323,23 @@ public final class ContextUtils {
         return rounds;
     }
 
-    public static int findLastNDialogueRound(List<BaseMessage> messages, int n) {
+    /**
+     * Finds the first message to retain when a dialogue window exceeds its round limit.
+     *
+     * @param messages context history, including any prefix before the first user message
+     * @param roundLimit positive number of dialogue rounds to retain
+     * @return the first retained user index, or {@code -1} when no trimming is needed
+     * @throws IllegalArgumentException when {@code roundLimit} is not positive
+     */
+    public static int findLastNDialogueRound(List<BaseMessage> messages, int roundLimit) {
+        if (roundLimit <= 0) {
+            throw new IllegalArgumentException("roundLimit must be positive");
+        }
         List<DialogueRound> rounds = findAllDialogueRound(messages);
-        if (rounds.isEmpty()) {
+        if (rounds.size() <= roundLimit) {
             return -1;
         }
-        return rounds.get(Math.min(n, rounds.size()) - 1).userIndex();
+        return rounds.get(roundLimit - 1).userIndex();
     }
 
     public static boolean toolCallMatchesId(Object toolCall, String toolCallId) {

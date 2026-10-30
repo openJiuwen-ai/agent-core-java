@@ -8,7 +8,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.context.offload.model.OffloadConfig;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -69,6 +71,19 @@ public class ContextEngineConfig {
 
     @JsonProperty("offload")
     private OffloadConfig offload;
+
+    /**
+     * When true (default), {@code ContextEngine.recoverFromModelException} may
+     * compress and signal a model-call retry on context-overflow provider errors.
+     */
+    @JsonProperty("enable_model_context_overflow_recovery")
+    private boolean enableModelContextOverflowRecovery = true;
+
+    /**
+     * Extra phrases matched by {@code ContextEngine.isContextOverflowError}.
+     */
+    @JsonProperty("extra_context_overflow_keywords")
+    private List<String> extraContextOverflowKeywords;
 
     public ContextEngineConfig() {
     }
@@ -248,6 +263,44 @@ public class ContextEngineConfig {
         this.offload = offload;
     }
 
+    /**
+     * Returns whether model context-overflow recovery is enabled.
+     *
+     * @return {@code true} when compress-and-retry recovery is allowed (default)
+     */
+    public boolean isEnableModelContextOverflowRecovery() {
+        return enableModelContextOverflowRecovery;
+    }
+
+    /**
+     * Sets whether model context-overflow recovery is enabled.
+     *
+     * @param enableModelContextOverflowRecovery {@code true} to allow recovery
+     */
+    public void setEnableModelContextOverflowRecovery(boolean enableModelContextOverflowRecovery) {
+        this.enableModelContextOverflowRecovery = enableModelContextOverflowRecovery;
+    }
+
+    /**
+     * Returns extra overflow keyword phrases for provider-specific error text.
+     *
+     * @return extra keywords, or {@code null} when unset
+     */
+    public List<String> getExtraContextOverflowKeywords() {
+        return extraContextOverflowKeywords == null ? null : new ArrayList<>(extraContextOverflowKeywords);
+    }
+
+    /**
+     * Sets extra overflow keyword phrases for provider-specific error text.
+     *
+     * @param extraContextOverflowKeywords additional phrases; may be {@code null}
+     */
+    public void setExtraContextOverflowKeywords(List<String> extraContextOverflowKeywords) {
+        this.extraContextOverflowKeywords = extraContextOverflowKeywords == null
+                ? null
+                : new ArrayList<>(extraContextOverflowKeywords);
+    }
+
     private static void validatePositive(Integer value, String fieldName) {
         if (value != null && value <= 0) {
             throw new IllegalArgumentException(fieldName + " must be > 0");
@@ -266,6 +319,7 @@ public class ContextEngineConfig {
                 && enableTiktokenCounter == that.enableTiktokenCounter
                 && enableOpenrouterModelContextWindowTokens == that.enableOpenrouterModelContextWindowTokens
                 && isOffloadEnabled == that.isOffloadEnabled
+                && enableModelContextOverflowRecovery == that.enableModelContextOverflowRecovery
                 && Double.compare(openrouterRequestTimeout, that.openrouterRequestTimeout) == 0
                 && Objects.equals(getMaxContextMessageNum(), that.getMaxContextMessageNum())
                 && Objects.equals(getDefaultWindowMessageNum(), that.getDefaultWindowMessageNum())
@@ -273,7 +327,8 @@ public class ContextEngineConfig {
                 && Objects.equals(contextWindowTokens, that.contextWindowTokens)
                 && Objects.equals(modelName, that.modelName)
                 && Objects.equals(modelContextWindowTokens, that.modelContextWindowTokens)
-                && Objects.equals(offload, that.offload);
+                && Objects.equals(offload, that.offload)
+                && Objects.equals(extraContextOverflowKeywords, that.extraContextOverflowKeywords);
     }
 
     @Override
@@ -290,7 +345,9 @@ public class ContextEngineConfig {
                 enableOpenrouterModelContextWindowTokens,
                 openrouterRequestTimeout,
                 isOffloadEnabled,
-                offload
+                offload,
+                enableModelContextOverflowRecovery,
+                extraContextOverflowKeywords
         );
     }
 
@@ -307,6 +364,8 @@ public class ContextEngineConfig {
         private double openrouterRequestTimeout = 3.0;
         private boolean isOffloadEnabled;
         private OffloadConfig offload;
+        private boolean enableModelContextOverflowRecovery = true;
+        private List<String> extraContextOverflowKeywords;
 
         private Builder() {
         }
@@ -390,6 +449,28 @@ public class ContextEngineConfig {
             return this;
         }
 
+        /**
+         * Sets whether model context-overflow recovery is enabled.
+         *
+         * @param enableModelContextOverflowRecovery {@code true} to allow compress-and-retry
+         * @return this builder for chaining
+         */
+        public Builder enableModelContextOverflowRecovery(boolean enableModelContextOverflowRecovery) {
+            this.enableModelContextOverflowRecovery = enableModelContextOverflowRecovery;
+            return this;
+        }
+
+        /**
+         * Sets extra overflow keyword phrases for provider-specific error text.
+         *
+         * @param extraContextOverflowKeywords additional phrases; may be {@code null}
+         * @return this builder for chaining
+         */
+        public Builder extraContextOverflowKeywords(List<String> extraContextOverflowKeywords) {
+            this.extraContextOverflowKeywords = extraContextOverflowKeywords;
+            return this;
+        }
+
         public ContextEngineConfig build() {
             ContextEngineConfig config = new ContextEngineConfig(maxContextMessageNum, defaultWindowMessageNum,
                     defaultWindowRoundNum, enableReload, enableTiktokenCounter,
@@ -397,6 +478,8 @@ public class ContextEngineConfig {
                     enableOpenrouterModelContextWindowTokens, openrouterRequestTimeout);
             config.setEnableOffload(isOffloadEnabled);
             config.setOffload(offload);
+            config.setEnableModelContextOverflowRecovery(enableModelContextOverflowRecovery);
+            config.setExtraContextOverflowKeywords(extraContextOverflowKeywords);
             return config;
         }
     }

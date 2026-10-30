@@ -10,10 +10,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -141,6 +145,30 @@ class ContextUtilsTest {
         assertThat(ContextUtils.findLastNDialogueRound(messages, 2)).isEqualTo(3);
         assertThatThrownBy(() -> ContextUtils.replaceMessages(messages, List.of(), 4, 3))
                 .isInstanceOf(IndexOutOfBoundsException.class);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1, 5", "2, 3", "3, -1", "4, -1"})
+    void roundWindowRetainsPrefixUnlessCompletedAndPendingRoundsExceedLimit(int limit, int expectedIndex) {
+        List<BaseMessage> messages = List.of(new SystemMessage("history prefix"),
+                new BaseMessage("user", "q1"), new AssistantMessage("a1"),
+                new BaseMessage("user", "q2"), new AssistantMessage("a2"),
+                new BaseMessage("user", "pending"));
+
+        assertThat(ContextUtils.findLastNDialogueRound(messages, limit)).isEqualTo(expectedIndex);
+    }
+
+    @Test
+    void roundWindowWithoutUserMessagesNeedsNoTrimming() {
+        assertThat(ContextUtils.findLastNDialogueRound(List.of(), 1)).isEqualTo(-1);
+        assertThat(ContextUtils.findLastNDialogueRound(List.of(new SystemMessage("prefix")), 1)).isEqualTo(-1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1})
+    void roundWindowRejectsNonPositiveLimits(int limit) {
+        assertThatThrownBy(() -> ContextUtils.findLastNDialogueRound(List.of(), limit))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("roundLimit must be positive");
     }
 
     @Test

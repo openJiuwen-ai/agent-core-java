@@ -207,6 +207,18 @@ public class ActorManager {
     }
 
     /**
+     * Waits for this consumer's scheduled stream call before its batch side inspects completion.
+     *
+     * @param consumerId consumer node identifier
+     */
+    public void awaitStreamReady(String consumerId) {
+        StreamActor actor = streams.get(consumerId);
+        if (actor != null) {
+            actor.awaitStarted();
+        }
+    }
+
+    /**
      * Creates consumer stream inputs and closes already-finished inactive producers.
      *
      * @param consumerId consumer node id

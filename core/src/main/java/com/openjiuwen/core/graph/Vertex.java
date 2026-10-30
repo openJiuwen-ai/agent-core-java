@@ -55,6 +55,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 /**
@@ -88,6 +90,9 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private final AtomicInteger streamCallCount = new AtomicInteger();
     private final Queue<ComponentAbility> deferredBatchEndAbilities = new ConcurrentLinkedQueue<>();
     private final Queue<ComponentAbility> deferredStreamEndAbilities = new ConcurrentLinkedQueue<>();
+    private final ReentrantLock templateOutputLock = new ReentrantLock();
+    private final Condition templateOutputAdvanced = templateOutputLock.newCondition();
+    private int nextTemplateOutputIndex;
     private VertexSession session;
     private Object context;
     private int streamCallTimeoutSeconds = 10;
@@ -281,6 +286,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             session.actorManager().markProducerDone(nodeId);
         }
         traceComponentDone();
+        resetTemplateOutput();
     }
 
     private boolean runExecutableWithRetry(ComponentAbility ability,
@@ -743,9 +749,14 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
     private void postStream(Iterator<Object> resultsIterator, ComponentAbility ability) throws Exception {
         if (ability == ComponentAbility.STREAM && executable instanceof End end
-                && !end.hasResponseTemplate() && streamCalled()) {
+                && !end.hasResponseTemplate()) {
             // Plain End emits live fields before its batch trailer. Template End needs both sources concurrently.
-            waitForStreamDone();
+            if (session.actorManager() != null) {
+                session.actorManager().awaitStreamReady(nodeId);
+            }
+            if (streamCalled()) {
+                waitForStreamDone();
+            }
             WorkflowCancellation.check(session);
         }
         boolean subGraph = session.subGraph();
@@ -893,6 +904,54 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                               int endStreamIndex,
                               boolean subGraph,
                               ComponentAbility ability) throws Exception {
+        if (executable instanceof End end && end.hasResponseTemplate() && message instanceof OutputSchema frame) {
+            templateOutputLock.lockInterruptibly();
+            try {
+                awaitTemplateFrame(frame.getIndex());
+                emitChunk(message, endNodeFlag, endStreamIndex, subGraph, ability);
+                nextTemplateOutputIndex++;
+                templateOutputAdvanced.signalAll();
+            } finally {
+                templateOutputLock.unlock();
+            }
+        } else {
+            emitChunk(message, endNodeFlag, endStreamIndex, subGraph, ability);
+        }
+    }
+
+    private void awaitTemplateFrame(int frameIndex) throws InterruptedException, TimeoutException {
+        long timeoutNanos = streamCallTimeoutSeconds > 0
+                ? TimeUnit.SECONDS.toNanos(streamCallTimeoutSeconds)
+                : TimeUnit.MILLISECONDS.toNanos(TimeoutConstants.FUTURE_MS);
+        long deadline = System.nanoTime() + timeoutNanos;
+        while (frameIndex != nextTemplateOutputIndex) {
+            WorkflowCancellation.check(session);
+            if (frameIndex < nextTemplateOutputIndex) {
+                throw new IllegalStateException("Template frame index was already emitted");
+            }
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                throw new TimeoutException("Timed out waiting for preceding template frame");
+            }
+            templateOutputAdvanced.awaitNanos(remaining);
+        }
+        WorkflowCancellation.check(session);
+    }
+
+    private void resetTemplateOutput() {
+        if (executable instanceof End end && end.hasResponseTemplate()) {
+            templateOutputLock.lock();
+            try {
+                nextTemplateOutputIndex = 0;
+                templateOutputAdvanced.signalAll();
+            } finally {
+                templateOutputLock.unlock();
+            }
+        }
+    }
+
+    private void emitChunk(Object message, boolean endNodeFlag, int endStreamIndex,
+                           boolean subGraph, ComponentAbility ability) throws Exception {
         VertexActorManager actorManager = session.actorManager();
         if (endNodeFlag && !subGraph) {
             Object streamData = message instanceof OutputSchema
@@ -1097,6 +1156,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         streamCallCount.set(0);
         streamDone.cancel(true);
         streamDone = new CompletableFuture<>();
+        resetTemplateOutput();
     }
 
     public boolean isEndNode() {
@@ -1526,6 +1586,15 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         void endMessage(String nodeId, ComponentAbility ability) throws Exception;
 
         void markProducerDone(String nodeId);
+
+        /**
+         * Waits for a scheduled stream call to become ready before inspecting its completion signal.
+         *
+         * @param nodeId consumer node identifier
+         */
+        default void awaitStreamReady(String nodeId) {
+            // Synchronous adapters need no additional startup coordination.
+        }
 
         default boolean shouldSanitizeStreamSource(String nodeId, String componentId) {
             return true;

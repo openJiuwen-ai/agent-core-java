@@ -404,6 +404,11 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         }
 
         @Override
+        public void awaitStreamReady(String nodeId) {
+            delegate.awaitStreamReady(nodeId);
+        }
+
+        @Override
         public StreamEmitter subWorkflowStream() {
             return new StreamEmitter(delegate.subWorkflowStream());
         }

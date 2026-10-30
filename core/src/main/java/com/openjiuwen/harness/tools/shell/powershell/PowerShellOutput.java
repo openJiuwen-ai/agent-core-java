@@ -5,6 +5,8 @@
 package com.openjiuwen.harness.tools.shell.powershell;
 
 import com.openjiuwen.core.common.utils.TextTruncate;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.harness.tools.shell.ShellOutputDirectory;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -60,6 +62,10 @@ public final class PowerShellOutput {
     }
 
     public static PersistResult persistLargeOutput(String stdout, String stderr) {
+        return persistLargeOutput(stdout, stderr, OUTPUT_DIR);
+    }
+
+    private static PersistResult persistLargeOutput(String stdout, String stderr, Path outputDir) {
         String combined = stdout == null ? "" : stdout;
         if (stderr != null && !stderr.isEmpty()) {
             combined += "\n--- stderr ---\n" + stderr;
@@ -69,12 +75,12 @@ public final class PowerShellOutput {
         String digest = sha256Digest(contentBytes).substring(0, 12);
 
         try {
-            Files.createDirectories(OUTPUT_DIR);
+            Files.createDirectories(outputDir);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to create output directory: " + OUTPUT_DIR, e);
+            throw new UncheckedIOException("Failed to create output directory: " + outputDir, e);
         }
 
-        Path filePath = OUTPUT_DIR.resolve("powershell_" + digest + ".txt");
+        Path filePath = outputDir.resolve("powershell_" + digest + ".txt");
         if (!Files.exists(filePath)) {
             try {
                 Files.write(filePath, contentBytes);
@@ -86,6 +92,18 @@ public final class PowerShellOutput {
     }
 
     public static RenderedContent renderToolContent(CommandOutput output, boolean isError) {
+        return renderToolContent(output, isError, null);
+    }
+
+    /**
+     * Render output using an allowed artifact directory for a restricted local operation.
+     *
+     * @param output command output and rendering limit
+     * @param isError whether the command failed
+     * @param operation operation whose filesystem will read the persisted output, or null for legacy storage
+     * @return model-facing output
+     */
+    public static RenderedContent renderToolContent(CommandOutput output, boolean isError, SysOperation operation) {
         if (isError) {
             String merged = merge(output.stderr(), output.stdout());
             StringBuilder content = new StringBuilder("Exit code " + output.exitCode());
@@ -100,9 +118,15 @@ public final class PowerShellOutput {
                 ? merged
                 : stripTrailingWhitespace(LEADING_BLANK_LINES.matcher(merged).replaceFirst(""));
         if (output.maxOutputChars() > 0 && merged.length() > output.maxOutputChars()) {
-            PersistResult persisted = persistLargeOutput(output.stdout(), output.stderr());
-            Preview preview = generatePreview(processed, PREVIEW_SIZE_BYTES);
-            processed = buildPersistedMessage(persisted.path(), persisted.byteCount(), preview.content(), preview.hasMore());
+            try {
+                PersistResult persisted = persistLargeOutput(output.stdout(), output.stderr(),
+                        ShellOutputDirectory.resolve(operation, OUTPUT_DIR));
+                Preview preview = generatePreview(processed, PREVIEW_SIZE_BYTES);
+                processed = buildPersistedMessage(
+                        persisted.path(), persisted.byteCount(), preview.content(), preview.hasMore());
+            } catch (UncheckedIOException | IllegalStateException exception) {
+                processed = truncateOutput(processed, output.maxOutputChars());
+            }
         }
         return new RenderedContent(prependWarning(processed, output.warning()), false);
     }
