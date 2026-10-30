@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.graph;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.pregel.Pregel;
 import com.openjiuwen.core.graph.pregel.PregelConfig;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
@@ -34,7 +37,7 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
     /**
      * Creates a CompiledGraph with per-run session context.
      *
-     * @param pregel         the compiled Pregel engine (shared, statically compiled)
+     * @param pregel         the compiled Pregel engine (one per compile call)
      * @param checkpointer   checkpointer derived from the compile-argument session
      * @param pregelGraph    the owning PregelGraph (for per-run vertex init)
      * @param compileSession the session passed to {@code compile()} (per-run)
@@ -54,41 +57,64 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
     protected Map<String, Object> invokeInternal(Object inputs, BaseSession session, Object config) {
         boolean isMain = config == null;
         PregelConfig pregelConfig = normalizeConfig(config, session);
+
+        // Vertices are shared graph-level instances, so overlapping runs on
+        // compilations of the same PregelGraph would race over vertex
+        // sessions. Refuse the second run instead of silently corrupting the
+        // first one; serial reuse (one invoke at a time) is unaffected.
+        if (pregelGraph != null && !pregelGraph.tryBeginRun(describeSession(session))) {
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONCURRENT_RUN_INVALID,
+                    "workflow_id", describeSession(session),
+                    "reason", "another invoke is still in progress on the same graph");
+        }
         Exception exception = null;
         Map<String, Object> result = null;
 
-        // Per-run vertex init: bind every vertex to the session of this
-        // invocation so nodes read/write the correct workflow state.
-        // Previously compile() did this once and stored the session on the
-        // shared PregelGraph, which a second compile would overwrite.
-        initVerticesForRun(session);
-
         try {
-            if (isMain && checkpointer != null) {
-                checkpointer.preWorkflowExecute(session, inputs);
-            }
-            if (!(inputs instanceof InteractiveInput) && session instanceof GraphRuntimeSession runtimeSession) {
-                WorkflowState state = runtimeSession.workflowState();
-                if (state != null) {
-                    state.commitUserInputs(inputs);
-                }
-            }
+            // Per-run vertex init: bind every vertex to the session of this
+            // invocation so nodes read/write the correct workflow state.
+            // Previously compile() did this once and stored the session on the
+            // shared PregelGraph, which a second compile would overwrite.
+            initVerticesForRun(session);
+
             try {
-                result = pregel.run(pregelConfig);
+                if (isMain && checkpointer != null) {
+                    checkpointer.preWorkflowExecute(session, inputs);
+                }
+                if (!(inputs instanceof InteractiveInput) && session instanceof GraphRuntimeSession runtimeSession) {
+                    WorkflowState state = runtimeSession.workflowState();
+                    if (state != null) {
+                        state.commitUserInputs(inputs);
+                    }
+                }
+                try {
+                    result = pregel.run(pregelConfig);
+                } catch (Exception ex) {
+                    exception = ex;
+                }
+                if (isMain && checkpointer != null) {
+                    checkpointer.postWorkflowExecute(session, result, exception);
+                } else if (exception != null) {
+                    throw propagate(exception);
+                }
+                return result;
+            } catch (RuntimeException ex) {
+                throw ex;
             } catch (Exception ex) {
-                exception = ex;
+                throw new IllegalStateException(ex);
             }
-            if (isMain && checkpointer != null) {
-                checkpointer.postWorkflowExecute(session, result, exception);
-            } else if (exception != null) {
-                throw propagate(exception);
+        } finally {
+            if (pregelGraph != null) {
+                pregelGraph.endRun();
             }
-            return result;
-        } catch (RuntimeException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new IllegalStateException(ex);
         }
+    }
+
+    private static String describeSession(BaseSession session) {
+        if (session instanceof GraphRuntimeSession runtimeSession) {
+            return runtimeSession.workflowId();
+        }
+        return String.valueOf(session);
     }
 
     /**

@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -35,13 +36,12 @@ import java.util.function.Consumer;
  */
 public class PregelGraph extends Graph {
 
-    private Pregel pregel;
     private final List<Edge> edges = new ArrayList<>();
     private final Set<String> waits = new LinkedHashSet<>();
     private final Map<String, Vertex> nodes = new LinkedHashMap<>();
     private final Map<String, Map<String, Branch>> branches = new LinkedHashMap<>();
     private final Map<String, Set<String>> branchTargets = new LinkedHashMap<>();
-    private CompiledGraph.GraphCheckpointer checkpointer;
+    private final AtomicBoolean runInProgress = new AtomicBoolean(false);
 
     @Override
     public PregelGraph startNode(String nodeId) {
@@ -142,11 +142,14 @@ public class PregelGraph extends Graph {
     public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
         Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
 
-        // afterStep captures the compile-argument session so each CompiledGraph
-        // commits to its own workflow state. The closure is only wired into the
-        // Pregel on first compilation; subsequent compiles reuse the existing
-        // Pregel and pass a per-run session to CompiledGraph, which performs
-        // per-run vertex init before invoking the engine.
+        // The Pregel engine is rebuilt on every compile so the step callback and
+        // checkpointer are always derived from this compile's session. Caching a
+        // single engine would bind subsequent runs to the first compile's
+        // session closure and checkpoint storage, so each compile gets its own
+        // isolated engine while the graph topology itself remains reusable.
+        // Vertex init is deferred to invocation time (CompiledGraph
+        // invokes initVerticesForRun) so a second compile never mutates
+        // vertices still in use by an in-flight run of an earlier compile.
         Consumer<PregelLoop> afterStep = loop -> {
             if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
                 CompiledGraph.WorkflowState state = runtimeSession.workflowState();
@@ -157,16 +160,15 @@ public class PregelGraph extends Graph {
             Loggers.GRAPH.debug("Finished to run graph super-step [{}]", loop.getStep());
         };
 
-        if (pregel == null) {
-            Store graphStore = null;
-            if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
-                checkpointer = runtimeSession.checkpointer();
-                if (checkpointer != null && checkpointer.graphStore() != null) {
-                    graphStore = new GraphStore(checkpointer.graphStore());
-                }
+        Store graphStore = null;
+        CompiledGraph.GraphCheckpointer checkpointer = null;
+        if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
+            checkpointer = runtimeSession.checkpointer();
+            if (checkpointer != null && checkpointer.graphStore() != null) {
+                graphStore = new GraphStore(checkpointer.graphStore());
             }
-            pregel = compilePregel(graphStore, afterStep);
         }
+        Pregel pregel = compilePregel(graphStore, afterStep);
         return new CompiledGraph(pregel, checkpointer, this, session, options);
     }
 
@@ -218,11 +220,44 @@ public class PregelGraph extends Graph {
     }
 
     /**
+     * Attempts to mark a run as in progress on this graph.
+     *
+     * <p>Called by {@link CompiledGraph} at the start of each invocation.
+     * Returns {@code false} when another run is still in flight, which means
+     * the caller must refuse to start rather than race over the shared
+     * vertex sessions.
+     *
+     * @param workflowId identifier of the incoming run, used in the error message
+     * @return {@code true} if the run may proceed, {@code false} if refused
+     */
+    boolean tryBeginRun(String workflowId) {
+        if (runInProgress.compareAndSet(false, true)) {
+            return true;
+        }
+        Loggers.GRAPH.warn("Refused concurrent invoke on the same PregelGraph, workflow_id={}", workflowId);
+        return false;
+    }
+
+    /**
+     * Marks the in-progress run as finished, allowing the next invocation.
+     */
+    void endRun() {
+        runInProgress.set(false);
+    }
+
+    /**
      * Initialize every vertex with the given per-run session.
      *
      * <p>Called by {@link CompiledGraph} before each invocation so vertices
      * bind to the session of the current run rather than a stale session left
      * by a previous compile on the shared graph.
+     *
+     * <p><strong>Concurrency note:</strong> vertices are shared graph-level
+     * instances, so this path does not support overlapping concurrent
+     * {@code invoke} calls against compilations of the same
+     * {@link PregelGraph}: a second run's init would overwrite the session of
+     * a still-running first run. Serial reuse (compile then invoke, repeated)
+     * is safe because init rebinds every vertex before each run.
      *
      * @param session per-run vertex session
      * @param options compile options (may contain context)

@@ -245,6 +245,9 @@ public enum StatusCode {
     PREGEL_GRAPH_NODE_INVALID(112101, "node is invalid, node_id={node_id}, error=''{reason}''"),
     PREGEL_GRAPH_EDGE_INVALID(112102, "edge is invalid, source_id={source_id}, target_id={target_id}, error=''{reason}''"),
     PREGEL_GRAPH_CONDITION_EDGE_INVALID(112103, "condition edge is invalid, source_id={source_id}, error=''{reason}''"),
+    PREGEL_GRAPH_CONCURRENT_RUN_INVALID(112104,
+            "concurrent invoke on the same PregelGraph is not supported, workflow_id={workflow_id}, "
+                    + "error=''{reason}''"),
 
     // =============================================================================================================
     // Multi-Agent 130000 - 130999
