@@ -54,7 +54,7 @@ public class AgentSessionApi implements Session {
     // （流式场景 postRun 在池线程执行）。这里固化 preRun 时刻解析出的租户，postRun 复用它，
     // 保证两端推导出同一个 key；否则会查不到 preRun 创建的 agent store（BUG-0005）。
     private volatile TenantContext checkpointerTenant;
-    private volatile boolean checkpointerTenantResolved;
+    private volatile boolean isCheckpointerTenantResolved;
 
     /**
      * Create a new AgentSessionApi.
@@ -371,7 +371,7 @@ public class AgentSessionApi implements Session {
     private void resolveCheckpointerTenant() {
         TenantContext ctx = TenantContextHolder.getCurrentTenant();
         checkpointerTenant = (ctx != null && ctx.isTenantAware()) ? ctx : null;
-        checkpointerTenantResolved = true;
+        isCheckpointerTenantResolved = true;
     }
 
     /**
@@ -385,7 +385,7 @@ public class AgentSessionApi implements Session {
      * @since 0.1.7
      */
     private void runWithCheckpointerTenant(Runnable action) {
-        if (!checkpointerTenantResolved) {
+        if (!isCheckpointerTenantResolved) {
             action.run();
             return;
         }
@@ -412,7 +412,7 @@ public class AgentSessionApi implements Session {
         runState.set(0);
         // 会话可能被复用给另一租户，清除上一轮捕获的租户，由下一次 preRun 重新解析。
         checkpointerTenant = null;
-        checkpointerTenantResolved = false;
+        isCheckpointerTenantResolved = false;
     }
 
     /**
