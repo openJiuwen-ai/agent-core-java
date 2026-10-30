@@ -107,6 +107,9 @@ final class ContextOverflowErrorMatcher {
     /**
      * Network/RPC timeouts often contain both {@code context} and {@code exceed}
      * (e.g. {@code context deadline exceeded}) but are not input-length overflows.
+     *
+     * @param message llm response imfo
+     * @return boolean whether it's timeout error
      */
     private static boolean looksLikeTimeout(String message) {
         return containsAny(message, List.of(

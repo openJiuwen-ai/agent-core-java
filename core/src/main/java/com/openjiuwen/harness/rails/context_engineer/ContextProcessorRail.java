@@ -13,7 +13,6 @@ import com.openjiuwen.core.common.eventbus.EventBusHolder;
 import com.openjiuwen.core.common.eventbus.Subscription;
 import com.openjiuwen.core.common.eventbus.events.ModelRemovedEvent;
 import com.openjiuwen.core.common.eventbus.events.ModelUpdatedEvent;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionMemoryConfig;
@@ -238,14 +237,14 @@ public class ContextProcessorRail extends AgentRail {
         int streamChunksEmitted = readStreamChunksEmitted(context);
         // recoverFromModelException swallows compress RuntimeExceptions and returns
         // false; do not let recovery failures replace the original model exception.
-        boolean recovered = engine.recoverFromModelException(
+        boolean isRecovered = engine.recoverFromModelException(
                 modelContext.contextId(),
                 context.getSession(),
                 context.getException(),
                 streaming,
                 streamChunksEmitted,
                 null);
-        if (!recovered) {
+        if (!isRecovered) {
             return;
         }
         context.getExtra().put(AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED, Boolean.TRUE);
