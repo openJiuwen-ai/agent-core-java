@@ -46,6 +46,11 @@ public class StreamEmitter {
         }
         closed = true;
         if (!streamQueue.isClosed()) {
+            // END_FRAME is sent with a bounded total wait instead of the
+            // bounded-retry-and-drop semantics used for regular data frames;
+            // if the queue stays full past the critical send budget, the
+            // oldest data frames are evicted just enough to admit it (a
+            // further failure is logged).
             streamQueue.sendCritical(END_FRAME);
         }
     }

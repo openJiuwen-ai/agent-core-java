@@ -110,6 +110,25 @@ class RuleBasedModelErrorClassifierTest {
         assertThat(result.category()).isEqualTo(ModelErrorCategory.RATE_LIMITED);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"Prompt exceeds max length", "Prompt exceeds maximum length"})
+    void classify_gatewayWrappedPromptLimit_isContextLengthExceeded(String message) {
+        String body = "{\"detail\":\"API error: 400 - {\\\"error\\\":{\\\"message\\\":\\\""
+            + "litellm.BadRequestError: DashscopeException - " + message + "\\\"}}\"}";
+        ModelCallClassification result = classifier.classify(httpFacts(400, body));
+
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+        assertThat(result.isRetryable()).isFalse();
+    }
+
+    @Test
+    void classify_genericLengthLimit_isNotAssumedToBeModelContext() {
+        ModelCallClassification result = classifier.classify(httpFacts(400,
+            "{\"error\":{\"message\":\"Field name exceeds max length\"}}"));
+
+        assertThat(result.category()).isNotEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+    }
+
     @Test
     void classify_timeoutErrorCodeMarker_temporaryRetryable() {
         // Given a 181008 timeout error, When classified, Then temporary and retryable
@@ -143,6 +162,14 @@ class RuleBasedModelErrorClassifierTest {
     void classify_prematureEofMarker_temporaryRetryable() {
         ModelCallClassification result = classifier.classify(
             ModelErrorFacts.ofThrowable(new IOException("Premature EOF"), true));
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
+        assertThat(result.isRetryable()).isTrue();
+    }
+
+    @Test
+    void classify_headerParserNoBytesMarker_temporaryRetryable() {
+        ModelCallClassification result = classifier.classify(ModelErrorFacts.ofThrowable(
+            new IOException("HTTP/1.1 header parser received no bytes"), true));
         assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
         assertThat(result.isRetryable()).isTrue();
     }

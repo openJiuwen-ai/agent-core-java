@@ -8,9 +8,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -45,6 +47,23 @@ class VertexExecutorIsolationTest {
             assertThat(independent.started.get(5, TimeUnit.SECONDS)).isNotInstanceOf(ForkJoinWorkerThread.class);
             assertThat(paused.completion).isNotDone();
         }
+    }
+
+    @Test
+    void invoke_keepsAtomicCommitOnTheOwningPregelWorker() throws Exception {
+        ProbeExecutable executable = new ProbeExecutable(0);
+        Vertex vertex = new Vertex("owned", executable);
+        Vertex.VertexSession session = createSession("owned");
+        WorkflowCommitState state = mock(WorkflowCommitState.class,
+                withSettings().extraInterfaces(Vertex.VertexState.class));
+        assertThat(state).isInstanceOfSatisfying(Vertex.VertexState.class,
+                vertexState -> when(session.state()).thenReturn(vertexState));
+        assertThat(vertex.init(session)).isTrue();
+
+        vertex.invoke(new GraphState(), Map.of()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+        assertThat(executable.started.get(5, TimeUnit.SECONDS)).isSameAs(Thread.currentThread());
+        verify(state).commitCmp();
     }
 
     @Test

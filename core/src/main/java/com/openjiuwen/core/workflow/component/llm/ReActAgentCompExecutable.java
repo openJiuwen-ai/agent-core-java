@@ -205,5 +205,25 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
             }
             return List.<Object>of().iterator();
         }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public long renewModelCallTimeout(long leaseId, long idleTimeoutMs, long delayMs) {
+            StreamWriterManager manager = delegate.streamWriterManager();
+            return manager == null ? 0L : manager.renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void endModelCallTimeout(long leaseId) {
+            StreamWriterManager manager = delegate.streamWriterManager();
+            if (manager != null) {
+                manager.endModelCallTimeout(leaseId);
+            }
+        }
     }
 }

@@ -198,7 +198,8 @@ class ReActAgentLifecycleStateTest {
 
             @Override
             public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
-                return List.of(AssistantMessageChunk.builder().content(content).build()).iterator();
+                AssistantMessageChunk chunk = AssistantMessageChunk.builder().content(content).build();
+                return List.of(chunk).iterator();
             }
         });
     }

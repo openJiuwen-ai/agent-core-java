@@ -109,6 +109,8 @@ import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -157,6 +159,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
+    private static final String MODEL_CALL_TIMEOUT_LEASE_ID_KEY = "_model_call_timeout_lease_id";
+    private static final String MODEL_CALL_IDLE_TIMEOUT_MS_KEY = "_model_call_idle_timeout_ms";
+    private static final String MODEL_CALL_INVOCATION_OWNER_KEY = "_model_call_invocation_owner";
 
     /** Stateless normalizer shared by all structured multimodal entry inputs. */
     private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
@@ -442,21 +447,45 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         // railed body from the post-rail prompt, while Java keeps rail-edited
         // inputs as the request snapshot).
         prepareModelRequest(ctx);
-        return Rails.run(
-                ctx,
-                AgentCallbackEvent.BEFORE_MODEL_CALL,
-                AgentCallbackEvent.AFTER_MODEL_CALL,
-                AgentCallbackEvent.ON_MODEL_EXCEPTION,
-                () -> {
-                    // On Rails.run retries (e.g. overflow compress+requestRetry),
-                    // rebuild from ModelContext so the provider sees the
-                    // post-recovery snapshot rather than the pre-failure one.
-                    if (ctx.getRetryAttempt() > 0) {
-                        prepareModelRequest(ctx);
+        boolean isModelCallSuccessful = false;
+        try {
+            Object result = Rails.run(
+                    ctx,
+                    AgentCallbackEvent.BEFORE_MODEL_CALL,
+                    AgentCallbackEvent.AFTER_MODEL_CALL,
+                    AgentCallbackEvent.ON_MODEL_EXCEPTION,
+                    new Rails.RailedOperation() {
+                        /**
+                         * {@inheritDoc}
+                         */
+                        @Override
+                        public Object execute() {
+                            // On Rails.run retries (e.g. overflow compress+requestRetry),
+                            // rebuild from ModelContext so the provider sees the
+                            // post-recovery snapshot rather than the pre-failure one.
+                            if (ctx.getRetryAttempt() > 0) {
+                                prepareModelRequest(ctx);
+                            }
+                            return doRailedModelCall(ctx);
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        @Override
+                        public void onNoRetry() {
+                            renewModelCallTimeout(ctx, Long.MAX_VALUE, 0L);
+                        }
                     }
-                    return doRailedModelCall(ctx);
-                }
-        );
+            );
+            isModelCallSuccessful = true;
+            return result;
+        } finally {
+            if (isModelCallSuccessful
+                    || !Boolean.TRUE.equals(ctx.getExtra().get(MODEL_CALL_INVOCATION_OWNER_KEY))) {
+                endModelCallTimeout(ctx);
+            }
+        }
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
@@ -478,6 +507,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .join();
         runtime.extraFields().remove("__openjiuwen_kvc_model");
         ModelInvokeOptions options = optionsBuilder.build();
+        renewModelCallTimeout(ctx, options);
         StreamModelCall modelCall = new StreamModelCall(ctx, model, messages, options, modelInputs);
         if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
             return invokeNonStreaming(modelCall, kvLease);
@@ -570,14 +600,63 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         clampModelCallTimeoutToRemainingBudget(ctx, optionsBuilder, perCallIdleTimeout);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
-            optionsBuilder.retryListener(event -> session.writeStream(new OutputSchema(
-                    "model_retry",
-                    nextStreamIndex(ctx),
-                    modelRetryPayload(event)
-            )));
+            optionsBuilder.retryListener(event -> {
+                renewClientModelCallTimeout(ctx, event);
+                session.writeStream(new OutputSchema(
+                        "model_retry",
+                        nextStreamIndex(ctx),
+                        modelRetryPayload(event)
+                ));
+            });
         }
 
         return optionsBuilder;
+    }
+
+    private static void renewModelCallTimeout(AgentCallbackContext ctx, ModelInvokeOptions options) {
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) || ctx.getSession() == null
+                || options == null || options.getTimeout() == null) {
+            return;
+        }
+        long idleTimeoutMs = ModelTimeoutResolver.toDuration(options.getTimeout().doubleValue()).toMillis();
+        ctx.getExtra().put(MODEL_CALL_IDLE_TIMEOUT_MS_KEY, idleTimeoutMs);
+        renewModelCallTimeout(ctx, idleTimeoutMs, 0L);
+    }
+
+    private static void renewClientModelCallTimeout(AgentCallbackContext ctx, ModelRetryEvent event) {
+        Object actualIdle = ctx.getExtra().get(MODEL_CALL_IDLE_TIMEOUT_MS_KEY);
+        if (!(actualIdle instanceof Number idleTimeout)) {
+            return;
+        }
+        long delayMs = event.delay() == null ? 0L : event.delay().toMillis();
+        renewModelCallTimeout(ctx, idleTimeout.longValue(), delayMs);
+    }
+
+    private static void renewModelCallTimeout(AgentCallbackContext ctx, long idleTimeoutMs, long delayMs) {
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) || ctx.getSession() == null) {
+            return;
+        }
+        long leaseId = currentModelCallLeaseId(ctx);
+        long renewedLease = ctx.getSession().renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+        ctx.getExtra().put(MODEL_CALL_TIMEOUT_LEASE_ID_KEY, renewedLease);
+    }
+
+    private static long currentModelCallLeaseId(AgentCallbackContext ctx) {
+        Object currentLease = ctx.getExtra().get(MODEL_CALL_TIMEOUT_LEASE_ID_KEY);
+        return currentLease instanceof Number number ? number.longValue() : 0L;
+    }
+
+    private static void endModelCallTimeout(AgentCallbackContext ctx) {
+        if (ctx == null || ctx.getSession() == null
+                || !Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+            return;
+        }
+        long leaseId = currentModelCallLeaseId(ctx);
+        if (leaseId == 0L) {
+            return;
+        }
+        ctx.getSession().endModelCallTimeout(leaseId);
+        ctx.getExtra().put(MODEL_CALL_TIMEOUT_LEASE_ID_KEY, 0L);
     }
 
     private record ModelCallRuntime(
@@ -2081,6 +2160,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             invokeInputs.setConversationId(conversationId);
 
             ctx = new AgentCallbackContext(this);
+            ctx.getExtra().put(MODEL_CALL_INVOCATION_OWNER_KEY, Boolean.TRUE);
             ctx.setInputs(invokeInputs);
             ctx.setSession(session);
             ctx.setConfig(config);
@@ -2240,10 +2320,13 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                 continue;
                             }
                             contextEngine.saveContexts(session);
-                            invokeInputs.setResult(new LinkedHashMap<>(Map.of(
-                                    "output", Objects.toString(aiMessage.getContent(), ""),
-                                    "result_type", "answer"
-                            )));
+                            Map<String, Object> answerResult = new LinkedHashMap<>();
+                            answerResult.put("output", Objects.toString(aiMessage.getContent(), ""));
+                            answerResult.put("result_type", "answer");
+                            if (isLengthCappedFinishReason(aiMessage.getFinishReason())) {
+                                answerResult.put("finish_reason", aiMessage.getFinishReason());
+                            }
+                            invokeInputs.setResult(answerResult);
                             ctx.finish(AgentTerminationReason.TEXT_TERMINATION);
                             break;
                         }
@@ -2371,7 +2454,14 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     }
                 }
             } finally {
-                SessionContextHolder.restoreCurrentSession(previousSession);
+                try {
+                    endModelCallTimeout(ctx);
+                } finally {
+                    if (ctx != null) {
+                        ctx.getExtra().remove(MODEL_CALL_INVOCATION_OWNER_KEY);
+                    }
+                    SessionContextHolder.restoreCurrentSession(previousSession);
+                }
             }
         }
     }
@@ -2419,6 +2509,64 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return ref[0]++;
     }
 
+    /**
+     * Renews the current model wait through the guardrail delay, then publishes the retry event.
+     * Observation is best-effort and cannot revoke the pending model retry.
+     *
+     * @param context current model callback context
+     * @param retryCount guardrail-local retry sequence, starting at one
+     * @param maxRetries guardrail-local retry budget
+     * @param delaySeconds delay requested for the guardrail retry, in seconds
+     */
+    public void publishGuardrailRetry(AgentCallbackContext context, int retryCount, int maxRetries,
+            double delaySeconds) {
+        if (context == null || context.getSession() == null
+                || !Boolean.TRUE.equals(context.getExtra().get("_streaming"))) {
+            return;
+        }
+        renewGuardrailModelCallTimeout(context, delaySeconds);
+        Map<String, Object> payload = guardrailRetryPayload(retryCount, maxRetries, delaySeconds);
+        try {
+            context.getSession().writeStream(new OutputSchema(
+                    "model_retry",
+                    nextStreamIndex(context),
+                    payload
+            ));
+        } catch (IllegalStateException | IllegalArgumentException | NullPointerException exception) {
+            Loggers.AGENT.warning("Guardrail retry event write failed; retry continues. {}", Map.of(
+                    "retry_count", retryCount,
+                    "write_exception_type", exception.getClass().getName()));
+        }
+    }
+
+    private static void renewGuardrailModelCallTimeout(AgentCallbackContext context, double delaySeconds) {
+        Object actualIdle = context.getExtra().get(MODEL_CALL_IDLE_TIMEOUT_MS_KEY);
+        if (!(actualIdle instanceof Number idleTimeout)) {
+            return;
+        }
+        long delayMs = guardrailDelayMillis(delaySeconds);
+        renewModelCallTimeout(context, idleTimeout.longValue(), delayMs);
+    }
+
+    private static long guardrailDelayMillis(double delaySeconds) {
+        long roundedMillis = BigDecimal.valueOf(delaySeconds)
+                .multiply(BigDecimal.valueOf(1000L))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValue();
+        return Math.max(0L, roundedMillis);
+    }
+
+    private static Map<String, Object> guardrailRetryPayload(int retryCount, int maxRetries, double delaySeconds) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("retry_count", retryCount);
+        payload.put("max_retries", maxRetries);
+        payload.put("delay_ms", guardrailDelayMillis(delaySeconds));
+        payload.put("delay_source", "guardrail");
+        payload.put("message", "模型调用预算耗尽，护栏层发起整轮重试 %d/%d".formatted(retryCount, maxRetries));
+        payload.put("retry_tier", "rail");
+        return payload;
+    }
+
     private static Map<String, Object> modelRetryPayload(ModelRetryEvent event) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("retry_count", event.retryCount());
@@ -2432,6 +2580,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         } else if (event.exceptionType() != null) {
             payload.put("exception_type", event.exceptionType());
         }
+        payload.put("retry_tier", "client");
         return payload;
     }
 
@@ -2592,6 +2741,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         ));
         if (result.get("failure") instanceof Map<?, ?> failure) {
             payload.put("failure", failure);
+        }
+        if (result.get("finish_reason") != null) {
+            payload.put("finish_reason", result.get("finish_reason"));
         }
         return payload;
     }
@@ -2905,6 +3057,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     return aiMessage;
                 }
                 if (hasReasoningContent(aiMessage)) {
+                    if (isLengthCappedFinishReason(aiMessage.getFinishReason())) {
+                        Loggers.AGENT.warning("ReAct stream hit the length cap with reasoning but no answer "
+                                + "content or tool calls; returning the truncated result as-is");
+                        return aiMessage;
+                    }
                     Loggers.AGENT.warning("ReAct stream completed with reasoning but no answer content or "
                             + "tool calls; falling back to non-stream");
                     return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(),
@@ -3064,6 +3221,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static boolean hasReasoningContent(AssistantMessage message) {
         return message != null && message.getReasoningContent() != null
                 && !message.getReasoningContent().isBlank();
+    }
+
+    static boolean isLengthCappedFinishReason(String finishReason) {
+        return finishReason != null && !finishReason.isBlank() && !"null".equals(finishReason)
+                && (finishReason.equalsIgnoreCase("length") || finishReason.equalsIgnoreCase("max_tokens"));
     }
 
     private static boolean hasIoCause(Throwable throwable) {

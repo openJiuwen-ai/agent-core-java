@@ -86,8 +86,13 @@ public class ClassifiedModelFailureRail extends AgentRail {
         if (attempts >= maxGuardrailRetries) {
             return;
         }
-        context.getExtra().put(ATTEMPTS_KEY, attempts + 1);
-        context.requestRetry(resolveDelaySeconds(classification));
+        int retryCount = attempts + 1;
+        double delaySeconds = resolveDelaySeconds(classification);
+        context.getExtra().put(ATTEMPTS_KEY, retryCount);
+        context.requestRetry(delaySeconds);
+        if (context.getAgent() instanceof ReActAgent reactAgent) {
+            reactAgent.publishGuardrailRetry(context, retryCount, maxGuardrailRetries, delaySeconds);
+        }
     }
 
     private boolean yieldsToBackupRail(AgentCallbackContext context) {

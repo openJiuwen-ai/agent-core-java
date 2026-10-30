@@ -1101,13 +1101,35 @@ public class AbilityManager {
         } catch (ToolInterruptException interrupt) {
             throw interrupt;
         } catch (TimeoutException exception) {
+            Optional<Object> partial = extractPartialResult(tool);
             String errorMsg = "Tool '" + toolCall.getName() + "' timed out after " + callTimeout + "s";
-            Loggers.AGENT.warning(errorMsg);
+            if (partial.isPresent()) {
+                errorMsg += "; partial result before timeout: " + buildToolMessageContent(partial.get());
+                Loggers.AGENT.warning("Tool '" + toolCall.getName()
+                        + "' timed out after " + callTimeout + "s; partial progress preserved");
+            } else {
+                Loggers.AGENT.warning(errorMsg);
+            }
             throw AbilityExecutionError.of(toolCall, errorMsg, exception);
         } catch (CancellationException exception) {
             throw exception;
         } catch (RuntimeException exception) {
             throw AbilityExecutionError.of(toolCall, "Tool execution error: " + exception.getMessage(), exception);
+        }
+    }
+
+    /**
+     * Best-effort extraction of progress a tool captured before the timeout; tools that do
+     * not implement the partial-result hook simply yield an empty optional.
+     */
+    private static Optional<Object> extractPartialResult(Tool tool) {
+        if (!(tool instanceof ExecutionResult.PartialResultProvider provider)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(provider.partialResult());
+        } catch (RuntimeException ignored) {
+            return Optional.empty();
         }
     }
 
@@ -2037,8 +2059,20 @@ public class AbilityManager {
      * One ability execution result and its LLM tool message.
      *
      * <p>Mirrors Python's tuple return in
-     * {@code openjiuwen/core/single_agent/ability_manager.py}.</p>
+     * {@code openjiuwen/core/single_agent/ability_manager.py}. {@code partialResult} carries
+     * progress captured before a timeout when the tool supports cancellation callbacks;
+     * it is {@code null} for successful calls.</p>
      */
     public record ExecutionResult(Object result, ToolMessage toolMessage) {
+
+        /** Hook a tool may use to expose progress produced before a timeout cut it off. */
+        public interface PartialResultProvider {
+            /**
+             * Returns the progress captured by the tool before a timeout cut it off.
+             *
+             * @return the partial result, or {@code null} when no progress was captured
+             */
+            Object partialResult();
+        }
     }
 }

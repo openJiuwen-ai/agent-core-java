@@ -25,6 +25,16 @@ import java.util.Objects;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class ContextEngineConfig {
+
+    /** Default bound applied when {@code max_context_message_num} is left unconfigured. */
+    public static final int DEFAULT_MAX_CONTEXT_MESSAGE_NUM = 200;
+
+    /** Default bound applied when {@code default_window_round_num} is left unconfigured. */
+    public static final int DEFAULT_WINDOW_ROUND_NUM = 10;
+
+    /** Default bound applied when {@code default_window_message_num} is left unconfigured. */
+    public static final int DEFAULT_WINDOW_MESSAGE_NUM = 200;
+
     @JsonProperty("max_context_message_num")
     private Integer maxContextMessageNum;
 
@@ -134,7 +144,7 @@ public class ContextEngineConfig {
     }
 
     public Integer getMaxContextMessageNum() {
-        return maxContextMessageNum;
+        return Objects.requireNonNullElse(maxContextMessageNum, DEFAULT_MAX_CONTEXT_MESSAGE_NUM);
     }
 
     public void setMaxContextMessageNum(Integer maxContextMessageNum) {
@@ -143,7 +153,7 @@ public class ContextEngineConfig {
     }
 
     public Integer getDefaultWindowMessageNum() {
-        return defaultWindowMessageNum;
+        return Objects.requireNonNullElse(defaultWindowMessageNum, DEFAULT_WINDOW_MESSAGE_NUM);
     }
 
     public void setDefaultWindowMessageNum(Integer defaultWindowMessageNum) {
@@ -152,7 +162,7 @@ public class ContextEngineConfig {
     }
 
     public Integer getDefaultWindowRoundNum() {
-        return defaultWindowRoundNum;
+        return Objects.requireNonNullElse(defaultWindowRoundNum, DEFAULT_WINDOW_ROUND_NUM);
     }
 
     public void setDefaultWindowRoundNum(Integer defaultWindowRoundNum) {
@@ -311,9 +321,9 @@ public class ContextEngineConfig {
                 && isOffloadEnabled == that.isOffloadEnabled
                 && enableModelContextOverflowRecovery == that.enableModelContextOverflowRecovery
                 && Double.compare(openrouterRequestTimeout, that.openrouterRequestTimeout) == 0
-                && Objects.equals(maxContextMessageNum, that.maxContextMessageNum)
-                && Objects.equals(defaultWindowMessageNum, that.defaultWindowMessageNum)
-                && Objects.equals(defaultWindowRoundNum, that.defaultWindowRoundNum)
+                && Objects.equals(getMaxContextMessageNum(), that.getMaxContextMessageNum())
+                && Objects.equals(getDefaultWindowMessageNum(), that.getDefaultWindowMessageNum())
+                && Objects.equals(getDefaultWindowRoundNum(), that.getDefaultWindowRoundNum())
                 && Objects.equals(contextWindowTokens, that.contextWindowTokens)
                 && Objects.equals(modelName, that.modelName)
                 && Objects.equals(modelContextWindowTokens, that.modelContextWindowTokens)
@@ -324,9 +334,9 @@ public class ContextEngineConfig {
     @Override
     public int hashCode() {
         return Objects.hash(
-                maxContextMessageNum,
-                defaultWindowMessageNum,
-                defaultWindowRoundNum,
+                getMaxContextMessageNum(),
+                getDefaultWindowMessageNum(),
+                getDefaultWindowRoundNum(),
                 enableReload,
                 enableTiktokenCounter,
                 contextWindowTokens,

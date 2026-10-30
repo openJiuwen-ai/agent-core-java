@@ -88,17 +88,18 @@ public class StepCheckpointTrigger {
         }
         long seq = seqCounter.incrementAndGet();
         long now = System.currentTimeMillis();
+        isLastBoundaryPersisted = false;
         if (boundary.status() == StepStatus.FAILED) {
             recordFailedStep(session, seq, boundary, now);
             return;
         }
-        StepCheckpointPolicy policy = evaluator.resolve(agentDefault, invokeOverride);
-        isLastBoundaryPersisted = checkpointer != null
+        boolean shouldPersist = checkpointer != null
                 && evaluator.shouldPersist(agentDefault, invokeOverride, signalsWithDurations(signals, seq));
-        if (isLastBoundaryPersisted) {
+        if (shouldPersist) {
             try {
                 checkpointer.stepCompleted(session, new StepCursor(seq, boundary.stepType(), boundary.stepName(),
                         boundary.status(), now));
+                isLastBoundaryPersisted = true;
             } catch (RuntimeException exception) {
                 log.warn("Step-level checkpoint failed for session {}: {}",
                         session.sessionId(), exception.getMessage());

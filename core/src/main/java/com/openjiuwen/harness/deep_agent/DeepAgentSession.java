@@ -118,6 +118,22 @@ public class DeepAgentSession implements AgentSessionApi {
         return facade.streamIterator(failure);
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long renewModelCallTimeout(long leaseId, long idleTimeoutMs, long delayMs) {
+        return facade.renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void endModelCallTimeout(long leaseId) {
+        facade.endModelCallTimeout(leaseId);
+    }
+
     @Override
     public TenantContext getTenantContext() {
         return facade.getTenantContext();

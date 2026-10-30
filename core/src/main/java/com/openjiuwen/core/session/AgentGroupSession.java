@@ -178,6 +178,22 @@ public class AgentGroupSession implements AgentSessionApi {
         return inner.streamIterator(failure);
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long renewModelCallTimeout(long leaseId, long idleTimeoutMs, long delayMs) {
+        return inner.renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void endModelCallTimeout(long leaseId) {
+        inner.endModelCallTimeout(leaseId);
+    }
+
     @Override
     public void writeStream(Object data) {
         inner.writeStream(enrichWithTeamMetadata(data));

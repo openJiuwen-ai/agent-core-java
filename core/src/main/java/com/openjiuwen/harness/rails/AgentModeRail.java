@@ -13,6 +13,7 @@ import com.openjiuwen.harness.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.sections.AgentModeSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.schema.AgentMode;
+import com.openjiuwen.harness.tools.subagent.TaskTool;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -332,13 +333,24 @@ public class AgentModeRail extends DeepAgentRail {
 
     private static final class PlanModeTaskTool extends Tool {
         private PlanModeTaskTool() {
-            super(new ToolCard("task_tool", "task_tool", "Run a subagent task.", emptySchemaShell()));
+            super(buildCard());
         }
 
-        // The declared surface must match the canonical TaskTool card, schema shell included:
-        // the global resource registry reuses an existing entry only when declarations match, so
-        // a bare placeholder registered first would fail a later schema-carrying TaskTool
-        // registration with an order-dependent duplicate-definition conflict.
+        // The declared surface must match the canonical TaskTool card, schema shell and
+        // resilience properties included: the global resource registry reuses an existing
+        // entry only when declarations match, so a bare placeholder registered first would
+        // fail a later schema-carrying TaskTool registration with an order-dependent
+        // duplicate-definition conflict.
+        private static ToolCard buildCard() {
+            ToolCard card = new ToolCard("task_tool", "task_tool", "Run a subagent task.", emptySchemaShell());
+            Map<String, Object> properties = new LinkedHashMap<>();
+            Map<String, Object> resilience = new LinkedHashMap<>();
+            resilience.put("timeout_s", TaskTool.DEFAULT_TASK_TIMEOUT_SECONDS);
+            properties.put("resilience", resilience);
+            card.setProperties(properties);
+            return card;
+        }
+
         private static Map<String, Object> emptySchemaShell() {
             Map<String, Object> schema = new LinkedHashMap<>();
             schema.put("type", "object");

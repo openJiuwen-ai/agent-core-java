@@ -4,8 +4,6 @@
 
 package com.openjiuwen.harness;
 
-
-import com.openjiuwen.harness.deep_agent.DeepAgent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.Tool;
@@ -13,17 +11,27 @@ import com.openjiuwen.core.singleagent.rail.HeartbeatReason;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.RunContext;
 import com.openjiuwen.core.singleagent.rail.RunKind;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.HeartbeatRail;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
+import com.openjiuwen.harness.rails.security.PermissionInterruptRail;
 import com.openjiuwen.harness.rails.skills.SkillUseRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.schema.task.TodoItem;
 import com.openjiuwen.harness.schema.task.TodoStatus;
+import com.openjiuwen.harness.security.ToolPermissionHost;
+import com.openjiuwen.harness.subagents.SubAgentConfig;
 import com.openjiuwen.harness.tools.FilesystemTools;
 import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.tools.subagent.SessionTools;
 import com.openjiuwen.harness.workspace.Workspace;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,11 +39,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Supplemental parity coverage for DeepAgent subagent/session system tests.
@@ -221,6 +224,53 @@ class DeepAgentSubagentMissingTest {
 
         assertThat(output.isSuccess()).isFalse();
         assertThat(toolkit.get("cancel_s6_task_id").status()).isEqualTo("completed");
+    }
+
+    @Test
+    void subagentPermissionsPropagateWithPerChildEngines() {
+        Map<String, Object> permissions = Map.of("enabled", true, "defaults", Map.of("*", "allow"));
+        ToolPermissionHost host = new ToolPermissionHost();
+        SubAgentConfig spec = SubAgentConfig.builder()
+                .agentCard(new AgentCard("permission-child", "verification_agent", "test"))
+                .workspacePath(tempDir.toString())
+                .mcps(List.of())
+                .build();
+        assertThat(spec).hasFieldOrPropertyWithValue("permissions", null);
+        assertThat(spec).hasFieldOrPropertyWithValue("permissionHost", null);
+        spec.setPermissions(permissions);
+        spec.setPermissionHost(host);
+        com.openjiuwen.harness.schema.config.DeepAgentConfig mapped = spec.toDeepAgentConfig();
+        assertThat(mapped.getPermissions()).isEqualTo(permissions);
+        assertThat(mapped.getPermissionHost()).isSameAs(host);
+        com.openjiuwen.harness.schema.config.DeepAgentConfig parentConfig =
+                new com.openjiuwen.harness.schema.config.DeepAgentConfig();
+        parentConfig.setMcps(List.of());
+        parentConfig.setSubagents(List.of(spec));
+        DeepAgent parent = new DeepAgent(new AgentCard("parent", "parent", "test"));
+        parent.configure(parentConfig);
+
+        DeepAgent first = parent.createSubagent("verification_agent", "first-child");
+        DeepAgent second = parent.createSubagent("verification_agent", "second-child");
+
+        PermissionInterruptRail firstRail = permissionRail(first);
+        PermissionInterruptRail secondRail = permissionRail(second);
+        assertThat(first).isNotSameAs(second);
+        assertThat(firstRail).isNotSameAs(secondRail);
+        assertThat(firstRail.getEngine()).isNotSameAs(secondRail.getEngine());
+        assertThat(firstRail.getHost()).isSameAs(host);
+        assertThat(secondRail.getHost()).isSameAs(host);
+        assertThat(firstRail.getStaticConfig()).isEqualTo(permissions);
+        assertThat(secondRail.getStaticConfig()).isEqualTo(permissions);
+        assertThat(spec.getRails()).isEmpty();
+        assertThat(first.deepConfig().getRails()).noneMatch(PermissionInterruptRail.class::isInstance);
+    }
+
+    private static PermissionInterruptRail permissionRail(DeepAgent agent) {
+        return agent.getRails().stream()
+                .filter(PermissionInterruptRail.class::isInstance)
+                .map(PermissionInterruptRail.class::cast)
+                .findFirst()
+                .orElseThrow();
     }
 
     private void assertComplexTaskMultiToolChain() throws Exception {

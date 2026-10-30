@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.schema.config;
 
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.harness.kvcache.KVCacheSubagentLifecycle;
@@ -108,6 +109,14 @@ public class DeepAgentConfig {
     private boolean autoCreateWorkspace = true;
     private SysOperation sysOperation;
     private ToolPermissionHost permissionHost;
+
+    /**
+     * Optional context engine bounds for this agent; when null the parent's config is
+     * inherited by dynamically created subagents.
+     *
+     * @since 0.1.18
+     */
+    private ContextEngineConfig contextEngineConfig;
     @Builder.Default
     private boolean isEnableTenantIsolation = false;
     /**

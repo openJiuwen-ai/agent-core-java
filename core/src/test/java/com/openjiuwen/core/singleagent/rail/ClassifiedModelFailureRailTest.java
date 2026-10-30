@@ -18,15 +18,21 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Guardrail rail: classification-driven disposition of model call failures in
@@ -51,27 +57,35 @@ class ClassifiedModelFailureRailTest {
 
     @Test
     void onModelException_budgetExhausted_noFurtherRetry() {
-        AgentCallbackContext ctx = contextWith(classifiedHttp(429));
+        RecordingSession session = new RecordingSession(false);
+        AgentCallbackContext ctx = streamingContextWith(classifiedHttp(429), agentWithMaxRetries(1), session);
         rail.onModelException(ctx);
         assertThat(ctx.consumeRetryRequest()).isNotNull();
+        int writesBeforeExhaustion = session.modelRetryWriteAttempts;
 
         rail.onModelException(ctx);
+
         assertThat(ctx.consumeRetryRequest()).isNull();
+        assertThat(session.modelRetryWriteAttempts).isEqualTo(writesBeforeExhaustion);
     }
 
     @Test
     void onModelException_permanentCategories_neverRetried() {
-        AgentCallbackContext quota = contextWith(classifiedHttp(402));
+        RecordingSession session = new RecordingSession(false);
+        ReActAgent agent = newAgent();
+        AgentCallbackContext quota = streamingContextWith(classifiedHttp(402), agent, session);
         rail.onModelException(quota);
         assertThat(quota.consumeRetryRequest()).isNull();
 
-        AgentCallbackContext auth = contextWith(classifiedHttp(401));
+        AgentCallbackContext auth = streamingContextWith(classifiedHttp(401), agent, session);
         rail.onModelException(auth);
         assertThat(auth.consumeRetryRequest()).isNull();
 
-        AgentCallbackContext tooLong = contextWith(classifiedBody(400, "prompt_too_long"));
+        AgentCallbackContext tooLong = streamingContextWith(classifiedBody(400, "prompt_too_long"), agent, session);
         rail.onModelException(tooLong);
+
         assertThat(tooLong.consumeRetryRequest()).isNull();
+        assertThat(session.modelRetryWriteAttempts).isZero();
     }
 
     @Test
@@ -86,22 +100,53 @@ class ClassifiedModelFailureRailTest {
         // Given a model configured with maxRetries=0, When a retryable failure arrives,
         // Then the guardrail honors the zero and requests no retry
         ReActAgent agent = agentWithMaxRetries(0);
-        AgentCallbackContext ctx = contextWith(classifiedHttp(429));
-        ctx.setAgent(agent);
+        RecordingSession session = new RecordingSession(false);
+        AgentCallbackContext ctx = streamingContextWith(classifiedHttp(429), agent, session);
 
         rail.onModelException(ctx);
+
         assertThat(ctx.consumeRetryRequest()).isNull();
+        assertThat(session.modelRetryWriteAttempts).isZero();
     }
 
     @Test
     void onModelException_backupRailPresent_guardrailYields() {
         ReActAgent agent = newAgent();
         agent.registerInstanceRail(new ModelBackupRail(List.of())).toCompletableFuture().join();
-        AgentCallbackContext ctx = contextWith(classifiedHttp(429));
-        ctx.setAgent(agent);
+        RecordingSession session = new RecordingSession(false);
+        AgentCallbackContext ctx = streamingContextWith(classifiedHttp(429), agent, session);
 
         rail.onModelException(ctx);
+
         assertThat(ctx.consumeRetryRequest()).isNull();
+        assertThat(session.modelRetryWriteAttempts).isZero();
+    }
+
+    @Test
+    void railWriteFailureDoesNotCancelRetryOrReplaceModelFailure() {
+        ReActAgent agent = agentWithMaxRetries(1);
+        useZeroDelayGuardrail(agent);
+        RecordingSession session = new RecordingSession(true);
+        AgentCallbackContext ctx = new AgentCallbackContext(agent);
+        ctx.setSession(session);
+        ctx.getExtra().put("_streaming", true);
+        RuntimeException firstFailure = classifiedHttp(500);
+        RuntimeException finalFailure = classifiedHttp(500);
+        AtomicInteger modelCalls = new AtomicInteger();
+
+        assertThatThrownBy(() -> Rails.run(
+                ctx,
+                AgentCallbackEvent.BEFORE_MODEL_CALL,
+                AgentCallbackEvent.AFTER_MODEL_CALL,
+                AgentCallbackEvent.ON_MODEL_EXCEPTION,
+                () -> {
+                    throw modelCalls.incrementAndGet() == 1 ? firstFailure : finalFailure;
+                }
+        )).isSameAs(finalFailure);
+
+        assertThat(modelCalls).hasValue(2);
+        assertThat(session.railWriteAttempts).isEqualTo(1);
+        assertThat(session.modelRetryWriteAttempts).isEqualTo(1);
     }
 
     @Test
@@ -117,6 +162,20 @@ class ClassifiedModelFailureRailTest {
         AgentCallbackContext ctx = new AgentCallbackContext();
         ctx.setException(exception);
         return ctx;
+    }
+
+    private static AgentCallbackContext streamingContextWith(RuntimeException exception, ReActAgent agent,
+            RecordingSession session) {
+        AgentCallbackContext ctx = new AgentCallbackContext(agent);
+        ctx.setException(exception);
+        ctx.setSession(session);
+        ctx.getExtra().put("_streaming", true);
+        return ctx;
+    }
+
+    private static void useZeroDelayGuardrail(ReActAgent agent) {
+        agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
+        agent.registerInstanceRail(new ClassifiedModelFailureRail(1, 0.0D)).toCompletableFuture().join();
     }
 
     private static RuntimeException classifiedHttp(int status) {
@@ -150,6 +209,55 @@ class ClassifiedModelFailureRailTest {
             ModelRequestConfig.builder().modelName("stub").build());
         agent.setLlm(model);
         return agent;
+    }
+
+    private static final class RecordingSession implements AgentSessionApi {
+        private final Map<String, Object> state = new LinkedHashMap<>();
+        private final List<Object> stream = new ArrayList<>();
+        private final boolean failRailWrites;
+        private int modelRetryWriteAttempts;
+        private int railWriteAttempts;
+
+        private RecordingSession(boolean failRailWrites) {
+            this.failRailWrites = failRailWrites;
+        }
+
+        @Override
+        public String getSessionId() {
+            return "guardrail-session";
+        }
+
+        @Override
+        public Object getState(String key) {
+            return state.get(key);
+        }
+
+        @Override
+        public void updateState(Map<String, Object> data) {
+            state.putAll(data);
+        }
+
+        @Override
+        public void writeStream(Object data) {
+            if (!(data instanceof OutputSchema output) || !"model_retry".equals(output.getType())) {
+                stream.add(data);
+                return;
+            }
+            modelRetryWriteAttempts++;
+            if (output.getPayload() instanceof Map<?, ?> payload
+                && "rail".equals(payload.get("retry_tier"))) {
+                railWriteAttempts++;
+                if (failRailWrites) {
+                    throw new IllegalStateException("stream write unavailable");
+                }
+            }
+            stream.add(data);
+        }
+
+        @Override
+        public Iterator<Object> streamIterator() {
+            return stream.iterator();
+        }
     }
 
     private static final class StubModelClient implements Model.ModelClient {

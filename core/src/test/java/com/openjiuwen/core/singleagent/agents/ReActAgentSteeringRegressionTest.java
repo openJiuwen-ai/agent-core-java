@@ -170,7 +170,8 @@ class ReActAgentSteeringRegressionTest {
             public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
                 capturedRequests.add(new ArrayList<>(messages));
                 String content = callCount.incrementAndGet() == 1 ? "intermediate" : "done";
-                return List.of(AssistantMessageChunk.builder().content(content).build()).iterator();
+                AssistantMessageChunk chunk = AssistantMessageChunk.builder().content(content).build();
+                return List.of(chunk).iterator();
             }
         });
     }

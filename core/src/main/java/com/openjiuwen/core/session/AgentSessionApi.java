@@ -120,6 +120,41 @@ public interface AgentSessionApi {
     default void resetPostRunState() {
     }
 
+    /**
+     * Renew the subsequent-frame wait window for one model call.
+     *
+     * <p>The first renewal uses {@code leaseId=0}. A supporting implementation returns a positive
+     * lease id and extends that independent lease to the current monotonic time plus
+     * {@code delayMs}, {@code idleTimeoutMs}, and its grace period. Later renewals must reuse the
+     * same id. When several leases are active, the latest deadline applies. Implementations that
+     * support leases must make id generation and lease access thread-safe.</p>
+     *
+     * @implSpec The default implementation returns {@code 0} and performs no coordination, so
+     * existing custom sessions retain their previous behavior.
+     *
+     * @param leaseId zero to allocate a lease, or a positive id returned by an earlier renewal
+     * @param idleTimeoutMs model idle timeout in milliseconds; must be positive
+     * @param delayMs additional delay before the model call in milliseconds; must be non-negative
+     * @return the positive renewed lease id, or {@code 0} when coordination is unsupported
+     * @throws IllegalArgumentException when a duration is invalid or a positive lease id is unknown
+     */
+    default long renewModelCallTimeout(long leaseId, long idleTimeoutMs, long delayMs) {
+        return 0L;
+    }
+
+    /**
+     * End one model-call wait lease without affecting any other lease.
+     *
+     * <p>Lease id {@code 0} and unknown ids are no-ops. Supporting implementations must make this
+     * operation thread-safe and must not change the model call result.</p>
+     *
+     * @implSpec The default implementation is a no-op for compatibility with custom sessions.
+     *
+     * @param leaseId positive lease id to release, or {@code 0}/an unknown id for no action
+     */
+    default void endModelCallTimeout(long leaseId) {
+    }
+
     default void closeStream() {
     }
 

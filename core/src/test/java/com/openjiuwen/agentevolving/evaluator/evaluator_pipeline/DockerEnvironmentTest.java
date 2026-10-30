@@ -4,28 +4,126 @@
 
 package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.io.UncheckedIOException;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
 /**
  * Mirrors Python's evaluator-pipeline docker environment tests in
  * {@code tests/unit_tests/agent_evolving/evaluator/evaluator_pipeline/test_docker_env.py}.
  */
 class DockerEnvironmentTest {
+
+    /**
+     * Container paths may embed newlines; assert {@code exec} keeps them as one argv
+     * element (no host {@link Path} round-trip — illegal on Windows NIO).
+     */
+    @Test
+    void execArgumentsPreserveLiteralPathsIncludingNewlines() {
+        FakeDockerEnvironment environment = new FakeDockerEnvironment("test-image");
+        environment.setContainerIdForTesting("container-id");
+        environment.queueResult(new ExecResult("", "", 0, false));
+        String remotePath = "/work/space ' ; $(touch INJECTED) `echo bad`\nline";
+
+        ExecResult result = environment.exec(List.of("mkdir", "-p", "--", remotePath), 10, null, null).join();
+
+        assertTrue(result.isSuccess());
+        assertEquals(List.of(
+                "/usr/bin/docker", "exec", "container-id", "mkdir", "-p", "--", remotePath),
+                environment.getLastCommand());
+        assertTrue(environment.getLastCommand().get(environment.getLastCommand().size() - 1).contains("\n"));
+    }
+
+    /**
+     * Host-local regression: {@code exec} argv after the container id is interpreted
+     * literally (no shell). Uses Java NIO instead of OS {@code mkdir}/{@code cat} so
+     * Windows and Linux share one path. Directory name omits control characters that
+     * NTFS rejects; newline coverage lives in
+     * {@link #execArgumentsPreserveLiteralPathsIncludingNewlines()}.
+     */
+    @Test
+    void execArgumentsPreserveLiteralPathsLocally(@TempDir Path tempDir) throws Exception {
+        DockerEnvironment environment = new DockerEnvironment("local") {
+            @Override
+            protected String resolveDockerPath() {
+                return "docker";
+            }
+
+            @Override
+            protected CompletableFuture<ExecResult> runCommand(List<String> command, int timeout) {
+                int start = command.indexOf("local-container") + 1;
+                try {
+                    return CompletableFuture.completedFuture(
+                            interpretLocalArgv(command.subList(start, command.size())));
+                } catch (IOException exception) {
+                    return CompletableFuture.failedFuture(exception);
+                }
+            }
+        };
+        environment.setContainerIdForTesting("local-container");
+        // Cross-OS legal name: spaces / quotes / $() / backticks; no control chars.
+        Path path = tempDir.resolve("space ' ; $(touch INJECTED) `echo bad` line");
+        ExecResult created = environment.exec(List.of("mkdir", "-p", "--", path.toString()), 10, null, null).join();
+        assertTrue(created.isSuccess(), created.getStderr());
+        assertTrue(Files.isDirectory(path));
+        Path file = path.resolve("-file.txt");
+        Files.writeString(file, "literal content");
+        assertEquals("literal content", environment.exec(List.of("cat", "--", file.toString()), 10, null, null)
+                .join().getStdout());
+        assertFalse(Files.exists(tempDir.resolve("INJECTED")),
+                "shell metacharacters must not be evaluated when passed as argv literals");
+    }
+
+    /**
+     * Interprets a tiny argv subset the way a container entrypoint would: operands
+     * after {@code --} are path literals, never shell-expanded.
+     */
+    private static ExecResult interpretLocalArgv(List<String> argv) throws IOException {
+        if (argv.isEmpty()) {
+            return new ExecResult("", "empty argv", 1, false);
+        }
+        int separator = argv.indexOf("--");
+        if (separator < 0 || separator + 1 >= argv.size()) {
+            return new ExecResult("", "missing -- path operand: " + argv, 1, false);
+        }
+        Path target = Path.of(argv.get(separator + 1));
+        String program = argv.get(0);
+        if ("mkdir".equals(program)) {
+            Files.createDirectories(target);
+            return new ExecResult("", "", 0, false);
+        }
+        if ("cat".equals(program)) {
+            return new ExecResult(Files.readString(target, StandardCharsets.UTF_8), "", 0, false);
+        }
+        return new ExecResult("", "unsupported local argv program: " + program, 1, false);
+    }
+
+    @Test
+    void execArgumentsKeepDockerOptionsAndTimeout() {
+        FakeDockerEnvironment environment = new FakeDockerEnvironment("test-image");
+        environment.setContainerIdForTesting("container-id");
+        environment.queueResult(new ExecResult("", "timed out", -1, true));
+        ExecResult result = environment.exec(List.of("cat", "--", "/path with spaces"), 12,
+                "/work dir", Map.of("KEY", "value; literal")).join();
+        assertEquals(List.of("/usr/bin/docker", "exec", "-w", "/work dir", "-e", "KEY=value; literal",
+                "container-id", "cat", "--", "/path with spaces"), environment.getLastCommand());
+        assertTrue(result.isTimedOut());
+    }
 
     @Test
     void testDefaultValues() {
