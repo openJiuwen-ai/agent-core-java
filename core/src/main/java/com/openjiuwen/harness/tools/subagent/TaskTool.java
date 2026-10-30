@@ -6,6 +6,7 @@ package com.openjiuwen.harness.tools.subagent;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -188,7 +189,7 @@ public class TaskTool extends AbstractHarnessTool {
         boolean isSetupComplete = false;
         try {
             DeepAgent subagent = createSubagent(subagentType, pendingTask.subSessionId);
-            AgentSessionApi subSession = buildSubSession(parentSession, pendingTask.subSessionId);
+            AgentSessionApi subSession = buildSubSession(parentSession, pendingTask.subSessionId, subagent.getCard());
             pendingTask.retain(subagent, subSession);
             KVCacheSubagentLifecycle.prepareSubagent(parentAgent, subSession, subagentType).join();
             isSetupComplete = true;
@@ -275,14 +276,17 @@ public class TaskTool extends AbstractHarnessTool {
      *
      * @param parentSession parent product session
      * @param subSessionId runtime sub-session id
+     * @param card child agent card
      * @return child session (never {@code null}); without affinity it is a
      *         plain self-keyed session
      */
-    private static AgentSessionApi buildSubSession(AgentSessionApi parentSession, String subSessionId) {
+    private static AgentSessionApi buildSubSession(AgentSessionApi parentSession, String subSessionId, Object card) {
         java.util.Optional<com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.ChildSessionKwargs> inheritance =
                 com.openjiuwen.core.singleagent.kvcache.KVCacheChildSession.buildChildSessionKwargs(parentSession);
         if (inheritance.isEmpty()) {
-            return parentSession;
+            AgentSession child = AgentSession.createAgentSession(subSessionId, parentSession.getEnvs(), card);
+            child.withTenantContext(parentSession.getTenantContext());
+            return child;
         }
         return KVCacheSubagentLifecycle.createSubagentSession(
                 parentSession,

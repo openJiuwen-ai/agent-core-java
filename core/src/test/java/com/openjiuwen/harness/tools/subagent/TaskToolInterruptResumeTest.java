@@ -8,11 +8,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.kvcache.KVCacheIdentity;
+import com.openjiuwen.core.kvcache.KVCacheTypes;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -24,12 +36,15 @@ import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptHandler;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.tools.ToolOutput;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -38,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -56,6 +70,9 @@ class TaskToolInterruptResumeTest {
     private static final String SUBAGENT_TYPE = "verification_agent";
     private static final String TASK_DESCRIPTION = "inspect child";
     private static final String INNER_INTERRUPT_ID = "inner-1";
+
+    @TempDir
+    private Path tempDir;
 
     @Test
     void taskToolInterruptResumesSameChildThroughParentHandler() {
@@ -76,7 +93,7 @@ class TaskToolInterruptResumeTest {
         assertThat(firstInterrupt.get("result_type")).isEqualTo("interrupt");
         assertThat(firstInterrupt.get("state")).isEqualTo(List.of(childState));
         assertThat(firstInterrupt.get("interrupt_ids")).isEqualTo(List.of(INNER_INTERRUPT_ID));
-        assertLifecycleCounts(session, 1, 0, 0);
+        assertRetainedNoKvSessions(child, session, 1);
 
         ToolInterruptHandler.InterruptStateResult interruption = handler.buildInterruptState(
                 List.of(firstResult), List.of(toolCall), new AssistantMessage("start"), 0, "start");
@@ -90,14 +107,14 @@ class TaskToolInterruptResumeTest {
         InteractiveInput reply = reply("approved");
         ResumeContext resume = resumeContext(state, session, reply, tool);
         assertThat(handler.handleResume(resume)).isNull();
-        assertResumedSameChild(parent, child, session, reply);
-        assertLifecycleCounts(session, 1, 1, 0);
+        assertResumedSameChild(parent, child, reply);
+        assertRetainedNoKvSessions(child, session, 2);
 
         Object nextResult = invokeParsedTool(tool, toolCall, session);
         ToolOutput nextOutput = assertInstanceOf(ToolOutput.class, nextResult);
         assertThat(nextOutput.isSuccess()).isTrue();
         assertThat(parent.createAttempts).isEqualTo(2);
-        assertLifecycleCounts(session, 2, 2, 0);
+        assertThat(child.sessions.get(2)).isNotSameAs(child.sessions.get(0)).isNotSameAs(session);
     }
 
     @Test
@@ -116,7 +133,7 @@ class TaskToolInterruptResumeTest {
                 .hasMessageContaining("already pending");
         assertThat(parent.createAttempts).isEqualTo(1);
         assertThat(child.invocations).hasSize(1);
-        assertLifecycleCounts(session, 1, 0, 0);
+        assertRetainedNoKvSessions(child, session, 1);
     }
 
     @Test
@@ -135,28 +152,29 @@ class TaskToolInterruptResumeTest {
                 tool.invoke(taskInputs(), Map.of("session", session)));
         assertThat(retryOutput.isSuccess()).isTrue();
         assertThat(parent.createAttempts).isEqualTo(2);
-        assertLifecycleCounts(session, 1, 1, 0);
+        assertRetainedNoKvSessions(child, session, 1);
     }
 
     @Test
     void failedPrepareCleansUpAndAllowsNewTask() throws Exception {
         ScriptedChildAgent child = new ScriptedChildAgent("child-agent", List.<Object>of(Map.of("output", "done")));
         ScriptedParentAgent parent = new ScriptedParentAgent(child);
-        TrackingSession session = new TrackingSession("parent-session");
-        session.failNextPrepare = true;
+        TrackingKvcRuntime runtime = new TrackingKvcRuntime();
+        TrackingSession session = new TrackingSession("parent-session", runtime);
+        runtime.failNextPrepare = true;
         Tool tool = taskTool(parent);
 
         assertThatThrownBy(() -> tool.invoke(taskInputs(), Map.of("session", session)))
-                .isInstanceOf(CompletionException.class)
+                .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("prepare failed");
         assertThat(parent.createAttempts).isEqualTo(1);
-        assertLifecycleCounts(session, 1, 0, 1);
+        assertLifecycleCounts(runtime, 1, 0, 1);
 
         ToolOutput retryOutput = assertInstanceOf(ToolOutput.class,
                 tool.invoke(taskInputs(), Map.of("session", session)));
         assertThat(retryOutput.isSuccess()).isTrue();
         assertThat(parent.createAttempts).isEqualTo(2);
-        assertLifecycleCounts(session, 2, 1, 1);
+        assertLifecycleCounts(runtime, 2, 1, 1);
     }
 
     @Test
@@ -165,7 +183,8 @@ class TaskToolInterruptResumeTest {
                 List.<Object>of(childInterruptResult(childInterruptState()), new IllegalStateException("boom"),
                         Map.of("output", "next")));
         ScriptedParentAgent parent = new ScriptedParentAgent(child);
-        TrackingSession session = new TrackingSession("parent-session");
+        TrackingKvcRuntime runtime = new TrackingKvcRuntime();
+        TrackingSession session = new TrackingSession("parent-session", runtime);
         Tool tool = taskTool(parent);
         tool.invoke(taskInputs(), Map.of("session", session));
         Map<String, Object> resumeInputs = new LinkedHashMap<>(taskInputs());
@@ -177,13 +196,41 @@ class TaskToolInterruptResumeTest {
                 .hasMessageContaining("execution failed");
         assertThat(child.invocations.get(1).get("query")).isSameAs(reply);
         assertThat(parent.createAttempts).isEqualTo(1);
-        assertLifecycleCounts(session, 1, 0, 1);
+        assertLifecycleCounts(runtime, 1, 0, 1);
 
         ToolOutput nextOutput = assertInstanceOf(ToolOutput.class,
                 tool.invoke(taskInputs(), Map.of("session", session)));
         assertThat(nextOutput.isSuccess()).isTrue();
         assertThat(parent.createAttempts).isEqualTo(2);
-        assertLifecycleCounts(session, 2, 1, 1);
+        assertLifecycleCounts(runtime, 2, 1, 1);
+    }
+
+    @Test
+    void noKvTaskUsesSelfKeyedChildForRealCheckpointer() throws Exception {
+        Checkpointer previous = CheckpointerFactory.getCheckpointer();
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        DeepAgent child = null;
+        try {
+            child = newRealChildAgent();
+            AgentSession parentSession = new AgentSession("parent-session", Map.of("test-env", "value"),
+                    new AgentCard("parent", "parent", "test"));
+            parentSession.preRun(Map.of("inputs", "parent input"));
+            ScriptedParentAgent parent = new ScriptedParentAgent(child);
+
+            Object result = taskTool(parent).invoke(taskInputs(), Map.of("session", parentSession));
+
+            ToolOutput output = assertInstanceOf(ToolOutput.class, result);
+            assertThat(output.isSuccess()).isTrue();
+            assertThat(checkpointer.sessionExists("parent-session_sub_verification_agent")).isTrue();
+        } finally {
+            if (child != null) {
+                child.shutdown();
+            }
+            checkpointer.release("parent-session");
+            checkpointer.release("parent-session_sub_verification_agent");
+            CheckpointerFactory.setDefaultCheckpointer(previous);
+        }
     }
 
     @Test
@@ -231,7 +278,8 @@ class TaskToolInterruptResumeTest {
         assertThat(firstChild.invocations.get(1).get("query")).isInstanceOf(InteractiveInput.class);
         assertThat(secondChild.invocations.get(1).get("query")).isInstanceOf(InteractiveInput.class);
         assertThat(parent.createAttempts).isEqualTo(2);
-        assertLifecycleCounts(session, 2, 2, 0);
+        assertRetainedNoKvSessions(firstChild, session, 2);
+        assertRetainedNoKvSessions(secondChild, session, 2);
     }
 
     @Test
@@ -247,17 +295,16 @@ class TaskToolInterruptResumeTest {
         Object secondInterrupt = tool.invoke(resumeInputs(TASK_DESCRIPTION, "first answer"),
                 Map.of("session", session));
         assertThat(secondInterrupt).isInstanceOf(Map.class);
-        assertLifecycleCounts(session, 1, 0, 0);
+        assertRetainedNoKvSessions(child, session, 2);
         ToolOutput completed = assertInstanceOf(ToolOutput.class,
                 tool.invoke(resumeInputs(TASK_DESCRIPTION, "second answer"), Map.of("session", session)));
 
         assertThat(completed.isSuccess()).isTrue();
         assertThat(parent.createAttempts).isEqualTo(1);
         assertThat(child.invocations).hasSize(3);
-        assertThat(child.sessions).containsExactly(session, session, session);
+        assertRetainedNoKvSessions(child, session, 3);
         assertThat(child.invocations.get(1).get("conversation_id"))
                 .isEqualTo(child.invocations.get(2).get("conversation_id"));
-        assertLifecycleCounts(session, 1, 1, 0);
     }
 
     @Test
@@ -287,7 +334,7 @@ class TaskToolInterruptResumeTest {
         assertThat(outcomes).anyMatch(IllegalStateException.class::isInstance);
         assertThat(child.invocations).hasSize(2);
         assertThat(parent.createAttempts).isEqualTo(1);
-        assertLifecycleCounts(session, 1, 1, 0);
+        assertRetainedNoKvSessions(child, session, 2);
     }
 
     @Test
@@ -295,19 +342,20 @@ class TaskToolInterruptResumeTest {
         ScriptedChildAgent child = new ScriptedChildAgent("child-agent",
                 List.<Object>of(Map.of("output", "done"), Map.of("output", "next")));
         ScriptedParentAgent parent = new ScriptedParentAgent(child);
-        TrackingSession session = new TrackingSession("parent-session");
-        session.blockNextSuspend();
+        TrackingKvcRuntime runtime = new TrackingKvcRuntime();
+        TrackingSession session = new TrackingSession("parent-session", runtime);
+        runtime.blockNextSuspend();
         Tool tool = taskTool(parent);
         ThreadPoolExecutor executor = newExecutor(1);
         Future<Object> completion = executor.submit(() -> tool.invoke(taskInputs(), Map.of("session", session)));
         try {
-            assertThat(session.suspendStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(runtime.suspendStarted.await(5, TimeUnit.SECONDS)).isTrue();
             assertThatThrownBy(() -> tool.invoke(taskInputs(), Map.of("session", session)))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("already pending");
             assertThat(parent.createAttempts).isEqualTo(1);
         } finally {
-            session.suspendGate.complete(true);
+            runtime.suspendGate.complete(true);
             shutdownExecutor(executor);
         }
 
@@ -316,6 +364,24 @@ class TaskToolInterruptResumeTest {
                 tool.invoke(taskInputs(), Map.of("session", session)));
         assertThat(retry.isSuccess()).isTrue();
         assertThat(parent.createAttempts).isEqualTo(2);
+    }
+
+    private DeepAgent newRealChildAgent() {
+        com.openjiuwen.harness.schema.config.DeepAgentConfig config =
+                com.openjiuwen.harness.schema.config.DeepAgentConfig.builder()
+                        .workspacePath(tempDir.toString())
+                        .isTaskLoopEnabled(true)
+                        .tools(List.of())
+                        .rails(List.of())
+                        .mcps(List.of())
+                        .build();
+        DeepAgent child = HarnessFactory.createDeepAgent(
+                new AgentCard("real-child", "verification_agent", "test"), config, null);
+        Model model = mock(Model.class);
+        when(model.invoke(org.mockito.ArgumentMatchers.<List<BaseMessage>>any(), any(ModelInvokeOptions.class)))
+                .thenAnswer(invocation -> CompletableFuture.completedFuture(new AssistantMessage("done")));
+        child.getAgent().setLlm(model);
+        return child;
     }
 
     private static Tool taskTool(DeepAgent parent) {
@@ -400,12 +466,23 @@ class TaskToolInterruptResumeTest {
         return resume;
     }
 
+    private static void assertRetainedNoKvSessions(ScriptedChildAgent child, TrackingSession parent,
+            int expectedCount) {
+        assertThat(child.sessions).hasSize(expectedCount);
+        AgentSessionApi retained = child.sessions.get(0);
+        assertThat(retained).isNotSameAs(parent).isInstanceOf(AgentSession.class);
+        assertThat(retained.getSessionId()).isEqualTo("parent-session_sub_verification_agent");
+        assertThat(retained.getEnvs()).containsAllEntriesOf(parent.getEnvs());
+        assertThat(retained.getTenantContext()).isSameAs(parent.getTenantContext());
+        assertThat(((AgentSession) retained).getAgentId()).isEqualTo(child.getCard().getId());
+        assertThat(child.sessions).allMatch(session -> session == retained);
+    }
+
     private static void assertResumedSameChild(ScriptedParentAgent parent, ScriptedChildAgent child,
-            TrackingSession session, InteractiveInput reply) {
+            InteractiveInput reply) {
         assertThat(parent.createAttempts).isEqualTo(1);
         assertThat(parent.createdSessionIds).containsExactly("parent-session_sub_verification_agent");
         assertThat(child.invocations).hasSize(2);
-        assertThat(child.sessions).containsExactly(session, session);
         Map<String, Object> resumedInputs = child.invocations.get(1);
         InteractiveInput resumedReply = assertInstanceOf(InteractiveInput.class, resumedInputs.get("query"));
         assertThat(resumedReply.getUserInputs()).isEqualTo(reply.getUserInputs());
@@ -435,11 +512,11 @@ class TaskToolInterruptResumeTest {
         return result;
     }
 
-    private static void assertLifecycleCounts(TrackingSession session, int prepareCount, int suspendCount,
+    private static void assertLifecycleCounts(TrackingKvcRuntime runtime, int prepareCount, int suspendCount,
             int releaseCount) {
-        assertThat(session.prepareCount).isEqualTo(prepareCount);
-        assertThat(session.suspendCount).isEqualTo(suspendCount);
-        assertThat(session.releaseCount).isEqualTo(releaseCount);
+        assertThat(runtime.prepareCount).isEqualTo(prepareCount);
+        assertThat(runtime.suspendCount).isEqualTo(suspendCount);
+        assertThat(runtime.releaseCount).isEqualTo(releaseCount);
     }
 
     private static Map<String, Object> copyStringMap(Map<?, ?> source) {
@@ -449,16 +526,16 @@ class TaskToolInterruptResumeTest {
     }
 
     private static final class ScriptedParentAgent extends DeepAgent {
-        private final Queue<ScriptedChildAgent> children;
+        private final Queue<DeepAgent> children;
         private final List<String> createdSessionIds = new ArrayList<>();
         private int createAttempts;
         private boolean failNextCreation;
 
-        private ScriptedParentAgent(ScriptedChildAgent child) {
+        private ScriptedParentAgent(DeepAgent child) {
             this(List.of(child));
         }
 
-        private ScriptedParentAgent(List<ScriptedChildAgent> children) {
+        private ScriptedParentAgent(List<? extends DeepAgent> children) {
             super(new AgentCard("parent", "parent", "test"));
             this.children = new ArrayDeque<>(children);
         }
@@ -506,22 +583,18 @@ class TaskToolInterruptResumeTest {
     private static final class TrackingSession implements AgentSessionApi {
         private final String sessionId;
         private final Map<String, Object> state = new LinkedHashMap<>();
-        private int prepareCount;
-        private int suspendCount;
-        private int releaseCount;
-        private boolean failNextPrepare;
-        private boolean shouldBlockSuspend;
-        private CountDownLatch suspendStarted;
-        private CompletableFuture<Boolean> suspendGate;
+        private final TrackingKvcRuntime kvcRuntime;
+        private final Map<String, Object> envs = Map.of("test-env", "value");
+        private final com.openjiuwen.core.multitenant.TenantContext tenantContext =
+                com.openjiuwen.core.multitenant.TenantContext.builder().tenantId("tenant-1").build();
 
         private TrackingSession(String sessionId) {
-            this.sessionId = sessionId;
+            this(sessionId, null);
         }
 
-        private void blockNextSuspend() {
-            shouldBlockSuspend = true;
-            suspendStarted = new CountDownLatch(1);
-            suspendGate = new CompletableFuture<>();
+        private TrackingSession(String sessionId, TrackingKvcRuntime kvcRuntime) {
+            this.sessionId = sessionId;
+            this.kvcRuntime = kvcRuntime;
         }
 
         @Override
@@ -550,17 +623,48 @@ class TaskToolInterruptResumeTest {
         }
 
         @Override
-        public CompletableFuture<Boolean> prepareKvc() {
+        public java.util.Optional<KVCacheTypes.KVCacheRuntimeProtocol> getKvCacheRuntime() {
+            return java.util.Optional.ofNullable(kvcRuntime);
+        }
+
+        @Override
+        public Map<String, Object> getEnvs() {
+            return envs;
+        }
+
+        @Override
+        public com.openjiuwen.core.multitenant.TenantContext getTenantContext() {
+            return tenantContext;
+        }
+    }
+
+    private static final class TrackingKvcRuntime implements KVCacheTypes.KVCacheRuntimeProtocol {
+        private int prepareCount;
+        private int suspendCount;
+        private int releaseCount;
+        private boolean failNextPrepare;
+        private boolean shouldBlockSuspend;
+        private CountDownLatch suspendStarted;
+        private CompletableFuture<Boolean> suspendGate;
+
+        private void blockNextSuspend() {
+            shouldBlockSuspend = true;
+            suspendStarted = new CountDownLatch(1);
+            suspendGate = new CompletableFuture<>();
+        }
+
+        @Override
+        public CompletableFuture<Boolean> prepare(KVCacheIdentity identity) {
             prepareCount++;
             if (failNextPrepare) {
                 failNextPrepare = false;
-                return CompletableFuture.failedFuture(new IllegalStateException("prepare failed"));
+                throw new IllegalStateException("prepare failed");
             }
             return CompletableFuture.completedFuture(true);
         }
 
         @Override
-        public CompletableFuture<Boolean> suspendKvc() {
+        public CompletableFuture<Boolean> suspend(KVCacheIdentity identity) {
             suspendCount++;
             if (shouldBlockSuspend) {
                 shouldBlockSuspend = false;
@@ -571,9 +675,20 @@ class TaskToolInterruptResumeTest {
         }
 
         @Override
-        public CompletableFuture<Boolean> releaseKvc() {
+        public CompletableFuture<Boolean> release(KVCacheIdentity identity) {
             releaseCount++;
             return CompletableFuture.completedFuture(true);
+        }
+
+        @Override
+        public CompletableFuture<KVCacheTypes.InferenceLease> beginInference(KVCacheIdentity identity, Object model,
+                String modelName) {
+            throw new UnsupportedOperationException("Inference is not used in this fixture");
+        }
+
+        @Override
+        public CompletableFuture<Void> endInference(KVCacheTypes.InferenceLease lease, boolean isSucceeded) {
+            throw new UnsupportedOperationException("Inference is not used in this fixture");
         }
     }
 }
