@@ -262,6 +262,21 @@ public class AsyncStreamQueue {
         return receive(DEFAULT_RECEIVE_TIMEOUT_MS);
     }
 
+    /**
+     * Poll one frame without waiting.
+     *
+     * <p>A non-null frame follows the same completion accounting and logging path as
+     * {@link #receive(long)}. An empty queue returns {@code null} without changing accounting.</p>
+     *
+     * @return the next queued frame, or {@code null} when no frame is immediately available
+     */
+    public Object tryReceive() {
+        if (closed.get()) {
+            throw new RuntimeException("StreamQueue is already closed");
+        }
+        return completeReceive(streamQueue.poll());
+    }
+
     public Object receive(long timeoutMs) {
         if (closed.get()) {
             throw new RuntimeException("StreamQueue is already closed");
@@ -269,20 +284,23 @@ public class AsyncStreamQueue {
 
         long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_RECEIVE_TIMEOUT_MS;
         try {
-            Object item = streamQueue.poll(effectiveTimeoutMs, TimeUnit.MILLISECONDS);
-            if (item != null) {
-                taskDone();
-                SESSION_LOGGER.debug(
-                        "Stream data received successfully, eventType={}, streamItemType={}",
-                        LogEventType.SESSION_STREAM_CHUNK.getValue(),
-                        item.getClass().getSimpleName()
-                );
-            }
-            return item;
+            return completeReceive(streamQueue.poll(effectiveTimeoutMs, TimeUnit.MILLISECONDS));
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             return null;
         }
+    }
+
+    private Object completeReceive(Object item) {
+        if (item != null) {
+            taskDone();
+            SESSION_LOGGER.debug(
+                    "Stream data received successfully, eventType={}, streamItemType={}",
+                    LogEventType.SESSION_STREAM_CHUNK.getValue(),
+                    item.getClass().getSimpleName()
+            );
+        }
+        return item;
     }
 
     public void close() {

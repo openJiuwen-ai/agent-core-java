@@ -4,17 +4,25 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
 import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorFacts;
+import com.openjiuwen.core.foundation.llm.classification.RuleBasedModelErrorClassifier;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.singleagent.rail.ClassifiedModelFailureRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -27,10 +35,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class ReActAgentModelRetryOutputTest {
-
     @Test
     void streamEmitsHttpRetryBeforeLlmOutputAndAnswerWithSharedIndexes() {
         RetryingModelClient client = new RetryingModelClient(new ModelRetryEvent(
@@ -60,7 +65,8 @@ class ReActAgentModelRetryOutputTest {
                 Map.entry("delay_ms", 1250L),
                 Map.entry("delay_source", "retry_after"),
                 Map.entry("message", "模型请求失败，正在进行第 2/4 次重试"),
-                Map.entry("status_code", 429)
+                Map.entry("status_code", 429),
+                Map.entry("retry_tier", "client")
         );
         assertThat(payload(outputs.get(0)))
                 .doesNotContainKeys("exception_type", "exception_message", "request", "response", "prompt",
@@ -91,12 +97,46 @@ class ReActAgentModelRetryOutputTest {
         Map<String, Object> retryPayload = payload(singleOutput(outputs, "model_retry"));
         assertThat(retryPayload)
                 .containsEntry("exception_type", "java.io.IOException")
+                .containsEntry("retry_tier", "client")
                 .doesNotContainKey("status_code");
         assertThat(retryPayload.keySet()).containsExactly(
-                "retry_count", "max_retries", "delay_ms", "delay_source", "message", "exception_type");
+                "retry_count", "max_retries", "delay_ms", "delay_source", "message", "exception_type",
+                "retry_tier");
         assertThat(singleOutput(outputs, "answer").getPayload().toString())
                 .contains("ok")
                 .doesNotContain("IOException", "模型请求失败");
+    }
+
+    @Test
+    void streamEmitsRailRetryWithSharedSequenceAfterClientRetries() {
+        List<ModelRetryEvent> clientRetries = List.of(
+                clientRetry(1, Duration.ofMillis(10)),
+                clientRetry(2, Duration.ofMillis(20))
+        );
+        ScriptedModelClient client = new ScriptedModelClient(
+                clientRetries,
+                List.of(temporaryFailure("first model failure"))
+        );
+        ReActAgent agent = agentWith(client, 0.025D);
+
+        List<OutputSchema> outputs = collectOutput(agent.stream(
+                Map.of("query", "hello"),
+                new MemorySession("rail-retry-session"),
+                List.of()
+        ));
+
+        assertThat(outputs).extracting(OutputSchema::getType)
+                .containsExactly("model_retry", "model_retry", "model_retry", "llm_output", "answer");
+        assertThat(outputs).extracting(OutputSchema::getIndex).containsExactly(0, 1, 2, 3, 0);
+        assertThat(payload(outputs.get(2))).containsExactly(
+                Map.entry("retry_count", 1),
+                Map.entry("max_retries", 1),
+                Map.entry("delay_ms", 25L),
+                Map.entry("delay_source", "guardrail"),
+                Map.entry("message", "模型调用预算耗尽，护栏层发起整轮重试 1/1"),
+                Map.entry("retry_tier", "rail")
+        );
+        assertThat(payload(outputs.get(3))).containsEntry("content", "ok");
     }
 
     @Test
@@ -114,7 +154,7 @@ class ReActAgentModelRetryOutputTest {
                 && Objects.equals(output.getType(), "model_retry"));
     }
 
-    private static ReActAgent agentWith(RetryingModelClient client) {
+    private static ReActAgent agentWith(Model.ModelClient client) {
         ReActAgent agent = new ReActAgent(new AgentCard(
                 "retry-agent-" + System.nanoTime(),
                 "retry-agent",
@@ -122,6 +162,29 @@ class ReActAgentModelRetryOutputTest {
         ));
         agent.setLlm(new Model(client));
         return agent;
+    }
+
+    private static ReActAgent agentWith(Model.ModelClient client, double maxRailDelaySeconds) {
+        ReActAgent agent = agentWith(client);
+        agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
+        agent.registerInstanceRail(new ClassifiedModelFailureRail(1, maxRailDelaySeconds))
+                .toCompletableFuture()
+                .join();
+        return agent;
+    }
+
+    private static ModelRetryEvent clientRetry(int retryCount, Duration delay) {
+        return new ModelRetryEvent(retryCount, 2, null, "java.io.IOException", delay,
+                "exponential_backoff", ModelErrorCategory.TEMPORARY);
+    }
+
+    private static RuntimeException temporaryFailure(String message) {
+        ModelErrorFacts facts = ModelErrorFacts.Builder.create()
+                .httpStatus(500)
+                .stream(true)
+                .build();
+        ModelCallClassification classification = new RuleBasedModelErrorClassifier().classify(facts);
+        return ClassifiedModelErrors.toError(classification, facts, message, null);
     }
 
     private static List<OutputSchema> collectOutput(Iterator<Object> iterator) {
@@ -147,6 +210,37 @@ class ReActAgentModelRetryOutputTest {
     private static Map<String, Object> payload(OutputSchema output) {
         assertThat(output.getPayload()).isInstanceOf(Map.class);
         return (Map<String, Object>) output.getPayload();
+    }
+
+    private static final class ScriptedModelClient implements Model.ModelClient {
+        private final List<ModelRetryEvent> firstCallRetries;
+        private final List<RuntimeException> failures;
+        private int streamCalls;
+
+        private ScriptedModelClient(List<ModelRetryEvent> firstCallRetries, List<RuntimeException> failures) {
+            this.firstCallRetries = firstCallRetries;
+            this.failures = failures;
+        }
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            return CompletableFuture.completedFuture(new AssistantMessage("ok"));
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            streamCalls++;
+            if (streamCalls == 1) {
+                firstCallRetries.forEach(options.getRetryListener()::onRetry);
+            }
+            if (streamCalls <= failures.size()) {
+                throw failures.get(streamCalls - 1);
+            }
+            return List.of(AssistantMessageChunk.builder()
+                    .content("ok")
+                    .finishReason("stop")
+                    .build()).iterator();
+        }
     }
 
     private static final class RetryingModelClient implements Model.ModelClient {
