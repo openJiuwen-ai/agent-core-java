@@ -61,6 +61,17 @@ public class AsyncStreamQueue {
      */
     public static final int DEFAULT_MAX_SIZE = 1024;
 
+    /**
+     * Default total bound for sending a critical frame. When the queue stays
+     * full this long, the oldest data frames are evicted just enough to admit
+     * the critical frame (e.g. the END_FRAME sentinel) so the producer thread
+     * returns instead of spinning forever on a dead consumer; the backlog is
+     * cleared fully only when concurrent producers refill every freed slot.
+     *
+     * @since 0.1.16
+     */
+    public static final long DEFAULT_CRITICAL_SEND_TOTAL_TIMEOUT_MS = 60_000L;
+
     private final BlockingQueue<Object> streamQueue;
 
     /**
@@ -144,20 +155,37 @@ public class AsyncStreamQueue {
     }
 
     /**
-     * Send a critical frame that must never be silently dropped (e.g. the
-     * END_FRAME sentinel). Blocks until the frame is accepted or the queue is
-     * closed. A silently dropped END_FRAME would leave consumers blocked
-     * forever on {@link #receive()}, so critical frames get unbounded wait
-     * (backpressure) instead of the bounded-retry-and-drop behavior of
-     * {@link #send(Object)}.
-     * 
+     * Send a critical frame (e.g. the END_FRAME sentinel) with backpressure
+     * instead of the bounded-retry-and-drop behavior of {@link #send(Object)}:
+     * the send keeps retrying while the queue is full, but the total wait is
+     * bounded by {@link #DEFAULT_CRITICAL_SEND_TOTAL_TIMEOUT_MS}. When the queue
+     * stays full that long, the oldest data frames are evicted just enough to
+     * admit the critical frame so the producer thread returns; the backlog is
+     * cleared fully only when concurrent producers refill every freed slot. In
+     * the rare race where admission still fails after that clearing, the
+     * critical frame is dropped and the drop is logged at error level; consumers
+     * then end on their receive timeout instead of the dropped frame.
+     *
      * @param data the critical frame to send
      * @since 0.1.7
      */
     public void sendCritical(Object data) {
+        sendCritical(data, DEFAULT_CRITICAL_SEND_TOTAL_TIMEOUT_MS);
+    }
+
+    /**
+     * Send a critical frame with an explicit total budget in milliseconds.
+     * Package-private so tests can exercise the timeout path quickly.
+     *
+     * @param data the critical frame to send
+     * @param totalTimeoutMs total time budget for the whole send in milliseconds
+     * @since 0.1.16
+     */
+    void sendCritical(Object data, long totalTimeoutMs) {
         if (isClosed.get()) {
             throw new IllegalStateException("StreamQueue is already isClosed");
         }
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(totalTimeoutMs);
         while (!isClosed.get()) {
             try {
                 if (streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -169,8 +197,61 @@ public class AsyncStreamQueue {
                 Loggers.SESSION.error("Critical stream data send interrupted");
                 return;
             }
+            if (System.nanoTime() >= deadlineNanos) {
+                forceCriticalAfterTimeout(data, totalTimeoutMs);
+                return;
+            }
         }
         throw new IllegalStateException("StreamQueue is already isClosed");
+    }
+
+    /**
+     * Admit the critical frame with minimal eviction so the producer thread can
+     * return. A non-blocking offer is attempted first (zero loss when a slot is
+     * already free); then head data frames are evicted one by one, only as many
+     * as needed to admit the frame. Evictions and loop iterations are both
+     * capped by the backlog snapshot taken on entry, so the loop terminates
+     * even when concurrent producers keep refilling freed slots. Only when
+     * every freed slot has been refilled is the full backlog cleared as a
+     * last resort. Data frames already use bounded-retry-and-drop
+     * semantics in {@link #send(Object)}; the critical frame takes the freed
+     * capacity.
+     *
+     * @param data the critical frame to admit
+     * @param totalTimeoutMs total wait already spent in milliseconds
+     * @since 0.1.16
+     */
+    private void forceCriticalAfterTimeout(Object data, long totalTimeoutMs) {
+        int backlog = streamQueue.size();
+        int attempts = 0;
+        int evictedFrames = 0;
+        boolean isAdmitted = streamQueue.offer(data);
+        while (!isAdmitted && attempts < backlog) {
+            attempts++;
+            if (streamQueue.poll() != null) {
+                evictedFrames++;
+            }
+            isAdmitted = streamQueue.offer(data);
+        }
+        if (isAdmitted) {
+            Loggers.SESSION.error("Critical frame forced after {}ms total wait; evicted {} head frames",
+                    totalTimeoutMs, evictedFrames);
+            return;
+        }
+        int clearedFrames = forceClear();
+        boolean isFallbackAdmitted = false;
+        try {
+            isFallbackAdmitted = streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (isFallbackAdmitted) {
+            Loggers.SESSION.error("Critical frame forced after {}ms total wait; cleared full backlog of {} frames",
+                    totalTimeoutMs, clearedFrames);
+        } else {
+            Loggers.SESSION.error("Critical frame dropped after {}ms total wait; cleared full backlog of {} frames",
+                    totalTimeoutMs, clearedFrames);
+        }
     }
 
     /**
@@ -233,9 +314,10 @@ public class AsyncStreamQueue {
     /**
      * forceClear.
      * 
+     * @return the number of items removed from the queue
      * @since 0.1.7
      */
-    private void forceClear() {
+    private int forceClear() {
         int clearedItems = 0;
         while (!streamQueue.isEmpty()) {
             Object item = streamQueue.poll();
@@ -246,5 +328,6 @@ public class AsyncStreamQueue {
         if (clearedItems > 0) {
             Loggers.SESSION.info("StreamQueue force cleared, clearedItems={}", clearedItems);
         }
+        return clearedItems;
     }
 }

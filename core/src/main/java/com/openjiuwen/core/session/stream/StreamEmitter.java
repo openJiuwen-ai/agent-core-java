@@ -92,9 +92,11 @@ public class StreamEmitter {
     public void close() {
         if (isClosed.compareAndSet(false, true)) {
             if (!streamQueue.isClosed()) {
-                // END_FRAME must never be dropped: consumers block forever waiting for it.
-                // sendCritical applies backpressure (blocking) instead of the
-                // bounded-retry-and-drop semantics used for regular data frames.
+                // END_FRAME is sent with a bounded total wait instead of the
+                // bounded-retry-and-drop semantics used for regular data frames;
+                // if the queue stays full past the critical send budget, the
+                // oldest data frames are evicted just enough to admit it (a
+                // further failure is logged).
                 streamQueue.sendCritical(END_FRAME);
             }
             Loggers.SESSION.debug("StreamEmitter isClosed");
