@@ -311,11 +311,6 @@ class ModelClientStreamTerminationTest {
      * the connection without the terminating 0-chunk, reproducing an abrupt
      * mid-chunked-stream close. Chunk sizes are hexadecimal per RFC 9112.
      */
-    /**
-     * Raw-socket SSE endpoint that writes one valid chunked event and then closes
-     * the connection without the terminating 0-chunk, reproducing an abrupt
-     * mid-chunked-stream close. Chunk sizes are hexadecimal per RFC 9112.
-     */
     private static final class AbruptCloseSseServer implements AutoCloseable {
         private final ServerSocket serverSocket;
         private final byte[] eventBytes;
@@ -377,14 +372,13 @@ class ModelClientStreamTerminationTest {
                 }
             }
             if (contentLength > 0) {
-                char[] body = new char[contentLength];
-                int offset = 0;
-                while (offset < contentLength) {
-                    int read = request.read(body, offset, contentLength - offset);
-                    if (read < 0) {
+                long remaining = contentLength;
+                while (remaining > 0) {
+                    long skipped = request.skip(remaining);
+                    if (skipped <= 0) {
                         break;
                     }
-                    offset += read;
+                    remaining -= skipped;
                 }
             }
         }

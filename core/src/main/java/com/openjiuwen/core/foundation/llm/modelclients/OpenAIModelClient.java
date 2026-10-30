@@ -2195,56 +2195,68 @@ public class OpenAIModelClient extends BaseModelClient
                         return finalToolCallChunk();
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(parseJsonObject(data), toolCallStates);
-                    if (chunk != null && !"null".equals(chunk.getFinishReason())) {
-                        // A terminal finish_reason ends the SSE content even when the
-                        // server omits the [DONE] frame.
-                        isTerminated = true;
-                    }
-                    if (chunk == null) {
-                        continue;
-                    }
+                    markTerminatedIfFinished(chunk);
+                    if (chunk == null) { continue; }
                     AssistantMessageChunk adaptedChunk = adaptToolCallChunk(chunk);
-                    if (adaptedChunk == null) {
-                        continue;
-                    }
+                    if (adaptedChunk == null) { continue; }
                     AssistantMessageChunk parsedChunk = applyStreamingParser(adaptedChunk);
                     shouldKeepOpen = true;
                     isEffectiveFirstSegmentReceived = true;
                     return parsedChunk;
                 }
-                close();
-                if (!isTerminated) {
-                    // The body ended without [DONE] or a terminal finish_reason. Report
-                    // the truncation through the catch machinery below instead of
-                    // returning partial content as success.
-                    throw new IOException("premature eof: stream ended without termination marker");
-                }
-                return finalToolCallChunk();
+                return finishOrFailEarly();
             } catch (IOException | IllegalStateException | IllegalArgumentException | ClassCastException
                     | IndexOutOfBoundsException exception) {
                 close();
-                if (exception instanceof IOException && isTerminated) {
-                    // The SSE content already ended with a terminal finish_reason or [DONE];
-                    // a body read that fails after that point — for example a chunked body
-                    // closed without its terminating 0-chunk — is a normal end of stream.
-                    return finalToolCallChunk();
-                }
+                throwIfCancellation(exception);
                 if (exception instanceof IOException ioException) {
+                    if (isTerminated) {
+                        // The SSE content already ended with a terminal finish_reason or [DONE];
+                        // a body read that fails after that point — for example a chunked body
+                        // closed without its terminating 0-chunk — is a normal end of stream.
+                        return finalToolCallChunk();
+                    }
                     throwIfIdleTimeout(ioException);
                 }
-                if (exception instanceof InterruptedIOException
-                        && !(exception instanceof SocketTimeoutException)) {
-                    // SocketTimeoutException is a read timeout, not a cancellation.
-                    throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
-                }
-                String detail = errorDetail(exception);
-                Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
-                throw classifiedStreamFailure(exception);
+                throw classifiedFailure(exception);
             } finally {
                 if (!shouldKeepOpen) {
                     close();
                 }
             }
+        }
+
+        private void markTerminatedIfFinished(AssistantMessageChunk chunk) {
+            if (chunk != null && !"null".equals(chunk.getFinishReason())) {
+                // A terminal finish_reason ends the SSE content even when the
+                // server omits the [DONE] frame.
+                isTerminated = true;
+            }
+        }
+
+        private AssistantMessageChunk finishOrFailEarly() throws IOException {
+            close();
+            if (!isTerminated) {
+                // The body ended without [DONE] or a terminal finish_reason. Report
+                // the truncation through the catch machinery below instead of
+                // returning partial content as success.
+                throw new IOException("premature eof: stream ended without termination marker");
+            }
+            return finalToolCallChunk();
+        }
+
+        private void throwIfCancellation(Exception exception) {
+            if (exception instanceof InterruptedIOException
+                    && !(exception instanceof SocketTimeoutException)) {
+                // SocketTimeoutException is a read timeout, not a cancellation.
+                throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
+            }
+        }
+
+        private BaseError classifiedFailure(Exception exception) {
+            String detail = errorDetail(exception);
+            Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
+            return classifiedStreamFailure(exception);
         }
 
         private void throwIfIdleTimeout(IOException exception) {

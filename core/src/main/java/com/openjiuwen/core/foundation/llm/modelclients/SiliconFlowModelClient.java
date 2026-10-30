@@ -443,7 +443,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 return false;
             }
             Map<String, Object> choice = asObjectMap(choices.get(0));
-            return isPythonTruthy(choice.get("finish_reason"));
+            Object finishReason = choice.get("finish_reason");
+            // The string sentinel "null" (used when the frame omits finish_reason) must
+            // not count as a terminal state; only a truthy, non-sentinel value does.
+            return isPythonTruthy(finishReason) && !"null".equals(String.valueOf(finishReason));
         } catch (JsonProcessingException | ClassCastException | IllegalStateException
                 | IndexOutOfBoundsException exception) {
             return false;
@@ -884,11 +887,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(line);
                     if (chunk != null) {
-                        if (!"null".equals(chunk.getFinishReason())) {
-                            // A terminal finish_reason ends the SSE content even when the
-                            // server omits the [DONE] frame.
-                            isTerminated = true;
-                        }
+                        markTerminatedIfFinished(chunk);
                         shouldKeepOpen = true;
                         isEffectiveFirstSegmentReceived = true;
                         return Optional.of(chunk);
@@ -899,16 +898,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         isTerminated = true;
                     }
                 }
-                if (!isTerminated) {
-                    // The body ended without [DONE] or a terminal finish_reason. Report
-                    // the truncation through the catch machinery below instead of
-                    // returning partial content as success.
-                    throw new IOException("premature eof: stream ended without termination marker");
-                }
-                finish();
-                return Optional.empty();
+                return finishOrFailEarly();
             } catch (IOException exception) {
                 finish();
+                throwIfCancellation(exception);
                 if (isTerminated) {
                     // The SSE content already ended with a terminal finish_reason or [DONE];
                     // a body read that fails after that point — for example a chunked body
@@ -916,16 +909,38 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     return Optional.empty();
                 }
                 throwIfIdleTimeout(exception);
-                if (exception instanceof InterruptedIOException
-                        && !(exception instanceof SocketTimeoutException)) {
-                    // SocketTimeoutException is a read timeout, not a cancellation.
-                    throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
-                }
                 throw classifiedStreamFailure(exception);
             } finally {
                 if (!shouldKeepOpen) {
                     close();
                 }
+            }
+        }
+
+        private void markTerminatedIfFinished(AssistantMessageChunk chunk) {
+            if (chunk != null && !"null".equals(chunk.getFinishReason())) {
+                // A terminal finish_reason ends the SSE content even when the
+                // server omits the [DONE] frame.
+                isTerminated = true;
+            }
+        }
+
+        private Optional<AssistantMessageChunk> finishOrFailEarly() throws IOException {
+            if (!isTerminated) {
+                // The body ended without [DONE] or a terminal finish_reason. Report
+                // the truncation through the catch machinery below instead of
+                // returning partial content as success.
+                throw new IOException("premature eof: stream ended without termination marker");
+            }
+            finish();
+            return Optional.empty();
+        }
+
+        private void throwIfCancellation(Exception exception) {
+            if (exception instanceof InterruptedIOException
+                    && !(exception instanceof SocketTimeoutException)) {
+                // SocketTimeoutException is a read timeout, not a cancellation.
+                throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
             }
         }
 
