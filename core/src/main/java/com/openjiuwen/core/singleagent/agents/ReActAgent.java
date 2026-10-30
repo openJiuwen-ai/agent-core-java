@@ -450,6 +450,12 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     public Object railedModelCall(AgentCallbackContext ctx) {
+        // Populate ModelCallInputs before BEFORE_MODEL_CALL so rails can inspect
+        // and edit the current request messages (security/tracing/observability).
+        // Do not rebuild on attempt 0 after those rails run — that would wipe
+        // BEFORE_MODEL_CALL edits (Python builds the final window inside the
+        // railed body from the post-rail prompt, while Java keeps rail-edited
+        // inputs as the request snapshot).
         prepareModelRequest(ctx);
         boolean isModelCallSuccessful = false;
         try {
@@ -464,6 +470,12 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                          */
                         @Override
                         public Object execute() {
+                            // On Rails.run retries (e.g. overflow compress+requestRetry),
+                            // rebuild from ModelContext so the provider sees the
+                            // post-recovery snapshot rather than the pre-failure one.
+                            if (ctx.getRetryAttempt() > 0) {
+                                prepareModelRequest(ctx);
+                            }
                             return doRailedModelCall(ctx);
                         }
 
@@ -3052,7 +3064,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .enableOpenrouterModelContextWindowTokens(source.isEnableOpenrouterModelContextWindowTokens())
                 .openrouterRequestTimeout(source.getOpenrouterRequestTimeout())
                 .enableOffload(source.isEnableOffload())
-                .offload(source.getOffload());
+                .offload(source.getOffload())
+                .enableModelContextOverflowRecovery(source.isEnableModelContextOverflowRecovery())
+                .extraContextOverflowKeywords(source.getExtraContextOverflowKeywords());
         Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
         if (modelWindowTokens != null) {
             snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
@@ -3238,6 +3252,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         Long firstTokenTime = null;
         Long lastTokenTime = null;
         int chunkCount = 0;
+        ctx.getExtra().put("_stream_chunks_emitted", 0);
         try {
             iterator = model.stream(messages, options);
             while (iterator.hasNext()) {
@@ -3249,6 +3264,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 }
                 lastTokenTime = System.nanoTime();
                 chunkCount++;
+                ctx.getExtra().put("_stream_chunks_emitted", chunkCount);
                 AgentSessionApi session = ctx.getSession();
                 if (session != null && chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
                     session.writeStream(new OutputSchema("llm_reasoning", nextStreamIndex(ctx),

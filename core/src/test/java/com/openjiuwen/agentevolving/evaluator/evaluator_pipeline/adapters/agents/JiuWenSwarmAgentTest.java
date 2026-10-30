@@ -59,6 +59,8 @@ class JiuWenSwarmAgentTest {
         CommandRecordingEnvironment env = new CommandRecordingEnvironment();
         String name = "skill ' ; $(touch INJECTED)\nnext line ";
         String file = "/root/.jiuwenswarm/agent/workspace/skills/" + name + "/SKILL.md";
+        assertEquals(name, JiuWenSwarmAgent.remoteParentName(file));
+        assertEquals("SKILL.md", JiuWenSwarmAgent.remoteFileName(file));
         env.setStdout(command -> {
             if (String.join(" ", command).contains("SKILL.md") && !"cat".equals(command.get(0))) {
                 return file + "\0";

@@ -6,12 +6,14 @@ package com.openjiuwen.core.context;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressor;
 import com.openjiuwen.core.context.processor.compressor.DialogueCompressor;
 import com.openjiuwen.core.context.processor.compressor.FullCompactProcessor;
 import com.openjiuwen.core.context.processor.compressor.MicroCompactProcessor;
+import com.openjiuwen.core.context.processor.compressor.MultimodalHistoryCompactor;
 import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressor;
 import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
 import com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloader;
@@ -23,6 +25,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -49,6 +52,7 @@ public class ContextEngine {
         registerProcessor("RoundLevelCompressor", RoundLevelCompressor.class);
         registerProcessor("CurrentRoundCompressor", CurrentRoundCompressor.class);
         registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class);
+        registerProcessor("MultimodalHistoryCompactor", MultimodalHistoryCompactor.class);
         registerProcessor("FullCompactProcessor", FullCompactProcessor.class);
         registerProcessor("MessageOffloader", MessageOffloader.class);
         registerProcessor("MessageSummaryOffloader", MessageSummaryOffloader.class);
@@ -239,6 +243,126 @@ public class ContextEngine {
             effectiveKwargs.putIfAbsent("sys_operation", sysOperation);
         }
         return sessionModelContext.compressContext(processorTypes, effectiveKwargs).toCompletableFuture().join();
+    }
+
+    /**
+     * Recovers from a model context-window rejection by compressing once.
+     *
+     * <p>A retry is warranted only when the provider error describes an input/context limit,
+     * {@link #compressContext} returns {@code compressed}, and the context footprint
+     * (message count + content size) strictly shrinks. A processor that emits an event
+     * without reducing size must not trigger retry. Streaming responses that already
+     * emitted chunks are not recovered (avoids duplicating output).</p>
+     *
+     * @param contextId context id; {@code null} uses the default
+     * @param session session owning the context
+     * @param exception model-call failure
+     * @param streaming whether the failed call was streaming
+     * @param streamChunksEmitted number of stream chunks already visible to the caller
+     * @param kwargs optional compress kwargs; {@code compression_trigger} defaults to
+     *               {@code model_context_overflow}
+     * @return {@code true} when compression shrank the context and the caller should retry
+     */
+    public boolean recoverFromModelException(String contextId, Object session, Throwable exception,
+                                             boolean streaming, int streamChunksEmitted,
+                                             Map<String, Object> kwargs) {
+        if (!config.isEnableModelContextOverflowRecovery()) {
+            return false;
+        }
+        if (streaming && streamChunksEmitted > 0) {
+            Loggers.CONTEXT_ENGINE.warning(
+                    "skip model context recovery after streaming output was emitted, stream_chunks_emitted="
+                            + streamChunksEmitted);
+            return false;
+        }
+        if (!isContextOverflowError(exception, config.getExtraContextOverflowKeywords())) {
+            return false;
+        }
+
+        Map<String, Object> compressionKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
+        compressionKwargs.putIfAbsent("compression_trigger", "model_context_overflow");
+        final String effectiveContextId = contextId == null ? DEFAULT_CONTEXT_ID : contextId;
+        final String resolvedSessionId;
+        final int beforeFootprint;
+        final Object result;
+        try {
+            resolvedSessionId = session != null ? resolveSessionId(session) : DEFAULT_SESSION_ID;
+            ModelContext modelContext = getContext(effectiveContextId, resolvedSessionId);
+            beforeFootprint = estimateContextFootprint(
+                    modelContext == null ? List.of() : modelContext.getMessages(null, true));
+            result = compressContext(contextId, session, null, null, compressionKwargs);
+        } catch (RuntimeException compressFailure) {
+            // Intentional broad catch: recovery must never replace the original model
+            // exception with a compress failure (BaseError and other runtime failures
+            // included). Error/Throwable still propagate. Same pattern as createProcessor.
+            Loggers.CONTEXT_ENGINE.warning(
+                    "model context recovery compress failed; preserving original model exception: "
+                            + compressFailure.getMessage());
+            return false;
+        }
+        Object resultCode = result instanceof Map<?, ?> map ? map.get("result") : result;
+        if (!SessionModelContext.ACTIVE_COMPRESSION_RESULT_COMPRESSED.equals(resultCode)) {
+            Loggers.CONTEXT_ENGINE.info(
+                    "model context recovery did not change context, result=" + resultCode);
+            return false;
+        }
+        ModelContext afterContext = getContext(effectiveContextId, resolvedSessionId);
+        int afterFootprint = estimateContextFootprint(
+                afterContext == null ? List.of() : afterContext.getMessages(null, true));
+        if (afterFootprint >= beforeFootprint) {
+            Loggers.CONTEXT_ENGINE.info(
+                    "model context recovery did not shrink context, before_footprint="
+                            + beforeFootprint + ", after_footprint=" + afterFootprint);
+            return false;
+        }
+        Loggers.CONTEXT_ENGINE.info("model context recovery compressed context");
+        return true;
+    }
+
+    /**
+     * Estimates recoverable context size for overflow recovery decisions.
+     *
+     * <p>Combines message count with total content length so a same-count rewrite that
+     * does not shrink text (or grows it) is treated as ineffective compression.</p>
+     *
+     * @param messages context messages; {@code null} is treated as empty
+     * @return non-negative footprint score
+     */
+    static int estimateContextFootprint(List<BaseMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int contentChars = 0;
+        for (BaseMessage message : messages) {
+            if (message == null) {
+                continue;
+            }
+            String content = message.getContentAsString();
+            contentChars += content == null ? 0 : content.length();
+        }
+        return messages.size() + contentChars;
+    }
+
+    /**
+     * Returns whether {@code exception} describes an input context overflow.
+     *
+     * @param exception provider or wrapped model error
+     * @return {@code true} when the error is treated as recoverable context overflow
+     */
+    public static boolean isContextOverflowError(Throwable exception) {
+        return isContextOverflowError(exception, List.of());
+    }
+
+    /**
+     * Returns whether {@code exception} describes an input context overflow,
+     * including optional extra keyword phrases from configuration.
+     *
+     * @param exception provider or wrapped model error
+     * @param extraKeywords additional phrases; may be {@code null} or empty
+     * @return {@code true} when the error is treated as recoverable context overflow
+     */
+    public static boolean isContextOverflowError(Throwable exception, Collection<String> extraKeywords) {
+        return ContextOverflowErrorMatcher.matches(exception, extraKeywords);
     }
 
     public void clearContext() {

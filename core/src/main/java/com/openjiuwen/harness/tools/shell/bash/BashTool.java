@@ -7,6 +7,7 @@ package com.openjiuwen.harness.tools.shell.bash;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.Cwd;
+import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -35,6 +36,7 @@ public class BashTool extends AbstractHarnessTool {
     private static final int MIN_MAX_OUTPUT_CHARS = 200;
     private static final double CALL_TIMEOUT_HEADROOM_SECONDS = 30.0D;
 
+    private final SysOperation operation;
     private final PermissionConfig permission;
     private final List<String> commandAllowlist;
 
@@ -51,7 +53,23 @@ public class BashTool extends AbstractHarnessTool {
     }
 
     public BashTool(PermissionMode permissionMode, List<String> denyPatterns, List<String> allowPatterns, List<String> commandAllowlist) {
+        this(permissionMode, denyPatterns, allowPatterns, commandAllowlist, null);
+    }
+
+    /**
+     * Bind persisted output to the filesystem policy of an operation. Command execution is unchanged.
+     *
+     * @param operation filesystem operation used to read persisted output
+     * @param permissionMode command permission mode
+     */
+    public BashTool(SysOperation operation, PermissionMode permissionMode) {
+        this(permissionMode, null, null, null, operation);
+    }
+
+    private BashTool(PermissionMode permissionMode, List<String> denyPatterns, List<String> allowPatterns,
+                     List<String> commandAllowlist, SysOperation operation) {
         super(bashCard());
+        this.operation = operation;
         permission = new PermissionConfig();
         permission.setMode(permissionMode);
         permission.setDenyPatterns(PermissionConfig.compilePatterns(denyPatterns));
@@ -137,7 +155,8 @@ public class BashTool extends AbstractHarnessTool {
                         warning,
                         parsed.maxOutputChars()
                 ),
-                meaning.isError()
+                meaning.isError(),
+                operation
         );
         return ToolOutput.of(!rendered.isError(), Map.of("content", rendered.content()),
                 rendered.isError() ? rendered.content() : null);

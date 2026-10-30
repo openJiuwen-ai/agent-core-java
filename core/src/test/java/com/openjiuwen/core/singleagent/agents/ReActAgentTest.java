@@ -417,6 +417,117 @@ class ReActAgentTest {
     }
 
     @Test
+    void copyContextEngineConfigPreservesOverflowRecoverySettings() throws Exception {
+        java.lang.reflect.Method copy = ReActAgent.class.getDeclaredMethod(
+                "copyContextEngineConfig", ContextEngineConfig.class);
+        copy.setAccessible(true);
+        ContextEngineConfig source = ContextEngineConfig.builder()
+                .enableModelContextOverflowRecovery(false)
+                .extraContextOverflowKeywords(List.of("custom_overflow_marker"))
+                .build();
+
+        ContextEngineConfig snapshot = (ContextEngineConfig) copy.invoke(null, source);
+
+        assertFalse(snapshot.isEnableModelContextOverflowRecovery());
+        assertEquals(List.of("custom_overflow_marker"), snapshot.getExtraContextOverflowKeywords());
+        assertEquals(source, snapshot);
+    }
+
+    @Test
+    void contextEngineHonorsOverflowRecoverySnapshotWithoutForcedRebuild() {
+        ContextEngine.registerProcessor("T00919ReActOverflowCompact", OverflowSnapshotCompactProcessor::new);
+        ContextEngine.ProcessorSpec compactSpec =
+                new ContextEngine.ProcessorSpec("T00919ReActOverflowCompact", new Object());
+
+        // Switch on + custom keyword must reach the live ContextEngine via config snapshot.
+        ReActAgent enabledAgent = new ReActAgent(new AgentCard("overflow-on", "overflow-on", "desc"));
+        enabledAgent.configure(ReActAgentConfig.builder()
+                .contextEngineConfig(ContextEngineConfig.builder()
+                        .enableModelContextOverflowRecovery(true)
+                        .extraContextOverflowKeywords(List.of("vendor_overflow_signal"))
+                        .build())
+                .contextProcessors(List.of(compactSpec))
+                .build());
+        ContextEngine enabledEngine = enabledAgent.getContextEngine();
+        MemorySession enabledSession = new MemorySession("overflow-on-session");
+        ModelContext enabledContext = enabledAgent.initContext(enabledSession);
+        enabledContext.setMessages(
+                List.of(new UserMessage("large historical context that must shrink")), true);
+
+        assertTrue(enabledEngine.recoverFromModelException(
+                enabledContext.contextId(),
+                enabledSession,
+                new RuntimeException("vendor_overflow_signal from provider"),
+                false,
+                0,
+                null),
+                "extraContextOverflowKeywords from the ReAct snapshot must enable recovery");
+        assertSame(enabledEngine, enabledAgent.getContextEngine());
+        assertEquals(List.of("recovered by react overflow snapshot"),
+                enabledContext.getMessages(null, true).stream().map(BaseMessage::getContentAsString).toList());
+
+        // Same processor path with switch off must decline recovery (not merely "no processor").
+        ReActAgent disabledAgent = new ReActAgent(new AgentCard("overflow-off", "overflow-off", "desc"));
+        disabledAgent.configure(ReActAgentConfig.builder()
+                .contextEngineConfig(ContextEngineConfig.builder()
+                        .enableModelContextOverflowRecovery(false)
+                        .extraContextOverflowKeywords(List.of("vendor_overflow_signal"))
+                        .build())
+                .contextProcessors(List.of(compactSpec))
+                .build());
+        ContextEngine disabledEngine = disabledAgent.getContextEngine();
+        MemorySession disabledSession = new MemorySession("overflow-off-session");
+        ModelContext disabledContext = disabledAgent.initContext(disabledSession);
+        disabledContext.setMessages(
+                List.of(new UserMessage("large historical context that must shrink")), true);
+
+        assertFalse(disabledEngine.recoverFromModelException(
+                disabledContext.contextId(),
+                disabledSession,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                null),
+                "enableModelContextOverflowRecovery=false from the ReAct snapshot must block recovery");
+        assertSame(disabledEngine, disabledAgent.getContextEngine());
+        assertEquals(List.of("large historical context that must shrink"),
+                disabledContext.getMessages(null, true).stream().map(BaseMessage::getContentAsString).toList());
+    }
+
+    @Test
+    void beforeModelCallSeesPreparedRequestMessages() {
+        AtomicReference<List<String>> beforeContents = new AtomicReference<>();
+        AgentRail observingRail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                beforeContents.set(inputs.getMessages().stream()
+                        .map(message -> ((BaseMessage) message).getContentAsString())
+                        .toList());
+            }
+        };
+        ReActAgent agent = agentWithFakeModel(new AssistantMessage("ok"));
+        agent.registerRail(observingRail).toCompletableFuture().join();
+        try {
+            AgentSessionApi session = new MemorySession("before-messages");
+            ModelContext modelContext = agent.initContext(session);
+            modelContext.addMessages(new UserMessage("visible-to-before-hook"))
+                    .toCompletableFuture().join();
+            AgentCallbackContext ctx = new AgentCallbackContext(agent);
+            ctx.setSession(session);
+            ctx.setContext(modelContext);
+
+            agent.callModel(ctx, modelContext, List.of());
+
+            assertNotNull(beforeContents.get());
+            assertTrue(beforeContents.get().stream().anyMatch(content -> content.contains("visible-to-before-hook")),
+                    "BEFORE_MODEL_CALL must observe prepareModelRequest messages");
+        } finally {
+            agent.unregisterRail(observingRail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
     void contextEngineRefreshesAfterNestedConfigMapUpdate() {
         ReActAgent agent = new ReActAgent(new AgentCard("nested-1", "nested", "desc"));
         Map<String, Integer> modelWindowTokens = new LinkedHashMap<>();
@@ -1181,6 +1292,40 @@ class ReActAgentTest {
                     tools == null ? List.of() : tools,
                     new ContextStats()
             ));
+        }
+    }
+
+    /**
+     * Force-compresses to a shorter message so overflow recovery can succeed when enabled.
+     */
+    private static final class OverflowSnapshotCompactProcessor
+            implements SessionModelContext.ContextProcessorPort {
+        private OverflowSnapshotCompactProcessor(Object config) {
+        }
+
+        @Override
+        public String processorType() {
+            return "T00919ReActOverflowCompact";
+        }
+
+        @Override
+        public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
+                                                                                List<BaseMessage> messages,
+                                                                                boolean force,
+                                                                                Map<String, Object> kwargs) {
+            if (force) {
+                context.setMessages(List.of(new UserMessage("recovered by react overflow snapshot")), true);
+                return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                        new SessionModelContext.ContextProcessorEventPort() {
+                            @Override
+                            public String compactSummary() {
+                                return "recovered by react overflow snapshot";
+                            }
+                        },
+                        List.of(),
+                        null));
+            }
+            return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(null, messages, null));
         }
     }
 
