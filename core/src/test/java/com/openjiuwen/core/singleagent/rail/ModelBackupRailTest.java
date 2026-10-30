@@ -63,6 +63,23 @@ class ModelBackupRailTest {
         assertThat(rail.getIndex()).isZero();
     }
 
+    @Test
+    void yieldsWhenContextOverflowRecoveryAlreadyRequestedRetry() {
+        Model backup = model("backup");
+        ModelBackupRail rail = new ModelBackupRail(List.of(backup));
+        TestAgent agent = new TestAgent();
+        Model primary = model("primary");
+        agent.setLlm(primary);
+        AgentCallbackContext context = new AgentCallbackContext(agent);
+        context.getExtra().put(AgentCallbackContext.EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY, Boolean.TRUE);
+
+        rail.onModelException(context);
+
+        assertThat(context.consumeRetryRequest()).isNull();
+        assertThat(rail.getIndex()).isZero();
+        assertThat(agent.getLlm()).isSameAs(primary);
+    }
+
     private static Model model(String value) {
         return new Model(new RecordingClient(value));
     }
