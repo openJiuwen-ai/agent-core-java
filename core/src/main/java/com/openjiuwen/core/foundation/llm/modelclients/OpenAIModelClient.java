@@ -2196,9 +2196,13 @@ public class OpenAIModelClient extends BaseModelClient
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(parseJsonObject(data), toolCallStates);
                     markTerminatedIfFinished(chunk);
-                    if (chunk == null) { continue; }
+                    if (chunk == null) {
+                        continue;
+                    }
                     AssistantMessageChunk adaptedChunk = adaptToolCallChunk(chunk);
-                    if (adaptedChunk == null) { continue; }
+                    if (adaptedChunk == null) {
+                        continue;
+                    }
                     AssistantMessageChunk parsedChunk = applyStreamingParser(adaptedChunk);
                     shouldKeepOpen = true;
                     isEffectiveFirstSegmentReceived = true;
@@ -2209,14 +2213,9 @@ public class OpenAIModelClient extends BaseModelClient
                     | IndexOutOfBoundsException exception) {
                 close();
                 throwIfCancellation(exception);
-                if (exception instanceof IOException ioException) {
-                    if (isTerminated) {
-                        // The SSE content already ended with a terminal finish_reason or [DONE];
-                        // a body read that fails after that point — for example a chunked body
-                        // closed without its terminating 0-chunk — is a normal end of stream.
-                        return finalToolCallChunk();
-                    }
-                    throwIfIdleTimeout(ioException);
+                if (exception instanceof IOException ioException
+                        && isNormalEndAfterTermination(ioException)) {
+                    return finalToolCallChunk();
                 }
                 throw classifiedFailure(exception);
             } finally {
@@ -2224,6 +2223,17 @@ public class OpenAIModelClient extends BaseModelClient
                     close();
                 }
             }
+        }
+
+        private boolean isNormalEndAfterTermination(IOException exception) {
+            if (isTerminated) {
+                // The SSE content already ended with a terminal finish_reason or [DONE];
+                // a body read that fails after that point — for example a chunked body
+                // closed without its terminating 0-chunk — is a normal end of stream.
+                return true;
+            }
+            throwIfIdleTimeout(exception);
+            return false;
         }
 
         private void markTerminatedIfFinished(AssistantMessageChunk chunk) {
