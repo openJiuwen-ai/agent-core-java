@@ -435,26 +435,63 @@ class ReActAgentTest {
 
     @Test
     void contextEngineHonorsOverflowRecoverySnapshotWithoutForcedRebuild() {
-        ContextEngineConfig overflowConfig = ContextEngineConfig.builder()
-                .enableModelContextOverflowRecovery(false)
-                .extraContextOverflowKeywords(List.of("vendor_overflow"))
-                .build();
-        ReActAgent agent = new ReActAgent(new AgentCard("overflow-cfg", "overflow-cfg", "desc"));
-        agent.configure(ReActAgentConfig.builder().contextEngineConfig(overflowConfig).build());
-        ContextEngine first = agent.getContextEngine();
-        MemorySession session = new MemorySession("overflow-cfg-session");
-        ModelContext modelContext = agent.initContext(session);
-        modelContext.addMessages(new UserMessage("keep")).toCompletableFuture().join();
+        ContextEngine.registerProcessor("T00919ReActOverflowCompact", OverflowSnapshotCompactProcessor::new);
+        ContextEngine.ProcessorSpec compactSpec =
+                new ContextEngine.ProcessorSpec("T00919ReActOverflowCompact", new Object());
 
-        assertSame(first, agent.getContextEngine());
-        assertFalse(agent.getContextEngine().recoverFromModelException(
-                modelContext.contextId(),
-                session,
-                new RuntimeException("maximum context length exceeded"),
+        // Switch on + custom keyword must reach the live ContextEngine via config snapshot.
+        ReActAgent enabledAgent = new ReActAgent(new AgentCard("overflow-on", "overflow-on", "desc"));
+        enabledAgent.configure(ReActAgentConfig.builder()
+                .contextEngineConfig(ContextEngineConfig.builder()
+                        .enableModelContextOverflowRecovery(true)
+                        .extraContextOverflowKeywords(List.of("vendor_overflow_signal"))
+                        .build())
+                .contextProcessors(List.of(compactSpec))
+                .build());
+        ContextEngine enabledEngine = enabledAgent.getContextEngine();
+        MemorySession enabledSession = new MemorySession("overflow-on-session");
+        ModelContext enabledContext = enabledAgent.initContext(enabledSession);
+        enabledContext.setMessages(
+                List.of(new UserMessage("large historical context that must shrink")), true);
+
+        assertTrue(enabledEngine.recoverFromModelException(
+                enabledContext.contextId(),
+                enabledSession,
+                new RuntimeException("vendor_overflow_signal from provider"),
                 false,
                 0,
-                null));
-        assertSame(first, agent.getContextEngine());
+                null),
+                "extraContextOverflowKeywords from the ReAct snapshot must enable recovery");
+        assertSame(enabledEngine, enabledAgent.getContextEngine());
+        assertEquals(List.of("recovered by react overflow snapshot"),
+                enabledContext.getMessages(null, true).stream().map(BaseMessage::getContentAsString).toList());
+
+        // Same processor path with switch off must decline recovery (not merely "no processor").
+        ReActAgent disabledAgent = new ReActAgent(new AgentCard("overflow-off", "overflow-off", "desc"));
+        disabledAgent.configure(ReActAgentConfig.builder()
+                .contextEngineConfig(ContextEngineConfig.builder()
+                        .enableModelContextOverflowRecovery(false)
+                        .extraContextOverflowKeywords(List.of("vendor_overflow_signal"))
+                        .build())
+                .contextProcessors(List.of(compactSpec))
+                .build());
+        ContextEngine disabledEngine = disabledAgent.getContextEngine();
+        MemorySession disabledSession = new MemorySession("overflow-off-session");
+        ModelContext disabledContext = disabledAgent.initContext(disabledSession);
+        disabledContext.setMessages(
+                List.of(new UserMessage("large historical context that must shrink")), true);
+
+        assertFalse(disabledEngine.recoverFromModelException(
+                disabledContext.contextId(),
+                disabledSession,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                null),
+                "enableModelContextOverflowRecovery=false from the ReAct snapshot must block recovery");
+        assertSame(disabledEngine, disabledAgent.getContextEngine());
+        assertEquals(List.of("large historical context that must shrink"),
+                disabledContext.getMessages(null, true).stream().map(BaseMessage::getContentAsString).toList());
     }
 
     @Test
@@ -1255,6 +1292,40 @@ class ReActAgentTest {
                     tools == null ? List.of() : tools,
                     new ContextStats()
             ));
+        }
+    }
+
+    /**
+     * Force-compresses to a shorter message so overflow recovery can succeed when enabled.
+     */
+    private static final class OverflowSnapshotCompactProcessor
+            implements SessionModelContext.ContextProcessorPort {
+        private OverflowSnapshotCompactProcessor(Object config) {
+        }
+
+        @Override
+        public String processorType() {
+            return "T00919ReActOverflowCompact";
+        }
+
+        @Override
+        public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
+                                                                                List<BaseMessage> messages,
+                                                                                boolean force,
+                                                                                Map<String, Object> kwargs) {
+            if (force) {
+                context.setMessages(List.of(new UserMessage("recovered by react overflow snapshot")), true);
+                return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                        new SessionModelContext.ContextProcessorEventPort() {
+                            @Override
+                            public String compactSummary() {
+                                return "recovered by react overflow snapshot";
+                            }
+                        },
+                        List.of(),
+                        null));
+            }
+            return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(null, messages, null));
         }
     }
 
