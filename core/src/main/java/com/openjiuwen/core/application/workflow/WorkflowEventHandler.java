@@ -1152,13 +1152,11 @@ public class WorkflowEventHandler extends EventHandler {
             return;
         }
         if (deduplicate) {
-            List<BaseMessage> lastMessage = context.getMessages(1, true);
-            if (!lastMessage.isEmpty()) {
-                BaseMessage previous = lastMessage.get(0);
-                if (message.getRole().equals(previous.getRole())
-                        && message.getContentAsString().equals(previous.getContentAsString())) {
-                    return;
-                }
+            BaseMessage previous = context.peekLastMessage();
+            if (previous != null
+                    && message.getRole().equals(previous.getRole())
+                    && message.getContentAsString().equals(previous.getContentAsString())) {
+                return;
             }
         }
         context.addMessages(message);

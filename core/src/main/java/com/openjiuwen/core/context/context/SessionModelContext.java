@@ -373,6 +373,11 @@ public class SessionModelContext implements ModelContext {
     }
 
     @Override
+    public BaseMessage peekLastMessage() {
+        return messageBuffer.peekLast();
+    }
+
+    @Override
     public void setMessages(List<BaseMessage> messages, boolean withHistory) {
         validateMessages(messages);
         messageBuffer.setMessages(ensureContextMessageIds(messages), withHistory);
@@ -380,7 +385,7 @@ public class SessionModelContext implements ModelContext {
 
     @Override
     public CompletionStage<Void> clearMessages(boolean withHistory) {
-        popMessages(length(), withHistory);
+        messageBuffer.clear(withHistory);
         offloadMessageBuffer = new OffloadMessageBuffer();
         bindOffloadBuffer();
         return CompletableFuture.completedFuture(null);
@@ -963,8 +968,9 @@ public class SessionModelContext implements ModelContext {
     }
 
     private BaseMessage lastContextMessage() {
-        List<BaseMessage> existing = messageBuffer.getBack(1, true);
-        return existing.isEmpty() ? null : existing.get(existing.size() - 1);
+        // Physical tail for dedupe / control flow — sized getBack(1) is tool-group
+        // aligned and would hide a trailing ToolMessage.
+        return peekLastMessage();
     }
 
     private static void validateAndFixContextWindow(ContextWindow contextWindow) {

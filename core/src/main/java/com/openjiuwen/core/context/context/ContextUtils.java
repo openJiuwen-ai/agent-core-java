@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -212,6 +213,63 @@ public final class ContextUtils {
         if (firstNonTool > 0) {
             contextWindow.setContextMessages(messages.subList(firstNonTool, messages.size()));
         }
+    }
+
+    /**
+     * Returns the last {@code size} messages without splitting tool-call groups.
+     *
+     * <p>Only applies when a count cut actually happens ({@code messages.size() > size}).
+     * If the list already fits in {@code size}, it is returned unchanged — including a
+     * lone trailing {@link ToolMessage} — because no mid-group truncation occurred.</p>
+     *
+     * <p>When a cut would start on orphan {@link ToolMessage}s (owning assistant was
+     * dropped), those leading tools are skipped. If the entire cut window is only
+     * tools, the result is empty; use {@code ModelContext.peekLastMessage()} for
+     * physical-tail control flow.</p>
+     *
+     * @param messages source messages; {@code null} treated as empty
+     * @param size maximum messages to keep; {@code <= 0} yields an empty list
+     * @return a new list of at most {@code size} messages
+     *
+     * @since 0.1.17
+     */
+    public static List<BaseMessage> alignedTail(List<BaseMessage> messages, int size) {
+        if (size <= 0 || messages == null || messages.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (messages.size() <= size) {
+            // No count cut — do not rewrite an intact buffer (e.g. tool-only context).
+            return new ArrayList<>(messages);
+        }
+        int naiveStart = messages.size() - size;
+        int start = skipLeadingOrphanToolMessages(messages, naiveStart);
+        if (start >= messages.size()) {
+            return new ArrayList<>();
+        }
+        if (start > naiveStart) {
+            int dropped = start - naiveStart;
+            Loggers.CONTEXT_ENGINE.warning(
+                    "context buffer trim dropped {} leading message(s) including tool results"
+                            + " to keep tool-call groups intact",
+                    dropped);
+        }
+        return new ArrayList<>(messages.subList(start, messages.size()));
+    }
+
+    /**
+     * Advances {@code start} past consecutive {@link ToolMessage}s that would be
+     * orphans after a count-based cut (owning assistant is not in the kept slice).
+     *
+     * @param messages full message list
+     * @param start candidate start index of the kept suffix
+     * @return adjusted start index in {@code [start, messages.size()]}
+     */
+    static int skipLeadingOrphanToolMessages(List<BaseMessage> messages, int start) {
+        int index = Math.max(0, start);
+        while (index < messages.size() && messages.get(index) instanceof ToolMessage) {
+            index++;
+        }
+        return index;
     }
 
     public static int resolveContextMax(String modelName, Integer fallbackContextWindowTokens,
