@@ -4,8 +4,6 @@
 
 package com.openjiuwen.core.graph;
 
-import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.pregel.Pregel;
 import com.openjiuwen.core.graph.pregel.PregelConfig;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
@@ -56,26 +54,18 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
     protected Map<String, Object> invokeInternal(Object inputs, BaseSession session, Object config) {
         boolean isMain = config == null;
         PregelConfig pregelConfig = normalizeConfig(config, session);
-
-        // Vertices are shared graph-level instances, so overlapping runs on
-        // compilations of the same PregelGraph would race over vertex
-        // sessions. Refuse the second run instead of silently corrupting the
-        // first one; serial reuse (one invoke at a time) is unaffected.
-        if (pregelGraph != null && !pregelGraph.tryBeginRun(describeSession(session))) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONCURRENT_RUN_INVALID,
-                    "workflow_id", describeSession(session),
-                    "reason", "another invoke is still in progress on the same graph");
-        }
         Exception exception = null;
         Map<String, Object> result = null;
 
-        try {
-            // Per-run vertex init: bind every vertex to the session of this
-            // invocation so nodes read/write the correct workflow state.
-            // Previously compile() did this once and stored the session on the
-            // shared PregelGraph, which a second compile would overwrite.
-            initVerticesForRun(session);
+        // Per-run vertex init: bind every vertex to the session of this
+        // invocation so nodes read/write the correct workflow state. Each
+        // compile builds its own Pregel engine, so overlapping runs on
+        // compilations of the same PregelGraph each get an isolated engine;
+        // vertex init before pregel.run ensures each run observes its own
+        // session even when the underlying vertices are shared.
+        initVerticesForRun(session);
 
+        try {
             if (isMain && checkpointer != null) {
                 checkpointer.preWorkflowExecute(session, inputs);
             }
@@ -98,18 +88,11 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
                 }
             }
             return result;
-        } finally {
-            if (pregelGraph != null) {
-                pregelGraph.endRun();
-            }
+        } catch (RuntimeException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
         }
-    }
-
-    private static String describeSession(BaseSession session) {
-        if (session instanceof GraphRuntimeSession runtimeSession) {
-            return runtimeSession.workflowId();
-        }
-        return String.valueOf(session);
     }
 
     /**

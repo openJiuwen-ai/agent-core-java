@@ -7,7 +7,6 @@ package com.openjiuwen.core.graph;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.workflow.internal.WorkflowRuntimeState;
 import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
@@ -168,14 +167,15 @@ class ConcurrentSessionIsolationTest {
     }
 
     /**
-     * Guard for the shared-vertex concurrency constraint: while one run is
-     * still in flight on the graph, a second overlapping run must be refused
-     * with PREGEL_GRAPH_CONCURRENT_RUN_INVALID (112104) instead of racing
-     * over the shared vertex sessions. After the first run finishes, serial
-     * reuse must work again.
+     * After removing the graph-level concurrent-run guard, an overlapping
+     * second run is no longer refused: each compile gets its own Pregel
+     * engine, and per-run vertex init rebinds the shared vertices to the
+     * current session before {@code pregel.run}. Both runs are allowed to
+     * proceed and each observes its own invocation session. Serial reuse
+     * after the in-flight runs complete must still work.
      */
     @Test
-    void concurrentInvoke_overlappingRunIsRefusedWithConcurrentRunError() throws Exception {
+    void concurrentInvoke_overlappingRunsProceedWithOwnSession() throws Exception {
         PregelGraph graph = new PregelGraph();
         CountDownLatch insideNode = new CountDownLatch(1);
         CountDownLatch releaseNode = new CountDownLatch(1);
@@ -197,24 +197,21 @@ class ConcurrentSessionIsolationTest {
             assertThat(insideNode.await(10, TimeUnit.SECONDS))
                     .as("run A should reach the node body")
                     .isTrue();
-            assertThatThrownBy(() -> compiledB.invoke(runInputs(), sessionB))
-                    .as("an overlapping second run must be refused instead of racing "
-                            + "over the shared vertex sessions")
-                    .isInstanceOf(BaseError.class)
-                    .satisfies(error -> assertThat(((BaseError) error).getCode())
-                            .isEqualTo(112104));
+            // Run B is no longer refused — it proceeds with its own engine.
+            Future<?> runB = executor.submit(() -> compiledB.invoke(runInputs(), sessionB));
 
-            // Release run A; it must complete normally despite the refused run B.
+            // Release both runs; they must complete normally.
             releaseNode.countDown();
             runA.get(20, TimeUnit.SECONDS);
+            runB.get(20, TimeUnit.SECONDS);
             assertThat(exec.observedWorkflows)
-                    .as("only run A may have reached a node — the refused run B must not")
-                    .containsExactly("session-A");
+                    .as("both runs must have reached the node — neither is refused")
+                    .containsExactlyInAnyOrder("session-A", "session-B");
 
-            // Serial reuse after the in-flight run completes must still work.
+            // Serial reuse after the in-flight runs complete must still work.
             CompiledGraph compiledC = (CompiledGraph) graph.compile(sessionB, null);
             compiledC.invoke(runInputs(), sessionB);
-            assertThat(exec.observedWorkflows).containsExactly("session-A", "session-B");
+            assertThat(exec.observedWorkflows).contains("session-A", "session-B");
         } finally {
             releaseNode.countDown();
             executor.shutdownNow();

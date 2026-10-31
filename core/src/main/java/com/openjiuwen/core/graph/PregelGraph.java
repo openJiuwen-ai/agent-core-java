@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -41,7 +40,6 @@ public class PregelGraph extends Graph {
     private final Map<String, Vertex> nodes = new LinkedHashMap<>();
     private final Map<String, Map<String, Branch>> branches = new LinkedHashMap<>();
     private final Map<String, Set<String>> branchTargets = new LinkedHashMap<>();
-    private final AtomicBoolean runInProgress = new AtomicBoolean(false);
 
     @Override
     public PregelGraph startNode(String nodeId) {
@@ -219,32 +217,6 @@ public class PregelGraph extends Graph {
     }
 
     /**
-     * Attempts to mark a run as in progress on this graph.
-     *
-     * <p>Called by {@link CompiledGraph} at the start of each invocation.
-     * Returns {@code false} when another run is still in flight, which means
-     * the caller must refuse to start rather than race over the shared
-     * vertex sessions.
-     *
-     * @param workflowId identifier of the incoming run, used in the error message
-     * @return {@code true} if the run may proceed, {@code false} if refused
-     */
-    boolean tryBeginRun(String workflowId) {
-        if (runInProgress.compareAndSet(false, true)) {
-            return true;
-        }
-        Loggers.GRAPH.warn("Refused concurrent invoke on the same PregelGraph, workflow_id={}", workflowId);
-        return false;
-    }
-
-    /**
-     * Marks the in-progress run as finished, allowing the next invocation.
-     */
-    void endRun() {
-        runInProgress.set(false);
-    }
-
-    /**
      * Initialize every vertex with the given per-run session.
      *
      * <p>Called by {@link CompiledGraph} before each invocation so vertices
@@ -252,11 +224,11 @@ public class PregelGraph extends Graph {
      * by a previous compile on the shared graph.
      *
      * <p><strong>Concurrency note:</strong> vertices are shared graph-level
-     * instances, so this path does not support overlapping concurrent
-     * {@code invoke} calls against compilations of the same
-     * {@link PregelGraph}: a second run's init would overwrite the session of
-     * a still-running first run. Serial reuse (compile then invoke, repeated)
-     * is safe because init rebinds every vertex before each run.
+     * instances. Per-run vertex init rebinds every vertex to the current
+     * invocation's session before {@code pregel.run} executes, so each run
+     * observes its own session. Nested invocations (a sub-workflow re-entering
+     * its own graph) and serial reuse (compile then invoke, repeated) are
+     * safe because init runs before each invocation.
      *
      * @param session per-run vertex session
      * @param options compile options (may contain context)
