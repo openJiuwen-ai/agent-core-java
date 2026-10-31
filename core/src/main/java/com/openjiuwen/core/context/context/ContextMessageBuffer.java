@@ -116,12 +116,13 @@ public class ContextMessageBuffer {
     /**
      * Drains stored messages without tool-group realignment.
      *
-     * @param shouldKeepHistoryPrefix {@code true} keeps the history prefix; {@code false} clears the entire buffer
+     * @param shouldClearAll {@code true} clears the entire buffer (history + current);
+     *                    {@code false} keeps the history prefix and drains only current messages
      * @return messages removed from storage
      * @since 0.1.17
      */
-    public List<BaseMessage> clear(boolean shouldKeepHistoryPrefix) {
-        if (!shouldKeepHistoryPrefix) {
+    public List<BaseMessage> clear(boolean shouldClearAll) {
+        if (shouldClearAll) {
             List<BaseMessage> removed = new ArrayList<>(contextMessages);
             contextMessages = new ArrayList<>();
             historyMessagesSize = 0;
