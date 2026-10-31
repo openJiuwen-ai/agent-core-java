@@ -86,28 +86,29 @@ public class ContextMessageBuffer {
                 : tail(contextMessages, maxBufferSize);
         int totalSize = visibleMessages.size();
         int contextSizeInVisible = totalSize - Math.min(historyMessagesSize, totalSize);
-        int removeCount;
         List<BaseMessage> poppedMessages;
         if (size == null) {
             poppedMessages = withHistory
                     ? visibleMessages
                     : new ArrayList<>(visibleMessages.subList(Math.min(historyMessagesSize, visibleMessages.size()),
                     visibleMessages.size()));
-            removeCount = poppedMessages.size();
         } else {
             int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSizeInVisible);
+            // Align like getBack, but remove exactly what is returned so tool results are
+            // never deleted without being handed to the caller.
+            // Incomplete leading tool fragments stay in the buffer with their assistant.
             poppedMessages = ContextUtils.alignedTail(visibleMessages, effectiveSize);
-            // Drop the full naive window from storage so orphan tools skipped in the
-            // aligned return are not left behind at the buffer tail.
-            removeCount = effectiveSize;
         }
+        int removeCount = poppedMessages.size();
 
         int contextSize = contextMessages.size() - historyMessagesSize;
         if (withHistory && removeCount > contextSize) {
             historyMessagesSize = Math.max(0, historyMessagesSize - (removeCount - contextSize));
         }
 
-        contextMessages = new ArrayList<>(contextMessages.subList(0, contextMessages.size() - removeCount));
+        if (removeCount > 0) {
+            contextMessages = new ArrayList<>(contextMessages.subList(0, contextMessages.size() - removeCount));
+        }
         return poppedMessages;
     }
 

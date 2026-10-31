@@ -140,21 +140,28 @@ class ContextMessageBufferTest {
     }
 
     @Test
-    void popBackWithExplicitSizeRemovesNaiveWindowAndReturnsAlignedSlice() {
+    void popBackWithExplicitSizeReturnsExactlyWhatItRemovesAndKeepsToolGroups() {
         ContextMessageBuffer buffer = new ContextMessageBuffer(issue200History(), null);
         buffer.addBack(new UserMessage("按专家意见继续"));
-        // Naive last-4: tool:c2, tool:c3, assistant:已整理, user — aligned drops the two tools.
+        // Naive last-4 would be tool:c2, tool:c3, assistant:已整理, user.
+        // Aligned pop returns/removes only the complete suffix; orphan tools stay with assistant.
 
+        List<BaseMessage> before = buffer.getBack(null, true);
         List<BaseMessage> popped = buffer.popBack(4, true);
+        List<BaseMessage> after = buffer.getBack(null, true);
 
-        assertThat(popped).isNotEmpty();
-        assertThat(popped.get(0)).isNotInstanceOf(ToolMessage.class);
-        assertThat(popped.size()).isLessThanOrEqualTo(4);
-        assertThat(buffer.getBack(null, true)).noneMatch(message ->
-                message instanceof ToolMessage tool
-                        && ("c2".equals(tool.getToolCallId()) || "c3".equals(tool.getToolCallId())));
-        assertThat(buffer.getBack(null, true)).extracting(BaseMessage::getContentAsString)
+        assertThat(popped).extracting(BaseMessage::getContentAsString)
+                .containsExactly("已整理", "按专家意见继续");
+        assertThat(popped).noneMatch(ToolMessage.class::isInstance);
+        assertThat(after).hasSize(before.size() - popped.size());
+        assertThat(after).extracting(BaseMessage::getContentAsString)
                 .doesNotContain("已整理", "按专家意见继续");
+        // Search tool group remains intact in the buffer (no dangling tool_calls).
+        assertThat(after.stream().anyMatch(ContextMessageBufferTest::isSearchAssistant)).isTrue();
+        assertThat(after.stream().anyMatch(message ->
+                message instanceof ToolMessage tool && "c2".equals(tool.getToolCallId()))).isTrue();
+        assertThat(after.stream().anyMatch(message ->
+                message instanceof ToolMessage tool && "c3".equals(tool.getToolCallId()))).isTrue();
     }
 
     @Test

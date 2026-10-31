@@ -968,8 +968,9 @@ public class SessionModelContext implements ModelContext {
     }
 
     private BaseMessage lastContextMessage() {
-        List<BaseMessage> existing = messageBuffer.getBack(1, true);
-        return existing.isEmpty() ? null : existing.get(existing.size() - 1);
+        // Physical tail for dedupe / control flow — sized getBack(1) is tool-group
+        // aligned and would hide a trailing ToolMessage.
+        return peekLastMessage();
     }
 
     private static void validateAndFixContextWindow(ContextWindow contextWindow) {
