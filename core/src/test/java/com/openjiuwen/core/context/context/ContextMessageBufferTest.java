@@ -144,7 +144,7 @@ class ContextMessageBufferTest {
         ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 4);
         buffer.addBack(issue200History());
         buffer.addBack(new UserMessage("按专家意见继续"));
-        assertThat(buffer.getBack(null, true).size()).isLessThan(buffer.size());
+        assertThat(buffer.size()).isEqualTo(buffer.getBack(null, true).size());
 
         List<BaseMessage> popped = buffer.popBack(null, true);
 
@@ -158,25 +158,26 @@ class ContextMessageBufferTest {
         ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 4);
         buffer.addBack(issue200History());
         buffer.addBack(new UserMessage("按专家意见继续"));
-        assertThat(buffer.getBack(null, true).size()).isLessThan(buffer.size());
+        assertThat(buffer.peekLast()).isNotNull();
 
         List<BaseMessage> removed = buffer.clear(true);
 
         assertThat(removed.size()).isGreaterThanOrEqualTo(4);
         assertThat(buffer.getBack(null, true)).isEmpty();
         assertThat(buffer.size()).isEqualTo(0);
+        assertThat(buffer.peekLast()).isNull();
     }
 
     @Test
-    void sessionModelContextClearMessagesClearsWhenAlignedTailIsShorterThanLength() {
+    void sessionModelContextClearMessagesClearsWhenToolGroupsWereAlignedOnRead() {
         com.openjiuwen.core.context.schema.ContextEngineConfig config =
                 new com.openjiuwen.core.context.schema.ContextEngineConfig();
         config.setMaxContextMessageNum(4);
         SessionModelContext ctx = new SessionModelContext("c", "s", config, List.of(), List.of(), null);
         ctx.addMessages(issue200History()).toCompletableFuture().join();
         ctx.addMessages(List.of(new UserMessage("按专家意见继续"))).toCompletableFuture().join();
-        assertThat(ctx.length()).isEqualTo(4);
-        assertThat(ctx.getMessages(null, true).size()).isLessThan(ctx.length());
+        // size()/length() must match aligned getMessages count.
+        assertThat(ctx.length()).isEqualTo(ctx.getMessages(null, true).size());
 
         ctx.clearMessages(true).toCompletableFuture().join();
 
@@ -186,28 +187,50 @@ class ContextMessageBufferTest {
     }
 
     @Test
-    void popBackWithExplicitSizeReturnsExactlyWhatItRemovesAndKeepsToolGroups() {
+    void sizeMatchesAlignedGetBackCount() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 4);
+        buffer.addBack(issue200History());
+        buffer.addBack(new UserMessage("按专家意见继续"));
+
+        List<BaseMessage> visible = buffer.getBack(null, true);
+        assertThat(buffer.size()).isEqualTo(visible.size());
+        assertThat(visible.size()).isLessThanOrEqualTo(4);
+        assertThat(visible.get(0)).isNotInstanceOf(ToolMessage.class);
+    }
+
+    @Test
+    void popBackWithExplicitSizeRemovesAndReturnsTheSameNaiveSuffix() {
         ContextMessageBuffer buffer = new ContextMessageBuffer(issue200History(), null);
         buffer.addBack(new UserMessage("按专家意见继续"));
-        // Naive last-4 would be tool:c2, tool:c3, assistant:已整理, user.
-        // Aligned pop returns/removes only the complete suffix; orphan tools stay with assistant.
+        // Mutation path is naive (Python parity): pop N returns and removes the same N.
 
-        List<BaseMessage> before = buffer.getBack(null, true);
+        List<BaseMessage> before = new ArrayList<>(buffer.getBack(null, true));
         List<BaseMessage> popped = buffer.popBack(4, true);
         List<BaseMessage> after = buffer.getBack(null, true);
 
+        assertThat(popped).hasSize(4);
         assertThat(popped).extracting(BaseMessage::getContentAsString)
-                .containsExactly("已整理", "按专家意见继续");
-        assertThat(popped).noneMatch(ToolMessage.class::isInstance);
-        assertThat(after).hasSize(before.size() - popped.size());
+                .containsExactly("检索结果2", "检索结果3", "已整理", "按专家意见继续");
+        assertThat(after).hasSize(before.size() - 4);
         assertThat(after).extracting(BaseMessage::getContentAsString)
-                .doesNotContain("已整理", "按专家意见继续");
-        // Search tool group remains intact in the buffer (no dangling tool_calls).
-        assertThat(after.stream().anyMatch(ContextMessageBufferTest::isSearchAssistant)).isTrue();
-        assertThat(after.stream().anyMatch(message ->
-                message instanceof ToolMessage tool && "c2".equals(tool.getToolCallId()))).isTrue();
-        assertThat(after.stream().anyMatch(message ->
-                message instanceof ToolMessage tool && "c3".equals(tool.getToolCallId()))).isTrue();
+                .doesNotContain("检索结果2", "检索结果3", "已整理", "按专家意见继续");
+    }
+
+    @Test
+    void resizeIfNeededDoesNotWipeBufferWhenRetainedSuffixIsAllTools() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 2);
+        // physical 5 > 2*2 → resize. Naive cut at 2 leaves [t1,t2,t3]; skipping those
+        // orphans would reach EOF — must fall back to naive cut, not clear the buffer.
+        buffer.addBack(List.of(
+                new UserMessage("u0"),
+                new UserMessage("u1"),
+                new ToolMessage("r1", "c1"),
+                new ToolMessage("r2", "c1"),
+                new ToolMessage("r3", "c1")));
+
+        assertThat(buffer.peekLast()).isInstanceOf(ToolMessage.class);
+        // Aligned read may be empty; physical storage must still hold the retained suffix.
+        assertThat(buffer.clear(true)).hasSize(3);
     }
 
     @Test
@@ -248,7 +271,10 @@ class ContextMessageBufferTest {
     }
 
     @Test
-    void alignedTailDropsLeadingOrphanToolsWithoutExceedingLimit() {
+    void alignedTailPrefersNewestSuffixOverOlderCompleteGroupThatCannotFitWithIt() {
+        // Group [asst,t2,t3] alone fits in N=3, but keeping the newest tail [done,user]
+        // leaves only 1 spare slot — cannot also keep the older group without dropping
+        // newer messages. Scheme A keeps the newest coherent suffix.
         List<BaseMessage> messages = new ArrayList<>();
         messages.add(call(tc("c2", "search"), tc("c3", "search")));
         messages.add(new ToolMessage("检索结果2", "c2"));

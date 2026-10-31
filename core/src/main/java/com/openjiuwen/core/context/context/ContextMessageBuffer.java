@@ -12,8 +12,10 @@ import java.util.List;
 /**
  * Rolling context-message buffer with history tracking.
  *
- * <p>Mirrors Python's {@code ContextMessageBuffer} in
- * {@code openjiuwen/core/context_engine/context/message_buffer.py}.</p>
+ * <p>Read paths ({@link #getBack}, {@link #size()}) apply tool-group alignment so a
+ * count cut never exposes orphan {@code ToolMessage}s (issue #200). Mutation paths
+ * ({@link #popBack}, {@link #clear}, {@link #resizeIfNeeded}) keep storage/accounting
+ * conservation and must not wipe the buffer via alignment.</p>
  */
 public class ContextMessageBuffer {
     private final Integer maxBufferSize;
@@ -26,10 +28,11 @@ public class ContextMessageBuffer {
     }
 
     public int size() {
-        if (maxBufferSize != null) {
-            return Math.min(contextMessages.size(), maxBufferSize);
+        if (maxBufferSize == null) {
+            return contextMessages.size();
         }
-        return contextMessages.size();
+        // Match getBack(null) so length-based heuristics see the aligned visible count.
+        return ContextUtils.alignedTail(contextMessages, maxBufferSize).size();
     }
 
     public void addBack(BaseMessage message) {
@@ -61,7 +64,7 @@ public class ContextMessageBuffer {
     public List<BaseMessage> getBack(Integer size, boolean withHistory) {
         List<BaseMessage> visibleMessages = maxBufferSize == null
                 ? new ArrayList<>(contextMessages)
-                : tail(contextMessages, maxBufferSize);
+                : ContextUtils.alignedTail(contextMessages, maxBufferSize);
         if (size == null) {
             return withHistory
                     ? visibleMessages
@@ -72,7 +75,6 @@ public class ContextMessageBuffer {
         int totalSize = visibleMessages.size();
         int contextSize = totalSize - Math.min(historyMessagesSize, totalSize);
         int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSize);
-        // Never return a slice that starts mid tool-call group (issue #200 / IntentRecognizer getMessages(N)).
         return ContextUtils.alignedTail(visibleMessages, effectiveSize);
     }
 
@@ -81,8 +83,6 @@ public class ContextMessageBuffer {
     }
 
     public List<BaseMessage> popBack(Integer size, boolean withHistory) {
-        // Drain the full physical buffer without alignment when the caller asks for
-        // everything stored (null size or size covering all physical messages).
         if (withHistory && (size == null || size >= contextMessages.size())) {
             return clear(true);
         }
@@ -90,16 +90,16 @@ public class ContextMessageBuffer {
             return clear(false);
         }
 
+        // Pop uses a naive visible window (Python parity): return and remove the same
+        // suffix. Tool-group alignment belongs to read paths, not storage mutation.
         List<BaseMessage> visibleMessages = maxBufferSize == null
                 ? new ArrayList<>(contextMessages)
-                : tail(contextMessages, maxBufferSize);
+                : naiveTail(contextMessages, maxBufferSize);
         int totalSize = visibleMessages.size();
         int contextSizeInVisible = totalSize - Math.min(historyMessagesSize, totalSize);
         int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSizeInVisible);
-        // Align like getBack, but remove exactly what is returned so tool results are
-        // never deleted without being handed to the caller.
-        // Incomplete leading tool fragments stay in the buffer with their assistant.
-        List<BaseMessage> poppedMessages = ContextUtils.alignedTail(visibleMessages, effectiveSize);
+        List<BaseMessage> poppedMessages = new ArrayList<>(
+                visibleMessages.subList(totalSize - effectiveSize, totalSize));
         int removeCount = poppedMessages.size();
 
         int contextSize = contextMessages.size() - historyMessagesSize;
@@ -148,7 +148,7 @@ public class ContextMessageBuffer {
     public void rebulid(List<BaseMessage> historyMessages) {
         List<BaseMessage> safeHistoryMessages = historyMessages == null ? List.of() : historyMessages;
         if (maxBufferSize != null) {
-            contextMessages = tail(safeHistoryMessages, maxBufferSize);
+            contextMessages = ContextUtils.alignedTail(safeHistoryMessages, maxBufferSize);
             historyMessagesSize = Math.min(contextMessages.size(), maxBufferSize);
             return;
         }
@@ -167,9 +167,13 @@ public class ContextMessageBuffer {
         if (contextMessages.size() <= maxBufferSize * 2) {
             return;
         }
-        // Drop at least the oldest maxBufferSize messages; skip further if the cut
-        // would leave orphan ToolMessages at the head of the retained buffer.
-        int cut = ContextUtils.skipLeadingOrphanToolMessages(contextMessages, maxBufferSize);
+        // Drop the oldest maxBufferSize messages (Python parity). Optionally advance
+        // past orphan tools at the new head, but never wipe the entire buffer.
+        int cut = maxBufferSize;
+        int alignedCut = ContextUtils.skipLeadingOrphanToolMessages(contextMessages, maxBufferSize);
+        if (alignedCut < contextMessages.size()) {
+            cut = alignedCut;
+        }
         int dropped = cut;
         contextMessages = new ArrayList<>(contextMessages.subList(cut, contextMessages.size()));
         if (historyMessagesSize == 0 || dropped >= historyMessagesSize) {
@@ -179,7 +183,13 @@ public class ContextMessageBuffer {
         historyMessagesSize -= dropped;
     }
 
-    private static List<BaseMessage> tail(List<BaseMessage> messages, int size) {
-        return ContextUtils.alignedTail(messages, size);
+    private static List<BaseMessage> naiveTail(List<BaseMessage> messages, int size) {
+        if (size <= 0 || messages.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (messages.size() <= size) {
+            return new ArrayList<>(messages);
+        }
+        return new ArrayList<>(messages.subList(messages.size() - size, messages.size()));
     }
 }
