@@ -45,8 +45,18 @@ public final class BrowserMoveEnv {
     }
 
     public static boolean loadRepoDotenv(boolean override) {
-        Path envPath = resolveRepoDotenvPath();
-        if (!Files.isRegularFile(envPath)) {
+        return loadDotenvFrom(resolveRepoDotenvPath(), override);
+    }
+
+    /**
+     * Load one {@code .env} file into system properties.
+     *
+     * @param envPath dotenv file path
+     * @param override whether values already present in the process environment may be replaced
+     * @return true when the file was read, false when it is missing or unreadable
+     */
+    public static boolean loadDotenvFrom(Path envPath, boolean override) {
+        if (envPath == null || !Files.isRegularFile(envPath)) {
             return false;
         }
         try {
@@ -58,7 +68,8 @@ public final class BrowserMoveEnv {
                 int split = trimmed.indexOf('=');
                 String key = trimmed.substring(0, split).trim();
                 String value = trimmed.substring(split + 1).trim();
-                if (!override && !System.getenv(key).isEmpty()) {
+                String existing = System.getenv(key);
+                if (!override && existing != null && !existing.isEmpty()) {
                     continue;
                 }
                 System.setProperty(key, stripQuotes(value));
@@ -271,6 +282,18 @@ public final class BrowserMoveEnv {
             return env.trim();
         }
         return System.getProperty(key, "").trim();
+    }
+
+    /**
+     * Resolve an environment value with the same precedence used by
+     * {@link #firstNonEmptyEnv(String...)}: process environment first, then
+     * system properties written by {@link #loadRepoDotenv(boolean)}.
+     *
+     * @param key variable name
+     * @return trimmed value, or an empty string when neither source defines it
+     */
+    public static String env(String key) {
+        return getEnv(key);
     }
 
     private static String normalize(String value) {
