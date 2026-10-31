@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -68,5 +69,13 @@ class PromptSectionsTest {
     @Test
     void loadIdentityReturnsEmptyStringWhenMissing() {
         assertEquals("", PromptSections.loadIdentity(tempDir.toString()));
+    }
+
+    @Test
+    void loadIdentityFallsBackToClasspathWhenDirectoryDoesNotExist() {
+        String identity = PromptSections.loadIdentity(
+                tempDir.resolve("missing-prompts-dir").toString());
+
+        assertFalse(identity.isEmpty(), "packaged prompts must load from the classpath");
     }
 }
