@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.graph;
 
-import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.pregel.Pregel;
@@ -77,32 +76,28 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
             // shared PregelGraph, which a second compile would overwrite.
             initVerticesForRun(session);
 
+            if (isMain && checkpointer != null) {
+                checkpointer.preWorkflowExecute(session, inputs);
+            }
+            if (!(inputs instanceof InteractiveInput) && session instanceof GraphRuntimeSession runtimeSession) {
+                WorkflowState state = runtimeSession.workflowState();
+                if (state != null) {
+                    state.commitUserInputs(inputs);
+                }
+            }
             try {
-                if (isMain && checkpointer != null) {
-                    checkpointer.preWorkflowExecute(session, inputs);
-                }
-                if (!(inputs instanceof InteractiveInput) && session instanceof GraphRuntimeSession runtimeSession) {
-                    WorkflowState state = runtimeSession.workflowState();
-                    if (state != null) {
-                        state.commitUserInputs(inputs);
-                    }
-                }
-                try {
-                    result = pregel.run(pregelConfig);
-                } catch (Exception ex) {
-                    exception = ex;
-                }
-                if (isMain && checkpointer != null) {
-                    checkpointer.postWorkflowExecute(session, result, exception);
-                } else if (exception != null) {
+                result = pregel.run(pregelConfig);
+            } catch (Exception ex) {
+                exception = ex;
+            }
+            if (isMain && checkpointer != null) {
+                checkpointer.postWorkflowExecute(session, result, exception);
+            } else {
+                if (exception != null) {
                     throw propagate(exception);
                 }
-                return result;
-            } catch (RuntimeException ex) {
-                throw ex;
-            } catch (Exception ex) {
-                throw new IllegalStateException(ex);
             }
+            return result;
         } finally {
             if (pregelGraph != null) {
                 pregelGraph.endRun();
@@ -124,6 +119,8 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
      * session is not a VertexSession (e.g. null or a plain BaseSession),
      * preserving backward compatibility for callers that pass session only
      * at compile time.
+     *
+     * @param session the invocation session passed to the current run
      */
     private void initVerticesForRun(BaseSession session) {
         if (pregelGraph == null) {

@@ -140,8 +140,6 @@ public class PregelGraph extends Graph {
 
     @Override
     public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
-        Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
-
         // The Pregel engine is rebuilt on every compile so the step callback and
         // checkpointer are always derived from this compile's session. Caching a
         // single engine would bind subsequent runs to the first compile's
@@ -169,6 +167,7 @@ public class PregelGraph extends Graph {
             }
         }
         Pregel pregel = compilePregel(graphStore, afterStep);
+        Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
         return new CompiledGraph(pregel, checkpointer, this, session, options);
     }
 
