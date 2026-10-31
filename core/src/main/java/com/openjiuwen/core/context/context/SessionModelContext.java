@@ -759,7 +759,7 @@ public class SessionModelContext implements ModelContext {
         List<BaseMessage> contextMessages = messageBuffer.getBack(null, true);
         Integer effectiveRound = dialogueRound == null ? defaultDialogueRound : dialogueRound;
         if (effectiveRound != null) {
-            int roundIndex = findLastNDialogueRound(contextMessages, effectiveRound);
+            int roundIndex = ContextUtils.findLastNDialogueRound(contextMessages, effectiveRound);
             if (roundIndex >= 0 && roundIndex < contextMessages.size()) {
                 contextMessages = new ArrayList<>(contextMessages.subList(roundIndex, contextMessages.size()));
             }
@@ -782,7 +782,7 @@ public class SessionModelContext implements ModelContext {
         ContextStats stat = new ContextStats();
         statMessages(stat, messages);
         statTools(stat, tools);
-        stat.setTotalDialogues(findAllDialogueRound(messages).size());
+        stat.setTotalDialogues(ContextUtils.findAllDialogueRound(messages).size());
         return stat;
     }
 
@@ -842,7 +842,7 @@ public class SessionModelContext implements ModelContext {
 
     private void statMessages(ContextStats stat, List<BaseMessage> messages) {
         stat.setTotalMessages(messages.size());
-        stat.setTotalDialogues(findAllDialogueRound(messages).size());
+        stat.setTotalDialogues(ContextUtils.findAllDialogueRound(messages).size());
         for (BaseMessage message : messages) {
             switch (stringValue(message.getRole(), "")) {
                 case "assistant" -> stat.setAssistantMessages(stat.getAssistantMessages() + 1);
@@ -1007,70 +1007,6 @@ public class SessionModelContext implements ModelContext {
             }
         }
         return DEFAULT_CONTEXT_MAX_TOKENS;
-    }
-
-    private static List<List<Integer>> findAllDialogueRound(List<BaseMessage> messages) {
-        List<List<Integer>> rounds = new ArrayList<>();
-        int i = messages.size() - 1;
-        while (i >= 0) {
-            Integer assistantIndex = null;
-            int roundEnd = i;
-            while (i >= 0 && !"assistant".equals(messages.get(i).getRole())) {
-                i--;
-            }
-            if (i >= 0) {
-                BaseMessage message = messages.get(i);
-                if (!hasToolCalls(message)) {
-                    assistantIndex = i;
-                }
-                i--;
-            } else {
-                i = roundEnd;
-            }
-
-            while (i >= 0 && !"user".equals(messages.get(i).getRole())) {
-                i--;
-            }
-            if (i < 0) {
-                break;
-            }
-            int foundUserIndex = i;
-            int userIndex = findContiguousUserGroupStart(messages, foundUserIndex);
-
-            if (rounds.isEmpty()) {
-                for (int lastRoundIndex = messages.size() - 1; lastRoundIndex > foundUserIndex; lastRoundIndex--) {
-                    if ("user".equals(messages.get(lastRoundIndex).getRole())) {
-                        rounds.add(List.of(findContiguousUserGroupStart(messages, lastRoundIndex), -1));
-                        break;
-                    }
-                }
-            }
-            rounds.add(List.of(userIndex, assistantIndex == null ? -1 : assistantIndex));
-            i = userIndex - 1;
-        }
-        return rounds;
-    }
-
-    private static int findLastNDialogueRound(List<BaseMessage> messages, int n) {
-        List<List<Integer>> rounds = findAllDialogueRound(messages);
-        if (rounds.isEmpty()) {
-            return -1;
-        }
-        return rounds.get(Math.min(n, rounds.size()) - 1).get(0);
-    }
-
-    private static int findContiguousUserGroupStart(List<BaseMessage> messages, int userIndex) {
-        int index = userIndex;
-        while (index - 1 >= 0 && "user".equals(messages.get(index - 1).getRole())) {
-            index--;
-        }
-        return index;
-    }
-
-    private static boolean hasToolCalls(BaseMessage message) {
-        return message instanceof AssistantMessage assistant
-                && assistant.getToolCalls() != null
-                && !assistant.getToolCalls().isEmpty();
     }
 
     private static List<BaseMessage> concatenate(List<BaseMessage> first, List<BaseMessage> second) {
