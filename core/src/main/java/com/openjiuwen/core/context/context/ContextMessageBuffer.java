@@ -60,7 +60,8 @@ public class ContextMessageBuffer {
         int totalSize = visibleMessages.size();
         int contextSize = totalSize - Math.min(historyMessagesSize, totalSize);
         int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSize);
-        return new ArrayList<>(visibleMessages.subList(totalSize - effectiveSize, totalSize));
+        // Never return a slice that starts mid tool-call group (issue #200 / IntentRecognizer getMessages(N)).
+        return ContextUtils.alignedTail(visibleMessages, effectiveSize);
     }
 
     public List<BaseMessage> popBack(int size, boolean withHistory) {
@@ -68,15 +69,33 @@ public class ContextMessageBuffer {
     }
 
     public List<BaseMessage> popBack(Integer size, boolean withHistory) {
-        List<BaseMessage> poppedMessages = getBack(size, withHistory);
-        int poppedSize = poppedMessages.size();
-        int contextSize = contextMessages.size() - historyMessagesSize;
-
-        if (withHistory && poppedSize > contextSize) {
-            historyMessagesSize = Math.max(0, historyMessagesSize - (poppedSize - contextSize));
+        List<BaseMessage> visibleMessages = maxBufferSize == null
+                ? new ArrayList<>(contextMessages)
+                : tail(contextMessages, maxBufferSize);
+        int totalSize = visibleMessages.size();
+        int contextSizeInVisible = totalSize - Math.min(historyMessagesSize, totalSize);
+        int removeCount;
+        List<BaseMessage> poppedMessages;
+        if (size == null) {
+            poppedMessages = withHistory
+                    ? visibleMessages
+                    : new ArrayList<>(visibleMessages.subList(Math.min(historyMessagesSize, visibleMessages.size()),
+                    visibleMessages.size()));
+            removeCount = poppedMessages.size();
+        } else {
+            int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSizeInVisible);
+            poppedMessages = ContextUtils.alignedTail(visibleMessages, effectiveSize);
+            // Drop the full naive window from storage so orphan tools skipped in the
+            // aligned return are not left behind at the buffer tail.
+            removeCount = effectiveSize;
         }
 
-        contextMessages = new ArrayList<>(contextMessages.subList(0, contextMessages.size() - poppedSize));
+        int contextSize = contextMessages.size() - historyMessagesSize;
+        if (withHistory && removeCount > contextSize) {
+            historyMessagesSize = Math.max(0, historyMessagesSize - (removeCount - contextSize));
+        }
+
+        contextMessages = new ArrayList<>(contextMessages.subList(0, contextMessages.size() - removeCount));
         return poppedMessages;
     }
 

@@ -121,6 +121,43 @@ class ContextMessageBufferTest {
     }
 
     @Test
+    void getBackWithExplicitSizeDoesNotStartOnOrphanToolMessages() {
+        // Secondary count cut (e.g. IntentRecognizer getMessages(50)) must keep the same
+        // tool-group contract as maxBufferSize tail — never lead with orphan ToolMessages.
+        ContextMessageBuffer buffer = new ContextMessageBuffer(issue200History(), null);
+        buffer.addBack(new UserMessage("按专家意见继续"));
+
+        List<BaseMessage> sliced = buffer.getBack(4, true);
+
+        assertThat(sliced).isNotEmpty();
+        assertThat(sliced.get(0)).isNotInstanceOf(ToolMessage.class);
+        assertThat(sliced.size()).isLessThanOrEqualTo(4);
+        boolean hasSearchAssistant = sliced.stream().anyMatch(ContextMessageBufferTest::isSearchAssistant);
+        boolean hasSearchTool = sliced.stream().anyMatch(message ->
+                message instanceof ToolMessage tool
+                        && ("c2".equals(tool.getToolCallId()) || "c3".equals(tool.getToolCallId())));
+        assertThat(hasSearchTool).isEqualTo(hasSearchAssistant);
+    }
+
+    @Test
+    void popBackWithExplicitSizeRemovesNaiveWindowAndReturnsAlignedSlice() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(issue200History(), null);
+        buffer.addBack(new UserMessage("按专家意见继续"));
+        // Naive last-4: tool:c2, tool:c3, assistant:已整理, user — aligned drops the two tools.
+
+        List<BaseMessage> popped = buffer.popBack(4, true);
+
+        assertThat(popped).isNotEmpty();
+        assertThat(popped.get(0)).isNotInstanceOf(ToolMessage.class);
+        assertThat(popped.size()).isLessThanOrEqualTo(4);
+        assertThat(buffer.getBack(null, true)).noneMatch(message ->
+                message instanceof ToolMessage tool
+                        && ("c2".equals(tool.getToolCallId()) || "c3".equals(tool.getToolCallId())));
+        assertThat(buffer.getBack(null, true)).extracting(BaseMessage::getContentAsString)
+                .doesNotContain("已整理", "按专家意见继续");
+    }
+
+    @Test
     void alignedTailDropsLeadingOrphanToolsWithoutExceedingLimit() {
         List<BaseMessage> messages = new ArrayList<>();
         messages.add(call(tc("c2", "search"), tc("c3", "search")));
