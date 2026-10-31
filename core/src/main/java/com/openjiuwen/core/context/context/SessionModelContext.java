@@ -385,7 +385,7 @@ public class SessionModelContext implements ModelContext {
 
     @Override
     public CompletionStage<Void> clearMessages(boolean withHistory) {
-        popMessages(length(), withHistory);
+        messageBuffer.clear(withHistory);
         offloadMessageBuffer = new OffloadMessageBuffer();
         bindOffloadBuffer();
         return CompletableFuture.completedFuture(null);

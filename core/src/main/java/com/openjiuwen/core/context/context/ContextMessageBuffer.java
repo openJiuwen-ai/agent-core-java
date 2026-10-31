@@ -81,24 +81,25 @@ public class ContextMessageBuffer {
     }
 
     public List<BaseMessage> popBack(Integer size, boolean withHistory) {
+        // Drain the full physical buffer without alignment when the caller asks for
+        // everything stored (null size or size covering all physical messages).
+        if (withHistory && (size == null || size >= contextMessages.size())) {
+            return clear(true);
+        }
+        if (!withHistory && size == null) {
+            return clear(false);
+        }
+
         List<BaseMessage> visibleMessages = maxBufferSize == null
                 ? new ArrayList<>(contextMessages)
                 : tail(contextMessages, maxBufferSize);
         int totalSize = visibleMessages.size();
         int contextSizeInVisible = totalSize - Math.min(historyMessagesSize, totalSize);
-        List<BaseMessage> poppedMessages;
-        if (size == null) {
-            poppedMessages = withHistory
-                    ? visibleMessages
-                    : new ArrayList<>(visibleMessages.subList(Math.min(historyMessagesSize, visibleMessages.size()),
-                    visibleMessages.size()));
-        } else {
-            int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSizeInVisible);
-            // Align like getBack, but remove exactly what is returned so tool results are
-            // never deleted without being handed to the caller.
-            // Incomplete leading tool fragments stay in the buffer with their assistant.
-            poppedMessages = ContextUtils.alignedTail(visibleMessages, effectiveSize);
-        }
+        int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSizeInVisible);
+        // Align like getBack, but remove exactly what is returned so tool results are
+        // never deleted without being handed to the caller.
+        // Incomplete leading tool fragments stay in the buffer with their assistant.
+        List<BaseMessage> poppedMessages = ContextUtils.alignedTail(visibleMessages, effectiveSize);
         int removeCount = poppedMessages.size();
 
         int contextSize = contextMessages.size() - historyMessagesSize;
@@ -110,6 +111,26 @@ public class ContextMessageBuffer {
             contextMessages = new ArrayList<>(contextMessages.subList(0, contextMessages.size() - removeCount));
         }
         return poppedMessages;
+    }
+
+    /**
+     * Drains stored messages without tool-group realignment.
+     *
+     * @param withHistory {@code true} clears the entire buffer; {@code false} keeps the history prefix
+     * @return messages removed from storage
+     * @since 0.1.17
+     */
+    public List<BaseMessage> clear(boolean withHistory) {
+        if (withHistory) {
+            List<BaseMessage> removed = new ArrayList<>(contextMessages);
+            contextMessages = new ArrayList<>();
+            historyMessagesSize = 0;
+            return removed;
+        }
+        int historyEnd = Math.min(historyMessagesSize, contextMessages.size());
+        List<BaseMessage> removed = new ArrayList<>(contextMessages.subList(historyEnd, contextMessages.size()));
+        contextMessages = new ArrayList<>(contextMessages.subList(0, historyEnd));
+        return removed;
     }
 
     public void setMessages(List<BaseMessage> messages, boolean withHistory) {

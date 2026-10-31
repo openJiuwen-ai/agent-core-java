@@ -140,6 +140,52 @@ class ContextMessageBufferTest {
     }
 
     @Test
+    void popBackNullOrPhysicalSizeDrainsAllStoredMessages() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 4);
+        buffer.addBack(issue200History());
+        buffer.addBack(new UserMessage("按专家意见继续"));
+        assertThat(buffer.getBack(null, true).size()).isLessThan(buffer.size());
+
+        List<BaseMessage> popped = buffer.popBack(null, true);
+
+        assertThat(popped.size()).isGreaterThanOrEqualTo(4);
+        assertThat(buffer.getBack(null, true)).isEmpty();
+        assertThat(buffer.size()).isEqualTo(0);
+    }
+
+    @Test
+    void clearDrainsPhysicalMessagesIgnoringToolGroupAlignment() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 4);
+        buffer.addBack(issue200History());
+        buffer.addBack(new UserMessage("按专家意见继续"));
+        assertThat(buffer.getBack(null, true).size()).isLessThan(buffer.size());
+
+        List<BaseMessage> removed = buffer.clear(true);
+
+        assertThat(removed.size()).isGreaterThanOrEqualTo(4);
+        assertThat(buffer.getBack(null, true)).isEmpty();
+        assertThat(buffer.size()).isEqualTo(0);
+    }
+
+    @Test
+    void sessionModelContextClearMessagesClearsWhenAlignedTailIsShorterThanLength() {
+        com.openjiuwen.core.context.schema.ContextEngineConfig config =
+                new com.openjiuwen.core.context.schema.ContextEngineConfig();
+        config.setMaxContextMessageNum(4);
+        SessionModelContext ctx = new SessionModelContext("c", "s", config, List.of(), List.of(), null);
+        ctx.addMessages(issue200History()).toCompletableFuture().join();
+        ctx.addMessages(List.of(new UserMessage("按专家意见继续"))).toCompletableFuture().join();
+        assertThat(ctx.length()).isEqualTo(4);
+        assertThat(ctx.getMessages(null, true).size()).isLessThan(ctx.length());
+
+        ctx.clearMessages(true).toCompletableFuture().join();
+
+        assertThat(ctx.getMessages(null, true)).isEmpty();
+        assertThat(ctx.length()).isEqualTo(0);
+        assertThat(ctx.peekLastMessage()).isNull();
+    }
+
+    @Test
     void popBackWithExplicitSizeReturnsExactlyWhatItRemovesAndKeepsToolGroups() {
         ContextMessageBuffer buffer = new ContextMessageBuffer(issue200History(), null);
         buffer.addBack(new UserMessage("按专家意见继续"));
