@@ -46,6 +46,18 @@ public class ContextMessageBuffer {
         return getBack(null, true);
     }
 
+    /**
+     * Returns the latest stored message without count-based tool-group realignment.
+     *
+     * @return the last buffer entry, or {@code null} when empty
+     */
+    public BaseMessage peekLast() {
+        if (contextMessages.isEmpty()) {
+            return null;
+        }
+        return contextMessages.get(contextMessages.size() - 1);
+    }
+
     public List<BaseMessage> getBack(Integer size, boolean withHistory) {
         List<BaseMessage> visibleMessages = maxBufferSize == null
                 ? new ArrayList<>(contextMessages)

@@ -373,6 +373,11 @@ public class SessionModelContext implements ModelContext {
     }
 
     @Override
+    public BaseMessage peekLastMessage() {
+        return messageBuffer.peekLast();
+    }
+
+    @Override
     public void setMessages(List<BaseMessage> messages, boolean withHistory) {
         validateMessages(messages);
         messageBuffer.setMessages(ensureContextMessageIds(messages), withHistory);

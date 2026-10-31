@@ -158,6 +158,43 @@ class ContextMessageBufferTest {
     }
 
     @Test
+    void peekLastReturnsTrailingToolWhileSizedGetBackDropsOrphanOnlyWindow() {
+        // Sized reads stay strict for issue #200; control flow uses peekLast.
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(new UserMessage("hello")), null);
+        buffer.addBack(new ToolMessage("tool output", "call-1"));
+
+        assertThat(buffer.peekLast()).isInstanceOf(ToolMessage.class);
+        assertThat(buffer.getBack(1, true)).isEmpty();
+    }
+
+    @Test
+    void intactBufferShorterThanMaxKeepsToolOnlyMessages() {
+        // Default maxContextMessageNum is large; a tool-only context must remain readable
+        // because no count cut occurred (issue #200 is about forced truncation).
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 200);
+        buffer.addBack(new ToolMessage("tool output", "call-1"));
+
+        assertThat(buffer.getBack(null, true)).hasSize(1);
+        assertThat(buffer.getBack(null, true).get(0)).isInstanceOf(ToolMessage.class);
+    }
+
+    @Test
+    void intactBufferDoesNotAutoRepairLeadingOrphanToolsWithoutCountCut() {
+        // Bad checkpoint under max: do not rewrite on read; migrate separately if needed.
+        List<BaseMessage> orphanLeading = List.of(
+                new ToolMessage("orphan-a", "c2"),
+                new ToolMessage("orphan-b", "c3"),
+                new AssistantMessage("已整理"),
+                new UserMessage("继续"));
+        ContextMessageBuffer buffer = new ContextMessageBuffer(orphanLeading, 200);
+
+        List<BaseMessage> stored = buffer.getBack(null, true);
+        assertThat(stored).hasSize(4);
+        assertThat(stored.get(0)).isInstanceOf(ToolMessage.class);
+        assertThat(show(stored)).startsWith("[tool:c2, tool:c3,");
+    }
+
+    @Test
     void alignedTailDropsLeadingOrphanToolsWithoutExceedingLimit() {
         List<BaseMessage> messages = new ArrayList<>();
         messages.add(call(tc("c2", "search"), tc("c3", "search")));

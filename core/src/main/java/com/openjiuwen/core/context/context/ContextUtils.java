@@ -218,9 +218,14 @@ public final class ContextUtils {
     /**
      * Returns the last {@code size} messages without splitting tool-call groups.
      *
-     * <p>When a naive tail would start on orphan {@link ToolMessage}s (their owning
-     * assistant was cut away), those tools are dropped so the result never exceeds
-     * {@code size} and never begins mid tool-group (issue #200).</p>
+     * <p>Only applies when a count cut actually happens ({@code messages.size() > size}).
+     * If the list already fits in {@code size}, it is returned unchanged — including a
+     * lone trailing {@link ToolMessage} — because no mid-group truncation occurred.</p>
+     *
+     * <p>When a cut would start on orphan {@link ToolMessage}s (owning assistant was
+     * dropped), those leading tools are skipped. If the entire cut window is only
+     * tools, the result is empty; use {@code ModelContext.peekLastMessage()} for
+     * physical-tail control flow.</p>
      *
      * @param messages source messages; {@code null} treated as empty
      * @param size maximum messages to keep; {@code <= 0} yields an empty list
@@ -233,18 +238,20 @@ public final class ContextUtils {
             return new ArrayList<>();
         }
         if (messages.size() <= size) {
+            // No count cut — do not rewrite an intact buffer (e.g. tool-only context).
             return new ArrayList<>(messages);
         }
         int naiveStart = messages.size() - size;
         int start = skipLeadingOrphanToolMessages(messages, naiveStart);
+        if (start >= messages.size()) {
+            return new ArrayList<>();
+        }
         if (start > naiveStart) {
             int dropped = start - naiveStart;
             Loggers.CONTEXT_ENGINE.warning(
-                    "context buffer trim dropped " + dropped
-                            + " leading message(s) including tool results to keep tool-call groups intact");
-        }
-        if (start >= messages.size()) {
-            return new ArrayList<>();
+                    "context buffer trim dropped {} leading message(s) including tool results"
+                            + " to keep tool-call groups intact",
+                    dropped);
         }
         return new ArrayList<>(messages.subList(start, messages.size()));
     }
