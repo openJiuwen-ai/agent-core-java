@@ -35,14 +35,11 @@ import java.util.function.Consumer;
  */
 public class PregelGraph extends Graph {
 
-    private Pregel pregel;
     private final List<Edge> edges = new ArrayList<>();
     private final Set<String> waits = new LinkedHashSet<>();
     private final Map<String, Vertex> nodes = new LinkedHashMap<>();
     private final Map<String, Map<String, Branch>> branches = new LinkedHashMap<>();
     private final Map<String, Set<String>> branchTargets = new LinkedHashMap<>();
-    private CompiledGraph.GraphCheckpointer checkpointer;
-    private BaseSession session;
 
     @Override
     public PregelGraph startNode(String nodeId) {
@@ -141,15 +138,16 @@ public class PregelGraph extends Graph {
 
     @Override
     public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
-        Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
-        if (session instanceof Vertex.VertexSession vertexSession) {
-            for (Vertex node : nodes.values()) {
-                node.init(vertexSession, options);
-            }
-        }
-
+        // The Pregel engine is rebuilt on every compile so the step callback and
+        // checkpointer are always derived from this compile's session. Caching a
+        // single engine would bind subsequent runs to the first compile's
+        // session closure and checkpoint storage, so each compile gets its own
+        // isolated engine while the graph topology itself remains reusable.
+        // Vertex init is deferred to invocation time (CompiledGraph
+        // invokes initVerticesForRun) so a second compile never mutates
+        // vertices still in use by an in-flight run of an earlier compile.
         Consumer<PregelLoop> afterStep = loop -> {
-            if (this.session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
+            if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
                 CompiledGraph.WorkflowState state = runtimeSession.workflowState();
                 if (state != null) {
                     state.commit();
@@ -158,18 +156,17 @@ public class PregelGraph extends Graph {
             Loggers.GRAPH.debug("Finished to run graph super-step [{}]", loop.getStep());
         };
 
-        if (pregel == null) {
-            Store graphStore = null;
-            if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
-                checkpointer = runtimeSession.checkpointer();
-                if (checkpointer != null && checkpointer.graphStore() != null) {
-                    graphStore = new GraphStore(checkpointer.graphStore());
-                }
+        Store graphStore = null;
+        CompiledGraph.GraphCheckpointer checkpointer = null;
+        if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
+            checkpointer = runtimeSession.checkpointer();
+            if (checkpointer != null && checkpointer.graphStore() != null) {
+                graphStore = new GraphStore(checkpointer.graphStore());
             }
-            pregel = compilePregel(graphStore, afterStep);
         }
-        this.session = session;
-        return new CompiledGraph(pregel, checkpointer);
+        Pregel pregel = compilePregel(graphStore, afterStep);
+        Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
+        return new CompiledGraph(pregel, checkpointer, this, session, options);
     }
 
     public Pregel compilePregel(Store graphStore, Consumer<PregelLoop> stepCallback) {
@@ -216,6 +213,29 @@ public class PregelGraph extends Graph {
     public void reset() {
         for (Vertex node : nodes.values()) {
             node.reset();
+        }
+    }
+
+    /**
+     * Initialize every vertex with the given per-run session.
+     *
+     * <p>Called by {@link CompiledGraph} before each invocation so vertices
+     * bind to the session of the current run rather than a stale session left
+     * by a previous compile on the shared graph.
+     *
+     * <p><strong>Concurrency note:</strong> vertices are shared graph-level
+     * instances. Per-run vertex init rebinds every vertex to the current
+     * invocation's session before {@code pregel.run} executes, so each run
+     * observes its own session. Nested invocations (a sub-workflow re-entering
+     * its own graph) and serial reuse (compile then invoke, repeated) are
+     * safe because init runs before each invocation.
+     *
+     * @param session per-run vertex session
+     * @param options compile options (may contain context)
+     */
+    void initVertices(Vertex.VertexSession session, Map<String, Object> options) {
+        for (Vertex node : nodes.values()) {
+            node.init(session, options);
         }
     }
 
