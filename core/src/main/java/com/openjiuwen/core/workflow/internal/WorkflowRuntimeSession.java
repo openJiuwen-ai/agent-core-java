@@ -5,6 +5,7 @@
 package com.openjiuwen.core.workflow.internal;
 
 import com.openjiuwen.core.graph.CompiledGraph;
+import com.openjiuwen.core.graph.StreamVertexBinder;
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.stream_actor.ActorManagerSession;
@@ -28,7 +29,7 @@ import java.util.function.Consumer;
  * {@code openjiuwen/core/workflow/workflow.py}.
  */
 public class WorkflowRuntimeSession extends Vertex.VertexSession
-        implements ActorManagerSession, CompiledGraph.GraphRuntimeSession {
+        implements ActorManagerSession, CompiledGraph.GraphRuntimeSession, StreamVertexBinder {
 
     private final BaseSession parent;
     private final String sessionId;
@@ -228,6 +229,22 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
 
     public void setActorManager(ActorManager actorManager) {
         this.actorManager = actorManager;
+    }
+
+    /**
+     * Points this run's stream actors at the vertices the graph executes.
+     *
+     * <p>Vertices are per-run copies, while the actor manager is built from the
+     * graph topology before execution. Binding here keeps every stream consumer
+     * watching the same vertex instance the graph drives.
+     *
+     * @param runNodes node id to this run's vertex
+     */
+    @Override
+    public void bindStreamVertices(Map<String, Vertex> runNodes) {
+        if (actorManager != null) {
+            actorManager.bindVertices(runNodes);
+        }
     }
 
     @Override

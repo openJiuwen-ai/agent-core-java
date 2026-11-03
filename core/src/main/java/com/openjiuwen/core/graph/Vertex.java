@@ -138,12 +138,36 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         return (Executable<Object, Object>) (Executable<?, ?>) executable;
     }
 
+    /**
+     * Creates a per-run copy of this vertex.
+     *
+     * <p>The copy shares every immutable, run-independent field (node id,
+     * executable, executor) by reference and starts with clean run state, so
+     * two runs of the same graph never observe each other's session, counters
+     * or stream completion signal. Only the enclosing graph topology is
+     * carried over; everything else is rebuilt by {@link #init}.
+     *
+     * @return a copy that may be initialized for a single run
+     */
+    Vertex copyForRun() {
+        Vertex copy = new Vertex(nodeId, executable, executor);
+        copy.endNode = endNode;
+        // The template already reported its abilities; a per-run copy must not
+        // repeat that log line for every run.
+        copy.firstInit = false;
+        return copy;
+    }
+
     public boolean init(VertexSession session) {
         return init(session, Collections.emptyMap());
     }
 
     public boolean init(VertexSession session, Map<String, Object> kwargs) {
         VertexSession graphSession = Objects.requireNonNull(session, "session must not be null");
+        // Run state starts clean so a compilation may be invoked more than once
+        // without inheriting counters from the previous invocation.
+        this.callCount.set(0);
+        this.streamCallCount.set(0);
         this.session = graphSession.nodeSession(nodeId);
         this.session.setNodeType(componentTypeName());
         this.context = kwargs == null ? null : kwargs.get("context");
@@ -168,6 +192,12 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             mixConfigurable.setMix();
         }
         this.started = false;
+        this.callStarted = false;
+        // Only pay for a replacement when a previous invocation already
+        // consumed the signal; a fresh per-run copy keeps its initial future.
+        if (this.streamDone.isDone()) {
+            this.streamDone = new CompletableFuture<>();
+        }
         return true;
     }
 

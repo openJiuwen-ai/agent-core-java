@@ -89,6 +89,28 @@ public class ActorManager {
     }
 
     /**
+     * Rebinds every consumer actor to the vertices of the current run.
+     *
+     * <p>An {@code ActorManager} lives for one graph execution while vertices
+     * are per-run, so the actors must be pointed at the run's own vertices
+     * before the graph starts producing. Consumer ids without a vertex in
+     * {@code runNodes} keep their current binding.
+     *
+     * @param runNodes node id to the current run's stream consumer
+     */
+    public void bindVertices(Map<String, ? extends StreamConsumer> runNodes) {
+        if (runNodes == null || runNodes.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, StreamActor> entry : streams.entrySet()) {
+            StreamConsumer vertex = runNodes.get(entry.getKey());
+            if (vertex != null) {
+                entry.getValue().bindVertex(vertex);
+            }
+        }
+    }
+
+    /**
      * Returns the sub-workflow stream queue.
      *
      * @return sub-workflow stream queue

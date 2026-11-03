@@ -23,7 +23,7 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
 
     private final Pregel pregel;
     private final GraphCheckpointer checkpointer;
-    private final PregelGraph pregelGraph;
+    private final Map<String, Vertex> runNodes;
     private final BaseSession compileSession;
     private final Map<String, Object> compileOptions;
 
@@ -36,16 +36,18 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
      *
      * @param pregel         the compiled Pregel engine (one per compile call)
      * @param checkpointer   checkpointer derived from the compile-argument session
-     * @param pregelGraph    the owning PregelGraph (for per-run vertex init)
+     * @param runNodes       vertices owned by this compilation; initialized
+     *                       before each invocation and never shared with
+     *                       another compilation of the same graph
      * @param compileSession the session passed to {@code compile()} (per-run)
      * @param compileOptions the options map passed to {@code compile()}
      */
     public CompiledGraph(Pregel pregel, GraphCheckpointer checkpointer,
-                         PregelGraph pregelGraph, BaseSession compileSession,
+                         Map<String, Vertex> runNodes, BaseSession compileSession,
                          Map<String, Object> compileOptions) {
         this.pregel = pregel;
         this.checkpointer = checkpointer;
-        this.pregelGraph = pregelGraph;
+        this.runNodes = runNodes;
         this.compileSession = compileSession;
         this.compileOptions = compileOptions;
     }
@@ -57,12 +59,10 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
         Exception exception = null;
         Map<String, Object> result = null;
 
-        // Per-run vertex init: bind every vertex to the session of this
-        // invocation so nodes read/write the correct workflow state. Each
-        // compile builds its own Pregel engine, so overlapping runs on
-        // compilations of the same PregelGraph each get an isolated engine;
-        // vertex init before pregel.run ensures each run observes its own
-        // session even when the underlying vertices are shared.
+        // Per-run vertex init: bind this compilation's vertices to the session
+        // of this invocation so nodes read/write the correct workflow state.
+        // Vertices are private to the compilation, so an overlapping run of
+        // another compilation cannot rebind them mid-flight.
         initVerticesForRun(session);
 
         try {
@@ -96,7 +96,7 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
     }
 
     /**
-     * Initialize vertices with the invocation session.
+     * Initialize this compilation's vertices with the invocation session.
      *
      * <p>Falls back to the compile-argument session when the invocation
      * session is not a VertexSession (e.g. null or a plain BaseSession),
@@ -106,12 +106,15 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
      * @param session the invocation session passed to the current run
      */
     private void initVerticesForRun(BaseSession session) {
-        if (pregelGraph == null) {
+        if (runNodes == null || runNodes.isEmpty()) {
             return;
         }
         BaseSession effectiveSession = session != null ? session : compileSession;
         if (effectiveSession instanceof Vertex.VertexSession vertexSession) {
-            pregelGraph.initVertices(vertexSession, compileOptions);
+            PregelGraph.initVertices(runNodes, vertexSession, compileOptions);
+        }
+        if (effectiveSession instanceof StreamVertexBinder binder) {
+            binder.bindStreamVertices(runNodes);
         }
     }
 
