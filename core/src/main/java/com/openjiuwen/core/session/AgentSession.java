@@ -244,10 +244,25 @@ public class AgentSession implements AgentSessionApi {
         CallbackUtils.trigger(SessionEvents.AGENT_SESSION_CREATED, callbackKwargs);
         Object inputs = kwargs == null ? null : kwargs.get("inputs");
         if (inner.checkpointer() != null) {
-            inner.checkpointer().preAgentExecute(inner, inputs);
+            inner.checkpointer().preAgentExecute(inner, checkpointInputs(inputs));
         }
         preRunDone = true;
         return this;
+    }
+
+    /**
+     * Snapshot business inputs without process-local execution channels. Keep the original
+     * invocation untouched: ReAct still needs the live queues for steering during execution.
+     */
+    private static Object checkpointInputs(Object inputs) {
+        if (!(inputs instanceof Map<?, ?> values)
+                || (!values.containsKey("loop_queues") && !values.containsKey("_steering_queue"))) {
+            return inputs;
+        }
+        Map<Object, Object> snapshot = new LinkedHashMap<>(values);
+        snapshot.remove("loop_queues");
+        snapshot.remove("_steering_queue");
+        return snapshot;
     }
 
     @Override
