@@ -44,4 +44,5 @@ public class TaskScheduler
 - 若 `ControllerConfig.taskTimeout` 非空，调度器会为任务启动一个 watchdog 线程，在超时后中断执行线程并把任务标记为失败。
 - `publishTaskEvent()` 会把输出 payload 转换成 `TaskCompletionEvent`、`TaskInteractionEvent` 或 `TaskFailedEvent` 再回送到 `EventQueue`。
 - `areAllTasksCompleted()` 只把 `SUBMITTED` 和 `WORKING` 视为活跃状态，因此暂停、取消、失败和输入等待都允许会话收到完成信号。
+- 调度器发送完成信号前还会等待当前会话的同步任务结果回调返回，确保回调输出和后续任务提交已处理。该等待不要求已暂停或取消的执行线程退出，因此底层异步调用尚未返回时也能结束当前流。
 - `runningTasks` 中保存的 `RunningTaskEntry` 会在任务结束、暂停或取消后被移除，避免旧执行器被后续任务误用。

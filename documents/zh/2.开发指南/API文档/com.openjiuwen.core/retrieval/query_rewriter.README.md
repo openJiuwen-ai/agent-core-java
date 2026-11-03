@@ -1,6 +1,6 @@
 # query_rewriter
 
-`com.openjiuwen.core.retrieval.query_rewriter` 提供基于 LLM 的查询改写能力，支持检索结果增强、上下文感知改写、历史压缩、模板加载与 JSON/schema 修复。
+`com.openjiuwen.retrieval.query_rewriter` 提供基于 LLM 的查询改写能力，支持检索结果增强、上下文感知改写、历史压缩、模板加载与 JSON/schema 修复。
 
 ## 类型
 

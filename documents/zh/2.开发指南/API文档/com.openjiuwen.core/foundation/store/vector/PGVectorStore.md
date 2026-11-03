@@ -1,4 +1,4 @@
-# com.openjiuwen.core.foundation.store.vector.PGVectorStore
+# com.openjiuwen.retrieval.vector_store.PGVectorStore
 
 ## class PGVectorStore
 

@@ -1,6 +1,6 @@
 ﻿# index
 
-`com.openjiuwen.core.memory.manage.index` 提供长期记忆的核心管理器实现，分别处理分片记忆、摘要记忆、变量记忆，以及跨类型写入协调。
+`com.openjiuwen.memory.manage.index` 提供长期记忆的核心管理器实现，分别处理分片记忆、摘要记忆、变量记忆，以及跨类型写入协调。
 
 ## 核心类型
 

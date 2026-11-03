@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.MigrationPlan
+# com.openjiuwen.memory.migration.MigrationPlan
 
 ## 类 MigrationPlan
 

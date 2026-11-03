@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.vector_store.VectorStoreFactory
+# com.openjiuwen.retrieval.vector_store.VectorStoreFactory
 
 ## 类 VectorStoreFactory
 

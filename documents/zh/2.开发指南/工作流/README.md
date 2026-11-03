@@ -6,9 +6,9 @@
 
 | 页面 | 关注点 | 主要 Java 依据 | 说明 |
 | --- | --- | --- | --- |
-| [概述](概述.md) | 工作流定位、适用场景、栏目阅读顺序 | `com.openjiuwen.core.workflow`、`examples/workflow_agent` | 从整体视角理解 Java 工作流在 agent 体系中的位置。 |
+| [概述](概述.md) | 工作流定位、适用场景、栏目阅读顺序 | `com.openjiuwen.core.workflow`、`workflow_agent` 源码与测试 | 从整体视角理解 Java 工作流在 agent 体系中的位置。 |
 | [关键概念](关键概念.md) | 工作流图、组件、边、会话、输出、流式块等术语 | `Workflow`、`WorkflowCard`、`WorkflowSessions`、`WorkflowOutput` | 统一后续页面的术语口径。 |
-| [构建工作流](构建工作流.md) | 创建实例、注册组件、连边、执行 `invoke` / `stream` | `workflow` 根包与 `examples/workflow_agent` | 栏目主干教程页。 |
+| [构建工作流](构建工作流.md) | 创建实例、注册组件、连边、执行 `invoke` / `stream` | `workflow` 根包与 `workflow_agent` 测试 | 栏目主干教程页。 |
 | [工作流可视化](工作流可视化.md) | Mermaid 文本、PNG / SVG 导出与 `DrawableGraph` 路线 | `graph.visualization`、`Workflow.draw(...)`、`drawBytes(...)` | 解释图结构如何被导出和展示。 |
 | [使用组件](使用组件/README.md) | 组件目录入口与组件编排路线 | `com.openjiuwen.core.workflow.component` | 进入组件层细节前的导航页。 |
 
@@ -32,7 +32,7 @@
 
 - [API 文档：workflow](../API文档/com.openjiuwen.core/workflow.README.md)
 - [API 文档：workflow.component](../API文档/com.openjiuwen.core/workflow/component.README.md)
-- [示例：Workflow Agent Java Example](../../../../examples/workflow_agent/README.md)
+- [测试：WorkflowAgent 中断流式恢复](../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)
 
 ## 使用边界
 

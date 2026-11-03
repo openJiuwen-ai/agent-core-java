@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.process.extract.LongTermMemoryExtractor
+# com.openjiuwen.memory.process.extract.LongTermMemoryExtractor
 
 ## 类 LongTermMemoryExtractor
 

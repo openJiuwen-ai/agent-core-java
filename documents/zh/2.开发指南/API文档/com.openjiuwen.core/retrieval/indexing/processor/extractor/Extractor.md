@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor
+# com.openjiuwen.retrieval.indexing.processor.extractor.Extractor
 
 ## 抽象类 Extractor
 

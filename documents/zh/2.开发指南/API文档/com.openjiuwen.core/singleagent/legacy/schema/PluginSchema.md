@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.schema.PluginSchema
+# com.openjiuwen.core.single_agent.legacy.schema.PluginSchema
 
 ## 类 PluginSchema
 

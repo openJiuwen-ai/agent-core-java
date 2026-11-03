@@ -1,4 +1,4 @@
-# com.openjiuwen.core.runner.base.TagUpdateStrategy
+# com.openjiuwen.core.runner.resourcemanager.TagUpdateStrategy
 
 ## 枚举 TagUpdateStrategy
 

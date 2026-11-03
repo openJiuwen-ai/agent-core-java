@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig
+# com.openjiuwen.core.single_agent.legacy.config.LLMCallConfig
 
 ## 类 LLMCallConfig
 

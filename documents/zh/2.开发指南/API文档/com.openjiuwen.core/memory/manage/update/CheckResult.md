@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.update.CheckResult
+# com.openjiuwen.memory.manage.update.CheckResult
 
 ## 枚举 CheckResult
 
@@ -6,7 +6,7 @@
 public enum CheckResult
 ```
 
-`CheckResult` 是 `com.openjiuwen.core.memory.manage.update` 包下的公开枚举型，文档按 Java 源码列出其公开成员与签名。
+`CheckResult` 是 `com.openjiuwen.memory.manage.update` 包下的公开枚举型，文档按 Java 源码列出其公开成员与签名。
 
 ## 枚举值
 

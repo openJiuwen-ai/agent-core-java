@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.operation.UpdateEmbeddingDimensionOperation
+# com.openjiuwen.memory.migration.operation.UpdateEmbeddingDimensionOperation
 
 ## 类 UpdateEmbeddingDimensionOperation
 

@@ -1,6 +1,6 @@
 # schema
 
-`com.openjiuwen.core.singleagent.legacy.schema` 保存旧版插件与工作流的描述对象，主要用于在配置里记录 `id`、`version`、`description` 和输入参数。
+`com.openjiuwen.core.single_agent.legacy.schema` 保存旧版插件与工作流的描述对象，主要用于在配置里记录 `id`、`version`、`description` 和输入参数。
 
 ## 类型
 

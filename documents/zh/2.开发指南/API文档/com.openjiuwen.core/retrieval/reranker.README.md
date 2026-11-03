@@ -1,6 +1,6 @@
 # reranker
 
-`com.openjiuwen.core.retrieval.reranker` 提供检索结果重排抽象，以及词法重排、远程 `/rerank` 重排和基于 chat completion 的 yes/no 概率重排实现。
+`com.openjiuwen.retrieval.reranker` 提供检索结果重排抽象，以及词法重排、远程 `/rerank` 重排和基于 chat completion 的 yes/no 概率重排实现。
 
 ## 类型
 

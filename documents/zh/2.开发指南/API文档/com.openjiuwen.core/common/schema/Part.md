@@ -1,4 +1,4 @@
-# com.openjiuwen.core.common.schema.Part
+# com.openjiuwen.core.single_agent.schema.Part
 
 ## class Part
 

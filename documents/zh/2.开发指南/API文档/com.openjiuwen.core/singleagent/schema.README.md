@@ -1,6 +1,6 @@
 # schema
 
-`com.openjiuwen.core.singleagent.schema` 提供单智能体运行时使用的卡片、结果与结果制品模型。
+`com.openjiuwen.core.single_agent.schema` 提供单智能体运行时使用的卡片、结果与结果制品模型。
 
 ## 类型
 

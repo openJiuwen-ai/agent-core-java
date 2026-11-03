@@ -1,6 +1,6 @@
 ﻿# memory
 
-`com.openjiuwen.core.memory` 提供长期记忆引擎的公开入口，负责组合存储注册、作用域配置、消息写入、变量维护、摘要检索，以及 `manage`、`common`、`config`、`prompt` 等子包能力。
+`com.openjiuwen.memory` 提供长期记忆引擎的公开入口，负责组合存储注册、作用域配置、消息写入、变量维护、摘要检索，以及 `manage`、`common`、`config`、`prompt` 等子包能力。
 
 ## 子包
 

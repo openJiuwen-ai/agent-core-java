@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.ControllerGroup
+# com.openjiuwen.core.multi_agent.legacy.ControllerGroup
 
 ## class ControllerGroup
 

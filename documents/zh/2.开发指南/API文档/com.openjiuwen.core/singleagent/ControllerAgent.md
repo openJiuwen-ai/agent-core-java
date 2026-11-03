@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.ControllerAgent
+# com.openjiuwen.core.single_agent.ControllerAgent
 
 ## 类 ControllerAgent
 

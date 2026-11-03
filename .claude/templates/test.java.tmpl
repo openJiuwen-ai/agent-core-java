@@ -1,0 +1,92 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+package com.openjiuwen.core.singleagent;
+
+// =================================================================
+// TEMPLATE NOTES:
+//   1. Replace {{ClassName}} with your target class name.
+//   2. Replace {{TargetClass}} and {{TargetClass}} import with the actual class under test.
+//   3. Replace {{ConfigClass}} / {{ConfigClass}} import with the actual config class (or remove).
+//   4. Adjust Session / mock imports to match the real types in your package.
+//   5. Package-private class (no `public`).
+// =================================================================
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/**
+ * Unit tests for {@link {{TargetClass}}}.
+ */
+class {{ClassName}}Test {
+
+    private AgentCard card;
+    private {{ConfigClass}} config;
+
+    @BeforeEach
+    void setUp() {
+        card = AgentCard.builder()
+                .name("test-{{target-lower}}")
+                .description("Test {{target-lower}}")
+                .build();
+        config = new {{ConfigClass}}();
+    }
+
+    // ========== Construction ==========
+
+    @Nested
+    @DisplayName("Construction")
+    class Construction {
+
+        @Test
+        void testConstructionWithConfig() {
+            {{TargetClass}} service = new {{TargetClass}}(card, config);
+
+            assertThat(service.getCard().getName()).isEqualTo("test-{{target-lower}}");
+            assertThat(service.getConfig()).isSameAs(config);
+        }
+
+        @Test
+        void testConstructionNullConfigDefaults() {
+            {{TargetClass}} service = new {{TargetClass}}(card, null);
+
+            assertThat(service.getConfig()).isNotNull();
+        }
+    }
+
+    // ========== Invoke ==========
+
+    @Nested
+    @DisplayName("Invoke")
+    class Invoke {
+
+        @Test
+        void testInvokeNullInputThrows() {
+            {{TargetClass}} service = new {{TargetClass}}(card, config);
+            Session mockSession = mock(Session.class);
+
+            assertThatThrownBy(() -> service.invoke(null, mockSession))
+                    .isInstanceOf(RuntimeException.class);
+        }
+
+        @Test
+        void testInvokeSuccess() {
+            {{TargetClass}} service = new {{TargetClass}}(card, config);
+            Session mockSession = mock(Session.class);
+            when(mockSession.getSessionId()).thenReturn("sess-1");
+
+            Object result = service.invoke("hello", mockSession);
+
+            assertThat(result).isNotNull();
+            verify(mockSession).getSessionId();
+        }
+    }
+}

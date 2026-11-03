@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.embedding.HashEmbedding
+# com.openjiuwen.retrieval.embedding.HashEmbedding
 
 ## 类 HashEmbedding
 

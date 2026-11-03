@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.DefaultGroupController
+# com.openjiuwen.core.multi_agent.legacy.DefaultGroupController
 
 ## class DefaultGroupController
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.utils.FusionUtils
+# com.openjiuwen.retrieval.utils.FusionUtils
 
 ## 类 FusionUtils
 

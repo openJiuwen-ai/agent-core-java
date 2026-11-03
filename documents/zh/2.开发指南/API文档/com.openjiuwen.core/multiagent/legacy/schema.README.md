@@ -1,6 +1,6 @@
 # schema
 
-`com.openjiuwen.core.multiagent.legacy.schema` 收纳 legacy 分组卡片类型，以及为历史导入入口保留的别名类。
+`com.openjiuwen.core.multi_agent.legacy.schema` 收纳 legacy 分组卡片类型，以及为历史导入入口保留的别名类。
 
 ## Types
 

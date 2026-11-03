@@ -1,4 +1,4 @@
-# com.openjiuwen.core.workflow.WorkflowSessions
+# com.openjiuwen.core.session.internal.WorkflowSessions
 
 ## 类 WorkflowSessions
 

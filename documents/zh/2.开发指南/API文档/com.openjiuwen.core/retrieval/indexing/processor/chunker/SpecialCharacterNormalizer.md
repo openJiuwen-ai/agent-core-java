@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.SpecialCharacterNormalizer
+# com.openjiuwen.retrieval.indexing.processor.chunker.SpecialCharacterNormalizer
 
 ## 类 SpecialCharacterNormalizer
 

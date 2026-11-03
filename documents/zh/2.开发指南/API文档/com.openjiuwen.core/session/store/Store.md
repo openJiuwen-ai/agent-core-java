@@ -1,4 +1,4 @@
-# com.openjiuwen.core.session.store.Store
+# com.openjiuwen.core.graph.store.Store
 
 ## 类 Store
 

@@ -1,6 +1,6 @@
 # migrator
 
-`com.openjiuwen.core.memory.migration.migrator` 为不同记忆后端提供实际迁移执行器，并负责记录或恢复迁移版本状态。
+`com.openjiuwen.memory.migration.migrator` 为不同记忆后端提供实际迁移执行器，并负责记录或恢复迁移版本状态。
 
 ## 核心类型
 

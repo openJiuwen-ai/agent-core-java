@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.KnowledgeBase
+# com.openjiuwen.retrieval.KnowledgeBase
 
 ## 类 KnowledgeBase
 

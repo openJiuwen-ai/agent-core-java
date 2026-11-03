@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.index.FragmentMemoryManager
+# com.openjiuwen.memory.manage.index.FragmentMemoryManager
 
 ## 类 FragmentMemoryManager
 
@@ -6,7 +6,7 @@
 public class FragmentMemoryManager extends BaseMemoryManager
 ```
 
-`FragmentMemoryManager` 是 `com.openjiuwen.core.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`FragmentMemoryManager` 是 `com.openjiuwen.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

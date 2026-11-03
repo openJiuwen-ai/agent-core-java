@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.retriever.GraphRetriever
+# com.openjiuwen.retrieval.retriever.GraphRetriever
 
 ## 类 GraphRetriever
 

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.openjiuwen.example</groupId>
+    <artifactId>multi-modal-inference</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+
+    <name>multi-modal-inference</name>
+    <description>Multi-modal image understanding demo (ReActAgent + vision model on agent-core-java)</description>
+
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <java.version>17</java.version>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <agent-core-java.version>0.1.17</agent-core-java.version>
+        <demo.mainClass>examples.ImageDescribeExample</demo.mainClass>
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+    </properties>
+
+    <dependencies>
+        <!--
+          agent-core-java must be installed to the local Maven repo first:
+              cd /path/to/agent-core-java
+              mvn install -DskipTests
+        -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-java</artifactId>
+            <version>${agent-core-java.version}</version>
+        </dependency>
+        <!-- demo 入口用 stdout 看进度；core 仅带 slf4j-api -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.5.18</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+              显式声明 compiler 插件：本 pom 无 parent，缺声明会回落到 Maven 内置的
+              maven-compiler-plugin:3.1，而 <release> 参数需 3.6+ 才支持，导致
+              maven.compiler.release=17 被静默忽略、source/target 退回 1.5 而编译失败。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler-plugin.version}</version>
+                <configuration>
+                    <release>${java.version}</release>
+                </configuration>
+            </plugin>
+            <!-- 运行：mvn -q exec:java（用法见 README.md） -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec-maven-plugin.version}</version>
+                <configuration>
+                    <mainClass>${demo.mainClass}</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.graph.store.GraphStoreState
+# com.openjiuwen.core.foundation.store.graph.GraphStoreState
 
 ## 类 GraphStoreState
 

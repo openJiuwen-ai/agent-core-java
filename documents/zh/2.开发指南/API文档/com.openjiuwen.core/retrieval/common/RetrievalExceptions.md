@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.RetrievalExceptions
+# com.openjiuwen.retrieval.common.RetrievalExceptions
 
 ## 类 RetrievalExceptions
 

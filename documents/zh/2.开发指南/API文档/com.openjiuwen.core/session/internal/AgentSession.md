@@ -1,4 +1,4 @@
-# com.openjiuwen.core.session.internal.AgentSession
+# com.openjiuwen.core.session.AgentSession
 
 ## 类 AgentSession
 

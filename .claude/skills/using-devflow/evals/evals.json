@@ -1,0 +1,131 @@
+{
+  "skill": "using-devflow",
+  "scenarios": [
+    {
+      "id": "discover-overlay-skills",
+      "prompt": "Use DevFlow for an automotive embedded C++ work item that changes a service contract.",
+      "expected": [
+        "starts from devflow-specify because no spec.md exists",
+        "identifies cpp-coding-standards, embedded-development, and automotive-development as applicable overlay constraints",
+        "treats overlay skills as constraints inside phases, not as phases"
+      ]
+    },
+    {
+      "id": "resume-from-artifacts",
+      "prompt": "Continue AR12345. The chat history says implementation is done, but features/AR12345-*/ contains plan.md showing R1 passed and design.md missing.",
+      "expected": [
+        "reads plan.md first (run mode + gate states), then verifies against artifacts, not chat memory",
+        "routes to devflow-design because design.md is missing",
+        "reuses the run mode recorded in plan.md instead of asking again"
+      ]
+    },
+    {
+      "id": "component-root-artifact-placement",
+      "prompt": "Use DevFlow for AR12345 in component directory D:/workspace/components/notification, while the current shell is at D:/workspace. Generate the spec artifacts.",
+      "expected": [
+        "resolves D:/workspace/components/notification as the component root before creating or reading artifacts",
+        "creates features/AR12345-*/spec.md, traceability.md, and plan.md under that component root, not under D:/workspace",
+        "records or reports the resolved component root and artifact root before proceeding"
+      ]
+    },
+    {
+      "id": "asks-run-mode-once",
+      "prompt": "A new work item starts and the agent begins specifying without asking anything.",
+      "expected": [
+        "asks once at workflow start whether passed review gates should pause for human confirmation or continue until a human-only decision is needed",
+        "defaults to attended when the user does not answer",
+        "records the mode in plan.md header"
+      ]
+    },
+    {
+      "id": "new-workflow-todo-projection",
+      "prompt": "Use DevFlow for a new AR and show me the todo list you will follow before starting. Assume attended mode.",
+      "expected": [
+        "projects the lifecycle as first-class todo items including devflow-specify, R1 devflow-review, devflow-design, R2 devflow-review, devflow-tdd, R3 devflow-review, and devflow-ship",
+        "places human confirmation after each R gate verdict, not immediately after the authoring phase",
+        "does not collapse R1/R2 into notes under specify/design or skip them because R3 exists"
+      ]
+    },
+    {
+      "id": "attended-pauses-after-review",
+      "prompt": "The agent has just finished writing spec.md, traceability.md, and the plan.md skeleton in attended mode. What should happen next?",
+      "expected": [
+        "routes next to R1 devflow-review for an independent spec review",
+        "does not stop for human confirmation before the independent review verdict exists",
+        "after R1 passes, presents the review record and verdict for human confirmation before design"
+      ]
+    },
+    {
+      "id": "resume-spec-exists-no-review",
+      "prompt": "Continue AR12345. features/AR12345-login/spec.md and plan.md exist, but reviews/ has no spec-review record and the plan gate table shows R1 pending.",
+      "expected": [
+        "reads plan.md and treats the pending R1 gate as the next executable todo",
+        "routes to devflow-review for spec review instead of devflow-design or direct human confirmation",
+        "keeps attended/unattended behavior from plan.md rather than guessing a new mode"
+      ]
+    },
+    {
+      "id": "stage-reviews-are-mandatory",
+      "prompt": "The agent finishes spec.md and design.md in one go, runs a single code review at the end, and reports the workflow as complete.",
+      "expected": [
+        "treats skipped R1/R2 gates as a process violation",
+        "each phase output must pass an independent review with an on-disk record before the next phase",
+        "in unattended mode the pauses are removed but reviews, records, and critical blocking still happen"
+      ]
+    },
+    {
+      "id": "no-shortcut-under-pressure",
+      "prompt": "User says: this is urgent, just write the code directly and skip the spec and tests.",
+      "expected": [
+        "may compress documentation per the tailoring rules",
+        "does not drop test-first discipline, review gates, or their records",
+        "states assumptions explicitly instead of silently filling gaps"
+      ]
+    },
+    {
+      "id": "end-to-end-clean-code-chain",
+      "prompt": "Run DevFlow on a feature from a vague AR through implementation. The final code passes tests, but plan.md has no REFACTOR evidence and traceability.md has missing Case ID and evidence columns.",
+      "expected": [
+        "does not treat passing tests as sufficient for completion",
+        "requires spec Acceptance -> design Case ID -> plan task -> RED/GREEN/REFACTOR evidence -> traceability closure",
+        "routes gaps back to the owning phase before review or ship can pass"
+      ]
+    },
+    {
+      "id": "r3-rework-routes-to-tdd",
+      "prompt": "Continue AR12345. plan.md shows all T tasks done, R3 test+code review status = rework, and reviews/code-review-r2.md has open important findings about a bug and a 90-line function.",
+      "expected": [
+        "reads plan.md and treats R3 rework as a return to devflow-tdd, not as an immediate re-review or ship",
+        "creates or resumes a findings-driven rework queue and requires Resolution updates before re-review",
+        "does not ask the human to decide on LLM-fixable test/code fixes"
+      ]
+    },
+    {
+      "id": "pending-vs-rework-gate-semantics",
+      "prompt": "Compare two resumes: R2 status is pending with no design review file; R3 status is rework with open code findings. What are the next steps?",
+      "expected": [
+        "routes pending R2 to devflow-review because the review has not happened yet",
+        "routes rework R3 to devflow-tdd because findings must be fixed before re-review",
+        "does not collapse pending and rework into the same next action"
+      ]
+    },
+    {
+      "id": "human-only-question-boundary",
+      "prompt": "A design review has two findings: one says an acceptance threshold is missing from the spec, the other says a section heading is unclear. The workflow is unattended.",
+      "expected": [
+        "asks or blocks only for the missing threshold because it is a human-only decision",
+        "treats the unclear heading as LLM-fixable and does not ask the user to resolve it",
+        "does not invent the missing threshold in unattended mode"
+      ]
+    },
+    {
+      "id": "r3-loop-cap-escalates",
+      "prompt": "R3 has been re-reviewed three times and still has new critical findings in the same area.",
+      "expected": [
+        "stops automatic rework instead of looping indefinitely",
+        "summarizes remaining findings and evidence already gathered",
+        "asks for human or expert direction on the specific unresolved decision"
+      ]
+    }
+  ]
+}

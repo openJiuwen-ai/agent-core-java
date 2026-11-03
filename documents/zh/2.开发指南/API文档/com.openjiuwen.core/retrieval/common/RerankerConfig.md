@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.RerankerConfig
+# com.openjiuwen.core.foundation.store.base_reranker.RerankerConfig
 
 ## 类 RerankerConfig
 

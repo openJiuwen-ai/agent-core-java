@@ -1,4 +1,4 @@
-# com.openjiuwen.core.workflow.component.loop.callback.LoopCallback
+# com.openjiuwen.core.workflow.component.loop.LoopCallback
 
 ## 类 LoopCallback
 

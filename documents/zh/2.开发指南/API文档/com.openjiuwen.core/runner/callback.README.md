@@ -1,26 +1,27 @@
 # callback
 
-`com.openjiuwen.core.runner.callback` 提供事件驱动回调框架、过滤器、链式执行和指标统计能力。
+`com.openjiuwen.core.runner.callback` 提供 Runner 级全局事件回调框架。Java 0.1.14 的真实主类是 `AsyncCallbackFramework`，它实现 `DecoratorFramework`，并承载注册、触发、过滤器、链式回滚、指标、hooks、断路器、延迟触发和历史记录等能力。
 
-## 类型
+## Types
 
-| Type | Description |
+| 类型 | 说明 |
 | --- | --- |
-| [`AuthFilter`](callback/AuthFilter.md) | Authorization filter for role-based access control. |
-| [`CallbackChain`](callback/CallbackChain.md) | Manages sequential execution of callbacks with rollback support. |
-| [`CallbackFramework`](callback/CallbackFramework.md) | `CallbackFramework` 提供生产级事件回调框架，支持优先级执行、过滤器、回滚链、metrics、hooks、circuit breaker 和 history。 |
-| [`CallbackInfo`](callback/CallbackInfo.md) | `CallbackInfo` 提供 `com.openjiuwen.core.runner.callback` 范围内的运行时能力。 |
-| [`CallbackMetrics`](callback/CallbackMetrics.md) | `CallbackMetrics` 提供 `com.openjiuwen.core.runner.callback` 范围内的运行时能力。 |
-| [`ChainAction`](callback/ChainAction.md) | Actions that callbacks can return to control chain execution. |
-| [`ChainContext`](callback/ChainContext.md) | `ChainContext` 提供 `com.openjiuwen.core.runner.callback` 范围内的运行时能力。 |
-| [`ChainResult`](callback/ChainResult.md) | `ChainResult` 提供 `com.openjiuwen.core.runner.callback` 范围内的运行时能力。 |
-| [`CircuitBreakerFilter`](callback/CircuitBreakerFilter.md) | Circuit breaker pattern implementation. |
-| [`ConditionalFilter`](callback/ConditionalFilter.md) | Conditional filter based on custom predicate. |
-| [`EventFilter`](callback/EventFilter.md) | Base class for event filters. |
-| [`FilterAction`](callback/FilterAction.md) | Actions that filters can return to control callback execution. |
-| [`FilterResult`](callback/FilterResult.md) | `FilterResult` 提供 `com.openjiuwen.core.runner.callback` 范围内的运行时能力。 |
-| [`HookType`](callback/HookType.md) | Types of hooks that can be registered for lifecycle events. |
-| [`LoggingFilter`](callback/LoggingFilter.md) | Filter for logging callback execution. |
-| [`ParamModifyFilter`](callback/ParamModifyFilter.md) | Filter for modifying callback arguments. |
-| [`RateLimitFilter`](callback/RateLimitFilter.md) | Filter to limit callback execution rate. |
-| [`ValidationFilter`](callback/ValidationFilter.md) | Filter for validating callback arguments. |
+| [`AsyncCallbackFramework`](callback/AsyncCallbackFramework.md) | Runner 全局回调框架主实现。 |
+| [`CallbackInfo`](callback/CallbackInfo.md) | 单个回调的元数据。 |
+| [`CallbackChain`](callback/CallbackChain.md) | 链式回调和回滚执行。 |
+| [`CallbackMetrics`](callback/CallbackMetrics.md) | 调用次数、耗时、错误率等统计。 |
+| [`EventFilter`](callback/EventFilter.md) | 事件过滤器协议。 |
+| [`FilterResult`](callback/FilterResult.md) | 过滤器判定结果。 |
+| [`FilterAction`](callback/FilterAction.md) | `CONTINUE`、`STOP`、`SKIP`、`MODIFY`。 |
+| [`HookType`](callback/HookType.md) | `BEFORE`、`AFTER`、`ERROR`、`CLEANUP`。 |
+| [`AuthFilter`](callback/AuthFilter.md) | 鉴权过滤器。 |
+| [`RateLimitFilter`](callback/RateLimitFilter.md) | 限流过滤器。 |
+| [`CircuitBreakerFilter`](callback/CircuitBreakerFilter.md) | 断路器过滤器。 |
+| [`ValidationFilter`](callback/ValidationFilter.md) | 参数校验过滤器。 |
+
+## Notes
+
+- 旧文档中的 `CallbackFramework` 类名是过期名称；当前源码没有 `CallbackFramework.java`。
+- 常用入口是 `Runner.getCallbackFramework()`，返回 `AsyncCallbackFramework`。
+- `trigger(...)` 是 `DecoratorFramework` 兼容入口，不返回结果；需要结果时使用 `triggerResults(...)`。
+- `triggerParallel(...)` 当前使用固定线程池，不是虚拟线程池。

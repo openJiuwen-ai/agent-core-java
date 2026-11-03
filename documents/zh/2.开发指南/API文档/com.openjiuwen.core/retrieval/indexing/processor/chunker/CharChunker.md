@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.CharChunker
+# com.openjiuwen.retrieval.indexing.processor.chunker.CharChunker
 
 ## 类 CharChunker
 

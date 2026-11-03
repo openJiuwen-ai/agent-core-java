@@ -1,4 +1,4 @@
-# com.openjiuwen.core.runner.drunner.remote_client.MqRemoteClient
+# com.openjiuwen.core.runner.drunner.remoteclient.MqRemoteClient
 
 ## 类 MqRemoteClient
 

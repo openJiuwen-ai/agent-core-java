@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.schema.EventDrivenGroupCard
+# com.openjiuwen.core.multi_agent.schema.EventDrivenGroupCard
 
 ## class EventDrivenGroupCard
 

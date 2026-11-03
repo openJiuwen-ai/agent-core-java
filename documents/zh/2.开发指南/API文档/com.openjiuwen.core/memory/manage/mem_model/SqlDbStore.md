@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.mem_model.SqlDbStore
+# com.openjiuwen.memory.manage.mem_model.SqlDbStore
 
 ## 类 SqlDbStore
 

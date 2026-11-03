@@ -1,6 +1,6 @@
 # retrieval
 
-`com.openjiuwen.core.retrieval` 提供知识库抽象与基础实现，负责把 `VectorStore`、`Embedding`、`Parser`、`Chunker`、`Extractor`、`Indexer`、`BaseModelClient` 与 `Retriever` 组装成可执行的检索流程。
+`com.openjiuwen.retrieval` 提供知识库抽象与基础实现，负责把 `VectorStore`、`Embedding`、`Parser`、`Chunker`、`Extractor`、`Indexer`、`BaseModelClient` 与 `Retriever` 组装成可执行的检索流程。
 
 ## 子包
 

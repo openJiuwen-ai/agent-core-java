@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.WeChatArticleParser
+# com.openjiuwen.retrieval.indexing.processor.parser.WeChatArticleParser
 
 ## 类 WeChatArticleParser
 

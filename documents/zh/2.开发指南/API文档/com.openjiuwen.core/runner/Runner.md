@@ -20,7 +20,8 @@ public final class Runner
 | --- | --- |
 | `public static ResourceMgr resourceMgr()` | Get the resource manager for workflow, agent, agent_group, tool, model, prompt... |
 | `public static LocalMessageQueue pubsub()` | Get the local message queue for publish/subscribe communication. |
-| `public static CallbackFramework callbackFramework()` | Get the callback framework. |
+| `public static AsyncCallbackFramework getCallbackFramework()` | 返回全局 Runner 的回调框架。 |
+| `public static final AsyncCallbackFramework callbackFramework` | 全局 Runner 回调框架的静态字段。 |
 | `public static MessageQueueBase distPubsub()` | Get the distributed message queue for cross-process communication. |
 | `public static ReplyTopicSubscription systemReplySub()` | Get the reply topic subscription for distributed mode. |
 | `public static void setConfig(RunnerConfig config)` | Set the runner configuration with provided config object. |

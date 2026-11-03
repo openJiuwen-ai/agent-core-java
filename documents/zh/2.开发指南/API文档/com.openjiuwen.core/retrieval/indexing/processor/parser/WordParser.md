@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.WordParser
+# com.openjiuwen.retrieval.indexing.processor.parser.WordParser
 
 ## 类 WordParser
 

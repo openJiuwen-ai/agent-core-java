@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.operation.RenameColumnOperation
+# com.openjiuwen.memory.migration.operation.RenameColumnOperation
 
 ## 类 RenameColumnOperation
 

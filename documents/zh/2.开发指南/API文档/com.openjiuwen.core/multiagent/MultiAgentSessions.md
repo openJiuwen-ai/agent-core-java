@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.MultiAgentSessions
+# com.openjiuwen.core.multi_agent.MultiAgentSessions
 
 ## final class MultiAgentSessions
 

@@ -1,6 +1,6 @@
 # vector_store
 
-`com.openjiuwen.core.retrieval.vector_store` 定义 retrieval 子系统的统一向量库抽象，并提供内存、Milvus、PGVector 与兼容 Chroma 的实现，以及工厂与可选 schema 扩展接口。
+`com.openjiuwen.retrieval.vector_store` 定义 retrieval 子系统的统一向量库抽象，并提供内存、Milvus、PGVector 与兼容 Chroma 的实现，以及工厂与可选 schema 扩展接口。
 
 ## 类型
 

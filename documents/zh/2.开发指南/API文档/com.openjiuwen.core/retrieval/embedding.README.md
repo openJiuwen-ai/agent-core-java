@@ -1,6 +1,6 @@
 # embedding
 
-`com.openjiuwen.core.retrieval.embedding` 提供 embedding 模型统一抽象、本地哈希向量实现，以及面向通用 HTTP、OpenAI 兼容接口和 vLLM 多模态输入的远程 embedding 客户端。
+`com.openjiuwen.retrieval.embedding` 提供 embedding 模型统一抽象、本地哈希向量实现，以及面向通用 HTTP、OpenAI 兼容接口和 vLLM 多模态输入的远程 embedding 客户端。
 
 ## 类型
 

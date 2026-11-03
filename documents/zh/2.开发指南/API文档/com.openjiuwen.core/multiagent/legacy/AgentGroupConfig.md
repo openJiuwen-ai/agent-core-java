@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.AgentGroupConfig
+# com.openjiuwen.core.multi_agent.legacy.AgentGroupConfig
 
 ## class AgentGroupConfig
 

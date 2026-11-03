@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.StoreType
+# com.openjiuwen.retrieval.common.StoreType
 
 ## 枚举 StoreType
 

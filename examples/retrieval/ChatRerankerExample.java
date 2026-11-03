@@ -4,7 +4,7 @@
 
 package examples.retrieval;
 
-import com.openjiuwen.core.retrieval.reranker.ChatReranker;
+import com.openjiuwen.retrieval.reranker.ChatReranker;
 
 import java.util.List;
 import java.util.Map;

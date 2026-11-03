@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.indexer.MilvusIndexer
+# com.openjiuwen.retrieval.indexing.indexer.MilvusIndexer
 
 ## 类 MilvusIndexer
 

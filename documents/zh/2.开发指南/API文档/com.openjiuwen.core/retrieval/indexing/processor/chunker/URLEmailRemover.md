@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.URLEmailRemover
+# com.openjiuwen.retrieval.indexing.processor.chunker.URLEmailRemover
 
 ## 类 URLEmailRemover
 

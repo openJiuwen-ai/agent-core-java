@@ -1,4 +1,4 @@
-# com.openjiuwen.core.foundation.tool.service_api.parser.ParserRegistry
+# com.openjiuwen.core.foundation.tool.service_api.ParserRegistry
 
 ## class ParserRegistry
 

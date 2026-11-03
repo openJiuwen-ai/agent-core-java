@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.query_rewriter.QueryRewriter
+# com.openjiuwen.retrieval.query_rewriter.QueryRewriter
 
 ## 类 QueryRewriter
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.schema.EventDrivenGroupCard
+# com.openjiuwen.core.multi_agent.legacy.schema.EventDrivenGroupCard
 
 ## class EventDrivenGroupCard
 
@@ -12,4 +12,4 @@ public class EventDrivenGroupCard extends LegacyEventDrivenGroupCard
 ## 说明
 
 - 该类型不新增字段或方法，全部状态与 builder 行为都继承自 `LegacyEventDrivenGroupCard`。
-- 推荐新代码改用 `com.openjiuwen.core.multiagent.schema.EventDrivenGroupCard`。
+- 推荐新代码改用 `com.openjiuwen.core.multi_agent.schema.EventDrivenGroupCard`。

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.ReActAgentConfig
+# com.openjiuwen.core.single_agent.agents.ReActAgentConfig
 
 ## 类 ReActAgentConfig
 
@@ -17,4 +17,4 @@ public class ReActAgentConfig extends LegacyReActAgentConfig
 ## 说明
 
 - 类已标记 `@Deprecated(since = "0.1.7", forRemoval = true)`。
-- 新代码应改用 `LegacyReActAgentConfig` 或现代 `com.openjiuwen.core.singleagent.agents.ReActAgentConfig`。
+- 新代码应改用 `LegacyReActAgentConfig` 或现代 `com.openjiuwen.core.single_agent.agents.ReActAgentConfig`。

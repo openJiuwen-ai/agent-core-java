@@ -1,0 +1,645 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.core.foundation.tool.mcp.client;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.tool.auth.AuthHeaderAndQueryProvider;
+import com.openjiuwen.core.foundation.tool.auth.AuthStrategyRegistry;
+import com.openjiuwen.core.foundation.tool.auth.AuthType;
+import com.openjiuwen.core.foundation.tool.auth.ToolAuthConfig;
+import com.openjiuwen.core.foundation.tool.auth.ToolAuthResult;
+import com.openjiuwen.core.foundation.tool.mcp.McpBase;
+import com.openjiuwen.core.foundation.tool.mcp.McpClient;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
+
+import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.spec.McpClientTransport;
+import io.modelcontextprotocol.spec.McpSchema;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.net.http.HttpRequest;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.StringJoiner;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+/**
+ * Streamable HTTP transport based MCP client.
+ *
+ * <p>Mirrors Python's {@code StreamableHttpClient} in
+ * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.</p>
+ */
+public class StreamableHttpClient implements McpClient {
+
+    public static final List<String> CLIENT_NAMES = List.of("streamable-http", "streamable_http");
+
+    private static final String DEFAULT_CLIENT_NAME = "streamable-http";
+    private static final float DEFAULT_TIMEOUT_SECONDS = 60.0F;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * Bounded executor for operations subject to a caller-supplied timeout.
+     * Uses a handoff queue so submitted operations start immediately instead
+     * of spending the caller's timeout budget while queued; submissions
+     * beyond the pool maximum surface as a timeout failure rather than
+     * blocking the caller unboundedly.
+     */
+    private static final ExecutorService TIMEOUT_EXECUTOR = new ThreadPoolExecutor(
+            8, 192, 60L, TimeUnit.SECONDS,
+            new SynchronousQueue<>(),
+            task -> {
+                Thread thread = Executors.defaultThreadFactory().newThread(task);
+                thread.setName("streamable-http-mcp-op");
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((worker, error) -> Loggers.TOOL.error(
+                        "[streamable-http-mcp-op] uncaught exception on worker {}", worker.getName(), error));
+                return thread;
+            });
+
+    private final McpServerConfig config;
+    private final String name;
+    private final String serverId;
+    private final Map<String, String> authHeaders;
+    private final Map<String, String> authQueryParams;
+    private final TransportFactory transportFactory;
+
+    private TransportSession session;
+
+    private AuthHeaderAndQueryProvider authProvider;
+    private boolean disconnected;
+    private final Object reconnectLock = new Object();
+
+    public StreamableHttpClient(McpServerConfig config) {
+        this(config, new SdkTransportFactory());
+    }
+
+    StreamableHttpClient(McpServerConfig config, TransportFactory transportFactory) {
+        McpServerConfig resolvedConfig = normalizeConfig(config);
+        this.config = resolvedConfig;
+        this.name = resolvedConfig.getServerName();
+        this.serverId = resolvedConfig.getServerId();
+        this.authHeaders = copyStringMap(resolvedConfig.getAuthHeaders());
+        this.authQueryParams = copyStringMap(resolvedConfig.getAuthQueryParams());
+        this.transportFactory = transportFactory;
+        this.disconnected = false;
+    }
+
+    public StreamableHttpClient(String serverPath) {
+        this(serverPath, null, null, null);
+    }
+
+    public StreamableHttpClient(String serverPath, String name, Map<String, String> authHeaders,
+                                Map<String, String> authQueryParams) {
+        this(normalizeConfig(serverPath, name, authHeaders, authQueryParams), new SdkTransportFactory());
+    }
+
+    StreamableHttpClient(String serverPath, String name, Map<String, String> authHeaders,
+                         Map<String, String> authQueryParams, TransportFactory transportFactory) {
+        this(normalizeConfig(serverPath, name, authHeaders, authQueryParams), transportFactory);
+    }
+
+    @Override
+    public boolean connect(int retryTimes, float timeout) {
+        try {
+            authProvider = resolveAuthProvider();
+            float actualTimeout = timeout != McpServerConfig.NO_TIMEOUT ? timeout : DEFAULT_TIMEOUT_SECONDS;
+            session = transportFactory.open(config.getServerPath(), config, actualTimeout, authProvider);
+            session.initialize();
+            disconnected = false;
+            Loggers.TOOL.info("Streamable-http client connected successfully to {}", config.getServerPath());
+            return true;
+        } catch (Exception error) {
+            Loggers.TOOL.error("Streamable-http connection failed to {}: {}", config.getServerPath(),
+                    error.getMessage());
+            try {
+                disconnect(timeout);
+            } catch (Exception ignored) {
+                // Python swallows cleanup errors on failed connect and returns False.
+            }
+            return false;
+        }
+    }
+
+    @Override
+    public boolean disconnect(float timeout) {
+        try {
+            if (session != null) {
+                session.close();
+            }
+            session = null;
+            authProvider = null;
+            disconnected = true;
+            Loggers.TOOL.info("Streamable-http client disconnected successfully");
+            return true;
+        } catch (Exception error) {
+            // AutoCloseable.close may throw checked Exception from transport teardown.
+            Loggers.TOOL.error("Streamable-http disconnection failed: {}", error.getMessage());
+            session = null;
+            authProvider = null;
+            disconnected = true;
+            return false;
+        }
+    }
+
+    /**
+     * Disconnect then connect under a lock so concurrent callers share one handshake.
+     *
+     * @param timeout timeout in seconds for disconnect and connect
+     * @return {@code true} when reconnect succeeds
+     * @throws Exception declared for {@link McpClient} compatibility
+     * @since 0.1.18
+     */
+    @Override
+    public boolean reconnect(float timeout) throws Exception {
+        synchronized (reconnectLock) {
+            disconnect(timeout);
+            return connect(1, timeout);
+        }
+    }
+
+    @Override
+    public List<Object> listTools(float timeout) throws Exception {
+        return runWithTimeout(retryAwareTimeout(timeout), () -> executeWithReconnect(timeout, () -> doListTools()));
+    }
+
+    private List<Object> doListTools() throws Exception {
+        TransportSession connectedSession = requireSession();
+        List<Object> tools = new ArrayList<>();
+        for (Object rawTool : connectedSession.listTools()) {
+            tools.add(toToolCard(rawTool));
+        }
+        Loggers.TOOL.info("Retrieved {} tools from streamable-http server", tools.size());
+        return tools;
+    }
+
+    @Override
+    public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
+        return runWithTimeout(retryAwareTimeout(timeout),
+                () -> executeWithReconnect(timeout, () -> doCallTool(toolName, arguments)));
+    }
+
+    private Object doCallTool(String toolName, Map<String, Object> arguments) throws Exception {
+        TransportSession connectedSession = requireSession();
+        Map<String, Object> normalizedArguments = arguments == null ? Map.of() : arguments;
+        Loggers.TOOL.info("Calling tool '{}' via streamable-http with arguments: {}", toolName,
+                normalizedArguments);
+        Object toolResult = connectedSession.callTool(toolName, normalizedArguments);
+        Object resultContent = McpBase.extractMcpToolResultContent(toolResult);
+        Loggers.TOOL.info("Tool '{}' call completed via streamable-http", toolName);
+        return resultContent;
+    }
+
+    @Override
+    public Optional<Object> getToolInfo(String toolName, float timeout) throws Exception {
+        for (Object tool : listTools(timeout)) {
+            if (tool instanceof McpToolCard card && toolName.equals(card.getName())) {
+                Loggers.TOOL.debug("Found tool info for '{}' via streamable-http", toolName);
+                return Optional.of(card);
+            }
+        }
+        Loggers.TOOL.warning("Tool '{}' not found via streamable-http", toolName);
+        return Optional.empty();
+    }
+
+    @Override
+    public List<Object> listResources(float timeout) throws Exception {
+        return runWithTimeout(retryAwareTimeout(timeout), () -> executeWithReconnect(timeout, this::doListResources));
+    }
+
+    private List<Object> doListResources() throws Exception {
+        TransportSession connectedSession = requireSession();
+        return new ArrayList<>(connectedSession.listResources());
+    }
+
+    @Override
+    public Object readResource(String uri, float timeout) throws Exception {
+        return runWithTimeout(retryAwareTimeout(timeout),
+                () -> executeWithReconnect(timeout, () -> doReadResource(uri)));
+    }
+
+    private Object doReadResource(String uri) throws Exception {
+        TransportSession connectedSession = requireSession();
+        return connectedSession.readResource(uri);
+    }
+
+    @Override
+    public String getServerPath() {
+        return config.getServerPath();
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    boolean isDisconnected() {
+        return disconnected;
+    }
+
+    /**
+     * Runs one MCP operation under a positive per-call timeout: the
+     * operation executes on a bounded executor and a timeout surfaces as
+     * {@link HttpTimeoutException} so callers can branch on
+     * the timeout type. Non-positive and sentinel timeouts execute inline.
+     *
+     * @param <T> the result type of the MCP operation
+     * @param timeout per-call timeout in seconds; non-positive or the
+     *                {@link McpServerConfig#NO_TIMEOUT} sentinel runs inline
+     * @param operation the MCP operation to execute
+     * @return the operation result when it completes within the timeout
+     * @throws HttpTimeoutException when the operation exceeds the timeout
+     *                              or the executor is saturated
+     * @throws Exception when the operation itself fails
+     */
+    private <T> T runWithTimeout(float timeout, McpOperation<T> operation) throws Exception {
+        if (timeout <= 0f) {
+            return operation.execute();
+        }
+        Future<T> pending;
+        try {
+            pending = TIMEOUT_EXECUTOR.submit(operation::execute);
+        } catch (RejectedExecutionException error) {
+            throw new HttpTimeoutException("streamable-http request could not start within "
+                    + timeout + "s: executor saturated");
+        }
+        try {
+            return pending.get(secondsToMillis(timeout), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException error) {
+            pending.cancel(true);
+            throw new HttpTimeoutException("streamable-http request timed out after " + timeout + "s");
+        } catch (ExecutionException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw new IllegalStateException(cause);
+        }
+    }
+
+    /**
+     * Converts a timeout in seconds to milliseconds with exact decimal
+     * arithmetic, so fractional second values do not lose precision.
+     *
+     * @param seconds timeout value in seconds
+     * @return the same timeout value in milliseconds
+     */
+    private static long secondsToMillis(float seconds) {
+        return BigDecimal.valueOf(seconds).multiply(BigDecimal.valueOf(1000L)).longValue();
+    }
+
+    /**
+     * Widens the hard outer budget for operations that may run twice:
+     * {@code executeWithReconnect} retries once after a transport
+     * reconnect, so a hard budget equal to the caller's timeout would be
+     * consumed by a slow first attempt and preempt the retry — the exact
+     * scenario the reconnect self-heal targets. The two-attempt budget
+     * keeps the hard bound while leaving room for one retry.
+     *
+     * @param timeout caller-supplied timeout in seconds
+     * @return the outer hard budget in seconds covering both attempts
+     */
+    private static float retryAwareTimeout(float timeout) {
+        if (timeout <= 0f) {
+            return timeout;
+        }
+        return BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(2L)).floatValue();
+    }
+
+    private <T> T executeWithReconnect(float timeout, McpOperation<T> operation) throws Exception {
+        try {
+            return operation.execute();
+        } catch (IOException transportError) {
+            return retryAfterReconnect(timeout, operation, transportError);
+        } catch (RuntimeException stateError) {
+            if (!shouldRetryAfterStateError(stateError)) {
+                throw stateError;
+            }
+            return retryAfterReconnect(timeout, operation, stateError);
+        }
+    }
+
+    private boolean shouldRetryAfterStateError(RuntimeException error) {
+        if (!isRetryableTransportError(error)) {
+            return false;
+        }
+        String message = error.getMessage();
+        String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        if (lower.contains("not connected") && session == null && !disconnected) {
+            return false;
+        }
+        return true;
+    }
+
+    private <T> T retryAfterReconnect(float timeout, McpOperation<T> operation, Exception firstError)
+            throws Exception {
+        Loggers.TOOL.warning("MCP transport error, reconnecting once: server={}, error={}",
+                config.getServerPath(), firstError.toString());
+        if (!reconnect(timeout)) {
+            throw firstError;
+        }
+        return operation.execute();
+    }
+
+    private static boolean isRetryableTransportError(RuntimeException error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("not connected") || lower.contains("connection reset")
+                || lower.contains("broken pipe") || lower.contains("connection closed");
+    }
+
+    @FunctionalInterface
+    private interface McpOperation<T extends Object> {
+        /**
+         * Runs one MCP client operation over the streamable-http transport.
+         *
+         * @return operation result
+         * @throws Exception when the transport or session call fails
+         */
+        T execute() throws Exception;
+    }
+
+    private TransportSession requireSession() {
+        if (session == null) {
+            throw new IllegalStateException("Not connected to streamable-http server");
+        }
+        return session;
+    }
+
+    private AuthHeaderAndQueryProvider resolveAuthProvider() {
+        Map<String, Object> authConfig = new LinkedHashMap<>();
+        authConfig.put("auth_headers", authHeaders);
+        authConfig.put("auth_query_params", authQueryParams);
+        ToolAuthResult authResult = AuthStrategyRegistry.executeAuth(new ToolAuthConfig(
+                AuthType.HEADER_AND_QUERY.getValue(),
+                authConfig,
+                name,
+                serverId
+        ));
+        if (authResult != null && authResult.isSuccess()) {
+            Object provider = authResult.getAuthData().get("auth_provider");
+            if (provider instanceof AuthHeaderAndQueryProvider typedProvider) {
+                return typedProvider;
+            }
+        }
+        return null;
+    }
+
+    private McpToolCard toToolCard(Object rawTool) {
+        if (rawTool instanceof McpToolCard card) {
+            return new McpToolCard(card.getId(), card.getName(), card.getDescription(), card.getInputParams(),
+                    name, serverId);
+        }
+        if (rawTool instanceof McpSchema.Tool tool) {
+            return new McpToolCard(null, tool.name(), nullToEmpty(tool.description()), toInputParams(tool.inputSchema()),
+                    name, serverId);
+        }
+        if (rawTool instanceof Map<?, ?> map) {
+            Object inputSchema = map.containsKey("inputSchema") ? map.get("inputSchema") : map.get("input_schema");
+            return new McpToolCard(null, stringValue(map.get("name")), stringValue(map.get("description")),
+                    mapValue(inputSchema), name, serverId);
+        }
+        return new McpToolCard(null, stringValue(rawTool), "", Map.of(), name, serverId);
+    }
+
+    private static McpServerConfig normalizeConfig(McpServerConfig config) {
+        if (config == null) {
+            throw new IllegalArgumentException("Config must be McpServerConfig or String URL");
+        }
+        return config;
+    }
+
+    private static McpServerConfig normalizeConfig(String serverPath, String name, Map<String, String> authHeaders,
+                                                   Map<String, String> authQueryParams) {
+        String resolvedName = (name == null ? "" : name).trim();
+        if (resolvedName.isEmpty()) {
+            resolvedName = DEFAULT_CLIENT_NAME;
+        }
+        return new McpServerConfig(
+                resolvedName,
+                resolvedName,
+                serverPath,
+                DEFAULT_CLIENT_NAME,
+                Map.of(),
+                authHeaders == null ? Map.of() : authHeaders,
+                authQueryParams == null ? Map.of() : authQueryParams
+        );
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static Map<String, Object> toInputParams(Object inputSchema) {
+        if (inputSchema == null) {
+            return Map.of();
+        }
+        Map<String, Object> converted = MAPPER.convertValue(inputSchema, new TypeReference<>() {
+        });
+        return converted == null ? Map.of() : new LinkedHashMap<>(converted);
+    }
+
+    private static Map<String, Object> mapValue(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, mapValue) -> result.put(String.valueOf(key), mapValue));
+        return result;
+    }
+
+    private static Map<String, String> copyStringMap(Map<String, String> source) {
+        return source == null || source.isEmpty() ? Map.of() : Map.copyOf(new LinkedHashMap<>(source));
+    }
+
+    /**
+     * Mirrors Python's deferred {@code streamable_http_client(...)} context boundary in
+     * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.
+     */
+    interface TransportFactory {
+        TransportSession open(String serverPath, McpServerConfig config, float timeout,
+                              AuthHeaderAndQueryProvider authProvider) throws Exception;
+    }
+
+    /**
+     * Mirrors Python's initialized {@code ClientSession} in
+     * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.
+     */
+    interface TransportSession extends AutoCloseable {
+        void initialize();
+
+        List<?> listTools();
+
+        Object callTool(String toolName, Map<String, Object> arguments);
+
+        List<?> listResources();
+
+        Object readResource(String uri);
+
+        @Override
+        void close() throws Exception;
+    }
+
+    /**
+     * Mirrors Python's default MCP streamable HTTP client construction in
+     * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.
+     */
+    private static final class SdkTransportFactory implements TransportFactory {
+        @Override
+        public TransportSession open(String serverPath, McpServerConfig config, float timeout,
+                                     AuthHeaderAndQueryProvider authProvider) {
+            McpClientTransport transport = createStreamableHttpTransport(serverPath, timeout, authProvider);
+            var builder = io.modelcontextprotocol.client.McpClient.sync(transport);
+            if (timeout > 0 && timeout != McpServerConfig.NO_TIMEOUT) {
+                Duration duration = Duration.ofMillis((long) (timeout * 1000));
+                builder = builder.requestTimeout(duration).initializationTimeout(duration);
+            }
+            return new SdkTransportSession(builder.build());
+        }
+
+        private static McpClientTransport createStreamableHttpTransport(String serverPath, float timeout,
+                                                                        AuthHeaderAndQueryProvider authProvider) {
+            ParsedHttpTarget target = parseHttpTarget(serverPath);
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder();
+            if (authProvider != null) {
+                authProvider.getHeaders().forEach(requestBuilder::header);
+            }
+            var builder = HttpClientStreamableHttpTransport.builder(target.baseUri())
+                    .endpoint(withAuthQuery(target.endpoint(), authProvider))
+                    .requestBuilder(requestBuilder);
+            if (timeout > 0 && timeout != McpServerConfig.NO_TIMEOUT) {
+                builder = builder.connectTimeout(Duration.ofMillis((long) (timeout * 1000)));
+            }
+            return builder.build();
+        }
+
+        private static ParsedHttpTarget parseHttpTarget(String serverPath) {
+            URI serverUri = URI.create(serverPath);
+            String path = serverUri.getRawPath();
+            if (path == null || path.isBlank() || "/".equals(path)) {
+                return new ParsedHttpTarget(buildBaseUri(serverUri, "/"),
+                        buildEndpointUri(".", serverUri.getRawQuery()));
+            }
+
+            int lastSlash = path.lastIndexOf('/');
+            String basePath = lastSlash >= 0 ? path.substring(0, lastSlash + 1) : "/";
+            String endpoint = path.substring(lastSlash + 1);
+            if (endpoint.isBlank()) {
+                endpoint = ".";
+            }
+            return new ParsedHttpTarget(buildBaseUri(serverUri, basePath),
+                    buildEndpointUri(endpoint, serverUri.getRawQuery()));
+        }
+
+        private static String buildBaseUri(URI serverUri, String path) {
+            try {
+                return new URI(serverUri.getScheme(), null, serverUri.getHost(), serverUri.getPort(), path, null, null)
+                        .toASCIIString();
+            } catch (URISyntaxException error) {
+                throw new IllegalArgumentException("Invalid MCP server URI: " + serverUri, error);
+            }
+        }
+
+        private static String buildEndpointUri(String path, String query) {
+            try {
+                return new URI(null, null, path, query == null || query.isBlank() ? null : query, null)
+                        .toASCIIString();
+            } catch (URISyntaxException error) {
+                throw new IllegalArgumentException("Invalid MCP endpoint path: " + path, error);
+            }
+        }
+
+        private static String withAuthQuery(String endpoint, AuthHeaderAndQueryProvider authProvider) {
+            if (authProvider == null || authProvider.getQueryParams().isEmpty()) {
+                return endpoint;
+            }
+            StringJoiner joiner = new StringJoiner("&");
+            for (Map.Entry<String, String> entry : authProvider.getQueryParams().entrySet()) {
+                joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
+                        + "=" + URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
+            }
+            return endpoint + (endpoint.contains("?") ? "&" : "?") + joiner;
+        }
+    }
+
+    /**
+     * Mirrors Python's streamable HTTP endpoint split passed to
+     * {@code streamable_http_client} in
+     * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.
+     */
+    private record ParsedHttpTarget(String baseUri, String endpoint) {
+    }
+
+    /**
+     * Mirrors Python's initialized {@code ClientSession} wrapper in
+     * {@code openjiuwen/core/foundation/tool/mcp/client/streamable_http_client.py}.
+     */
+    private static final class SdkTransportSession implements TransportSession {
+        private final McpSyncClient client;
+
+        private SdkTransportSession(McpSyncClient client) {
+            this.client = client;
+        }
+
+        @Override
+        public void initialize() {
+            client.initialize();
+        }
+
+        @Override
+        public List<?> listTools() {
+            return client.listTools().tools();
+        }
+
+        @Override
+        public Object callTool(String toolName, Map<String, Object> arguments) {
+            Map<String, Object> normalizedArguments = arguments == null ? Map.of() : arguments;
+            return client.callTool(new McpSchema.CallToolRequest(toolName, normalizedArguments));
+        }
+
+        @Override
+        public List<?> listResources() {
+            return client.listResources().resources();
+        }
+
+        @Override
+        public Object readResource(String uri) {
+            return client.readResource(new McpSchema.ReadResourceRequest(uri)).contents();
+        }
+
+        @Override
+        public void close() {
+            client.closeGracefully();
+        }
+    }
+}

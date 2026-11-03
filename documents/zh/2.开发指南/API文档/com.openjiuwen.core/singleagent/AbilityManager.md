@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.AbilityManager
+# com.openjiuwen.core.single_agent.AbilityManager
 
 ## 类 AbilityManager
 

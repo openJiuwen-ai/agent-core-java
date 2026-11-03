@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.LongTermMemory
+# com.openjiuwen.memory.LongTermMemory
 
 ## 类 LongTermMemory
 

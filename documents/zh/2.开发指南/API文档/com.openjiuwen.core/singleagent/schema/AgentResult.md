@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.schema.AgentResult
+# com.openjiuwen.core.single_agent.schema.AgentResult
 
 ## 类 AgentResult
 

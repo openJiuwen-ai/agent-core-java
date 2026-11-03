@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.splitter.Splitter
+# com.openjiuwen.retrieval.indexing.processor.splitter.Splitter
 
 ## 抽象类 Splitter
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.reranker.StandardReranker
+# com.openjiuwen.retrieval.reranker.StandardReranker
 
 ## 类 StandardReranker
 

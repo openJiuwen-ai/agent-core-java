@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.IndexSentenceSplitter
+# com.openjiuwen.retrieval.indexing.processor.chunker.IndexSentenceSplitter
 
 ## 类 IndexSentenceSplitter
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.WeightedRankConfig
+# com.openjiuwen.core.foundation.store.graph.WeightedRankConfig
 
 ## 类 WeightedRankConfig
 

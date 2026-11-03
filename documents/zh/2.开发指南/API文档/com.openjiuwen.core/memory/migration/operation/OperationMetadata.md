@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.operation.OperationMetadata
+# com.openjiuwen.memory.migration.operation.OperationMetadata
 
 ## 类 OperationMetadata
 

@@ -1,0 +1,24 @@
+# Dependencies: <Team Name> Dependency Configuration
+
+skills:
+  - name: <skill-name>           # External skill name
+    source: local                # Source
+    required: false              # false means degrade when missing, true means required
+    purpose: "<what this skill does>"
+    roles:                       # Which roles use it
+      - <role-name>
+
+tools:
+  - name: python3
+    source: local
+    required: true               # Tools are generally required: true
+    purpose: "<purpose>"
+    roles:
+      - <role-1>
+      - <role-2>
+
+# Global dependency notes
+global_dependencies:
+  description: "<overall team dependency description>"
+  fallback_mode: "<degradation mode when dependencies are missing>"
+  community_enrichment: "<suggested community skills to find>"

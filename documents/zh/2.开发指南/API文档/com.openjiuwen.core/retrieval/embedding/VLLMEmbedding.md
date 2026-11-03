@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.embedding.VLLMEmbedding
+# com.openjiuwen.retrieval.embedding.VLLMEmbedding
 
 ## 类 VLLMEmbedding
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.operation.RenameScalarFieldOperation
+# com.openjiuwen.memory.migration.operation.RenameScalarFieldOperation
 
 ## 类 RenameScalarFieldOperation
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.mem_model.MemoryMeta
+# com.openjiuwen.memory.manage.mem_model.MemoryMeta
 
 ## 记录 MemoryMeta
 
@@ -6,7 +6,7 @@
 public record MemoryMeta(String tableName, String schemaVersion)
 ```
 
-`MemoryMeta` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开记录型，文档按 Java 源码列出其公开成员与签名。
+`MemoryMeta` 是 `com.openjiuwen.memory.manage.mem_model` 包下的公开记录型，文档按 Java 源码列出其公开成员与签名。
 
 ## 记录组件
 

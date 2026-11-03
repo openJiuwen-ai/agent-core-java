@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.rail.InvokeInputs
+# com.openjiuwen.core.single_agent.rail.InvokeInputs
 
 ## 类 InvokeInputs
 

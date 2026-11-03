@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.process.extract.MemoryAnalyzer
+# com.openjiuwen.memory.process.extract.MemoryAnalyzer
 
 ## 类 MemoryAnalyzer
 

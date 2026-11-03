@@ -99,10 +99,10 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.singleagent.BaseAgent;
-import com.openjiuwen.core.singleagent.ReActAgent;
-import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.single_agent.BaseAgent;
+import com.openjiuwen.core.single_agent.agents.ReActAgent;
+import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
+import com.openjiuwen.core.single_agent.schema.AgentCard;
 
 import java.util.Iterator;
 import java.util.List;
@@ -344,13 +344,13 @@ public final class AgentAsToolExample {
 Runner.resourceMgr().removeAgent(
         "translator_agent",
         null,
-        com.openjiuwen.core.runner.base.TagMatchStrategy.ALL,
+        com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy.ALL,
         true
 );
 Runner.resourceMgr().removeAgent(
         "summarizer_agent",
         null,
-        com.openjiuwen.core.runner.base.TagMatchStrategy.ALL,
+        com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy.ALL,
         true
 );
 ```

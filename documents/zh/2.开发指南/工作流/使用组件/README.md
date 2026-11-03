@@ -73,7 +73,7 @@
 - [工作流可视化](../工作流可视化.md)
 - [API 文档：workflow.component](../../API文档/com.openjiuwen.core/workflow/component.README.md)
 - [API 文档：workflow](../../API文档/com.openjiuwen.core/workflow.README.md)
-- [示例：Workflow Agent Java Example](../../../../../examples/workflow_agent/README.md)
+- [测试：LLMComponent 工作流流式路径](../../../../../src/test/java/com/openjiuwen/core/workflow/component/llm/LLMComponentMissingTest.java)
 
 ## 当前能力边界
 

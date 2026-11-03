@@ -1,0 +1,2 @@
+com.openjiuwen.core.runner.drunner.remoteclient.provider.MqRemoteClientProvider
+com.openjiuwen.core.runner.drunner.remoteclient.provider.A2ARemoteClientProvider

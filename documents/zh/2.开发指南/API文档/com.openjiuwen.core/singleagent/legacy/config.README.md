@@ -1,6 +1,6 @@
 # config
 
-`com.openjiuwen.core.singleagent.legacy.config` 定义旧版单智能体的配置对象，包括通用 agent 元数据、ReAct 约束、工作流控制字段以及默认回复设置。
+`com.openjiuwen.core.single_agent.legacy.config` 定义旧版单智能体的配置对象，包括通用 agent 元数据、ReAct 约束、工作流控制字段以及默认回复设置。
 
 ## 类型
 

@@ -18,7 +18,7 @@ public class RunnerImpl
 | `runnerId` | `String` | `-` | 当前 `RunnerImpl` 实例的 runner 标识。 |
 | `resourceManager` | `ResourceMgr` | `-` | 管理 workflow、agent、agent group、tool、model 与 prompt 等资源的资源管理器。 |
 | `messageQueue` | `LocalMessageQueue` | `-` | 进程内发布/订阅使用的本地消息队列。 |
-| `callbackFramework` | `CallbackFramework` | `-` | 当前 runner 绑定的回调框架。 |
+| `callbackFramework` | `AsyncCallbackFramework` | `-` | 当前 runner 绑定的回调框架。 |
 | `distributeMessageQueue` | `MessageQueueBase` | `-` | 分布式模式下使用的消息队列实例；未启用分布式模式时为 `null`。 |
 | `systemReplySub` | `ReplyTopicSubscription` | `-` | 分布式模式下的系统回复主题订阅器；未启用分布式模式时为 `null`。 |
 
@@ -35,7 +35,7 @@ public class RunnerImpl
 | --- | --- |
 | `public ResourceMgr getResourceMgr()` | 返回 workflow、agent、agent group、tool、model 与 prompt 等资源共用的 `ResourceMgr`。 |
 | `public LocalMessageQueue getPubsub()` | 返回进程内发布/订阅通信使用的 `LocalMessageQueue`。 |
-| `public CallbackFramework getCallbackFramework()` | 返回当前 runner 绑定的 `CallbackFramework`。 |
+| `AsyncCallbackFramework callbackFramework()` | 返回当前 runner 绑定的 `AsyncCallbackFramework`。 |
 | `public MessageQueueBase getDistPubsub()` | 返回跨进程通信使用的分布式消息队列；未启用分布式模式时返回 `null`。 |
 | `public ReplyTopicSubscription getSystemReplySub()` | 返回分布式模式下的系统回复主题订阅器；未启用分布式模式时返回 `null`。 |
 | `public void setConfig(RunnerConfig config)` | 设置当前生效的 `RunnerConfig`。 |

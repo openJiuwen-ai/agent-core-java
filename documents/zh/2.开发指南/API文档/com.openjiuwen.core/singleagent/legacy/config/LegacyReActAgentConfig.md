@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig
+# com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig
 
 ## 类 LegacyReActAgentConfig
 

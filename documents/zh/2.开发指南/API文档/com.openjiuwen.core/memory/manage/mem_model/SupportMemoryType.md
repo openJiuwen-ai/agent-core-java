@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.mem_model.SupportMemoryType
+# com.openjiuwen.memory.manage.mem_model.SupportMemoryType
 
 ## 枚举 SupportMemoryType
 
@@ -6,7 +6,7 @@
 public enum SupportMemoryType
 ```
 
-`SupportMemoryType` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开枚举型，文档按 Java 源码列出其公开成员与签名。
+`SupportMemoryType` 是 `com.openjiuwen.memory.manage.mem_model` 包下的公开枚举型，文档按 Java 源码列出其公开成员与签名。
 
 ## 枚举值
 

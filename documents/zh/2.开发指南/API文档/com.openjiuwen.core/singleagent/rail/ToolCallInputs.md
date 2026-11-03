@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.rail.ToolCallInputs
+# com.openjiuwen.core.single_agent.rail.ToolCallInputs
 
 ## 类 ToolCallInputs
 

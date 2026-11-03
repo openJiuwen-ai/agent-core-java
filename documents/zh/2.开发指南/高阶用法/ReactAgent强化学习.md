@@ -8,7 +8,7 @@
 
 | 能力模块 | Java 当前入口 | 当前状态 |
 | --- | --- | --- |
-| ReActAgent 演化训练入口 | `com.openjiuwen.core.singleagent.ReActAgentEvolve` / `com.openjiuwen.core.singleagent.agents.ReActAgentEvolve` | 已提供，可直接运行与演化 |
+| ReActAgent 演化训练入口 | `com.openjiuwen.core.single_agent.agents.ReActAgentEvolve` / `com.openjiuwen.core.single_agent.agents.ReActAgentEvolve` | 已提供，可直接运行与演化 |
 | 训练闭环编排 | `com.openjiuwen.agentevolving.trainer.Trainer` | 已提供 |
 | 自动评估 | `com.openjiuwen.agentevolving.evaluator.DefaultEvaluator` | 已提供，使用 LLM-as-a-judge |
 | 指令优化 | `com.openjiuwen.agentevolving.optimizer.llm_call.InstructionOptimizer` | 已提供 |
@@ -113,9 +113,9 @@ trainer.train(agent, trainCases, valCases, 3, Map.of(
 - [示例：agent_evolving](../../../../examples/agent_evolving/README.md)
 - [源码：ReActAgentEvolve.java](../../../../src/main/java/com/openjiuwen/core/singleagent/ReActAgentEvolve.java)
 - [源码：agents/ReActAgentEvolve.java](../../../../src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgentEvolve.java)
-- [源码：Trainer.java](../../../../src/main/java/com/openjiuwen/agentevolving/trainer/Trainer.java)
-- [源码：DefaultEvaluator.java](../../../../src/main/java/com/openjiuwen/agentevolving/evaluator/DefaultEvaluator.java)
-- [源码：InstructionOptimizer.java](../../../../src/main/java/com/openjiuwen/agentevolving/optimizer/llm_call/InstructionOptimizer.java)
-- [源码：SingleDimUpdater.java](../../../../src/main/java/com/openjiuwen/agentevolving/updater/SingleDimUpdater.java)
-- [源码：TracerTrajectoryExtractor.java](../../../../src/main/java/com/openjiuwen/agentevolving/trajectory/TracerTrajectoryExtractor.java)
+- [源码：Trainer.java](../../../../src/main/java/com/openjiuwen/agent_evolving/trainer/Trainer.java)
+- [源码：DefaultEvaluator.java](../../../../src/main/java/com/openjiuwen/agent_evolving/evaluator/DefaultEvaluator.java)
+- [源码：InstructionOptimizer.java](../../../../src/main/java/com/openjiuwen/agent_evolving/optimizer/llm_call/InstructionOptimizer.java)
+- [源码：SingleDimUpdater.java](../../../../src/main/java/com/openjiuwen/agent_evolving/updater/SingleDimUpdater.java)
+- [源码：TracerTrajectoryExtractor.java](../../../../src/main/java/com/openjiuwen/agent_evolving/trajectory/TracerTrajectoryExtractor.java)
 - [源码：LLMCallOperator.java](../../../../src/main/java/com/openjiuwen/core/operator/llm_call/LLMCallOperator.java)

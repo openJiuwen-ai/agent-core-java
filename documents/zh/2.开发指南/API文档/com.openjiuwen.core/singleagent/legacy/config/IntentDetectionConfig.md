@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.IntentDetectionConfig
+# com.openjiuwen.core.single_agent.legacy.config.IntentDetectionConfig
 
 ## 类 IntentDetectionConfig
 

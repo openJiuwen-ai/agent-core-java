@@ -1,4 +1,4 @@
-# com.openjiuwen.core.context.schema.ContextEngineConfig
+# com.openjiuwen.core.context_engine.schema.ContextEngineConfig
 
 ## class ContextEngineConfig
 

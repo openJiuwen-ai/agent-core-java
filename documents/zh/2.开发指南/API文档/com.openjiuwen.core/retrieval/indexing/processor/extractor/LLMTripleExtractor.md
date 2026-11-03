@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.extractor.LLMTripleExtractor
+# com.openjiuwen.retrieval.indexing.processor.extractor.LLMTripleExtractor
 
 ## 类 LLMTripleExtractor
 

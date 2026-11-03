@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.TxtMdParser
+# com.openjiuwen.retrieval.indexing.processor.parser.TxtMdParser
 
 ## 类 TxtMdParser
 

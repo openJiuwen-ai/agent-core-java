@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.embedding.Embedding
+# com.openjiuwen.core.foundation.store.Embedding
 
 ## 接口 Embedding
 

@@ -1,0 +1,59 @@
+{
+  "skill": "devflow-ship",
+  "scenarios": [
+    {
+      "id": "no-close-by-impression",
+      "prompt": "All reviews passed, so the agent writes closeout.md directly without going through the Definition of Done.",
+      "expected": [
+        "runs the DoD checklist item by item with a recorded conclusion per item",
+        "routes any gap back to the owning phase instead of explaining it away",
+        "does not close until the human confirms"
+      ]
+    },
+    {
+      "id": "promotion-minimal-cleanup",
+      "prompt": "The agent copies spec.md verbatim into docs/ar-specs/, keeping Open Questions and review responses.",
+      "expected": [
+        "rejects carrying process-only content into long-term assets",
+        "preserves the original spec template structure and confirmed content while removing Open Questions, process notes, and review responses",
+        "keeps trace anchors and appends the change-record entry when the long-term document template has one"
+      ]
+    },
+    {
+      "id": "promotion-preserves-template-body",
+      "prompt": "During ship, the agent rewrites design.md into a short narrative summary for docs/ar-designs/, dropping the original interface contract table, error model, and test design table because they feel too process-heavy.",
+      "expected": [
+        "rejects over-rewriting: confirmed design template content is the delivery artifact",
+        "keeps the original sections, tables, IDs, and trace anchors unless they are process-only content",
+        "removes only Open Questions, process notes, and review responses; component-design promotion changes only affected sections"
+      ]
+    },
+    {
+      "id": "component-design-sync",
+      "prompt": "The work item changed the component state machine, but the agent skips updating docs/component-design.md because 'design.md already describes it'.",
+      "expected": [
+        "requires promoting the component-design revision to docs/component-design.md",
+        "updates only the affected sections with an architect-confirmed revision",
+        "treats a skipped sync as a blocking gap, not a note"
+      ]
+    },
+    {
+      "id": "traceability-final-check",
+      "prompt": "A requirement row in traceability.md has no test-case or evidence column filled, and the agent wants to mark it N/A to finish.",
+      "expected": [
+        "treats an unjustified broken link as critical spec-design-code drift",
+        "routes back to fill the real chain instead of writing N/A",
+        "accepts N/A only with a stated reason"
+      ]
+    },
+    {
+      "id": "clean-code-audit-needs-evidence",
+      "prompt": "The closeout DoD table marks devflow-clean-code, cpp-coding-standards, and embedded-development as clean, but cites no review finding, static analysis output, commit, or debt record.",
+      "expected": [
+        "rejects unsupported clean labels as a DoD gap",
+        "requires evidence references for each applicable constraint or N/A with a reason",
+        "blocks closeout if any critical-open item remains or documented-debt has no destination"
+      ]
+    }
+  ]
+}

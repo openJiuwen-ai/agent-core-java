@@ -1,12 +1,12 @@
-# com.openjiuwen.core.singleagent.ReActAgent
+# com.openjiuwen.core.single_agent.agents.ReActAgent
 
 ## 类 ReActAgent
 
 ```java
-public class ReActAgent extends com.openjiuwen.core.singleagent.agents.ReActAgent
+public class ReActAgent extends com.openjiuwen.core.single_agent.agents.ReActAgent
 ```
 
-对 `com.openjiuwen.core.singleagent.agents.ReActAgent` 的顶层便捷别名。
+对 `com.openjiuwen.core.single_agent.agents.ReActAgent` 的顶层便捷别名。
 
 ## 构造方法
 

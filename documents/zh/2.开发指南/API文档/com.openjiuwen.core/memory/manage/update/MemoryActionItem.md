@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.update.MemoryActionItem
+# com.openjiuwen.memory.manage.update.MemoryActionItem
 
 ## 类 MemoryActionItem
 
@@ -6,7 +6,7 @@
 public class MemoryActionItem
 ```
 
-`MemoryActionItem` 是 `com.openjiuwen.core.memory.manage.update` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`MemoryActionItem` 是 `com.openjiuwen.memory.manage.update` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

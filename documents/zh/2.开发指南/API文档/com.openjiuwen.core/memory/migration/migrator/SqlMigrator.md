@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.migrator.SqlMigrator
+# com.openjiuwen.memory.migration.migrator.SqlMigrator
 
 ## 类 SqlMigrator
 

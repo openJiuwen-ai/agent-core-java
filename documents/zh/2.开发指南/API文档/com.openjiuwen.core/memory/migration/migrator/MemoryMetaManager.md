@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.migrator.MemoryMetaManager
+# com.openjiuwen.memory.migration.migrator.MemoryMetaManager
 
 ## 类 MemoryMetaManager
 

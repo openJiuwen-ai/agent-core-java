@@ -1,4 +1,4 @@
-﻿# com.openjiuwen.core.application.schema.ReActAgentConfig
+﻿# com.openjiuwen.core.single_agent.agents.ReActAgentConfig
 
 ## class ReActAgentConfig
 

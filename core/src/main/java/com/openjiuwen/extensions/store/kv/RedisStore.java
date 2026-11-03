@@ -1,0 +1,1224 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.extensions.store.kv;
+
+import com.openjiuwen.core.foundation.store.BaseKVStore;
+import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
+import com.openjiuwen.spi.store.ExpirableKVStore;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.Array;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+
+/**
+ * Redis-based key-value store implementation.
+ *
+ * <p>This implementation provides a high-performance, distributed key-value store
+ * backed by Redis. Supports both standalone Redis and Redis Cluster modes.
+ *
+ * <p>Mirrors Python's {@code RedisStore} in
+ * {@code openjiuwen/extensions/store/kv/redis_store.py}.</p>
+ */
+public class RedisStore extends BaseKVStore implements AutoCloseable, ExpirableKVStore {
+
+    private static final Logger logger = LoggerFactory.getLogger(RedisStore.class);
+
+    private final Object redisClient;
+    private final boolean isCluster;
+    // This is a lifecycle ownership flag, not a closeability check. Caller-supplied clients may also be
+    // AutoCloseable, but RedisStore should close only clients it created or explicitly owns.
+    private final boolean ownsClient;
+
+    /**
+     * Initialize RedisStore with a Redis client (standalone or cluster).
+     *
+     * @param redisClient The Redis client instance (Jedis, Lettuce, or Redisson)
+     */
+    public RedisStore(Object redisClient) {
+        this(redisClient, false);
+    }
+
+    /**
+     * Initialize RedisStore with a Redis client and ownership semantics.
+     *
+     * @param redisClient The Redis client instance (Jedis, Lettuce, or Redisson)
+     * @param ownsClient  Whether this store should close the client when the store is closed
+     */
+    public RedisStore(Object redisClient, boolean ownsClient) {
+        this.redisClient = Objects.requireNonNull(redisClient, "redisClient must not be null");
+        this.isCluster = detectClusterMode(redisClient);
+        this.ownsClient = ownsClient;
+    }
+
+    @Override
+    public CompletableFuture<Void> set(String key, Object value) {
+        try {
+            setInternal(key, value, null);
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    /**
+     * Writes a value and its expiration atomically, including for supplied Redis clients.
+     *
+     * @param key the key to write
+     * @param value the value to store
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the key or TTL is invalid
+     * @throws IllegalStateException if the client cannot perform the atomic write
+     * @since 0.1.15
+     */
+    @Override
+    public void set(String key, Object value, Duration ttl) {
+        requireKey(key);
+        int seconds = expirySeconds(ttl);
+        Object redisKey = value instanceof byte[] ? key.getBytes(StandardCharsets.UTF_8) : key;
+        Object redisValue = value instanceof byte[] ? value : String.valueOf(value);
+        try {
+            invokeRequired(redisClient, new String[]{"setex"}, redisKey, seconds, redisValue);
+        } catch (IllegalStateException failure) {
+            throw new IllegalStateException("Redis client failed to perform an atomic TTL write", failure);
+        }
+    }
+
+    /**
+     * Refreshes expiration and propagates failures; the legacy int overload is unchanged.
+     *
+     * @param keys the existing keys whose expiration should be refreshed
+     * @param ttl a positive TTL in whole seconds, within the integer range
+     * @throws IllegalArgumentException if the TTL is invalid
+     * @throws IllegalStateException if refreshing a key fails
+     * @since 0.1.15
+     */
+    @Override
+    public void refreshTtl(List<String> keys, Duration ttl) {
+        int seconds = expirySeconds(ttl);
+        Objects.requireNonNull(keys, "keys");
+        try {
+            for (String key : keys) {
+                requireKey(key);
+                expireKey(key, seconds);
+            }
+        } catch (IllegalStateException e) {
+            throw new IllegalStateException("Redis client failed to refresh TTL", e);
+        }
+    }
+
+    private static int expirySeconds(Duration ttl) {
+        Objects.requireNonNull(ttl, "ttl");
+        if (ttl.isNegative() || ttl.isZero() || ttl.getNano() != 0 || ttl.getSeconds() > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("TTL must be positive whole seconds within integer range");
+        }
+        return (int) ttl.getSeconds();
+    }
+
+    @Override
+    public CompletableFuture<Boolean> exclusiveSet(String key, Object value, Integer expiry) {
+        try {
+            return CompletableFuture.completedFuture(exclusiveSetInternal(key, value, expiry));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    private boolean exclusiveSetInternal(String key, Object value, Integer expiry) {
+        requireKey(key);
+        try {
+            InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"exclusiveSet", "setIfAbsent"}, key, value, expiry);
+            boolean expiryApplied = outcome.handled();
+            if (!outcome.handled()) {
+                outcome = tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.TRUE, expiry);
+                expiryApplied = outcome.handled();
+            }
+            if (!outcome.handled()) {
+                outcome = tryInvoke(redisClient, new String[]{"exclusiveSet", "setIfAbsent"}, key, value);
+            }
+            if (!outcome.handled()) {
+                outcome = tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.TRUE);
+            }
+            if (!outcome.handled()) {
+                outcome = tryInvoke(redisClient, new String[]{"setnx", "setNx"}, key, value);
+            }
+            if (!outcome.handled()) {
+                throw new IllegalStateException("Redis client does not support exclusive set operations");
+            }
+
+            boolean success = asBoolean(outcome.value());
+            if (success && expiry != null && expiry > 0 && !expiryApplied) {
+                expireKey(key, expiry);
+            }
+            logger.debug("Exclusive set key: {} with expiry {}s, result: {}", key, expiry, success);
+            return success;
+        } catch (IllegalStateException e) {
+            logger.error("Failed to exclusive set key: {}, error: {}", key, e.getMessage());
+            throw new RuntimeException("Failed to exclusive set key: " + key, e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Object> get(String key) {
+        try {
+            return CompletableFuture.completedFuture(getInternal(key));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    private Object getInternal(String key) {
+        requireKey(key);
+        try {
+            // Prefer Jedis get(byte[]) for binary checkpoints; get(String) may UTF-8-corrupt payloads.
+            Object value = normalizeValue(getValuePreferringBinaryKey(key));
+            if (value == null) {
+                logger.debug("Key not found: {}", key);
+            } else {
+                logger.debug("Successfully retrieved key: {}", key);
+            }
+            return value;
+        } catch (IllegalStateException e) {
+            logger.error("Failed to get key: {}, error: {}", key, e.getMessage());
+            throw new RuntimeException("Failed to get key: " + key, e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Boolean> exists(String key) {
+        try {
+            return CompletableFuture.completedFuture(existsInternal(key));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    private boolean existsInternal(String key) {
+        requireKey(key);
+        try {
+            InvocationOutcome outcome = invokeRequired(redisClient, new String[]{"exists"}, key);
+            return asBoolean(outcome.value());
+        } catch (IllegalStateException e) {
+            logger.error("Failed to check key existence: {}, error: {}", key, e.getMessage());
+            throw new RuntimeException("Failed to check key existence: " + key, e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Void> delete(String key) {
+        try {
+            deleteInternal(key);
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    private void deleteInternal(String key) {
+        requireKey(key);
+        try {
+            deleteChunk(List.of(key));
+            logger.debug("Deleted key: {}", key);
+        } catch (IllegalStateException e) {
+            logger.error("Failed to delete key: {}, error: {}", key, e.getMessage());
+            throw new RuntimeException("Failed to delete key: " + key, e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Map<String, Object>> getByPrefix(String prefix) {
+        try {
+            return CompletableFuture.completedFuture(getByPrefixInternal(prefix));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    private Map<String, Object> getByPrefixInternal(String prefix) {
+        try {
+            logger.debug("Getting keys by prefix: {}", prefix);
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (String key : scanKeys(prefix)) {
+                Object value = getInternal(key);
+                if (value != null) {
+                    result.put(key, value);
+                }
+            }
+            logger.debug("Retrieved {} keys by prefix: {}", result.size(), prefix);
+            return result;
+        } catch (IllegalStateException e) {
+            logger.error("Failed to get keys by prefix: {}, error: {}", prefix, e.getMessage());
+            throw new RuntimeException("Failed to get keys by prefix: " + prefix, e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteByPrefix(String prefix, Integer batchSize) {
+        try {
+            deleteByPrefixInternal(prefix, batchSize);
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    private void deleteByPrefixInternal(String prefix, Integer batchSize) {
+        try {
+            logger.debug("Deleting keys by prefix: {}", prefix);
+            List<String> keys = scanKeys(prefix);
+            if (!keys.isEmpty()) {
+                batchDeleteInternal(keys, batchSize);
+            }
+            logger.debug("Deleted keys by prefix: {}", prefix);
+        } catch (IllegalStateException e) {
+            logger.error("Failed to delete keys by prefix: {}, error: {}", prefix, e.getMessage());
+            throw new RuntimeException("Failed to delete keys by prefix: " + prefix, e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<List<Object>> mget(List<String> keys) {
+        try {
+            return CompletableFuture.completedFuture(mgetInternal(keys));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    private List<Object> mgetInternal(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            logger.debug("Bulk getting {} keys", keys.size());
+            List<Object> result = tryMget(keys);
+            long foundCount = result.stream().filter(Objects::nonNull).count();
+            logger.debug("Bulk retrieved {}/{} keys", foundCount, keys.size());
+            return result;
+        } catch (IllegalStateException e) {
+            logger.error("Failed to bulk get keys, error: {}", e.getMessage());
+            throw new RuntimeException("Failed to bulk get keys", e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Integer> batchDelete(List<String> keys, Integer batchSize) {
+        try {
+            return CompletableFuture.completedFuture(batchDeleteInternal(keys, batchSize));
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
+    private int batchDeleteInternal(List<String> keys, Integer batchSize) {
+        if (keys == null || keys.isEmpty()) {
+            return 0;
+        }
+        try {
+            logger.debug("Batch deleting {} keys", keys.size());
+            int deleted = 0;
+            if (batchSize == null || batchSize <= 0) {
+                deleted += deleteChunk(keys);
+            } else {
+                for (int index = 0; index < keys.size(); index += batchSize) {
+                    deleted += deleteChunk(keys.subList(index, Math.min(index + batchSize, keys.size())));
+                }
+            }
+            return deleted;
+        } catch (IllegalStateException e) {
+            logger.error("Failed to batch delete keys, error: {}", e.getMessage());
+            throw new RuntimeException("Failed to batch delete keys", e);
+        }
+    }
+
+    @Override
+    public BasedKVStorePipeline pipeline() {
+        return new BasedKVStorePipeline(operations -> {
+            try {
+                List<Object> batched = executePipelineBatch(operations);
+                if (batched != null) {
+                    return CompletableFuture.completedFuture(batched);
+                }
+                List<Object> results = new ArrayList<>(operations.size());
+                for (BasedKVStorePipeline.PipelineOperation operation : operations) {
+                    switch (operation.kind()) {
+                    case "set" -> {
+                        setInternal(operation.key(), operation.value(), operation.ttl());
+                        results.add(null);
+                    }
+                    case "get" -> results.add(getInternal(operation.key()));
+                    case "exists" -> results.add(existsInternal(operation.key()));
+                    default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
+                    }
+                }
+                return CompletableFuture.completedFuture(results);
+            } catch (Throwable throwable) {
+                return CompletableFuture.failedFuture(throwable);
+            }
+        });
+    }
+
+    /**
+     * Executes queued pipeline operations over a native Redis pipeline when the client
+     * exposes one, so the batch costs one connection borrow and one network round-trip.
+     * Returns {@code null} when the fast path is unavailable.
+     *
+     * @param operations queued pipeline operations
+     * @return results in operation order, or {@code null} when falling back
+     * @since 0.1.15
+     */
+    private List<Object> executePipelineBatch(List<BasedKVStorePipeline.PipelineOperation> operations) {
+        if (operations.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Object pipeline = null;
+        try {
+            InvocationOutcome pipelineOutcome = tryInvoke(redisClient, new String[]{"pipeline", "pipelined"});
+            if (!pipelineOutcome.handled() || pipelineOutcome.value() == null) {
+                return null;
+            }
+            pipeline = pipelineOutcome.value();
+            for (BasedKVStorePipeline.PipelineOperation operation : operations) {
+                if (!enqueuePipelineOperation(pipeline, operation)) {
+                    return null;
+                }
+            }
+            InvocationOutcome syncOutcome = tryInvoke(pipeline,
+                    new String[]{"syncAndReturnAll", "sync", "execute", "exec"});
+            if (!syncOutcome.handled()) {
+                return null;
+            }
+            return mapPipelineReplies(syncOutcome.value(), operations);
+        } catch (IllegalStateException ex) {
+            logger.warn("Real pipeline batch failed, falling back to per-op execution: {}", ex.getMessage());
+            return null;
+        } finally {
+            closePipelineQuietly(pipeline);
+        }
+    }
+
+    private void closePipelineQuietly(Object pipeline) {
+        if (pipeline == null) {
+            return;
+        }
+        try {
+            tryInvoke(pipeline, new String[]{"close"});
+        } catch (IllegalStateException ignored) {
+            logger.debug("Failed to close pipeline");
+        }
+    }
+
+    private boolean enqueuePipelineOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation) {
+        return switch (operation.kind()) {
+            case "set" -> enqueueSetOperation(pipeline, operation);
+            case "get" -> enqueueGetOperation(pipeline, operation);
+            case "exists" -> tryInvoke(pipeline, new String[]{"exists"}, operation.key()).handled();
+            default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
+        };
+    }
+
+    private boolean enqueueGetOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation) {
+        InvocationOutcome binaryGet = tryInvoke(pipeline, new String[]{"get"}, byte[].class,
+            operation.key().getBytes(StandardCharsets.UTF_8));
+        if (binaryGet.handled()) {
+            return true;
+        }
+        return tryInvoke(pipeline, new String[]{"get"}, operation.key()).handled();
+    }
+
+    private boolean enqueueSetOperation(Object pipeline, BasedKVStorePipeline.PipelineOperation operation) {
+        Integer ttl = operation.ttl();
+        if (operation.value() instanceof byte[] valueBytes) {
+            byte[] keyBytes = operation.key().getBytes(StandardCharsets.UTF_8);
+            if (ttl != null && ttl > 0) {
+                InvocationOutcome setex = tryInvoke(pipeline, new String[]{"setex", "setEx"},
+                        byte[].class, keyBytes, ttl, valueBytes);
+                if (setex.handled()) {
+                    return true;
+                }
+            }
+            return tryInvoke(pipeline, new String[]{"set"}, byte[].class, keyBytes, valueBytes).handled();
+        }
+        if (ttl != null && ttl > 0) {
+            InvocationOutcome setex = tryInvoke(pipeline, new String[]{"setex", "setEx"},
+                    operation.key(), ttl, operation.value());
+            if (setex.handled()) {
+                return true;
+            }
+            InvocationOutcome setWithTtl = tryInvoke(pipeline, new String[]{"set"},
+                    operation.key(), operation.value(), ttl);
+            return setWithTtl.handled();
+        }
+        return tryInvoke(pipeline, new String[]{"set"}, operation.key(), operation.value()).handled();
+    }
+
+    private List<Object> mapPipelineReplies(Object rawReplies,
+            List<BasedKVStorePipeline.PipelineOperation> operations) {
+        List<Object> replies = toObjectList(rawReplies);
+        if (replies.size() != operations.size()) {
+            throw new IllegalStateException("Pipeline reply count mismatch: ops=" + operations.size()
+                    + ", replies=" + replies.size());
+        }
+        List<Object> results = new ArrayList<>(operations.size());
+        for (int index = 0; index < operations.size(); index++) {
+            BasedKVStorePipeline.PipelineOperation operation = operations.get(index);
+            switch (operation.kind()) {
+            case "set" -> results.add(null);
+            case "get" -> results.add(normalizeValue(replies.get(index)));
+            case "exists" -> results.add(asBoolean(replies.get(index)));
+            default -> throw new IllegalArgumentException("Unsupported pipeline op: " + operation.kind());
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Refresh TTL (Time To Live) for given keys.
+     *
+     * @param keys       a list of keys to refresh TTL for
+     * @param ttlSeconds the TTL value in seconds
+     */
+    public void refreshTtl(List<String> keys, int ttlSeconds) {
+        if (keys == null || keys.isEmpty() || ttlSeconds <= 0) {
+            return;
+        }
+        try {
+            logger.debug("Refreshing TTL for {} keys with {}s", keys.size(), ttlSeconds);
+            if (!refreshTtlViaClientPipeline(keys, ttlSeconds)) {
+                for (String key : keys) {
+                    expireKey(key, ttlSeconds);
+                }
+            }
+            logger.debug("Successfully refreshed TTL for {} keys", keys.size());
+        } catch (IllegalStateException e) {
+            logger.warn("Failed to refresh TTL for {} keys, error: {}", keys.size(), e.getMessage());
+        }
+    }
+
+    /**
+     * Check if the Redis client is in cluster mode.
+     *
+     * @return true if cluster mode, otherwise false
+     */
+    public boolean isCluster() {
+        return isCluster;
+    }
+
+    @Override
+    public void close() {
+        if (!ownsClient || !(redisClient instanceof AutoCloseable closeable)) {
+            return;
+        }
+        try {
+            closeable.close();
+        } catch (Exception failure) {
+            throw new IllegalStateException("Failed to close Redis client", failure);
+        }
+    }
+
+    private static boolean detectClusterMode(Object client) {
+        return client.getClass().getSimpleName().contains("Cluster");
+    }
+
+    private void setInternal(String key, Object value, Integer expiry) {
+        requireKey(key);
+        try {
+            if (value instanceof byte[] bytes) {
+                setBinaryValue(key, bytes, expiry);
+                logger.debug("Successfully set binary key: {}", key);
+                return;
+            }
+
+            boolean expiryApplied = false;
+            if (expiry != null && expiry > 0) {
+                InvocationOutcome combinedSet = tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.FALSE, expiry);
+                if (!combinedSet.handled()) {
+                    combinedSet = tryInvoke(redisClient, new String[]{"set"}, key, value, expiry);
+                }
+                if (combinedSet.handled()) {
+                    expiryApplied = true;
+                } else {
+                    invokeRequired(redisClient, new String[]{"set"}, key, value);
+                }
+            } else {
+                invokeRequired(redisClient, new String[]{"set"}, key, value);
+            }
+
+            if (!expiryApplied && expiry != null && expiry > 0) {
+                expireKey(key, expiry);
+            }
+            logger.debug("Successfully set key: {}", key);
+        } catch (IllegalStateException e) {
+            logger.error("Failed to set key: {}, error: {}", key, e.getMessage());
+            throw new RuntimeException("Failed to set key: " + key, e);
+        }
+    }
+
+    private void setBinaryValue(String key, byte[] value, Integer expiry) {
+        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        boolean expiryApplied = false;
+        if (expiry != null && expiry > 0) {
+            InvocationOutcome combinedSet =
+                    tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value, expiry);
+            if (!combinedSet.handled()) {
+                combinedSet = tryInvoke(
+                        redisClient, new String[]{"set"}, byte[].class, keyBytes, value, Boolean.FALSE, expiry);
+            }
+            if (combinedSet.handled()) {
+                expiryApplied = true;
+            }
+        }
+        InvocationOutcome binarySet = expiryApplied
+                ? InvocationOutcome.notHandled()
+                : tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value);
+        if (!binarySet.handled()) {
+            invokeRequired(redisClient, new String[]{"set"}, key, value);
+            if (expiry != null && expiry > 0) {
+                expireKey(key, expiry);
+            }
+            return;
+        }
+        if (expiry != null && expiry > 0 && !expiryApplied) {
+            expireKey(key, expiry);
+        }
+    }
+
+    private void requireKey(String key) {
+        Objects.requireNonNull(key, "key must not be null");
+    }
+
+    /**
+     * Prefer binary GET when String GET mis-decodes binary payloads (Jedis {@code get(String)} vs
+     * {@code get(byte[])}). For plain text values both APIs agree and String is returned.
+     *
+     * @param key the key to read
+     * @return the stored value, preferring binary bytes for non-text payloads
+     */
+    private Object getValuePreferringBinaryKey(String key) {
+        Object stringValue = null;
+        InvocationOutcome stringOutcome = tryInvoke(redisClient, new String[]{"get"}, key);
+        if (stringOutcome.handled()) {
+            stringValue = stringOutcome.value();
+        }
+
+        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        InvocationOutcome binaryOutcome = tryInvoke(redisClient, new String[]{"get"}, byte[].class, keyBytes);
+        Object binaryValue = binaryOutcome.handled() ? binaryOutcome.value() : null;
+
+        if (binaryValue instanceof byte[] bytes) {
+            String text = stringValue instanceof String ? (String) stringValue : null;
+            if (stringValue == null || preferBinaryOverString(bytes, text)) {
+                return bytes;
+            }
+        }
+
+        if (stringValue != null) {
+            return stringValue;
+        }
+        if (!stringOutcome.handled()) {
+            InvocationOutcome outcome = invokeRequired(redisClient, new String[]{"get"}, key);
+            return outcome.value();
+        }
+        return binaryValue;
+    }
+
+    private boolean preferBinaryOverString(byte[] bytes, String text) {
+        // Java serialization magic: 0xACED
+        if (bytes.length >= 2 && bytes[0] == (byte) 0xAC && bytes[1] == (byte) 0xED) {
+            return true;
+        }
+        if (text == null) {
+            return true;
+        }
+        return !text.equals(new String(bytes, StandardCharsets.UTF_8));
+    }
+
+    private List<Object> tryMget(List<String> keys) {
+        try {
+            InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"mget"}, keys);
+            if (!outcome.handled()) {
+                outcome = tryInvoke(redisClient, new String[]{"mget"}, (Object) keys.toArray(String[]::new));
+            }
+            if (outcome.handled()) {
+                List<Object> normalized = normalizeBulkValues(outcome.value(), keys);
+                if (normalized.size() == keys.size()) {
+                    return normalized;
+                }
+            }
+        } catch (IllegalStateException e) {
+            logger.warn("MGET failed, falling back to individual GETs: {}", e.getMessage());
+        }
+
+        List<Object> fallback = new ArrayList<>(keys.size());
+        for (String key : keys) {
+            fallback.add(getInternal(key));
+        }
+        return fallback;
+    }
+
+    private int deleteChunk(List<String> keys) {
+        if (keys.isEmpty()) {
+            return 0;
+        }
+
+        // Use the falling-back variant: multi-key DEL is rejected on Redis Cluster when the
+        // keys do not share a hash-slot, so we must be able to fall back to single-key deletes.
+        InvocationOutcome outcome = tryInvokeFallingBack(redisClient,
+                new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
+        if (!outcome.handled()) {
+            outcome = tryInvokeFallingBack(redisClient, new String[]{"delete", "del"}, keys);
+        }
+        if (outcome.handled()) {
+            return asDeleteCount(outcome.value(), keys.size());
+        }
+
+        int deleted = 0;
+        for (String key : keys) {
+            boolean existed = existsInternal(key);
+            invokeRequired(redisClient, new String[]{"delete", "del"}, key);
+            if (existed) {
+                deleted++;
+            }
+        }
+        return deleted;
+    }
+
+    private List<String> scanKeys(String prefix) {
+        String pattern = prefix + "*";
+        // Use the falling-back variant: a matched method may reject the call at runtime
+        // (e.g. JedisCluster forbids KEYS without a hash-tag). Treat that as unsupported so
+        // the cluster-aware fallback below can run instead of aborting the whole prefix scan.
+        InvocationOutcome outcome = tryInvokeFallingBack(redisClient,
+                new String[]{"scanIter", "keys", "scan"}, pattern);
+        if (!outcome.handled()) {
+            outcome = tryInvoke(redisClient, new String[]{"scanKeys"}, prefix);
+        }
+        if (!outcome.handled()) {
+            outcome = tryInvoke(redisClient, new String[]{"keySet"});
+        }
+        if (!outcome.handled() && redisClient instanceof Map<?, ?> map) {
+            outcome = new InvocationOutcome(true, map.keySet());
+        }
+        if (!outcome.handled()) {
+            // Try JedisCluster: iterate cluster nodes and SCAN each node
+            Optional<List<String>> clusterKeys = scanClusterNodes(pattern);
+            if (clusterKeys.isPresent()) {
+                return extractKeys(clusterKeys.get(), prefix);
+            }
+            throw new IllegalStateException("Redis client does not support scanning keys by prefix");
+        }
+        return extractKeys(outcome.value(), prefix);
+    }
+
+    /**
+     * Attempts to scan keys across all nodes of a Redis Cluster by iterating
+     * {@code getClusterNodes()} and calling {@code scan} on each node connection.
+     * Returns an empty Optional if the client is not a cluster client or does not
+     * expose {@code getClusterNodes}.
+     */
+    @SuppressWarnings("unchecked")
+    private Optional<List<String>> scanClusterNodes(String pattern) {
+        // Jedis 7.x UnifiedJedis/JedisCluster expose scanIteration(count, pattern) which performs a
+        // cross-node SCAN and is the cluster-safe replacement for KEYS, which JedisCluster rejects
+        // unless the pattern carries a hash-tag. Prefer it before the legacy per-node fallback.
+        InvocationOutcome iterationOutcome = tryInvoke(redisClient, new String[]{"scanIteration"}, 100, pattern);
+        if (iterationOutcome.handled() && iterationOutcome.value() != null) {
+            Optional<List<String>> iterationKeys = collectIterationKeys(iterationOutcome.value());
+            if (iterationKeys.isPresent()) {
+                return iterationKeys;
+            }
+        }
+
+        // Legacy fallback for older Jedis: iterate getClusterNodes() and SCAN each node connection.
+        InvocationOutcome nodesOutcome = tryInvoke(redisClient, new String[]{"getClusterNodes"});
+        if (!nodesOutcome.handled() || nodesOutcome.value() == null) {
+            return Optional.empty();
+        }
+        Object nodesValue = nodesOutcome.value();
+        Map<String, ?> nodes;
+        if (nodesValue instanceof Map<?, ?> rawNodes) {
+            nodes = (Map<String, ?>) rawNodes;
+        } else {
+            return Optional.empty();
+        }
+        List<String> allKeys = new ArrayList<>();
+        for (Map.Entry<String, ?> entry : nodes.entrySet()) {
+            Object nodeObj = entry.getValue();
+            if (nodeObj == null) {
+                continue;
+            }
+            // Try to get a Jedis resource from the node object
+            InvocationOutcome jedisOutcome = tryInvoke(nodeObj, new String[]{"getResource"});
+            if (jedisOutcome.handled() && jedisOutcome.value() != null) {
+                Object jedis = jedisOutcome.value();
+                try {
+                    InvocationOutcome scanOutcome = tryInvoke(jedis, new String[]{"scan", "keys"}, pattern);
+                    if (scanOutcome.handled() && scanOutcome.value() != null) {
+                        allKeys.addAll(extractKeys(scanOutcome.value(), ""));
+                    }
+                } finally {
+                    tryInvoke(jedis, new String[]{"close"});
+                }
+            }
+        }
+        return Optional.of(allKeys);
+    }
+
+    /**
+     * Drains a Jedis {@code ScanIteration} by reflectively calling {@code nextBatchList()} until
+     * {@code isIterationCompleted()} returns true. Returns an empty Optional when the object does not
+     * expose those methods, letting the caller continue with another fallback.
+     */
+    private Optional<List<String>> collectIterationKeys(Object iteration) {
+        InvocationOutcome completed = tryInvoke(iteration, new String[]{"isIterationCompleted"});
+        if (!completed.handled()) {
+            return Optional.empty();
+        }
+        List<String> allKeys = new ArrayList<>();
+        while (!Boolean.TRUE.equals(completed.value())) {
+            InvocationOutcome batch = tryInvoke(iteration, new String[]{"nextBatchList"});
+            if (!batch.handled() || batch.value() == null) {
+                break;
+            }
+            allKeys.addAll(extractKeys(batch.value(), ""));
+            completed = tryInvoke(iteration, new String[]{"isIterationCompleted"});
+            if (!completed.handled()) {
+                break;
+            }
+        }
+        return Optional.of(allKeys);
+    }
+
+    private boolean refreshTtlViaClientPipeline(List<String> keys, int ttlSeconds) {
+        InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"pipeline", "pipelined"});
+        if (!outcome.handled() || outcome.value() == null) {
+            return false;
+        }
+
+        Object pipeline = outcome.value();
+        for (String key : keys) {
+            InvocationOutcome expireOutcome = tryInvoke(pipeline, new String[]{"expire"}, key, ttlSeconds);
+            if (!expireOutcome.handled()) {
+                return false;
+            }
+        }
+
+        InvocationOutcome executeOutcome = tryInvoke(pipeline, new String[]{"execute", "exec", "sync"});
+        return executeOutcome.handled();
+    }
+
+    private void expireKey(String key, int ttlSeconds) {
+        InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"expire"}, key, ttlSeconds);
+        if (!outcome.handled()) {
+            throw new IllegalStateException("Redis client does not support expire operations");
+        }
+    }
+
+    private List<Object> normalizeBulkValues(Object rawValues, List<String> requestedKeys) {
+        if (rawValues instanceof Map<?, ?> map) {
+            List<Object> ordered = new ArrayList<>(requestedKeys.size());
+            for (String key : requestedKeys) {
+                ordered.add(normalizeValue(map.get(key)));
+            }
+            return ordered;
+        }
+
+        List<Object> values = toObjectList(rawValues);
+        if (values.size() != requestedKeys.size()) {
+            return Collections.emptyList();
+        }
+
+        List<Object> normalized = new ArrayList<>(values.size());
+        for (Object value : values) {
+            normalized.add(normalizeValue(value));
+        }
+        return normalized;
+    }
+
+    private List<String> extractKeys(Object rawKeys, String prefix) {
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        for (Object candidate : toObjectList(rawKeys)) {
+            String key = normalizeKey(candidate);
+            if (key != null && key.startsWith(prefix)) {
+                keys.add(key);
+            }
+        }
+        return new ArrayList<>(keys);
+    }
+
+    private List<Object> toObjectList(Object value) {
+        if (value == null) {
+            return Collections.emptyList();
+        }
+        if (value instanceof Collection<?> collection) {
+            return new ArrayList<>(collection);
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> items = new ArrayList<>();
+            for (Object item : iterable) {
+                items.add(item);
+            }
+            return items;
+        }
+        if (value instanceof Iterator<?> iterator) {
+            List<Object> items = new ArrayList<>();
+            iterator.forEachRemaining(items::add);
+            return items;
+        }
+        if (value instanceof Enumeration<?> enumeration) {
+            List<Object> items = new ArrayList<>();
+            while (enumeration.hasMoreElements()) {
+                items.add(enumeration.nextElement());
+            }
+            return items;
+        }
+        if (value instanceof Map<?, ?> map) {
+            return new ArrayList<>(map.entrySet());
+        }
+        if (value.getClass().isArray()) {
+            int length = Array.getLength(value);
+            List<Object> items = new ArrayList<>(length);
+            for (int index = 0; index < length; index++) {
+                items.add(Array.get(value, index));
+            }
+            return items;
+        }
+        return List.of(value);
+    }
+
+    private String normalizeKey(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Map.Entry<?, ?> entry) {
+            return normalizeKey(entry.getKey());
+        }
+        if (value instanceof byte[] bytes) {
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+        return String.valueOf(value);
+    }
+
+    private Object normalizeValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Optional<?> optional) {
+            return optional.map(this::normalizeValue).orElse(null);
+        }
+        if (value instanceof Map.Entry<?, ?> entry) {
+            return normalizeValue(entry.getValue());
+        }
+        if (value instanceof CharSequence sequence) {
+            return sequence.toString();
+        }
+
+        try {
+            InvocationOutcome hasValue = tryInvoke(value, new String[]{"hasValue", "isPresent"});
+            if (hasValue.handled() && !asBoolean(hasValue.value())) {
+                return null;
+            }
+
+            InvocationOutcome getValue = tryInvoke(value, new String[]{"getValue"});
+            if (getValue.handled()) {
+                return normalizeValue(getValue.value());
+            }
+        } catch (IllegalStateException ignored) {
+            // Keep the original value when reflection-based normalization is not supported.
+        }
+
+        return value;
+    }
+
+    private boolean asBoolean(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.longValue() > 0L;
+        }
+        if (value instanceof CharSequence sequence) {
+            String text = sequence.toString().trim();
+            return !text.isEmpty() && !"0".equals(text) && !"false".equalsIgnoreCase(text)
+                    && !"null".equalsIgnoreCase(text);
+        }
+        return true;
+    }
+
+    private int asDeleteCount(Object value, int fallbackCount) {
+        int deleted;
+        if (value instanceof Number number) {
+            deleted = number.intValue();
+        } else if (value instanceof Boolean isPresent) {
+            deleted = isPresent ? fallbackCount : 0;
+        } else {
+            deleted = asBoolean(value) ? fallbackCount : 0;
+        }
+        if (deleted == 0 && fallbackCount > 0) {
+            logger.warn("Redis delete returned 0 for {} requested key(s); keys may have already been absent",
+                    fallbackCount);
+        }
+        return deleted;
+    }
+
+    private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args) {
+        InvocationOutcome outcome = tryInvoke(target, methodNames, args);
+        if (!outcome.handled()) {
+            throw new IllegalStateException("Redis client does not support " + Arrays.toString(methodNames));
+        }
+        return outcome;
+    }
+
+    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args) {
+        return tryInvoke(target, methodNames, null, args);
+    }
+
+    private InvocationOutcome tryInvoke(
+            Object target, String[] methodNames, Class<?> requiredFirstParamType, Object... args) {
+        MethodMatch bestMatch = null;
+        for (int nameIndex = 0; nameIndex < methodNames.length; nameIndex++) {
+            String methodName = methodNames[nameIndex];
+            for (Method method : target.getClass().getMethods()) {
+                if (!method.getName().equals(methodName)) {
+                    continue;
+                }
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                if (requiredFirstParamType != null
+                        && (parameterTypes.length == 0 || parameterTypes[0] != requiredFirstParamType)) {
+                    continue;
+                }
+
+                Optional<MethodMatch> maybeMatch = prepareMethodMatch(method, args, methodNames.length - nameIndex);
+                if (maybeMatch.isEmpty()) {
+                    continue;
+                }
+
+                MethodMatch match = maybeMatch.get();
+                if (bestMatch == null || match.score() > bestMatch.score()) {
+                    bestMatch = match;
+                }
+            }
+        }
+
+        if (bestMatch == null) {
+            return InvocationOutcome.notHandled();
+        }
+
+        try {
+            if (!bestMatch.method().canAccess(target)) {
+                bestMatch.method().setAccessible(true);
+            }
+            return new InvocationOutcome(true, bestMatch.method().invoke(target, bestMatch.arguments()));
+        } catch (InvocationTargetException invocationFailure) {
+            Throwable cause = invocationFailure.getCause();
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            Throwable failure = cause == null ? invocationFailure : cause;
+            throw new IllegalStateException("Redis client invocation failed", failure);
+        } catch (IllegalAccessException accessFailure) {
+            throw new IllegalStateException("Redis client method is inaccessible", accessFailure);
+        }
+    }
+
+    /**
+     * Like {@link #tryInvoke(Object, String[], Object...)} but treats a runtime invocation
+     * failure (e.g. Redis Cluster rejecting a cross-slot or non-hash-tagged command) as
+     * "not handled" instead of throwing, so callers can fall back to a compatible strategy.
+     */
+    private InvocationOutcome tryInvokeFallingBack(Object target, String[] methodNames, Object... args) {
+        try {
+            return tryInvoke(target, methodNames, args);
+        } catch (IllegalStateException e) {
+            return InvocationOutcome.notHandled();
+        }
+    }
+
+    private Optional<MethodMatch> prepareMethodMatch(Method method, Object[] args, int namePreference) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        boolean isVarArgs = method.isVarArgs();
+        int score = namePreference * 100;
+
+        if (!isVarArgs && parameterTypes.length != args.length) {
+            return Optional.empty();
+        }
+        if (isVarArgs && args.length < parameterTypes.length - 1) {
+            return Optional.empty();
+        }
+
+        Object[] invocationArgs = new Object[parameterTypes.length];
+        int fixedArgCount = isVarArgs ? parameterTypes.length - 1 : parameterTypes.length;
+        for (int index = 0; index < fixedArgCount; index++) {
+            Optional<ArgumentMatch> argumentMatch = convertArgument(args[index], parameterTypes[index]);
+            if (argumentMatch.isEmpty()) {
+                return Optional.empty();
+            }
+            invocationArgs[index] = argumentMatch.get().value();
+            score += argumentMatch.get().score();
+        }
+
+        if (isVarArgs) {
+            Class<?> varArgType = parameterTypes[parameterTypes.length - 1].getComponentType();
+            Object varArgValue;
+            int remaining = args.length - fixedArgCount;
+            if (remaining == 1 && args[fixedArgCount] != null && args[fixedArgCount].getClass().isArray()) {
+                Object existingArray = args[fixedArgCount];
+                if (existingArray.getClass().getComponentType() != null
+                        && isAssignable(varArgType, existingArray.getClass().getComponentType())) {
+                    varArgValue = existingArray;
+                    // Direct array pass-through must always outrank lossy single-argument conversions.
+                    score += 12;
+                } else {
+                    return Optional.empty();
+                }
+            } else if (remaining == 1 && args[fixedArgCount] instanceof Collection<?> collection) {
+                Object array = Array.newInstance(varArgType, collection.size());
+                int offset = 0;
+                for (Object item : collection) {
+                    Optional<ArgumentMatch> convertedItem = convertArgument(item, varArgType);
+                    if (convertedItem.isEmpty()) {
+                        return Optional.empty();
+                    }
+                    Array.set(array, offset++, convertedItem.get().value());
+                    score += convertedItem.get().score();
+                }
+                varArgValue = array;
+            } else {
+                Object array = Array.newInstance(varArgType, remaining);
+                for (int index = 0; index < remaining; index++) {
+                    Optional<ArgumentMatch> convertedItem = convertArgument(args[fixedArgCount + index], varArgType);
+                    if (convertedItem.isEmpty()) {
+                        return Optional.empty();
+                    }
+                    Array.set(array, index, convertedItem.get().value());
+                    score += convertedItem.get().score();
+                }
+                varArgValue = array;
+            }
+            invocationArgs[invocationArgs.length - 1] = varArgValue;
+        }
+
+        return Optional.of(new MethodMatch(method, invocationArgs, score));
+    }
+
+    private Optional<ArgumentMatch> convertArgument(Object argument, Class<?> targetType) {
+        if (argument == null) {
+            return targetType.isPrimitive() ? Optional.empty() : Optional.of(new ArgumentMatch(null, 1));
+        }
+
+        Class<?> boxedTargetType = boxType(targetType);
+        if (boxedTargetType.isInstance(argument)) {
+            return Optional.of(new ArgumentMatch(argument, 10));
+        }
+        if (boxedTargetType == Object.class) {
+            return Optional.of(new ArgumentMatch(argument, 1));
+        }
+        if (boxedTargetType == String.class) {
+            if (argument.getClass().isArray()) {
+                // An array rendered through String.valueOf becomes "[Ljava.lang.String;@..." garbage.
+                // Never treat a whole array as a single string argument (e.g. del(String) vs del(String...)).
+                return Optional.empty();
+            }
+            return Optional.of(new ArgumentMatch(String.valueOf(argument), 6));
+        }
+        if (boxedTargetType == Integer.class && argument instanceof Number number) {
+            return Optional.of(new ArgumentMatch(number.intValue(), 8));
+        }
+        if (boxedTargetType == Long.class && argument instanceof Number number) {
+            return Optional.of(new ArgumentMatch(number.longValue(), 8));
+        }
+        if (boxedTargetType == Double.class && argument instanceof Number number) {
+            return Optional.of(new ArgumentMatch(number.doubleValue(), 8));
+        }
+        if (boxedTargetType == Boolean.class) {
+            if (argument instanceof Boolean bool) {
+                return Optional.of(new ArgumentMatch(bool, 8));
+            }
+            if (argument instanceof Number number) {
+                return Optional.of(new ArgumentMatch(number.intValue() != 0, 6));
+            }
+        }
+        if (boxedTargetType == byte[].class) {
+            if (argument instanceof byte[] bytes) {
+                return Optional.of(new ArgumentMatch(bytes, 8));
+            }
+            if (argument instanceof CharSequence sequence) {
+                return Optional.of(new ArgumentMatch(sequence.toString().getBytes(StandardCharsets.UTF_8), 5));
+            }
+        }
+        if (boxedTargetType.isArray() && argument instanceof Collection<?> collection) {
+            Class<?> componentType = boxedTargetType.getComponentType();
+            Object array = Array.newInstance(componentType, collection.size());
+            int index = 0;
+            int score = 4;
+            for (Object item : collection) {
+                Optional<ArgumentMatch> convertedItem = convertArgument(item, componentType);
+                if (convertedItem.isEmpty()) {
+                    return Optional.empty();
+                }
+                Array.set(array, index++, convertedItem.get().value());
+                score += convertedItem.get().score();
+            }
+            return Optional.of(new ArgumentMatch(array, score));
+        }
+        if (boxedTargetType.isAssignableFrom(argument.getClass())) {
+            return Optional.of(new ArgumentMatch(argument, 7));
+        }
+        return Optional.empty();
+    }
+
+    private boolean isAssignable(Class<?> targetType, Class<?> candidateType) {
+        return boxType(targetType).isAssignableFrom(boxType(candidateType));
+    }
+
+    private Class<?> boxType(Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        return switch (type.getName()) {
+            case "boolean" -> Boolean.class;
+            case "byte" -> Byte.class;
+            case "char" -> Character.class;
+            case "short" -> Short.class;
+            case "int" -> Integer.class;
+            case "long" -> Long.class;
+            case "float" -> Float.class;
+            case "double" -> Double.class;
+            default -> type;
+        };
+    }
+
+    private record InvocationOutcome(boolean handled, Object value) {
+        private static InvocationOutcome notHandled() {
+            return new InvocationOutcome(false, null);
+        }
+    }
+
+    private record MethodMatch(Method method, Object[] arguments, int score) {
+    }
+
+    private record ArgumentMatch(Object value, int score) {
+    }
+}

@@ -1,6 +1,6 @@
 ﻿# config
 
-`com.openjiuwen.core.memory.config` 定义长期记忆的配置模型，覆盖引擎默认模型、消息长度、加密密钥，以及按 agent 或 scope 细分的策略选项。
+`com.openjiuwen.memory.config` 定义长期记忆的配置模型，覆盖引擎默认模型、消息长度、加密密钥，以及按 agent 或 scope 细分的策略选项。
 
 ## 核心类型
 

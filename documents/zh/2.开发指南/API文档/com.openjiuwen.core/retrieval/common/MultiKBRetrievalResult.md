@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.MultiKBRetrievalResult
+# com.openjiuwen.retrieval.common.MultiKBRetrievalResult
 
 ## 类 MultiKBRetrievalResult
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.embedding.OpenAIEmbedding
+# com.openjiuwen.retrieval.embedding.OpenAIEmbedding
 
 ## 类 OpenAIEmbedding
 

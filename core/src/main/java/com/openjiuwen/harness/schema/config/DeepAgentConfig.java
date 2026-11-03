@@ -1,0 +1,374 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.harness.schema.config;
+
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
+import com.openjiuwen.harness.kvcache.KVCacheSubagentLifecycle;
+import com.openjiuwen.harness.schema.AgentMode;
+import com.openjiuwen.harness.security.ToolPermissionHost;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Public class DeepAgentConfig used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+public class DeepAgentConfig {
+    public static final String DEFAULT_WORKSPACE_PATH = "./";
+    public static final String GENERAL_PURPOSE_AGENT_NAME = "general-purpose";
+    public static final String FACTORY_KWARG_ENABLE_READ_IMAGE_MULTIMODAL = "enable_read_image_multimodal";
+
+    @Builder.Default
+    private String systemPrompt = "";
+    @Builder.Default
+    private int maxIterations = 15;
+    @Builder.Default
+    private int maxParallelToolCalls = 3;
+    @Builder.Default
+    private boolean shouldFailTaskOnToolError = true;
+    /**
+     * Step-level checkpoint policy shared by the inner ReActAgent and the
+     * task-loop round (PHASE) boundaries. Null keeps {@code STEP_AUTO}.
+     */
+    private StepCheckpointPolicy stepCheckpointPolicy;
+    @Builder.Default
+    private boolean isTaskLoopEnabled = false;
+    @Builder.Default
+    private boolean isTaskPlanningEnabled = false;
+    @Builder.Default
+    private String language = "cn";
+    @Builder.Default
+    private AgentMode defaultMode = AgentMode.NORMAL;
+    @Builder.Default
+    private String workspacePath = DEFAULT_WORKSPACE_PATH;
+    @Builder.Default
+    private boolean enableReadImageMultimodal = true;
+    private Double completionTimeout;
+    /**
+     * Permission configuration map. When null (the default), no permission
+     * rail is mounted by {@code DeepAgent.runInitializationSequence()} —
+     * matching the fork-version behaviour where the rail is only registered
+     * when the caller explicitly configures permissions.
+     */
+    private Map<String, Object> permissions;
+    @Builder.Default
+    private List<Object> tools = new ArrayList<>();
+    @Builder.Default
+    private List<Object> rails = new ArrayList<>();
+    @Builder.Default
+    private List<McpServerConfig> mcps = new ArrayList<>();
+    @Builder.Default
+    private List<Object> subagents = new ArrayList<>();
+    @Builder.Default
+    private List<Map<String, Object>> extraPromptSections = new ArrayList<>();
+    @Builder.Default
+    private List<String> skillDirectories = new ArrayList<>();
+    @Builder.Default
+    private String skillMode = "auto_list";
+    private Object model;
+    private Object backend;
+    /**
+     * Multi-model configuration. When non-empty, entries are registered for dynamic selection.
+     */
+    @Builder.Default
+    private List<ModelConfigEntry> modelConfigs = new ArrayList<>();
+    private String promptMode;
+    @Builder.Default
+    private List<String> skills = new ArrayList<>();
+    @Builder.Default
+    private boolean enableSkillDiscovery = false;
+    @Builder.Default
+    private Map<String, Object> factoryKwargs = new LinkedHashMap<>();
+    @Builder.Default
+    private boolean isAsyncSubagentEnabled = false;
+    @Builder.Default
+    private boolean isGeneralPurposeAgentEnabled = false;
+    @Builder.Default
+    private boolean isRestrictToWorkDirEnabled = true;
+    @Builder.Default
+    private boolean autoCreateWorkspace = true;
+    private SysOperation sysOperation;
+    private ToolPermissionHost permissionHost;
+
+    /**
+     * Optional context engine bounds for this agent; when null the parent's config is
+     * inherited by dynamically created subagents.
+     *
+     * @since 0.1.18
+     */
+    private ContextEngineConfig contextEngineConfig;
+    @Builder.Default
+    private boolean isEnableTenantIsolation = false;
+    /**
+     * Whether the unified {@code agent_hint} KV-cache affinity protocol is
+     * enabled for this DeepAgent and its subagents. Mirrors Python's
+     * {@code DeepConfig.kv_cache_affinity_config.enable_kv_cache_affinity}.
+     *
+     * @since 0.1.16
+     */
+    @Builder.Default
+    private boolean isEnableKvCacheAffinity = false;
+    /**
+     * Subagent types that reuse a deterministic sub-session id across TaskTool
+     * calls; every other type gets a UUID suffix. Types listed here share one
+     * cache identity across invocations. Defaults to the browser and
+     * verification agents.
+     *
+     * @since 0.1.17
+     */
+    @Builder.Default
+    private List<String> stableSubSessionTypes = KVCacheSubagentLifecycle.DEFAULT_STABLE_SUB_SESSION_TYPES;
+    private String tenantDataRoot;
+    private List<String> workspaceSecondaryTiers;
+    private Map<String, Map<String, Object>> workspaceTierConfigs;
+
+    // Null retains the distinction between an omitted type and an explicit "file".
+    private String todoStorageType;
+    private String sessionStoreType;
+    private Map<String, Object> kvStoreConfig;
+    /**
+     * Optional Todo policy: {@code ttl.default_ttl} is a positive number of minutes;
+     * {@code ttl.refresh_on_read} defaults to false when a policy is supplied.
+     * An absent policy inherits Checkpointer settings only for {@code checkpointer_redis}.
+     */
+    private Map<String, Object> todoStorageConfig;
+    @Builder.Default
+    private Duration tmpTtl = Duration.ofHours(24);
+    @Builder.Default
+    private Duration tmpTtlScanInterval = Duration.ofHours(1);
+
+    /**
+     * Returns the selected storage type, retaining the historical default when omitted.
+     *
+     * @return the selected type, or file storage when no type was selected
+     * @since 0.1.15
+     */
+    public String getTodoStorageType() {
+        return todoStorageType == null ? "file" : todoStorageType;
+    }
+
+    /**
+     * Reports whether a caller selected a storage type, including explicit file storage.
+     *
+     * @return whether the storage type was explicitly selected
+     * @since 0.1.15
+     */
+    public boolean isTodoStorageTypeExplicit() {
+        return todoStorageType != null;
+    }
+
+    /**
+     * DeepAgentConfigBuilder.
+     * 
+     * @since 0.1.7
+     */
+    public static class DeepAgentConfigBuilder {
+        /**
+         * enableTenantIsolation.
+         *
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
+         */
+        public DeepAgentConfigBuilder enableTenantIsolation(boolean isEnabled) {
+            return this.isEnableTenantIsolation(isEnabled);
+        }
+
+        /**
+         * enableTaskLoop.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
+         */
+        public DeepAgentConfigBuilder enableTaskLoop(boolean isEnabled) {
+            return this.isTaskLoopEnabled(isEnabled);
+        }
+
+        /**
+         * enableTaskPlanning.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
+         */
+        public DeepAgentConfigBuilder enableTaskPlanning(boolean isEnabled) {
+            return this.isTaskPlanningEnabled(isEnabled);
+        }
+
+        /**
+         * enableAsyncSubagent.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
+         */
+        public DeepAgentConfigBuilder enableAsyncSubagent(boolean isEnabled) {
+            return this.isAsyncSubagentEnabled(isEnabled);
+        }
+
+        /**
+         * isRestrictToWorkDir.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
+         */
+        public DeepAgentConfigBuilder isRestrictToWorkDir(boolean isEnabled) {
+            return this.isRestrictToWorkDirEnabled(isEnabled);
+        }
+
+        /**
+         * restrictToWorkDir.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
+         */
+        public DeepAgentConfigBuilder restrictToWorkDir(boolean isEnabled) {
+            return this.isRestrictToWorkDirEnabled(isEnabled);
+        }
+
+        /**
+         * addGeneralPurposeAgent.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
+         */
+        public DeepAgentConfigBuilder addGeneralPurposeAgent(boolean isEnabled) {
+            return this.isGeneralPurposeAgentEnabled(isEnabled);
+        }
+    }
+
+    /**
+     * isEnableTaskLoop.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean isEnableTaskLoop() {
+        return isTaskLoopEnabled;
+    }
+
+    /**
+     * isEnableTaskPlanning.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean isEnableTaskPlanning() {
+        return isTaskPlanningEnabled;
+    }
+
+    /**
+     * isEnableAsyncSubagent.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean isEnableAsyncSubagent() {
+        return isAsyncSubagentEnabled;
+    }
+
+    /**
+     * isAddGeneralPurposeAgent.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean isAddGeneralPurposeAgent() {
+        return isGeneralPurposeAgentEnabled;
+    }
+
+    /**
+     * isRestrictToWorkDir.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public boolean isRestrictToWorkDir() {
+        return isRestrictToWorkDirEnabled;
+    }
+
+    public Object getWorkspace() {
+        return workspacePath;
+    }
+
+    public boolean isEnableReadImageMultimodal() {
+        // Prefer first-class field; factoryKwargs kept for older dumps / external injectors.
+        if (factoryKwargs != null) {
+            Object value = factoryKwargs.get(FACTORY_KWARG_ENABLE_READ_IMAGE_MULTIMODAL);
+            if (value instanceof Boolean b) {
+                return b;
+            }
+        }
+        return enableReadImageMultimodal;
+    }
+
+    public void setEnableReadImageMultimodal(boolean enableReadImageMultimodal) {
+        this.enableReadImageMultimodal = enableReadImageMultimodal;
+        if (factoryKwargs == null) {
+            factoryKwargs = new LinkedHashMap<>();
+        }
+        factoryKwargs.put(FACTORY_KWARG_ENABLE_READ_IMAGE_MULTIMODAL, enableReadImageMultimodal);
+    }
+
+    public Map<String, Object> getModelSelection() {
+        if (factoryKwargs == null) {
+            return Map.of();
+        }
+        Object value = factoryKwargs.get("model_selection");
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> copied = new LinkedHashMap<>();
+            map.forEach((k, v) -> copied.put(String.valueOf(k), v));
+            return copied;
+        }
+        return Map.of();
+    }
+
+    /** Develop-compat alias for plan-mode / task-planning flag. */
+    public boolean isEnablePlanMode() {
+        Object value = factoryKwargs == null ? null : factoryKwargs.get("enable_plan_mode");
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        return isTaskPlanningEnabled;
+    }
+
+    /** Develop-compat progressive-tool default-visible list. */
+    @SuppressWarnings("unchecked")
+    public List<String> getProgressiveToolDefaultVisibleTools() {
+        Object value = factoryKwargs == null ? null : factoryKwargs.get("progressive_tool_default_visible_tools");
+        if (value instanceof List<?> list) {
+            List<String> copied = new ArrayList<>();
+            for (Object item : list) {
+                if (item != null) {
+                    copied.add(String.valueOf(item));
+                }
+            }
+            return copied;
+        }
+        return List.of();
+    }
+}

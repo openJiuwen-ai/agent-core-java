@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.config.MemoryScopeConfig
+# com.openjiuwen.memory.config.MemoryScopeConfig
 
 ## 类 MemoryScopeConfig
 
@@ -6,7 +6,7 @@
 public class MemoryScopeConfig
 ```
 
-`MemoryScopeConfig` 是 `com.openjiuwen.core.memory.config` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`MemoryScopeConfig` 是 `com.openjiuwen.memory.config` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

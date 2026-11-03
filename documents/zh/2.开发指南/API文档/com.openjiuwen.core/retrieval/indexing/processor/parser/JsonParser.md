@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.JsonParser
+# com.openjiuwen.core.workflow.component.llm.JsonParser
 
 ## 类 JsonParser
 

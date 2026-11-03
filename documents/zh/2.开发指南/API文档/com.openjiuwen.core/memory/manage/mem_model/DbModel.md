@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.mem_model.DbModel
+# com.openjiuwen.memory.manage.mem_model.DbModel
 
 ## 类 DbModel
 

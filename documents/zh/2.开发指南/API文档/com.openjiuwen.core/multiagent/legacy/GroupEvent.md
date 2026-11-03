@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.GroupEvent
+# com.openjiuwen.core.multi_agent.legacy.GroupEvent
 
 ## class GroupEvent
 

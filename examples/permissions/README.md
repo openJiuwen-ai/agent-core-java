@@ -3,7 +3,7 @@
 The Java baseline now exposes:
 
 - `PermissionLevel`
-- `PermissionCheckResult`
+- `PermissionResult`
 - `PermissionEngine`
 - `ToolPermissionHost`
 - `PermissionInterruptRail`

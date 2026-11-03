@@ -1,4 +1,4 @@
-# com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig
+# com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientConfig
 
 ## 类 RemoteClientConfig
 
@@ -6,7 +6,7 @@
 public class RemoteClientConfig
 ```
 
-`RemoteClientConfig` 用于封装 `com.openjiuwen.core.runner.drunner.remote_client` 相关配置项。
+`RemoteClientConfig` 用于封装 `com.openjiuwen.core.runner.drunner.remoteclient` 相关配置项。
 
 ## 字段
 

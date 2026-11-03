@@ -1,4 +1,4 @@
-# com.openjiuwen.core.workflow.ComponentAbility
+# com.openjiuwen.core.workflow.component.ComponentAbility
 
 ## 枚举 ComponentAbility
 

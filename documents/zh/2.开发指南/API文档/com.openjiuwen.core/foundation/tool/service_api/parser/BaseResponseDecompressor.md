@@ -1,4 +1,4 @@
-# com.openjiuwen.core.foundation.tool.service_api.parser.BaseResponseDecompressor
+# com.openjiuwen.core.foundation.tool.service_api.BaseResponseDecompressor
 
 ## class BaseResponseDecompressor
 

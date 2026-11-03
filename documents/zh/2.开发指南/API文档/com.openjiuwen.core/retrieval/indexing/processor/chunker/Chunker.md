@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker
+# com.openjiuwen.retrieval.indexing.processor.chunker.Chunker
 
 ## 抽象类 Chunker
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.config.MemoryEngineConfig
+# com.openjiuwen.memory.config.MemoryEngineConfig
 
 ## 类 MemoryEngineConfig
 

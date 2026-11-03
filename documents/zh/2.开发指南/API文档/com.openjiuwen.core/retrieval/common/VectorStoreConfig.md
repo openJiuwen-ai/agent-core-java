@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.VectorStoreConfig
+# com.openjiuwen.retrieval.common.VectorStoreConfig
 
 ## 类 VectorStoreConfig
 

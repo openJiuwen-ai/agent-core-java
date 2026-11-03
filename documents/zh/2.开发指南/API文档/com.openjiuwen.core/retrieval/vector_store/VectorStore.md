@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.vector_store.VectorStore
+# com.openjiuwen.retrieval.vector_store.VectorStore
 
 ## 接口 VectorStore
 

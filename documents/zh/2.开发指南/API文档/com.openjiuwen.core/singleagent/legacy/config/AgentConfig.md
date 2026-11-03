@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.AgentConfig
+# com.openjiuwen.core.single_agent.legacy.config.AgentConfig
 
 ## 类 AgentConfig
 

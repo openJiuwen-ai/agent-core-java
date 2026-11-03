@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.schema.LegacyGroupCard
+# com.openjiuwen.core.multi_agent.legacy.schema.LegacyGroupCard
 
 ## class LegacyGroupCard
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.mem_model.VariableUnit
+# com.openjiuwen.memory.manage.mem_model.VariableUnit
 
 ## 类 VariableUnit
 
@@ -6,7 +6,7 @@
 public class VariableUnit extends BaseMemoryUnit
 ```
 
-`VariableUnit` 是 `com.openjiuwen.core.memory.manage.mem_model` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`VariableUnit` 是 `com.openjiuwen.memory.manage.mem_model` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

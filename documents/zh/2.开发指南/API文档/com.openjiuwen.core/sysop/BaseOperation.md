@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.BaseOperation
+# com.openjiuwen.memory.migration.operation.BaseOperation
 
 ## 类 BaseOperation
 

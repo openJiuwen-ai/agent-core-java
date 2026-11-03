@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.LegacyBaseGroup
+# com.openjiuwen.core.multi_agent.legacy.LegacyBaseGroup
 
 ## abstract class LegacyBaseGroup
 

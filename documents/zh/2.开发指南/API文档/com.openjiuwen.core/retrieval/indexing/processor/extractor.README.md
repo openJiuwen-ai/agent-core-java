@@ -1,6 +1,6 @@
 # extractor
 
-`com.openjiuwen.core.retrieval.indexing.processor.extractor` 负责从 `TextChunk` 抽取 `Triple`，既支持本地轻量规则，也支持调用大模型。
+`com.openjiuwen.retrieval.indexing.processor.extractor` 负责从 `TextChunk` 抽取 `Triple`，既支持本地轻量规则，也支持调用大模型。
 
 ## 类型
 

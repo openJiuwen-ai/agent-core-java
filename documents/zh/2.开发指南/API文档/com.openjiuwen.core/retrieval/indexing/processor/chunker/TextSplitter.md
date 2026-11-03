@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.TextSplitter
+# com.openjiuwen.retrieval.indexing.processor.chunker.TextSplitter
 
 ## 抽象类 TextSplitter
 

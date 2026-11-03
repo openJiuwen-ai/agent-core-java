@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.Session
+# com.openjiuwen.core.session.Session
 
 ## class Session
 
@@ -6,7 +6,7 @@
 public class Session extends AgentGroupSessionApi
 ```
 
-`Session` 是 `AgentGroupSessionApi` 的包级别别名，使调用者能够沿用 `com.openjiuwen.core.multiagent.Session` 这一顶层导入入口。
+`Session` 是 `AgentGroupSessionApi` 的包级别别名，使调用者能够沿用 `com.openjiuwen.core.session.Session` 这一顶层导入入口。
 
 ## 构造方法
 

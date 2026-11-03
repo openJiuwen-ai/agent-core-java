@@ -1,6 +1,6 @@
 # indexer
 
-`com.openjiuwen.core.retrieval.indexing.indexer` 提供索引管理抽象，以及面向通用 `VectorStore` 与 Milvus 的具体实现。
+`com.openjiuwen.retrieval.indexing.indexer` 提供索引管理抽象，以及面向通用 `VectorStore` 与 Milvus 的具体实现。
 
 ## 类型
 

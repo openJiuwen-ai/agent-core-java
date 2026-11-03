@@ -15,12 +15,14 @@
 | [接入大模型](接入大模型.md) | 创建模型连接、准备配置、发起基础调用 | `com.openjiuwen.core.foundation.llm`、`examples/reac_agent` | 只讲基础模型接入，不提前展开 agent 编排。 |
 | [填充提示词模板](填充提示词模板.md) | 模板内容组织、变量替换、消息模板复用 | `com.openjiuwen.core.foundation.prompt`、`examples/reac_agent` | 重点是运行时 prompt template，不混入离线 prompt builder。 |
 | [自定义工具](自定义工具.md) | 本地函数、REST 工具、MCP 与工具卡片接入 | `com.openjiuwen.core.foundation.tool`、`examples/reac_agent` | 以 Java 当前真实注册方式为准。 |
+| [外部工具](外部工具.md) | 由 Agent 调用者执行、再回传结果的工具能力 | `ExternalTool`、`ReActAgent`、`external_tool_results` | 适合浏览器、客户端或隔离服务执行工具的场景。 |
 
 ## 推荐阅读顺序
 
 1. 先阅读 [接入大模型](接入大模型.md)，建立最小可调用链路。
 2. 再阅读 [填充提示词模板](填充提示词模板.md)，补齐 prompt 输入组织方式。
-3. 最后阅读 [自定义工具](自定义工具.md)，把外部能力接入模型或 agent。
+3. 接着阅读 [自定义工具](自定义工具.md)，把可由 Java 进程执行的能力接入模型或 agent。
+4. 如果工具需要由浏览器、客户端或外部服务执行，再阅读 [外部工具](外部工具.md)。
 
 ## 参考入口
 

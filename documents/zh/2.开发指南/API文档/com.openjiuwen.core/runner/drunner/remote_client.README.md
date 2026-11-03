@@ -1,6 +1,6 @@
 # remote_client
 
-`com.openjiuwen.core.runner.drunner.remote_client` 定义远程客户端协议、客户端配置以及远端 Agent 代理。
+`com.openjiuwen.core.runner.drunner.remoteclient` 定义远程客户端协议、客户端配置以及远端 Agent 代理。
 
 ## 类型
 

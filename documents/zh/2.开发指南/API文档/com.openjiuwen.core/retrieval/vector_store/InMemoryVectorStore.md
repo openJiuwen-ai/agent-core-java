@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore
+# com.openjiuwen.retrieval.vector_store.InMemoryVectorStore
 
 ## 类 InMemoryVectorStore
 

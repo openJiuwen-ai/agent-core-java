@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.ChunkerRegistry
+# com.openjiuwen.retrieval.indexing.processor.chunker.ChunkerRegistry
 
 ## 类 ChunkerRegistry
 

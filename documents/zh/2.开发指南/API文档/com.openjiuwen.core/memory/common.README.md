@@ -1,6 +1,6 @@
 ﻿# common
 
-`com.openjiuwen.core.memory.common` 提供记忆模块共享的基础工具，包括分布式锁、KV 前缀管理、AES 加解密以及检索结果解析辅助逻辑。
+`com.openjiuwen.memory.common` 提供记忆模块共享的基础工具，包括分布式锁、KV 前缀管理、AES 加解密以及检索结果解析辅助逻辑。
 
 ## 核心类型
 

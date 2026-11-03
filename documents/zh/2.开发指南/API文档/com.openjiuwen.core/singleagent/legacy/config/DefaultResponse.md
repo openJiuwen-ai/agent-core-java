@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.DefaultResponse
+# com.openjiuwen.core.single_agent.legacy.config.DefaultResponse
 
 ## 类 DefaultResponse
 

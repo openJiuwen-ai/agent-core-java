@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.RetrievalResult
+# com.openjiuwen.retrieval.common.RetrievalResult
 
 ## 类 RetrievalResult
 

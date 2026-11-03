@@ -1,6 +1,6 @@
 # migration
 
-`com.openjiuwen.core.memory.migration` 提供记忆存储的迁移注册表与统一执行入口，覆盖 SQL、向量库与 KV 存储三类后端。
+`com.openjiuwen.memory.migration` 提供记忆存储的迁移注册表与统一执行入口，覆盖 SQL、向量库与 KV 存储三类后端。
 
 ## 子包
 

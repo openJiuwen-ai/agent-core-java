@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.EmbeddingConfig
+# com.openjiuwen.core.foundation.store.EmbeddingConfig
 
 ## 类 EmbeddingConfig
 

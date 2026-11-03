@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.search.SearchManager
+# com.openjiuwen.memory.manage.search.SearchManager
 
 ## 类 SearchManager
 
@@ -6,7 +6,7 @@
 public class SearchManager
 ```
 
-`SearchManager` 是 `com.openjiuwen.core.memory.manage.search` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`SearchManager` 是 `com.openjiuwen.memory.manage.search` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

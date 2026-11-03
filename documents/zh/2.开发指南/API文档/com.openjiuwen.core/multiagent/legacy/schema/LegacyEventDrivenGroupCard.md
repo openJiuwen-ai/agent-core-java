@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.schema.LegacyEventDrivenGroupCard
+# com.openjiuwen.core.multi_agent.legacy.schema.LegacyEventDrivenGroupCard
 
 ## class LegacyEventDrivenGroupCard
 
@@ -19,4 +19,4 @@ public class LegacyEventDrivenGroupCard extends LegacyGroupCard
 
 - 类型使用了 `@Data`、`@SuperBuilder`、`@NoArgsConstructor`、`@AllArgsConstructor` 与 `@EqualsAndHashCode(callSuper = true)`。
 - 由于启用了 Lombok，常规 getter/setter/builder 均由注解自动生成。
-- 这是 legacy 兼容类，推荐迁移到新版 `com.openjiuwen.core.multiagent.schema.EventDrivenGroupCard`。
+- 这是 legacy 兼容类，推荐迁移到新版 `com.openjiuwen.core.multi_agent.schema.EventDrivenGroupCard`。

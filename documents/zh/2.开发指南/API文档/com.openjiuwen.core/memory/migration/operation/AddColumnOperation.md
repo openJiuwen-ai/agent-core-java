@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.operation.AddColumnOperation
+# com.openjiuwen.memory.migration.operation.AddColumnOperation
 
 ## 类 AddColumnOperation
 

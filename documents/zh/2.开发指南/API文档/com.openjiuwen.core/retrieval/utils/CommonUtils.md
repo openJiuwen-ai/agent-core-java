@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.utils.CommonUtils
+# com.openjiuwen.retrieval.utils.CommonUtils
 
 ## 类 CommonUtils
 

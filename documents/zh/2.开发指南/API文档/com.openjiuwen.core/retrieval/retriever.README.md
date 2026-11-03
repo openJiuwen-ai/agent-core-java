@@ -1,6 +1,6 @@
 # retriever
 
-`com.openjiuwen.core.retrieval.retriever` 提供统一检索器接口，以及向量检索、稀疏检索、混合检索、图扩展检索和代理式多轮检索的 Java 实现。
+`com.openjiuwen.retrieval.retriever` 提供统一检索器接口，以及向量检索、稀疏检索、混合检索、图扩展检索和代理式多轮检索的 Java 实现。
 
 ## 类型
 

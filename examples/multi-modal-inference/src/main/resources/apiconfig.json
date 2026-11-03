@@ -1,0 +1,7 @@
+{
+  "API_BASE": "",
+  "API_KEY": "",
+  "MODEL_PROVIDER": "",
+  "MODEL_NAME": "",
+  "LLM_SSL_VERIFY": "True"
+}

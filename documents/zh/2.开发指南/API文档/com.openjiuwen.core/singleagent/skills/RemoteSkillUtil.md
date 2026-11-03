@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.skills.RemoteSkillUtil
+# com.openjiuwen.core.single_agent.skills.RemoteSkillUtil
 
 ## 类 RemoteSkillUtil
 

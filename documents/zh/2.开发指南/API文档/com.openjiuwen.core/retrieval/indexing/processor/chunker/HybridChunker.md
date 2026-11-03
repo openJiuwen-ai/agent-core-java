@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.HybridChunker
+# com.openjiuwen.retrieval.indexing.processor.chunker.HybridChunker
 
 ## 类 HybridChunker
 

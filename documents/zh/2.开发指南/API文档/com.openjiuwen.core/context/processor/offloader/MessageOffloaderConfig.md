@@ -1,4 +1,4 @@
-# com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig
+# com.openjiuwen.core.context_engine.processor.offloader.MessageOffloaderConfig
 
 ## class MessageOffloaderConfig
 

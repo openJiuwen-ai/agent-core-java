@@ -1,0 +1,3 @@
+com.openjiuwen.memory.harness.provider.CodingMemoryRailProvider
+com.openjiuwen.memory.harness.provider.ExternalMemoryRailProvider
+com.openjiuwen.memory.harness.provider.MemoryRailProvider

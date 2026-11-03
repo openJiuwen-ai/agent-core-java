@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.TextPreprocessor
+# com.openjiuwen.retrieval.indexing.processor.chunker.TextPreprocessor
 
 ## 接口 TextPreprocessor
 

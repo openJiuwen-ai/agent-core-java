@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.reranker.ChatReranker
+# com.openjiuwen.retrieval.reranker.ChatReranker
 
 ## 类 ChatReranker
 

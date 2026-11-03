@@ -1,4 +1,4 @@
-# com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressorConfig
+# com.openjiuwen.core.context_engine.processor.compressor.CurrentRoundCompressorConfig
 
 ## class CurrentRoundCompressorConfig
 

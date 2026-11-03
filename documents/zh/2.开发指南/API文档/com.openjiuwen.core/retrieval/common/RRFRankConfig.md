@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.RRFRankConfig
+# com.openjiuwen.core.foundation.store.graph.RRFRankConfig
 
 ## 类 RRFRankConfig
 

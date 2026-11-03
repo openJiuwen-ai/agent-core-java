@@ -6,7 +6,7 @@
 public class BaseModelInfo
 ```
 
-描述模型标识与基本元信息。
+描述模型标识、请求参数和连接层透传信息。
 
 ## 字段
 
@@ -20,12 +20,17 @@ public class BaseModelInfo
 | `private Double topP = 0.1` | 保存 `topP` 相关状态或配置。 |
 | `private boolean streaming = false` | 保存 `streaming` 相关状态或配置。 |
 | `private int timeout = 60` | 保存 `timeout` 相关状态或配置。 |
+| `private ModelHttpVersion httpVersion` | 保存底层 HTTP 客户端版本偏好，可透传到 `ModelClientConfig`。 |
+| `private boolean verifySsl = true` | 保存 `verifySsl` 相关状态或配置。 |
+| `private String sslCert` | 保存 `sslCert` 相关状态或配置。 |
+| `private Map<String, String> headers = new LinkedHashMap<>()` | 保存附加 HTTP 请求头配置。 |
+| `private Map<String, Object> extraFields = new HashMap<>()` | 保存额外扩展字段。 |
 
 ## 构造方法
 
 | 签名 | 说明 |
 | --- | --- |
-| `public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP, Boolean streaming, Integer timeout, Map<String, Object> extraFields) {` | 构造 `BaseModelInfo` 实例。 |
+| `public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP, Boolean streaming, Integer timeout, ModelHttpVersion httpVersion, Boolean verifySsl, String sslCert, Map<String, String> headers, Map<String, Object> extraFields) {` | 构造 `BaseModelInfo` 实例。 |
 
 ## 方法
 
@@ -35,7 +40,10 @@ public class BaseModelInfo
 | `public void setExtraField(String key, Object value) {` | 设置 `extraField` 属性。 |
 | `public void setTimeout(int timeout) {` | 设置 `timeout` 属性。 |
 | `public void setExtraFields(Map<String, Object> extraFields) {` | 设置 `extraFields` 属性。 |
+| `public Map<String, String> getHeaders() {` | 返回附加请求头集合。 |
+| `public void setHeaders(Map<String, String> headers) {` | 设置附加请求头集合。 |
 
 ## 说明
 
 - 所有签名均以当前 Java 源码为准。
+- `httpVersion` 会在 `LlmEventHandler`、`WorkflowEventHandler` 等高层入口组装 `ModelClientConfig` 时继续透传。

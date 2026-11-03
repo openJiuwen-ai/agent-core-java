@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.retriever.TripleBeamSearch
+# com.openjiuwen.retrieval.retriever.TripleBeamSearch
 
 ## 类 TripleBeamSearch
 

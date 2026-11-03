@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.WebPageParser
+# com.openjiuwen.retrieval.indexing.processor.parser.WebPageParser
 
 ## 类 WebPageParser
 

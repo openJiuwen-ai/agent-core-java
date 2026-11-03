@@ -1,6 +1,6 @@
 # chunker
 
-`com.openjiuwen.core.retrieval.indexing.processor.chunker` 负责把 `Document` 转成可索引的 `TextChunk`，并在必要时执行文本预处理。
+`com.openjiuwen.retrieval.indexing.processor.chunker` 负责把 `Document` 转成可索引的 `TextChunk`，并在必要时执行文本预处理。
 
 ## 类型
 

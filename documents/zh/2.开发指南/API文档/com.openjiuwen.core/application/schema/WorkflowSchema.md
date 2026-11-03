@@ -1,4 +1,4 @@
-﻿# com.openjiuwen.core.application.schema.WorkflowSchema
+﻿# com.openjiuwen.core.single_agent.legacy.schema.WorkflowSchema
 
 ## class WorkflowSchema
 

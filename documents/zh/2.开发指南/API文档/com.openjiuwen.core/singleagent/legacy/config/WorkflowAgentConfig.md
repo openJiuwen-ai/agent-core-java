@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.WorkflowAgentConfig
+# com.openjiuwen.core.single_agent.legacy.config.WorkflowAgentConfig
 
 ## 类 WorkflowAgentConfig
 

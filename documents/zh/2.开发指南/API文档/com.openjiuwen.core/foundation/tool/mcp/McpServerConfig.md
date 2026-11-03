@@ -28,7 +28,11 @@ MCP 服务端配置对象，描述服务端标识、访问路径、客户端类�
 - `McpToolTest` 说明默认 `clientType` 为 `sse`。
 - 未显式提供 `serverId` 时会自动生成非空随机值。
 - 默认 `authHeaders`、`authQueryParams` 与 `params` 均为空 `Map`。
+- `clientType` 会在 MCP Server 注册路径上做归一化后用于 `ClientRegistry` 查询；原始配置对象中的字段值不会被改写。
+- 支持的主要 `clientType` 包括 `sse`、`stdio`、`streamable-http`、`openapi`、`playwright`。
+- 常见别名会被兼容：`SSE`、`mcp_SSE` 会归一化为 `sse`；`streamable_http`、`streamableHttp`、`STREAMABLE_HTTP`、`mcp_streamable_http`、`mcp-streamable-http` 会归一化为 `streamable-http`；`open-api` 会归一化为 `openapi`。
 
 ## 相关测试
 
 - `McpToolTest`
+- `McpClientsTest`

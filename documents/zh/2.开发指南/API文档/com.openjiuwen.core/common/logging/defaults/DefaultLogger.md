@@ -6,7 +6,7 @@
 public class DefaultLogger implements LoggerProtocol
 ```
 
-`DefaultLogger` 是默认的 `LoggerProtocol` 实现，底层同时维护 SLF4J/Logback 与 `java.util.logging.Logger`，并支持结构化事件输出。
+`DefaultLogger` 是默认的 `LoggerProtocol` 实现，底层同时维护 provider-neutral SLF4J 与 `java.util.logging.Logger`，并支持结构化事件输出。
 
 ## 字段
 
@@ -35,7 +35,7 @@ public class DefaultLogger implements LoggerProtocol
 | `public void critical(String msg, Object... args)` | 以 ERROR 通道输出严重错误，并追加 `[CRITICAL]` 前缀。 |
 | `public void exception(String msg, Throwable t, Object... args)` | 输出异常日志，并附带 Throwable。 |
 | `public void log(int level, String msg, Object... args)` | 把数值级别映射到 `error/warning/info/debug`。 |
-| `public void setLevel(int level)` | 同步调整 JUL 与 Logback 的日志级别。 |
+| `public void setLevel(int level)` | 调整 SDK 内部日志阈值，并同步调整 JUL logger 级别；SLF4J provider 的真实输出级别由应用侧配置决定。 |
 | `public void addHandler(Handler handler)` | 向 JUL logger 注册 handler。 |
 | `public void removeHandler(Handler handler)` | 从 JUL logger 移除 handler。 |
 | `public void addFilter(Filter filter)` | 追加 JUL 过滤器。 |

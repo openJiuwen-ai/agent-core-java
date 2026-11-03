@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.rail.AgentRail
+# com.openjiuwen.core.single_agent.rail.AgentRail
 
 ## 抽象类 AgentRail
 

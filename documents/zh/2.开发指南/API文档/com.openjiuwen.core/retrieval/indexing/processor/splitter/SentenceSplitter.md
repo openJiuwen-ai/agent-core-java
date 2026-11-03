@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.splitter.SentenceSplitter
+# com.openjiuwen.retrieval.indexing.processor.splitter.SentenceSplitter
 
 ## 类 SentenceSplitter
 

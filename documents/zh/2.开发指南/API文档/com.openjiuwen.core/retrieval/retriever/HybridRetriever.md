@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.retriever.HybridRetriever
+# com.openjiuwen.retrieval.retriever.HybridRetriever
 
 ## 类 HybridRetriever
 

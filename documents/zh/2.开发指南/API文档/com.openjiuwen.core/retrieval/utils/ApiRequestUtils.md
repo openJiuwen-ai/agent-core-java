@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.utils.ApiRequestUtils
+# com.openjiuwen.retrieval.utils.ApiRequestUtils
 
 ## 类 ApiRequestUtils
 

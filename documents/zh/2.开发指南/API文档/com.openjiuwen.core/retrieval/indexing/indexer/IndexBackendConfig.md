@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.indexer.IndexBackendConfig
+# com.openjiuwen.retrieval.indexing.indexer.IndexBackendConfig
 
 ## 接口 IndexBackendConfig
 

@@ -1,0 +1,57 @@
+# Adding a New StatusCode Entry
+
+## Step 1: Add to `StatusCode` enum
+
+File: `src/main/java/com/openjiuwen/core/common/exception/StatusCode.java`
+
+Find the numeric range section that matches your error category:
+
+| Range | Category | Example |
+|---|---|---|
+| 100xxx | Workflow | `WORKFLOW_EXECUTION_ERROR(100102, ...)` |
+| 12xxxx | Agent | `AGENT_CONTROLLER_RUNTIME_ERROR(120003, ...)` |
+| 15xxxx | Runner / Graph | — |
+| 18xxxx | Tool / Interface | `TOOL_EXECUTION_ERROR(182012, ...)` |
+| 19xxxx | Common / Security | `COMMON_JSON_INPUT_PROCESS_ERROR(188002, ...)` |
+
+Add the entry:
+
+```java
+EXAMPLE_NEW_ERROR(182013, "example new error, reason={reason}, context={context}"),
+```
+
+## Step 2: Verify no duplicate code
+
+Check that the integer code is unique in the enum. Duplicate codes cause
+`StatusMapping` ambiguity.
+
+## Step 3: Add compatibility test
+
+File: `src/test/java/com/openjiuwen/core/common/exception/StatusCodeTest.java`
+
+```java
+@Test
+@DisplayName("EXAMPLE_NEW_ERROR has correct code and message template")
+void testExampleNewError() {
+    StatusCode sc = StatusCode.EXAMPLE_NEW_ERROR;
+    assertThat(sc.getCode()).isEqualTo(182013);
+    assertThat(sc.getErrmsg()).contains("{reason}");
+    assertThat(sc.getErrmsg()).contains("{context}");
+}
+```
+
+## Step 4: Use it
+
+```java
+throw ErrorHelper.buildError(
+        StatusCode.EXAMPLE_NEW_ERROR,
+        "reason", "something failed",
+        "context", "additional info");
+```
+
+## Rules
+
+- Message template uses `{placeholder}` syntax (Python-compatible).
+- Do not raise bare `RuntimeException` — always go through `ErrorHelper`.
+- `ErrorHelper.buildError(...)` builds but does not throw; use `throw`.
+- `ErrorHelper.raiseError(...)` builds and throws in one call.

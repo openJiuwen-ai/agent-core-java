@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.operation.UpdateKVOperation
+# com.openjiuwen.memory.migration.operation.UpdateKVOperation
 
 ## 类 UpdateKVOperation
 

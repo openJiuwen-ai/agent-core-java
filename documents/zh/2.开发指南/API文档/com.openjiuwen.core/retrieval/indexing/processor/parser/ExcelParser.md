@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.parser.ExcelParser
+# com.openjiuwen.retrieval.indexing.processor.parser.ExcelParser
 
 ## 类 ExcelParser
 

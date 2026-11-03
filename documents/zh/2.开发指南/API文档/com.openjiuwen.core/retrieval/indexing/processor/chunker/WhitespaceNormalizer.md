@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.indexing.processor.chunker.WhitespaceNormalizer
+# com.openjiuwen.retrieval.indexing.processor.chunker.WhitespaceNormalizer
 
 ## 类 WhitespaceNormalizer
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.workflow.component.resource.KnowledgeRetrievalOutput
+# com.openjiuwen.retrieval.workflow.component.resource.KnowledgeRetrievalOutput
 
 ## 类 KnowledgeRetrievalOutput
 

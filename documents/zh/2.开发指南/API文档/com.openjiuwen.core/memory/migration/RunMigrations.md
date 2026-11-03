@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.RunMigrations
+# com.openjiuwen.memory.migration.RunMigrations
 
 ## 类 RunMigrations
 

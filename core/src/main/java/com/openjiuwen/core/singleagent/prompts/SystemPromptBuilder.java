@@ -1,0 +1,138 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.core.singleagent.prompts;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Mirrors Python's {@code SystemPromptBuilder} in
+ * {@code openjiuwen/core/single_agent/prompts/builder.py}.
+ */
+public class SystemPromptBuilder {
+    public static final Set<String> SUPPORTED_LANGUAGES = Set.of("cn", "en");
+    public static final String DEFAULT_LANGUAGE = "cn";
+
+    private final Map<String, PromptSection> sections = new LinkedHashMap<>();
+    private final Set<String> persistentSections = new HashSet<>();
+    private String language;
+
+    public SystemPromptBuilder() {
+        this(DEFAULT_LANGUAGE);
+    }
+
+    public SystemPromptBuilder(String language) {
+        this.language = Objects.requireNonNullElse(language, DEFAULT_LANGUAGE);
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = Objects.requireNonNullElse(language, DEFAULT_LANGUAGE);
+    }
+
+    public synchronized SystemPromptBuilder addSection(PromptSection section) {
+        sections.put(section.getName(), section);
+        return this;
+    }
+
+    public synchronized SystemPromptBuilder addPersistentSection(PromptSection section) {
+        if (section != null && section.getName() != null && !section.getName().isBlank()) {
+            sections.put(section.getName(), section);
+            persistentSections.add(section.getName());
+        }
+        return this;
+    }
+
+    public synchronized SystemPromptBuilder removeSection(String name) {
+        sections.remove(name);
+        persistentSections.remove(name);
+        return this;
+    }
+
+    public synchronized SystemPromptBuilder clearTransient() {
+        sections.keySet().removeIf(name -> !persistentSections.contains(name));
+        return this;
+    }
+
+    public synchronized Map<String, PromptSection> getAllSections() {
+        return new LinkedHashMap<>(sections);
+    }
+
+    /**
+     * Checks whether a section with the given name exists in this builder.
+     *
+     * @param name the section name to check, may be {@code null}
+     * @return {@code true} if a section with the given name is present, {@code false} otherwise
+     */
+    public synchronized boolean hasSection(String name) {
+        return sections.containsKey(name);
+    }
+
+    /**
+     * Retrieves the section with the given name, if present.
+     *
+     * @param name the section name to look up, may be {@code null}
+     * @return an {@code Optional} containing the matching {@link PromptSection}, or empty if not found
+     */
+    public synchronized Optional<PromptSection> getSection(String name) {
+        return Optional.ofNullable(sections.get(name));
+    }
+
+    /**
+     * Builds the final system prompt string by sorting sections by priority,
+     * rendering each in the current language, and joining non-blank parts with double newlines.
+     *
+     * @return the assembled system prompt string
+     */
+    public synchronized String build() {
+        List<PromptSection> sortedSections = new ArrayList<>(getSectionsForBuild());
+        sortedSections.sort(Comparator.comparingInt(PromptSection::getPriority));
+        return sortedSections.stream()
+                .map(section -> section.render(language))
+                .filter(part -> !part.isBlank())
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    /**
+     * Returns a defensive copy of all sections currently in this builder,
+     * used internally by {@link #build()}.
+     *
+     * @return a new list containing all current sections
+     */
+    protected synchronized List<PromptSection> getSectionsForBuild() {
+        return new ArrayList<>(sections.values());
+    }
+
+    /**
+     * Resolve the effective prompt language from config, then {@code AGENT_PROMPT_LANGUAGE}.
+     *
+     * @param configLanguage configured language, may be {@code null}
+     * @return a supported language code
+     */
+    public static String resolveLanguage(String configLanguage) {
+        return resolveLanguage(configLanguage, System.getenv("AGENT_PROMPT_LANGUAGE"));
+    }
+
+    static String resolveLanguage(String configLanguage, String environmentLanguage) {
+        if (configLanguage != null && SUPPORTED_LANGUAGES.contains(configLanguage)) {
+            return configLanguage;
+        }
+        if (environmentLanguage != null && SUPPORTED_LANGUAGES.contains(environmentLanguage)) {
+            return environmentLanguage;
+        }
+        return DEFAULT_LANGUAGE;
+    }
+}
