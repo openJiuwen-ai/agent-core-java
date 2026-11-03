@@ -242,13 +242,31 @@ public class PregelGraph extends Graph {
         for (Edge edge : regularEdges) {
             addBuilderEdge(builder, edge.sourceNodeId(), edge.targetNodeId());
         }
+        addBranches(builder, runNodes, routingScope);
+        return builder.build(graphStore, stepCallback);
+    }
+
+    /**
+     * Registers every conditional branch as a router on the engine.
+     *
+     * <p>Each selector is bound to the per-run copy of its source vertex, so
+     * the route reads that run's node session. A router that cannot name its
+     * component traces under an empty invoke id and its span is discarded, so
+     * the source vertex is part of the registration rather than resolved later.
+     * The lookup is captured once per branch, keeping dispatch allocation-free.
+     *
+     * @param builder engine builder receiving the routers
+     * @param runNodes vertices owned by the invocation
+     * @param routingScope per-compilation routing scope, may be {@code null}
+     */
+    private void addBranches(PregelBuilder builder, Map<String, Vertex> runNodes, RunRoutingScope routingScope) {
         for (Map.Entry<String, Map<String, Branch>> startEntry : branches.entrySet()) {
+            Vertex source = runNodes.get(startEntry.getKey());
             for (Branch branch : startEntry.getValue().values()) {
                 builder.addBranch(startEntry.getKey(),
-                        routingScope == null ? branch.asSupplier() : () -> routingScope.route(branch));
+                        routingScope == null ? branch.asSupplier() : () -> routingScope.route(branch, source));
             }
         }
-        return builder.build(graphStore, stepCallback);
     }
 
     /**

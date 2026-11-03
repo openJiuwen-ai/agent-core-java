@@ -13,9 +13,10 @@ import com.openjiuwen.core.session.BaseSession;
  * must not keep the session of the run that happened to compile last. Routers
  * implementing this interface receive the session of the current run at
  * dispatch time instead, which keeps the shared definition free of run state.
+ *
+ * @since 0.1.17
  */
 public interface RunScopedRouter {
-
     /**
      * Routes using the session of the current run.
      *

@@ -158,6 +158,20 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         return copy;
     }
 
+    /**
+     * Returns this vertex's node-scoped session for routing and tracing.
+     *
+     * <p>The session is produced by {@link #init} and already carries the run
+     * it belongs to, so a router evaluating this vertex's conditional edge sees
+     * that run's state and traces under this node's identity. Reads an existing
+     * field only, so routing adds no allocation.</p>
+     *
+     * @return the node-scoped session, or {@code null} before initialization
+     */
+    VertexSession routingSession() {
+        return session;
+    }
+
     public boolean init(VertexSession session) {
         return init(session, Collections.emptyMap());
     }

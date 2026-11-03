@@ -23,7 +23,6 @@ import java.util.function.Supplier;
  * fallback for callers that route outside a run.
  */
 final class FunctionRouterAdapter implements Router, Function<Object, Object>, RunScopedRouter {
-
     private final Function<Object, Object> delegate;
     private final Supplier<BaseSession> fallbackSession;
 

@@ -14,9 +14,10 @@ import java.util.Map;
  * before the run starts. A session implementing this interface receives the
  * run's vertex set right before execution, so stream consumers resolve the same
  * vertex the graph is executing.
+ *
+ * @since 0.1.17
  */
 public interface StreamVertexBinder {
-
     /**
      * Points the run's stream actors at the vertices owned by this run.
      *
