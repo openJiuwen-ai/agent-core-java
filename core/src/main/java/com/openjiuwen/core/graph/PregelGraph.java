@@ -143,9 +143,9 @@ public class PregelGraph extends Graph {
         // single engine would bind subsequent runs to the first compile's
         // session closure and checkpoint storage, so each compile gets its own
         // isolated engine while the graph topology itself remains reusable.
-        // Vertex init is deferred to invocation time (CompiledGraph
-        // invokes initVerticesForRun) so a second compile never mutates
-        // vertices still in use by an in-flight run of an earlier compile.
+        // Vertices are cloned per compile and left uninitialized: the clone is
+        // the run's private mutable state, while the graph-level vertices stay
+        // untouched so an in-flight run of an earlier compile keeps its own.
         Consumer<PregelLoop> afterStep = loop -> {
             if (session instanceof CompiledGraph.GraphRuntimeSession runtimeSession) {
                 CompiledGraph.WorkflowState state = runtimeSession.workflowState();
@@ -164,16 +164,56 @@ public class PregelGraph extends Graph {
                 graphStore = new GraphStore(checkpointer.graphStore());
             }
         }
-        Pregel pregel = compilePregel(graphStore, afterStep);
+        Map<String, Vertex> runNodes = copyNodesForRun();
+        RunRoutingScope routingScope = new RunRoutingScope(session);
+        Pregel pregel = compilePregel(runNodes, graphStore, afterStep, routingScope);
         Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
-        return new CompiledGraph(pregel, checkpointer, this, session, options);
+        return new CompiledGraph(pregel, checkpointer, runNodes, session, options, routingScope);
     }
 
     public Pregel compilePregel(Store graphStore, Consumer<PregelLoop> stepCallback) {
+        return compilePregel(copyNodesForRun(), graphStore, stepCallback);
+    }
+
+    /**
+     * Compiles a Pregel engine over the given per-run vertex set.
+     *
+     * @param runNodes vertices owned by the invocation; the engine closure
+     *                 captures these instead of the graph-level templates
+     * @param graphStore checkpoint store, may be {@code null}
+     * @param stepCallback super-step callback, may be {@code null}
+     * @return a Pregel engine bound to {@code runNodes}
+     */
+    public Pregel compilePregel(Map<String, Vertex> runNodes,
+                                Store graphStore,
+                                Consumer<PregelLoop> stepCallback) {
+        return compilePregel(runNodes, graphStore, stepCallback, null);
+    }
+
+    /**
+     * Compiles a Pregel engine whose conditional branches resolve against
+     * {@code routingScope}.
+     *
+     * <p>Branch definitions are shared by every run of the graph, so the
+     * selector handed to the engine must not read a session stored on the
+     * definition. The scope is per-compilation and supplies the session of the
+     * run currently executing, which keeps concurrent runs from routing on each
+     * other's state.
+     *
+     * @param runNodes vertices owned by the invocation
+     * @param graphStore checkpoint store, may be {@code null}
+     * @param stepCallback super-step callback, may be {@code null}
+     * @param routingScope per-compilation routing scope, may be {@code null}
+     * @return a Pregel engine bound to {@code runNodes}
+     */
+    public Pregel compilePregel(Map<String, Vertex> runNodes,
+                                Store graphStore,
+                                Consumer<PregelLoop> stepCallback,
+                                RunRoutingScope routingScope) {
         List<Edge> regularEdges = new ArrayList<>();
         Map<String, List<Set<String>>> sources = new LinkedHashMap<>();
         PregelBuilder builder = new PregelBuilder();
-        for (Map.Entry<String, Vertex> entry : nodes.entrySet()) {
+        for (Map.Entry<String, Vertex> entry : runNodes.entrySet()) {
             Vertex vertex = entry.getValue();
             builder.addNode(entry.getKey(), invocation -> invokeVertex(vertex, invocation));
         }
@@ -202,39 +242,79 @@ public class PregelGraph extends Graph {
         for (Edge edge : regularEdges) {
             addBuilderEdge(builder, edge.sourceNodeId(), edge.targetNodeId());
         }
-        for (Map.Entry<String, Map<String, Branch>> startEntry : branches.entrySet()) {
-            for (Branch branch : startEntry.getValue().values()) {
-                builder.addBranch(startEntry.getKey(), branch.asSupplier());
-            }
-        }
+        addBranches(builder, runNodes, routingScope);
         return builder.build(graphStore, stepCallback);
     }
 
-    public void reset() {
-        for (Vertex node : nodes.values()) {
-            node.reset();
+    /**
+     * Registers every conditional branch as a router on the engine.
+     *
+     * <p>Each selector is bound to the per-run copy of its source vertex, so
+     * the route reads that run's node session. A router that cannot name its
+     * component traces under an empty invoke id and its span is discarded, so
+     * the source vertex is part of the registration rather than resolved later.
+     * The lookup is captured once per branch, keeping dispatch allocation-free.
+     *
+     * @param builder engine builder receiving the routers
+     * @param runNodes vertices owned by the invocation
+     * @param routingScope per-compilation routing scope, may be {@code null}
+     */
+    private void addBranches(PregelBuilder builder, Map<String, Vertex> runNodes, RunRoutingScope routingScope) {
+        for (Map.Entry<String, Map<String, Branch>> startEntry : branches.entrySet()) {
+            Vertex source = runNodes.get(startEntry.getKey());
+            for (Branch branch : startEntry.getValue().values()) {
+                builder.addBranch(startEntry.getKey(),
+                        routingScope == null ? branch.asSupplier() : () -> routingScope.route(branch, source));
+            }
         }
     }
 
     /**
-     * Initialize every vertex with the given per-run session.
+     * Graph-level reset hook.
      *
-     * <p>Called by {@link CompiledGraph} before each invocation so vertices
-     * bind to the session of the current run rather than a stale session left
-     * by a previous compile on the shared graph.
+     * <p>Vertices carry per-run state and each compilation owns its copies, so
+     * there is no graph-level state left to clear. Resetting the shared
+     * templates here would either be a no-op (they are never initialized) or,
+     * if they were shared again, cancel the stream completion signal an
+     * in-flight run is still waiting on.
+     */
+    public void reset() {
+        // Intentionally empty: run state is reclaimed with the run's vertices.
+    }
+
+    /**
+     * Copies the graph-level vertices into a fresh per-run vertex set.
      *
-     * <p><strong>Concurrency note:</strong> vertices are shared graph-level
-     * instances. Per-run vertex init rebinds every vertex to the current
-     * invocation's session before {@code pregel.run} executes, so each run
-     * observes its own session. Nested invocations (a sub-workflow re-entering
-     * its own graph) and serial reuse (compile then invoke, repeated) are
-     * safe because init runs before each invocation.
+     * <p>Each copy shares its node id, executable and executor with the
+     * template, so the topology and component instances stay shared while the
+     * run state (session, counters, stream completion) becomes private. The
+     * graph-level vertices are never initialized, which keeps in-flight runs of
+     * other compiles unaffected.
      *
+     * @return mutable per-run vertex set
+     */
+    Map<String, Vertex> copyNodesForRun() {
+        Map<String, Vertex> copies = new LinkedHashMap<>();
+        for (Map.Entry<String, Vertex> entry : nodes.entrySet()) {
+            copies.put(entry.getKey(), entry.getValue().copyForRun());
+        }
+        return copies;
+    }
+
+    /**
+     * Initializes a per-run vertex set with the given session.
+     *
+     * <p>Called by {@link CompiledGraph} before each invocation. Only the
+     * invocation's own copies are touched, so overlapping runs never rebind
+     * each other's vertices.
+     *
+     * @param runNodes per-run vertex set produced by {@link #copyNodesForRun()}
      * @param session per-run vertex session
      * @param options compile options (may contain context)
      */
-    void initVertices(Vertex.VertexSession session, Map<String, Object> options) {
-        for (Vertex node : nodes.values()) {
+    static void initVertices(Map<String, Vertex> runNodes, Vertex.VertexSession session,
+                             Map<String, Object> options) {
+        for (Vertex node : runNodes.values()) {
             node.init(session, options);
         }
     }

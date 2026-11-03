@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.graph;
 
+import com.openjiuwen.core.session.BaseSession;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.function.Function;
@@ -71,5 +73,26 @@ public class Branch {
 
     private enum InvocationMissing {
         INSTANCE
+    }
+
+    /**
+     * Routes using an explicit run session.
+     *
+     * <p>Routers shared by concurrent runs must not resolve their session from
+     * mutable definition state. A condition implementing
+     * {@link RunScopedRouter} receives {@code runSession} directly; other
+     * conditions keep their legacy no-argument contract.
+     *
+     * @param runSession session of the run evaluating this branch
+     * @return the routing result
+     */
+    Object route(BaseSession runSession) {
+        if (condition instanceof RunScopedRouter scoped) {
+            return scoped.routeWith(runSession);
+        }
+        if (condition instanceof Router router) {
+            return runSession == null ? router.route() : router.route(runSession);
+        }
+        return route();
     }
 }

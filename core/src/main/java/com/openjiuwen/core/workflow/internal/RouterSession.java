@@ -13,21 +13,59 @@ import java.util.Map;
 /**
  * Mirrors Python's router session wrapper used by
  * {@code openjiuwen/core/workflow/_workflow.py}.
+ *
+ * <p>A router function receives this wrapper as its session argument. The
+ * wrapper must expose the state of the run being executed, so an instance
+ * created with {@link #of(BaseSession)} is bound to that run for its whole
+ * lifetime and never consults shared, mutable state.</p>
  */
 public class RouterSession extends com.openjiuwen.core.session.internal.RouterSession {
 
     private final ProxySession proxySession;
+    private final BaseSession boundSession;
 
+    /**
+     * Creates a wrapper that resolves the session through a proxy.
+     *
+     * <p>Kept for callers that bind the proxy after construction. Workflow
+     * routing uses {@link #of(BaseSession)} instead so concurrent runs never
+     * resolve each other's session.
+     *
+     * @param proxySession delegating session, may be {@code null}
+     */
     public RouterSession(ProxySession proxySession) {
         super(proxySession);
         this.proxySession = proxySession;
+        this.boundSession = null;
+    }
+
+    private RouterSession(BaseSession boundSession) {
+        super(boundSession);
+        this.proxySession = null;
+        this.boundSession = boundSession;
+    }
+
+    /**
+     * Creates a wrapper bound to the session of one specific run.
+     *
+     * @param runSession session of the run evaluating the router
+     * @return a router session that never resolves another run's state
+     */
+    public static RouterSession of(BaseSession runSession) {
+        return new RouterSession(runSession);
     }
 
     public BaseSession innerSession() {
+        if (boundSession != null) {
+            return boundSession;
+        }
         return proxySession != null ? proxySession.getSession() : null;
     }
 
     public Object getGlobal(String key) {
+        if (boundSession != null) {
+            return boundSession.state() == null ? null : boundSession.state().getGlobal(key);
+        }
         return proxySession != null ? proxySession.getGlobal(key) : null;
     }
 
@@ -67,7 +105,7 @@ public class RouterSession extends com.openjiuwen.core.session.internal.RouterSe
 
     @Override
     public Object getGlobalState(Object key) {
-        return proxySession != null ? proxySession.getGlobal(String.valueOf(key)) : null;
+        return getGlobal(String.valueOf(key));
     }
 
     @Override
