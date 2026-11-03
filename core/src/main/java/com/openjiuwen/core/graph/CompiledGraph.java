@@ -26,9 +26,10 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
     private final Map<String, Vertex> runNodes;
     private final BaseSession compileSession;
     private final Map<String, Object> compileOptions;
+    private final RunRoutingScope routingScope;
 
     public CompiledGraph(Pregel pregel, GraphCheckpointer checkpointer) {
-        this(pregel, checkpointer, null, null, null);
+        this(pregel, checkpointer, null, null, null, null);
     }
 
     /**
@@ -41,15 +42,18 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
      *                       another compilation of the same graph
      * @param compileSession the session passed to {@code compile()} (per-run)
      * @param compileOptions the options map passed to {@code compile()}
+     * @param routingScope   routing scope this compilation's branch selectors
+     *                       resolve against, may be {@code null}
      */
     public CompiledGraph(Pregel pregel, GraphCheckpointer checkpointer,
                          Map<String, Vertex> runNodes, BaseSession compileSession,
-                         Map<String, Object> compileOptions) {
+                         Map<String, Object> compileOptions, RunRoutingScope routingScope) {
         this.pregel = pregel;
         this.checkpointer = checkpointer;
         this.runNodes = runNodes;
         this.compileSession = compileSession;
         this.compileOptions = compileOptions;
+        this.routingScope = routingScope;
     }
 
     @Override
@@ -64,7 +68,6 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
         // Vertices are private to the compilation, so an overlapping run of
         // another compilation cannot rebind them mid-flight.
         initVerticesForRun(session);
-
         try {
             if (isMain && checkpointer != null) {
                 checkpointer.preWorkflowExecute(session, inputs);
@@ -106,10 +109,13 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
      * @param session the invocation session passed to the current run
      */
     private void initVerticesForRun(BaseSession session) {
+        BaseSession effectiveSession = session != null ? session : compileSession;
+        if (routingScope != null) {
+            routingScope.bind(effectiveSession);
+        }
         if (runNodes == null || runNodes.isEmpty()) {
             return;
         }
-        BaseSession effectiveSession = session != null ? session : compileSession;
         if (effectiveSession instanceof Vertex.VertexSession vertexSession) {
             PregelGraph.initVertices(runNodes, vertexSession, compileOptions);
         }

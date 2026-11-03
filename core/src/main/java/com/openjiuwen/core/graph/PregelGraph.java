@@ -165,9 +165,10 @@ public class PregelGraph extends Graph {
             }
         }
         Map<String, Vertex> runNodes = copyNodesForRun();
-        Pregel pregel = compilePregel(runNodes, graphStore, afterStep);
+        RunRoutingScope routingScope = new RunRoutingScope(session);
+        Pregel pregel = compilePregel(runNodes, graphStore, afterStep, routingScope);
         Map<String, Object> options = kwargs == null ? Collections.emptyMap() : new LinkedHashMap<>(kwargs);
-        return new CompiledGraph(pregel, checkpointer, runNodes, session, options);
+        return new CompiledGraph(pregel, checkpointer, runNodes, session, options, routingScope);
     }
 
     public Pregel compilePregel(Store graphStore, Consumer<PregelLoop> stepCallback) {
@@ -186,6 +187,29 @@ public class PregelGraph extends Graph {
     public Pregel compilePregel(Map<String, Vertex> runNodes,
                                 Store graphStore,
                                 Consumer<PregelLoop> stepCallback) {
+        return compilePregel(runNodes, graphStore, stepCallback, null);
+    }
+
+    /**
+     * Compiles a Pregel engine whose conditional branches resolve against
+     * {@code routingScope}.
+     *
+     * <p>Branch definitions are shared by every run of the graph, so the
+     * selector handed to the engine must not read a session stored on the
+     * definition. The scope is per-compilation and supplies the session of the
+     * run currently executing, which keeps concurrent runs from routing on each
+     * other's state.
+     *
+     * @param runNodes vertices owned by the invocation
+     * @param graphStore checkpoint store, may be {@code null}
+     * @param stepCallback super-step callback, may be {@code null}
+     * @param routingScope per-compilation routing scope, may be {@code null}
+     * @return a Pregel engine bound to {@code runNodes}
+     */
+    public Pregel compilePregel(Map<String, Vertex> runNodes,
+                                Store graphStore,
+                                Consumer<PregelLoop> stepCallback,
+                                RunRoutingScope routingScope) {
         List<Edge> regularEdges = new ArrayList<>();
         Map<String, List<Set<String>>> sources = new LinkedHashMap<>();
         PregelBuilder builder = new PregelBuilder();
@@ -220,7 +244,8 @@ public class PregelGraph extends Graph {
         }
         for (Map.Entry<String, Map<String, Branch>> startEntry : branches.entrySet()) {
             for (Branch branch : startEntry.getValue().values()) {
-                builder.addBranch(startEntry.getKey(), branch.asSupplier());
+                builder.addBranch(startEntry.getKey(),
+                        routingScope == null ? branch.asSupplier() : () -> routingScope.route(branch));
             }
         }
         return builder.build(graphStore, stepCallback);
