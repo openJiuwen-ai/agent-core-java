@@ -52,7 +52,7 @@ public class AgentSessionApi implements Session {
 
     // checkpointer 的 session key 由线程租户推导，而 preRun 与 postRun 可能落在不同线程
     // （流式场景 postRun 在池线程执行）。这里固化 preRun 时刻解析出的租户，postRun 复用它，
-    // 保证两端推导出同一个 key；否则会查不到 preRun 创建的 agent store（BUG-0005）。
+    // 保证两端推导出同一个 key；否则会查不到 preRun 创建的 agent store。
     private volatile TenantContext checkpointerTenant;
     private volatile boolean isCheckpointerTenantResolved;
 
@@ -421,6 +421,9 @@ public class AgentSessionApi implements Session {
      * session so its preRun CAS guard is skipped (avoids a redundant checkpoint
      * read) without accidentally importing a stale POST_DONE from a reused
      * upstream session.
+     * <p>
+     * 同时继承上游固化的 checkpointer 租户：下游不执行 preRun，checkpointer 实际消费的
+     * 只能是上游 preRun 时刻解析出的值。
      *
      * @param source the session whose PRE_DONE bit to copy
      * @since 0.1.15
@@ -428,9 +431,10 @@ public class AgentSessionApi implements Session {
     public void copyPreRunState(AgentSessionApi source) {
         if (source != null && (source.runState.get() & PRE_DONE) != 0) {
             runState.getAndUpdate(s -> s | PRE_DONE);
-            // 本实例因沿用上游状态而跳过 preRun，仍需固化租户供 postRun 复用（BUG-0005）；
-            // 此处运行在调用线程，租户仍可用。
-            resolveCheckpointerTenant();
+            // 本实例沿用上游状态而跳过 preRun，因此 checkpointer 消费的租户只能是上游 preRun 时刻
+            // 固化的值；直接转发，避免按拷贝时刻的线程状态重新推导而与上游分叉。
+            checkpointerTenant = source.checkpointerTenant;
+            isCheckpointerTenantResolved = source.isCheckpointerTenantResolved;
         }
     }
 

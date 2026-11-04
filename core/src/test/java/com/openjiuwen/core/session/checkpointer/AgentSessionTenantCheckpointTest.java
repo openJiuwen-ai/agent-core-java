@@ -160,6 +160,67 @@ class AgentSessionTenantCheckpointTest {
         }
     }
 
+    @Test
+    @DisplayName("copyPreRunState: caller tenant cleared after source preRun keeps the source tenant")
+    void testCopyPreRunState_callerTenantCleared_keepsSourceTenant() throws Exception {
+        // Mirrors DeepAgent.invokeInternal / streamInternal: the effective session skips its own
+        // preRun by copying PRE_DONE from the upstream session. The tenant the checkpointer
+        // actually consumed is the one resolved on the upstream thread at upstream preRun time;
+        // the caller thread may no longer carry it when the copy happens.
+        TenantContext ctx = TenantContext.builder().tenantId("tenant_c").build();
+        AgentSessionApi source = new AgentSessionApi("red-copy-tenant");
+        TenantContextHolder.setCurrentTenant(ctx);
+        source.preRun(Map.of("query", "hello"));
+        TenantContextHolder.clearCurrentTenant();
+
+        AgentSessionApi effective = new AgentSessionApi("red-copy-tenant");
+        effective.copyPreRunState(source);
+
+        assertThatCode(() -> runPostRunOnFreshWorker(effective))
+                .as("the effective session must reuse the tenant consumed by the upstream preRun")
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("copyPreRunState: source without tenant keeps the bare key even if the caller has one")
+    void testCopyPreRunState_sourceWithoutTenant_ignoresCallerTenant() throws Exception {
+        // The mirror direction: the upstream preRun ran without a tenant, so the store lives under
+        // the bare session id. A tenant bound later on the copying thread must not leak into the
+        // downstream key derivation.
+        AgentSessionApi source = new AgentSessionApi("red-copy-no-tenant");
+        TenantContextHolder.clearCurrentTenant();
+        source.preRun(Map.of("query", "hello"));
+
+        AgentSessionApi effective = new AgentSessionApi("red-copy-no-tenant");
+        TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId("tenant_d").build());
+        try {
+            effective.copyPreRunState(source);
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+        }
+
+        assertThatCode(() -> runPostRunOnFreshWorker(effective))
+                .as("the effective session must keep the bare key derived by the upstream preRun")
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("copyPreRunState: unchanged when the copying thread still carries the same tenant")
+    void testCopyPreRunState_sameThreadTenant_stillSaves() throws Exception {
+        TenantContext ctx = TenantContext.builder().tenantId("tenant_e").build();
+        AgentSessionApi source = new AgentSessionApi("ctrl-copy-same-tenant");
+        TenantContextHolder.setCurrentTenant(ctx);
+        source.preRun(Map.of("query", "hello"));
+
+        AgentSessionApi effective = new AgentSessionApi("ctrl-copy-same-tenant");
+        effective.copyPreRunState(source);
+        TenantContextHolder.clearCurrentTenant();
+
+        assertThatCode(() -> runPostRunOnFreshWorker(effective))
+                .as("same-tenant copy must keep working")
+                .doesNotThrowAnyException();
+    }
+
     private void runPostRunOnFreshWorker(AgentSessionApi session) throws Exception {
         ExecutorService worker = newSingleWorker("bugfix-fresh-worker");
         try {
