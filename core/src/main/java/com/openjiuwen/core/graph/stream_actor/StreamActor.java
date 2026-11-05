@@ -45,7 +45,7 @@ public class StreamActor {
             OpenJiuwenExecutors.newBoundedModulePool("stream-actor", false);
 
     private final Map<ComponentAbility, StreamProcessor> processors = new HashMap<>();
-    private final StreamConsumer vertex;
+    private volatile StreamConsumer vertex;
     private final String nodeId;
     private final List<RunningTask> runningTasks = new ArrayList<>();
     private final StripedKeyLocks producerLocks = new StripedKeyLocks(32);
@@ -79,6 +79,24 @@ public class StreamActor {
     }
 
     /**
+     * Rebinds this actor to the vertex owned by the current run.
+     *
+     * <p>Actor instances live for one graph execution, while vertices are
+     * per-run: the template vertex the actor was built with is never
+     * initialized, so the actor must consume the run's own vertex to see its
+     * stream counters and session.
+     *
+     * @param vertex the run's vertex for this node id
+     * @return this actor for chaining
+     */
+    public StreamActor bindVertex(StreamConsumer vertex) {
+        if (vertex != null) {
+            this.vertex = vertex;
+        }
+        return this;
+    }
+
+    /**
      * Sends a stream message to the actor, starting the vertex stream call on the first valid frame.
      *
      * @param message stream message
@@ -106,7 +124,7 @@ public class StreamActor {
             boolean isFirstFrame,
             String producerId) {
         String abilityName = sourceAbility.getAbilityName();
-        if (!vertex.shouldHandleMessage()) {
+        if (!currentVertex().shouldHandleMessage()) {
             LOGGER.warning("Discard chunk send from [{}], {}[{}] unable to handle",
                     producerId, nodeId, abilityName);
             return;
@@ -129,7 +147,7 @@ public class StreamActor {
                     LOGGER.debug("Continue chunk dispatch from [{}] to active {}[{}] processors",
                             producerId, nodeId, abilityName);
                 } else {
-                    if (!isFirstFrame || !vertex.isDone()) {
+                    if (!isFirstFrame || !currentVertex().isDone()) {
                         LOGGER.warning("Discard chunk send from [{}], {}[{}] vertex is done",
                                 producerId, nodeId, abilityName);
                         return;
@@ -254,12 +272,21 @@ public class StreamActor {
 
     private void beginStreamCall() {
         CountDownLatch latch = new CountDownLatch(1);
+        StreamConsumer runVertex = currentVertex();
         startLatch = latch;
         taskError = new CompletableFuture<>();
         startupError = new CompletableFuture<>();
         taskCompletion = new CompletableFuture<>();
         task = STREAM_EXECUTOR.submit(() -> runStreamTask(
-                () -> vertex.streamCall(latch, this::errorCallback), taskCompletion));
+                () -> runVertex.streamCall(latch, this::errorCallback), taskCompletion));
+    }
+
+    private StreamConsumer currentVertex() {
+        StreamConsumer current = vertex;
+        if (current == null) {
+            throw new IllegalStateException("stream consumer is not bound for node " + nodeId);
+        }
+        return current;
     }
 
     private void awaitStartLatch(CountDownLatch latch) {

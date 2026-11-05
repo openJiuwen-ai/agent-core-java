@@ -31,9 +31,10 @@ import java.util.Map;
 class SessionModelContextWindowTest {
     @ParameterizedTest
     @ValueSource(ints = {1, 2, 10})
-    void defaultWindowWithinRoundLimitRetainsHistoryPrefix(int rounds) {
+    void configuredWindowWithinRoundLimitRetainsHistoryPrefix(int rounds) {
         List<BaseMessage> history = historyWithRounds(rounds);
-        SessionModelContext context = createContext(new ContextEngineConfig(), history);
+        ContextEngineConfig config = ContextEngineConfig.builder().defaultWindowRoundNum(10).build();
+        SessionModelContext context = createContext(config, history);
 
         ContextWindow window = window(context, null);
 
@@ -54,10 +55,10 @@ class SessionModelContextWindowTest {
     }
 
     @Test
-    void explicitNullConfigurationRetainsHistoryPrefix() {
+    void explicitNullConfigurationRetainsLargeHistoryPrefix() {
         ContextEngineConfig config = ContextEngineConfig.builder()
                 .defaultWindowRoundNum(null).defaultWindowMessageNum(null).maxContextMessageNum(null).build();
-        List<BaseMessage> history = historyWithRounds(1);
+        List<BaseMessage> history = historyWithRounds(101);
         SessionModelContext context = createContext(config, history);
 
         ContextWindow window = window(context, null);
@@ -66,9 +67,21 @@ class SessionModelContextWindowTest {
     }
 
     @Test
-    void defaultRoundLimitStillTrimsExcessDialogue() {
-        List<BaseMessage> history = historyWithRounds(11);
+    void unconfiguredWindowRetainsLargeHistoryPrefix() {
+        List<BaseMessage> history = historyWithRounds(101);
         SessionModelContext context = createContext(new ContextEngineConfig(), history);
+
+        ContextWindow window = window(context, null);
+
+        assertThat(window.getMessages()).containsExactlyElementsOf(history);
+        assertThat(window.getStatistic().getTotalDialogues()).isEqualTo(101);
+    }
+
+    @Test
+    void configuredRoundLimitStillTrimsExcessDialogue() {
+        List<BaseMessage> history = historyWithRounds(11);
+        ContextEngineConfig config = ContextEngineConfig.builder().defaultWindowRoundNum(10).build();
+        SessionModelContext context = createContext(config, history);
 
         ContextWindow window = window(context, null);
 
@@ -116,8 +129,9 @@ class SessionModelContextWindowTest {
     }
 
     @Test
-    void defaultMessageLimitStillBoundsASingleLargeRound() {
-        ContextEngineConfig config = ContextEngineConfig.builder().maxContextMessageNum(300).build();
+    void configuredMessageLimitStillBoundsASingleLargeRound() {
+        ContextEngineConfig config = ContextEngineConfig.builder()
+                .maxContextMessageNum(300).defaultWindowMessageNum(200).build();
         List<BaseMessage> history = historyWithRounds(0);
         for (int index = 0; index < 201; index++) {
             history.add(new UserMessage("question part " + index));

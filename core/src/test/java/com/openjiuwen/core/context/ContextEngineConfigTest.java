@@ -22,9 +22,9 @@ class ContextEngineConfigTest {
     @DisplayName("Default config has sensible defaults")
     void testDefaults() {
         ContextEngineConfig config = ContextEngineConfig.builder().build();
-        assertEquals(ContextEngineConfig.DEFAULT_MAX_CONTEXT_MESSAGE_NUM, config.getMaxContextMessageNum());
-        assertEquals(ContextEngineConfig.DEFAULT_WINDOW_MESSAGE_NUM, config.getDefaultWindowMessageNum());
-        assertEquals(ContextEngineConfig.DEFAULT_WINDOW_ROUND_NUM, config.getDefaultWindowRoundNum());
+        assertNull(config.getMaxContextMessageNum());
+        assertNull(config.getDefaultWindowMessageNum());
+        assertNull(config.getDefaultWindowRoundNum());
         assertFalse(config.isEnableReload());
         assertFalse(config.isTiktokenCounterEnabled());
         assertNull(config.getContextWindowTokens());

@@ -34,6 +34,28 @@ import java.util.function.Consumer;
  */
 class StreamActorStartupTest {
     @Test
+    void startupWaitFollowsTheConsumerBoundToThisRun() throws Exception {
+        DelayedConsumer runConsumer = new DelayedConsumer();
+        try (Fixture fixture = new Fixture(5000)) {
+            fixture.actor.bindVertex(runConsumer);
+            try {
+                Future<?> send = fixture.executor.submit(fixture::send);
+                assertTrue(runConsumer.entered.await(5, TimeUnit.SECONDS));
+                Future<?> batch = fixture.executor.submit(fixture.actor::awaitStarted);
+
+                assertThrows(TimeoutException.class, () -> batch.get(100, TimeUnit.MILLISECONDS));
+                assertThat(fixture.consumer.calls.get()).isZero();
+                runConsumer.release.countDown();
+                batch.get(5, TimeUnit.SECONDS);
+                send.get(5, TimeUnit.SECONDS);
+                assertThat(runConsumer.calls.get()).isEqualTo(1);
+            } finally {
+                runConsumer.release.countDown();
+            }
+        }
+    }
+
+    @Test
     void batchObserverWaitsForScheduledConsumerReadiness() throws Exception {
         try (Fixture fixture = new Fixture(5000)) {
             Future<?> send = fixture.executor.submit(fixture::send);

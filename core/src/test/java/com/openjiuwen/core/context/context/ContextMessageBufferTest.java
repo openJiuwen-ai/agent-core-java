@@ -6,11 +6,17 @@ package com.openjiuwen.core.context.context;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Focused parity tests for context message buffering.
@@ -92,5 +98,283 @@ class ContextMessageBufferTest {
         buffer.rebulid(List.of(new BaseMessage("user", "rebuilt")));
 
         assertThat(buffer.getBack()).extracting(BaseMessage::getContent).containsExactly("rebuilt");
+    }
+
+    @Test
+    void maxBufferSizeDoesNotSplitToolCallGroupsOnVisibleTail() {
+        // issue #200 / Python #2000: naive last-N leaves orphan ToolMessages.
+        List<BaseMessage> history = issue200History();
+        ContextMessageBuffer buffer = new ContextMessageBuffer(history, 4);
+        buffer.addBack(new UserMessage("按专家意见继续"));
+
+        List<BaseMessage> stored = buffer.getBack(null, true);
+        assertThat(stored).isNotEmpty();
+        assertThat(stored.get(0)).isNotInstanceOf(ToolMessage.class);
+        assertThat(show(stored)).doesNotStartWith("[tool:");
+        assertThat(stored.size()).isLessThanOrEqualTo(4);
+        // Either keep the complete search tool group or drop it entirely — never orphan tools.
+        boolean hasSearchAssistant = stored.stream().anyMatch(ContextMessageBufferTest::isSearchAssistant);
+        boolean hasSearchTool = stored.stream().anyMatch(message ->
+                message instanceof ToolMessage tool
+                        && ("c2".equals(tool.getToolCallId()) || "c3".equals(tool.getToolCallId())));
+        assertThat(hasSearchTool).isEqualTo(hasSearchAssistant);
+    }
+
+    @Test
+    void getBackWithExplicitSizeDoesNotStartOnOrphanToolMessages() {
+        // Secondary count cut (e.g. IntentRecognizer getMessages(50)) must keep the same
+        // tool-group contract as maxBufferSize tail — never lead with orphan ToolMessages.
+        ContextMessageBuffer buffer = new ContextMessageBuffer(issue200History(), null);
+        buffer.addBack(new UserMessage("按专家意见继续"));
+
+        List<BaseMessage> sliced = buffer.getBack(4, true);
+
+        assertThat(sliced).isNotEmpty();
+        assertThat(sliced.get(0)).isNotInstanceOf(ToolMessage.class);
+        assertThat(sliced.size()).isLessThanOrEqualTo(4);
+        boolean hasSearchAssistant = sliced.stream().anyMatch(ContextMessageBufferTest::isSearchAssistant);
+        boolean hasSearchTool = sliced.stream().anyMatch(message ->
+                message instanceof ToolMessage tool
+                        && ("c2".equals(tool.getToolCallId()) || "c3".equals(tool.getToolCallId())));
+        assertThat(hasSearchTool).isEqualTo(hasSearchAssistant);
+    }
+
+    @Test
+    void popBackNullOrPhysicalSizeDrainsAllStoredMessages() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 4);
+        buffer.addBack(issue200History());
+        buffer.addBack(new UserMessage("按专家意见继续"));
+        assertThat(buffer.size()).isEqualTo(buffer.getBack(null, true).size());
+
+        List<BaseMessage> popped = buffer.popBack(null, true);
+
+        assertThat(popped.size()).isGreaterThanOrEqualTo(4);
+        assertThat(buffer.getBack(null, true)).isEmpty();
+        assertThat(buffer.size()).isEqualTo(0);
+    }
+
+    @Test
+    void clearDrainsPhysicalMessagesIgnoringToolGroupAlignment() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 4);
+        buffer.addBack(issue200History());
+        buffer.addBack(new UserMessage("按专家意见继续"));
+        assertThat(buffer.peekLast()).isNotNull();
+
+        List<BaseMessage> removed = buffer.clear(true);
+
+        assertThat(removed.size()).isGreaterThanOrEqualTo(4);
+        assertThat(buffer.getBack(null, true)).isEmpty();
+        assertThat(buffer.size()).isEqualTo(0);
+        assertThat(buffer.peekLast()).isNull();
+    }
+
+    @Test
+    void sessionModelContextClearMessagesClearsWhenToolGroupsWereAlignedOnRead() {
+        com.openjiuwen.core.context.schema.ContextEngineConfig config =
+                new com.openjiuwen.core.context.schema.ContextEngineConfig();
+        config.setMaxContextMessageNum(4);
+        SessionModelContext ctx = new SessionModelContext("c", "s", config, List.of(), List.of(), null);
+        ctx.addMessages(issue200History()).toCompletableFuture().join();
+        ctx.addMessages(List.of(new UserMessage("按专家意见继续"))).toCompletableFuture().join();
+        // size()/length() must match aligned getMessages count.
+        assertThat(ctx.length()).isEqualTo(ctx.getMessages(null, true).size());
+
+        ctx.clearMessages(true).toCompletableFuture().join();
+
+        assertThat(ctx.getMessages(null, true)).isEmpty();
+        assertThat(ctx.length()).isEqualTo(0);
+        assertThat(ctx.peekLastMessage()).isNull();
+    }
+
+    @Test
+    void sizeMatchesAlignedGetBackCount() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 4);
+        buffer.addBack(issue200History());
+        buffer.addBack(new UserMessage("按专家意见继续"));
+
+        List<BaseMessage> visible = buffer.getBack(null, true);
+        assertThat(buffer.size()).isEqualTo(visible.size());
+        assertThat(visible.size()).isLessThanOrEqualTo(4);
+        assertThat(visible.get(0)).isNotInstanceOf(ToolMessage.class);
+    }
+
+    @Test
+    void popBackWithExplicitSizeRemovesAndReturnsTheSameNaiveSuffix() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(issue200History(), null);
+        buffer.addBack(new UserMessage("按专家意见继续"));
+        // Mutation path is naive (Python parity): pop N returns and removes the same N.
+
+        List<BaseMessage> before = new ArrayList<>(buffer.getBack(null, true));
+        List<BaseMessage> popped = buffer.popBack(4, true);
+        List<BaseMessage> after = buffer.getBack(null, true);
+
+        assertThat(popped).hasSize(4);
+        assertThat(popped).extracting(BaseMessage::getContentAsString)
+                .containsExactly("检索结果2", "检索结果3", "已整理", "按专家意见继续");
+        assertThat(after).hasSize(before.size() - 4);
+        assertThat(after).extracting(BaseMessage::getContentAsString)
+                .doesNotContain("检索结果2", "检索结果3", "已整理", "按专家意见继续");
+    }
+
+    @Test
+    void resizeIfNeededDoesNotWipeBufferWhenRetainedSuffixIsAllTools() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 2);
+        // physical 5 > 2*2 → resize. Naive cut at 2 leaves [t1,t2,t3]; skipping those
+        // orphans would reach EOF — must fall back to naive cut, not clear the buffer.
+        buffer.addBack(List.of(
+                new UserMessage("u0"),
+                new UserMessage("u1"),
+                new ToolMessage("r1", "c1"),
+                new ToolMessage("r2", "c1"),
+                new ToolMessage("r3", "c1")));
+
+        assertThat(buffer.peekLast()).isInstanceOf(ToolMessage.class);
+        // Aligned read may be empty; physical storage must still hold the retained suffix.
+        assertThat(buffer.clear(true)).hasSize(3);
+    }
+
+    @Test
+    void peekLastReturnsTrailingToolWhileSizedGetBackDropsOrphanOnlyWindow() {
+        // Sized reads stay strict for issue #200; control flow uses peekLast.
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(new UserMessage("hello")), null);
+        buffer.addBack(new ToolMessage("tool output", "call-1"));
+
+        assertThat(buffer.peekLast()).isInstanceOf(ToolMessage.class);
+        assertThat(buffer.getBack(1, true)).isEmpty();
+    }
+
+    @Test
+    void intactBufferShorterThanMaxKeepsToolOnlyMessages() {
+        // Default maxContextMessageNum is large; a tool-only context must remain readable
+        // because no count cut occurred (issue #200 is about forced truncation).
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 200);
+        buffer.addBack(new ToolMessage("tool output", "call-1"));
+
+        assertThat(buffer.getBack(null, true)).hasSize(1);
+        assertThat(buffer.getBack(null, true).get(0)).isInstanceOf(ToolMessage.class);
+    }
+
+    @Test
+    void intactBufferDoesNotAutoRepairLeadingOrphanToolsWithoutCountCut() {
+        // Bad checkpoint under max: do not rewrite on read; migrate separately if needed.
+        List<BaseMessage> orphanLeading = List.of(
+                new ToolMessage("orphan-a", "c2"),
+                new ToolMessage("orphan-b", "c3"),
+                new AssistantMessage("已整理"),
+                new UserMessage("继续"));
+        ContextMessageBuffer buffer = new ContextMessageBuffer(orphanLeading, 200);
+
+        List<BaseMessage> stored = buffer.getBack(null, true);
+        assertThat(stored).hasSize(4);
+        assertThat(stored.get(0)).isInstanceOf(ToolMessage.class);
+        assertThat(show(stored)).startsWith("[tool:c2, tool:c3,");
+    }
+
+    @Test
+    void alignedTailPrefersNewestSuffixOverOlderCompleteGroupThatCannotFitWithIt() {
+        // Group [asst,t2,t3] alone fits in N=3, but keeping the newest tail [done,user]
+        // leaves only 1 spare slot — cannot also keep the older group without dropping
+        // newer messages. Scheme A keeps the newest coherent suffix.
+        List<BaseMessage> messages = new ArrayList<>();
+        messages.add(call(tc("c2", "search"), tc("c3", "search")));
+        messages.add(new ToolMessage("检索结果2", "c2"));
+        messages.add(new ToolMessage("检索结果3", "c3"));
+        messages.add(new AssistantMessage("已整理"));
+        messages.add(new UserMessage("继续"));
+
+        List<BaseMessage> aligned = ContextUtils.alignedTail(messages, 3);
+
+        assertThat(aligned).extracting(BaseMessage::getContentAsString)
+                .containsExactly("已整理", "继续");
+        assertThat(aligned).noneMatch(ToolMessage.class::isInstance);
+        assertThat(aligned.size()).isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    void alignedTailKeepsCompleteToolGroupWhenItFits() {
+        List<BaseMessage> messages = List.of(
+                new UserMessage("q"),
+                call(tc("c2", "search"), tc("c3", "search")),
+                new ToolMessage("r2", "c2"),
+                new ToolMessage("r3", "c3"),
+                new AssistantMessage("done"));
+
+        List<BaseMessage> aligned = ContextUtils.alignedTail(messages, 4);
+
+        assertThat(show(aligned)).isEqualTo("[assistant:c2,c3, tool:c2, tool:c3, assistant:done]");
+    }
+
+    @Test
+    void alignedTailLeavesPlainDialogueUnchanged() {
+        List<BaseMessage> messages = List.of(
+                new UserMessage("u1"),
+                new AssistantMessage("a1"),
+                new UserMessage("u2"),
+                new AssistantMessage("a2"));
+
+        assertThat(ContextUtils.alignedTail(messages, 2))
+                .extracting(BaseMessage::getContentAsString)
+                .containsExactly("u2", "a2");
+    }
+
+    @Test
+    void sessionModelContextMaxMessageNumKeepsToolGroupsInStoredState() {
+        com.openjiuwen.core.context.schema.ContextEngineConfig config =
+                new com.openjiuwen.core.context.schema.ContextEngineConfig();
+        config.setMaxContextMessageNum(4);
+        SessionModelContext ctx = new SessionModelContext("c", "s", config, issue200History(), List.of(), null);
+        ctx.addMessages(List.of(new UserMessage("按专家意见继续"))).toCompletableFuture().join();
+
+        List<BaseMessage> stored = ctx.getMessages(null, true);
+        assertThat(stored.get(0)).isNotInstanceOf(ToolMessage.class);
+        assertThat(stored.stream().anyMatch(message ->
+                message instanceof ToolMessage tool && "c1".equals(tool.getToolCallId()))).isFalse();
+        List<BaseMessage> window = ctx.getContextWindow(List.of(), List.of(), null, null, java.util.Map.of())
+                .toCompletableFuture().join().getContextMessages();
+        assertThat(window).isNotEmpty();
+        assertThat(window.get(0)).isNotInstanceOf(ToolMessage.class);
+    }
+
+    private static List<BaseMessage> issue200History() {
+        return new ArrayList<>(List.of(
+                new UserMessage("帮我确定方案"),
+                call(tc("c1", "ask_user")),
+                new ToolMessage("专家答复：采用方案B", "c1"),
+                call(tc("c2", "search"), tc("c3", "search")),
+                new ToolMessage("检索结果2", "c2"),
+                new ToolMessage("检索结果3", "c3"),
+                new AssistantMessage("已整理")));
+    }
+
+    private static boolean isSearchAssistant(BaseMessage message) {
+        if (!(message instanceof AssistantMessage assistant) || assistant.getToolCalls() == null) {
+            return false;
+        }
+        return assistant.getToolCalls().stream().anyMatch(call -> "c2".equals(call.getId()) || "c3".equals(call.getId()));
+    }
+
+    private static ToolCall tc(String id, String name) {
+        return ToolCall.builder().id(id).name(name).arguments("{}").build();
+    }
+
+    private static AssistantMessage call(ToolCall... calls) {
+        return AssistantMessage.builder().content("").toolCalls(List.of(calls)).build();
+    }
+
+    private static String show(List<BaseMessage> msgs) {
+        return msgs.stream().map(message -> {
+            if (message instanceof ToolMessage tool) {
+                return "tool:" + tool.getToolCallId();
+            }
+            if (message instanceof AssistantMessage assistant
+                    && assistant.getToolCalls() != null
+                    && !assistant.getToolCalls().isEmpty()) {
+                return "assistant:" + assistant.getToolCalls().stream()
+                        .map(ToolCall::getId)
+                        .collect(Collectors.joining(","));
+            }
+            String content = String.valueOf(message.getContent());
+            return message.getRole() + ":" + content.substring(0, Math.min(6, content.length()));
+        }).collect(Collectors.joining(", ", "[", "]"));
     }
 }
