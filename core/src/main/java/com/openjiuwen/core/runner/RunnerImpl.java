@@ -591,7 +591,8 @@ public class RunnerImpl {
      */
     public Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
             ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
-        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx)
+                .filter(TenantContext::isTenantAware);
         if (resolved.isEmpty()) {
             return runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs);
         }
@@ -642,7 +643,8 @@ public class RunnerImpl {
      */
     public Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
             List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
-        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx)
+                .filter(TenantContext::isTenantAware);
         if (resolved.isEmpty()) {
             return runAgentStreaming(agent, inputs, session, context, streamModes, envs);
         }
@@ -693,7 +695,8 @@ public class RunnerImpl {
      */
     public Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
             ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
-        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx)
+                .filter(TenantContext::isTenantAware);
         if (resolved.isEmpty()) {
             return runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes, envs);
         }
@@ -752,7 +755,8 @@ public class RunnerImpl {
      */
     public Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session, ModelContext context,
             List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
-        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx)
+                .filter(TenantContext::isTenantAware);
         if (resolved.isEmpty()) {
             return runAgentStreamingAsync(agent, inputs, session, context, streamModes, envs);
         }
@@ -768,9 +772,15 @@ public class RunnerImpl {
             } finally {
                 unbindTenantContext();
             }
-            return ReactiveAdapters.fromAutoCloseableIterator(
-                    () -> wrapTenantScopeIterator(
-                            streamAgent(agentInstance, inputs, sess, context, streamModes), captured));
+            return ReactiveAdapters.fromAutoCloseableIterator(() -> {
+                applyTenantContext(captured);
+                try {
+                    return wrapTenantScopeIterator(
+                            streamAgent(agentInstance, inputs, sess, context, streamModes), captured);
+                } finally {
+                    unbindTenantContext();
+                }
+            });
         }, (AgentSessionApi sess) -> {
             applyTenantContext(captured);
             try {

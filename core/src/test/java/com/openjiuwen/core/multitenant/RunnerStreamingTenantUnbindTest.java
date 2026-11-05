@@ -39,15 +39,15 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * BUG-0006 验收用例：流式入口不得把租户上下文泄漏到绑定线程。
+ * 流式入口租户作用域用例：bind 与 unbind 落在同一线程、且 unbind 一定被执行。
  * <p>
- * 缺陷判据不是「是否流式」，而是「bind 与 unbind 是否落在同一线程、且 unbind 一定被执行」。
- * 本类覆盖验收矩阵 B1-B7；异常路径 B8 与既有
- * {@code RunnerImplTenantTest#testRunAgentStreaming_tenantUnbindIterator_unbindsOnException} 对应。
+ * B1-B7 覆盖无残留与消费期可见性；B8/B9 覆盖非 tenantAware 显式上下文不清理调用线程状态；
+ * B10 覆盖异步入口的源迭代器装配期同样处于租户作用域内。异常路径由
+ * {@code RunnerImplTenantTest#testRunAgentStreaming_scopeIterator_unbindsOnException} 覆盖。
  *
  * @since 0.1.7
  */
-@DisplayName("BUG-0006 流式入口租户解绑作用域测试")
+@DisplayName("流式入口租户解绑作用域测试")
 class RunnerStreamingTenantUnbindTest {
 
     private static final String TENANT_ID = "scope_tenant";
@@ -139,7 +139,7 @@ class RunnerStreamingTenantUnbindTest {
             }
             TenantContext current = TenantContextHolder.getCurrentTenant();
             consumerTenantAfterRun.set(current == null ? null : current.getTenantId());
-        }, "bug0006-consumer");
+        }, "tenant-scope-consumer");
         consumer.start();
         consumer.join(30_000L);
 
@@ -220,6 +220,61 @@ class RunnerStreamingTenantUnbindTest {
         assertThat(leakedTenants).as("B7 boundedElastic 工作线程不得残留租户").isEmpty();
     }
 
+    @Test
+    @DisplayName("B8 7 参 runAgentStreaming 显式上下文非 tenantAware → 不清除调用线程原有租户")
+    void testRunAgentStreaming_nonTenantAwareExplicitCtx_keepsCallerTenant() {
+        String sessionId = "scope-b8-session";
+        trackSession(sessionId);
+        TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId("caller_tenant").build());
+        try {
+            Iterator<Object> iterator = runner.runAgentStreaming(new MultiItemStreamAgent(),
+                    Map.of("conversation_id", sessionId), null, null, null, null,
+                    TenantContext.builder().build());
+
+            assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
+            assertThat(TenantContextHolder.getCurrentTenant().getTenantId()).isEqualTo("caller_tenant");
+
+            iterator.forEachRemaining(chunk -> {
+            });
+            assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+            CwdContext.reset();
+        }
+    }
+
+    @Test
+    @DisplayName("B9 7 参 runWorkflowStreaming 显式上下文非 tenantAware → 不清除调用线程原有租户")
+    void testRunWorkflowStreaming_nonTenantAwareExplicitCtx_keepsCallerTenant() {
+        String sessionId = "scope-b9-session";
+        trackSession(sessionId);
+        TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId("caller_tenant").build());
+        try {
+            runner.runWorkflowStreaming(createStreamingWorkflow("scope-b9-workflow"), Map.of("query", "hello"),
+                    sessionId, null, null, null, TenantContext.builder().build());
+
+            assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
+            assertThat(TenantContextHolder.getCurrentTenant().getTenantId()).isEqualTo("caller_tenant");
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+            CwdContext.reset();
+        }
+    }
+
+    @Test
+    @DisplayName("B10 7 参 runAgentStreamingAsync → 源迭代器装配期可见租户")
+    void testRunAgentStreamingAsync_assemblyObservesTenant() {
+        String sessionId = "scope-b10-session";
+        trackSession(sessionId);
+        AtomicReference<String> assemblyTenant = new AtomicReference<>("not-executed");
+
+        runner.runAgentStreamingAsync(new AssemblyCaptureAgent(assemblyTenant),
+                Map.of("conversation_id", sessionId), null, null, null, null, tenant()).blockLast();
+
+        assertThat(assemblyTenant.get()).as("装配期租户可见").isEqualTo(TENANT_ID);
+        assertNoTenantResidue("B10 调用线程");
+    }
+
     private Workflow createStreamingWorkflow(String workflowId) {
         Workflow workflow = new Workflow(WorkflowCard.builder().id(workflowId).name(workflowId).version("1").build());
         workflow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
@@ -290,6 +345,20 @@ class RunnerStreamingTenantUnbindTest {
     private static class AsyncCaptureAgent {
         public Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session) {
             return List.<Object>of(Map.of("item", 1), Map.of("item", 2)).iterator();
+        }
+    }
+
+    private static class AssemblyCaptureAgent {
+        private final AtomicReference<String> assemblyTenant;
+
+        AssemblyCaptureAgent(AtomicReference<String> assemblyTenant) {
+            this.assemblyTenant = assemblyTenant;
+        }
+
+        public Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session) {
+            TenantContext current = TenantContextHolder.getCurrentTenant();
+            assemblyTenant.set(current == null ? null : current.getTenantId());
+            return List.<Object>of(Map.of("item", 1)).iterator();
         }
     }
 }

@@ -208,10 +208,8 @@ class RunnerImplTenantTest {
         Iterator<Object> iterator = runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null,
                 null, null, tenantCtx);
 
-        // BUG-0006：断言方向已反转。原用例断言「返回后调用线程仍持有租户」，
-        // 把「跨线程延迟解绑」这一缺陷行为固化成了金标，与 INV-1（同线程作用域）
-        // 和 INV-4（消费后无残留）直接冲突。现改为断言不变量：绑定线程返回后无残留；
-        // 消费期租户可见性改由 RunnerStreamingTenantUnbindTest#B4 独立覆盖。
+        // 绑定与解绑在同一线程同一栈内完成：入口返回后调用线程不保留租户，
+        // 消费期租户可见性由 RunnerStreamingTenantUnbindTest 的消费探针用例覆盖。
         assertThat(TenantContextHolder.getCurrentTenant()).isNull();
         assertThat(CwdContext.getTenantRoot()).isNull();
 
@@ -227,8 +225,8 @@ class RunnerImplTenantTest {
     }
 
     @Test
-    @DisplayName("runAgentStreaming: tenantUnbindIterator unbinds on exception")
-    void testRunAgentStreaming_tenantUnbindIterator_unbindsOnException() {
+    @DisplayName("runAgentStreaming: scope iterator unbinds on exception")
+    void testRunAgentStreaming_scopeIterator_unbindsOnException() {
         RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
                 .tenantDataRoot(tempDir.toString()).build();
         runner = new RunnerImpl("stream-err", config);
