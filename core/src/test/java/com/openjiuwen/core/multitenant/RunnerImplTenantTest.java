@@ -193,34 +193,31 @@ class RunnerImplTenantTest {
     }
 
     @Test
-    @DisplayName("runAgentStreaming: tenantUnbindIterator delays unbind until iterator exhausted")
-    void testRunAgentStreaming_tenantUnbindIterator_delaysUnbind() {
+    @DisplayName("runAgentStreaming: caller thread has no tenant residue after return")
+    void testRunAgentStreaming_hasNoTenantResidueAfterReturn() {
         RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
                 .tenantDataRoot(tempDir.toString()).build();
-        runner = new RunnerImpl("stream-delay", config);
+        runner = new RunnerImpl("stream-scope", config);
         runner.start();
 
         TenantContext tenantCtx = TenantContext.builder().tenantId("stream_tenant").build();
         MultiItemStreamAgent agent = new MultiItemStreamAgent();
-        String sessionId = "stream_delay_session";
+        String sessionId = "stream_scope_session";
         trackSession(sessionId);
 
         Iterator<Object> iterator = runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null,
                 null, null, tenantCtx);
 
-        assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
-        assertThat(TenantContextHolder.getCurrentTenant().getTenantId()).isEqualTo("stream_tenant");
+        // 绑定与解绑在同一线程同一栈内完成：入口返回后调用线程不保留租户，
+        // 消费期租户可见性由 RunnerStreamingTenantUnbindTest 的消费探针用例覆盖。
+        assertThat(TenantContextHolder.getCurrentTenant()).isNull();
+        assertThat(CwdContext.getTenantRoot()).isNull();
 
         assertThat(iterator.hasNext()).isTrue();
-        assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
         iterator.next();
-
         assertThat(iterator.hasNext()).isTrue();
-        assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
         iterator.next();
-
         assertThat(iterator.hasNext()).isTrue();
-        assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
         iterator.next();
 
         assertThat(TenantContextHolder.getCurrentTenant()).isNull();
@@ -228,8 +225,8 @@ class RunnerImplTenantTest {
     }
 
     @Test
-    @DisplayName("runAgentStreaming: tenantUnbindIterator unbinds on exception")
-    void testRunAgentStreaming_tenantUnbindIterator_unbindsOnException() {
+    @DisplayName("runAgentStreaming: scope iterator unbinds on exception")
+    void testRunAgentStreaming_scopeIterator_unbindsOnException() {
         RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
                 .tenantDataRoot(tempDir.toString()).build();
         runner = new RunnerImpl("stream-err", config);
