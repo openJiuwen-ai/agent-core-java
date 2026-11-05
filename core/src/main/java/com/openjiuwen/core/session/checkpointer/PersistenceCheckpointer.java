@@ -544,10 +544,11 @@ public class PersistenceCheckpointer extends Checkpointer {
                     && dumpType == null && blob == null) {
                 return;
             }
-            if (!Boolean.TRUE.equals(result.get(0)) || !Boolean.TRUE.equals(result.get(1))
-                    || dumpType == null || blob == null
-                    || (blob instanceof byte[] bytes && bytes.length == 0)
-                    || (blob instanceof String text && text.isEmpty())) {
+            boolean complete = Boolean.TRUE.equals(result.get(0)) && Boolean.TRUE.equals(result.get(1))
+                    && dumpType != null && blob != null;
+            boolean emptyBlob = (blob instanceof byte[] bytes && bytes.length == 0)
+                    || (blob instanceof String text && text.isEmpty());
+            if (!complete || emptyBlob) {
                 throw new IllegalArgumentException("Incomplete agent checkpoint: type and payload must both exist");
             }
             if (!(dumpType instanceof String || dumpType instanceof byte[])
