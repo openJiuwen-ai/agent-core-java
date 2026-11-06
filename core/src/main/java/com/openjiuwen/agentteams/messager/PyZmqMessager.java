@@ -64,6 +64,8 @@ public class PyZmqMessager implements Messager {
 
     private static final int SOCKET_LINGER_MILLIS = 0;
 
+    private static final long MAX_STOP_DRAIN_MILLIS = 5_000L;
+
     private final MessagerTransportConfig config;
 
     private final String localNodeId;
@@ -89,6 +91,10 @@ public class PyZmqMessager implements Messager {
     private volatile CompletableFuture<Void> stopFuture = CompletableFuture.completedFuture(null);
 
     private ExecutorService ioExecutor;
+
+    private TransportHandlerDispatcher handlerDispatcher;
+
+    private volatile long stopDeadlineNanos;
 
     private ZContext context;
 
@@ -171,6 +177,8 @@ public class PyZmqMessager implements Messager {
 
     /**
      * Stop the I/O loop and deterministically close every socket and context.
+     * Already accepted handlers drain for a bounded interval before cancellation.
+     * Subsequent operations require an explicit {@link #start()}.
      *
      * @return future completed after transport resources are closed
      * @since 0.1.7
@@ -178,10 +186,14 @@ public class PyZmqMessager implements Messager {
     @Override
     public CompletableFuture<Void> stop() {
         synchronized (lifecycleLock) {
+            if (!isStopRequested) {
+                stopDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(
+                        Math.min(MAX_STOP_DRAIN_MILLIS, requestTimeoutMillis()));
+            }
+            isStopRequested = true;
             if (!isRunning) {
                 return CompletableFuture.completedFuture(null);
             }
-            isStopRequested = true;
             return stopFuture;
         }
     }
@@ -324,6 +336,7 @@ public class PyZmqMessager implements Messager {
         startFuture = new CompletableFuture<>();
         stopFuture = new CompletableFuture<>();
         String threadSuffix = THREAD_NAME_UNSAFE.matcher(localNodeId).replaceAll("-");
+        handlerDispatcher = new TransportHandlerDispatcher(threadSuffix);
         ioExecutor = OpenJiuwenExecutors.newSingleThreadExecutor(
                 "agent-team-pyzmq-" + threadSuffix, true);
         ioExecutor.execute(this::runIoLoop);
@@ -333,7 +346,7 @@ public class PyZmqMessager implements Messager {
         try {
             initializeSockets();
             startFuture.complete(null);
-            while (!isStopRequested) {
+            while (!isStopRequested || shouldDrain()) {
                 drainCommands();
                 pollSockets();
                 receivePendingAcknowledgements();
@@ -353,6 +366,11 @@ public class PyZmqMessager implements Messager {
                 finishIoLoop();
             }
         }
+    }
+
+    private boolean shouldDrain() {
+        return System.nanoTime() < stopDeadlineNanos
+                && (handlerDispatcher.hasPending() || !pendingSends.isEmpty() || !commandQueue.isEmpty());
     }
 
     private void initializeSockets() {
@@ -433,8 +451,11 @@ public class PyZmqMessager implements Messager {
     }
 
     private void drainCommands() {
-        IoCommand command;
-        while ((command = commandQueue.poll()) != null) {
+        for (int count = 0; count < COMMAND_QUEUE_CAPACITY; count++) {
+            IoCommand command = commandQueue.poll();
+            if (command == null) {
+                break;
+            }
             executeCommand(command);
         }
     }
@@ -481,24 +502,23 @@ public class PyZmqMessager implements Messager {
         try {
             byte[] identity = frames.getFirst().getData();
             byte[] payload = frames.getLast().getData();
-            handleDirectPayload(payload);
+            boolean isAccepted = !isStopRequested && handleDirectPayload(payload);
             router.sendMore(identity);
-            router.send("ok");
+            router.send(isAccepted ? "ok" : "error:handler_unavailable");
         } finally {
             frames.destroy();
         }
     }
 
-    private void handleDirectPayload(byte[] payload) {
+    private boolean handleDirectPayload(byte[] payload) {
         try {
             WireEvent wireEvent = deserializeMessage(payload);
             MessagerHandler handler = directHandlers.get(wireEvent.recipientId());
-            if (handler != null) {
-                dispatchHandler(handler, wireEvent.message(), "direct");
-            }
+            return handler == null || handlerDispatcher.dispatch(handler, wireEvent.message());
         } catch (IOException ioException) {
             Loggers.AGENT.warn(
                     "PyZmq discarded an invalid direct message for node {}", localNodeId, ioException);
+            return false;
         }
     }
 
@@ -523,27 +543,12 @@ public class PyZmqMessager implements Messager {
             return;
         }
         try {
-            dispatchHandler(handler, deserializeMessage(payload).message(), "topic");
+            if (!isStopRequested && !handlerDispatcher.dispatch(handler, deserializeMessage(payload).message())) {
+                Loggers.AGENT.warn("PyZmq topic handler queue is full for node {}", localNodeId);
+            }
         } catch (IOException ioException) {
             Loggers.AGENT.warn("PyZmq discarded an invalid topic message on {}", topic, ioException);
         }
-    }
-
-    private void dispatchHandler(MessagerHandler handler, EventMessage message, String routeType) {
-        CompletableFuture.runAsync(() -> {
-            CompletableFuture<Void> handlerFuture = handler.handle(message);
-            handlerFuture.whenComplete((ignored, throwable) -> {
-                if (throwable != null) {
-                    Loggers.AGENT.warn(
-                            "PyZmq {} handler failed for node {}", routeType, localNodeId, throwable);
-                }
-            });
-        }, OpenJiuwenExecutors.backgroundExecutor()).whenComplete((ignored, throwable) -> {
-            if (throwable != null) {
-                Loggers.AGENT.warn(
-                        "PyZmq {} handler invocation failed for node {}", routeType, localNodeId, throwable);
-            }
-        });
     }
 
     private void forwardMultipart(ZMQ.Socket source, ZMQ.Socket target) {
@@ -569,7 +574,12 @@ public class PyZmqMessager implements Messager {
                 continue;
             }
             closeSocket(pending.socket());
-            pending.future().complete(null);
+            if (new String(acknowledgement, StandardCharsets.UTF_8).startsWith("error:")) {
+                pending.future().completeExceptionally(new IllegalStateException(
+                        "ZeroMQ peer rejected delivery: " + pending.diagnostic()));
+            } else {
+                pending.future().complete(null);
+            }
             iterator.remove();
         }
     }
@@ -584,7 +594,8 @@ public class PyZmqMessager implements Messager {
             }
             closeSocket(pending.socket());
             pending.future().completeExceptionally(
-                    new TimeoutException("Timed out waiting for ZeroMQ transport acknowledgement"));
+                    new TimeoutException("Timed out waiting for ZeroMQ transport acknowledgement: "
+                            + pending.diagnostic()));
             iterator.remove();
         }
     }
@@ -621,8 +632,9 @@ public class PyZmqMessager implements Messager {
     private void sendOnIoThread(String agentId, byte[] payload, CompletableFuture<Void> result) {
         MessagerPeerConfig peer = resolvePeer(agentId);
         ZMQ.Socket dealer = createSocket(SocketType.DEALER);
+        String messageId = UUID.randomUUID().toString();
         try {
-            String identity = localNodeId + ":" + UUID.randomUUID();
+            String identity = localNodeId + ":" + messageId;
             dealer.setIdentity(identity.getBytes(StandardCharsets.UTF_8));
             connectOrThrow(dealer, peer.getAddrs().get(0));
             if (!dealer.send(payload)) {
@@ -633,7 +645,8 @@ public class PyZmqMessager implements Messager {
         }
         long timeoutMillis = requestTimeoutMillis();
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        pendingSends.add(new PendingSend(dealer, result, deadline));
+        pendingSends.add(new PendingSend(dealer, result, deadline, "phase=ack, message=" + messageId
+                + ", from=" + safeNodeId(localNodeId) + ", to=" + safeNodeId(agentId)));
         Loggers.AGENT.debug("PyZmq sent direct event from {} to {}", localNodeId, agentId);
     }
 
@@ -706,22 +719,25 @@ public class PyZmqMessager implements Messager {
     }
 
     private CompletableFuture<Void> enqueue(IoAction action) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        start().whenComplete((ignored, throwable) -> enqueueAfterStart(action, result, throwable));
-        return result;
+        synchronized (lifecycleLock) {
+            if (isStopRequested) {
+                return failedFuture(new IllegalStateException("PyZmq transport stopped; call start() explicitly"));
+            }
+            CompletableFuture<Void> result = new CompletableFuture<>();
+            start().whenComplete((ignored, throwable) -> enqueueAfterStart(action, result, throwable));
+            return result;
+        }
     }
 
     private void enqueueAfterStart(IoAction action, CompletableFuture<Void> result, Throwable startFailure) {
-        if (startFailure != null) {
-            result.completeExceptionally(startFailure);
-            return;
-        }
-        if (isStopRequested) {
-            result.completeExceptionally(new IllegalStateException("PyZmq transport is stopping"));
-            return;
-        }
-        if (!commandQueue.offer(new IoCommand(action, result))) {
-            result.completeExceptionally(new IllegalStateException("PyZmq transport command queue is full"));
+        synchronized (lifecycleLock) {
+            if (startFailure != null) {
+                result.completeExceptionally(startFailure);
+            } else if (!isRunning || isStopRequested) {
+                result.completeExceptionally(new IllegalStateException("PyZmq transport is stopping"));
+            } else if (!commandQueue.offer(new IoCommand(action, result))) {
+                result.completeExceptionally(new IllegalStateException("PyZmq transport command queue is full"));
+            }
         }
     }
 
@@ -765,6 +781,7 @@ public class PyZmqMessager implements Messager {
     private void closeIoResources() {
         List<RuntimeException> closeFailures = new ArrayList<>();
         failOutstandingOperations(closeFailures);
+        handlerDispatcher.close();
         closeSocketSafely(router, closeFailures);
         closeSocketSafely(publisher, closeFailures);
         closeSocketSafely(subscriber, closeFailures);
@@ -852,7 +869,7 @@ public class PyZmqMessager implements Messager {
             ExecutorService completedExecutor = ioExecutor;
             ioExecutor = null;
             isRunning = false;
-            isStopRequested = false;
+            isStopRequested = true;
             if (!startFuture.isDone()) {
                 startFuture.completeExceptionally(new IllegalStateException("PyZmq transport failed to start"));
             }
@@ -950,6 +967,11 @@ public class PyZmqMessager implements Messager {
         return isBlank(configuredNodeId) ? UUID.randomUUID().toString() : configuredNodeId;
     }
 
+    private static String safeNodeId(String nodeId) {
+        String bounded = nodeId.substring(0, Math.min(nodeId.length(), 64));
+        return THREAD_NAME_UNSAFE.matcher(bounded).replaceAll("-");
+    }
+
     private static String stringValue(Object value) {
         return value != null ? String.valueOf(value) : "";
     }
@@ -975,7 +997,8 @@ public class PyZmqMessager implements Messager {
     private record IoCommand(IoAction action, CompletableFuture<Void> future) {
     }
 
-    private record PendingSend(ZMQ.Socket socket, CompletableFuture<Void> future, long deadlineNanos) {
+    private record PendingSend(ZMQ.Socket socket, CompletableFuture<Void> future, long deadlineNanos,
+            String diagnostic) {
     }
 
     private record WireEvent(String recipientId, EventMessage message) {
