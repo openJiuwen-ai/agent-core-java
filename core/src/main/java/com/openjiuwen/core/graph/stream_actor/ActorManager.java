@@ -268,12 +268,20 @@ public class ActorManager {
             Set<ComponentAbility> activeAbilities = activeProducerIds.getOrDefault(producerId, Set.of());
             if (activeAbilities.isEmpty()) {
                 for (ComponentAbility producerAbility : allAbilities) {
-                    endMessage(producerId, producerAbility);
-                    activeProduceAbility(producerId, producerAbility);
+                    restoreProducerEnd(producerId, producerAbility);
                 }
             }
         }
         return consumeIter;
+    }
+
+    private void restoreProducerEnd(String producerId, ComponentAbility ability) {
+        activeProduceAbility(producerId, ability);
+
+        // Replay to every consumer, including those whose first frame has not arrived yet.
+        for (String consumerId : streamEdges.getOrDefault(producerId, List.of())) {
+            getActor(consumerId).restoreProducerEnd(producerId, ability);
+        }
     }
 
     /**
