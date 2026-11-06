@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agentteams.messager;
 
+import com.google.common.util.concurrent.Uninterruptibles;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -76,13 +77,11 @@ final class TransportHandlerDispatcher implements AutoCloseable {
 
         // The managed executor unregisters itself on termination; do not add a second shutdown budget.
         executor.shutdownNow();
-        try {
-            long remainingNanos = Math.max(0L, deadlineNanos - System.nanoTime());
-            if (!executor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS)) {
-                Loggers.AGENT.warn("PyZmq handler shutdown deadline reached; interrupted workers may still be exiting");
-            }
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
+        long remainingNanos = Math.max(0L, deadlineNanos - System.nanoTime());
+
+        // Finish bounded cleanup while preserving the caller's interrupt status.
+        if (!Uninterruptibles.awaitTerminationUninterruptibly(executor, remainingNanos, TimeUnit.NANOSECONDS)) {
+            Loggers.AGENT.warn("PyZmq handler shutdown deadline reached; interrupted workers may still be exiting");
         }
     }
 
