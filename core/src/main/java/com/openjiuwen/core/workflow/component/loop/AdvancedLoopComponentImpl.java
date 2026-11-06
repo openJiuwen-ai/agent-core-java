@@ -50,7 +50,7 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
 
     private final HasDrawable body;
     private final Executable<Object, Object> bodyExecutable;
-    private final PostLoopBody postBody = new PostLoopBody();
+    private final PostLoopBody postBody = new PostLoopBody(this::currentLoopIndex);
     private final Condition condition;
     private final List<LoopCallback> callbacks = new ArrayList<>();
     private final PregelGraph graph = new PregelGraph();
@@ -270,11 +270,18 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
     }
 
     private int alignedFinishIndex(int index) {
-        int finishIndex = postBody.getFinishIndex();
+        WorkflowStateCollection state = WorkflowSessionSupport.stateCollection(nodeSession);
+        Object completed = state.get(POST_BODY_NODE_ID + "." + Constant.FINISH_INDEX);
+        int finishIndex = completed instanceof Number number ? number.intValue() : -1;
         if (finishIndex + 1 < index || finishIndex > index) {
             return index - 1;
         }
         return finishIndex;
+    }
+
+    private int currentLoopIndex() {
+        WorkflowStateCollection state = WorkflowSessionSupport.stateCollection(nodeSession);
+        return ensureLoopIndex(state);
     }
 
     private void incrementLoopIndex(WorkflowStateCollection state, int index) {
@@ -312,7 +319,6 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
         stateReset.put(Constant.INDEX, null);
         stateReset.put(BROKEN, false);
         state.update(stateReset);
-        postBody.setFinishIndex(-1);
         Map<String, Object> postBodyReset = new LinkedHashMap<>();
         postBodyReset.put(POST_BODY_NODE_ID, null);
         state.update(postBodyReset);

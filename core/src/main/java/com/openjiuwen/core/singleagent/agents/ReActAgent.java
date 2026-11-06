@@ -6,6 +6,8 @@ package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
@@ -2281,6 +2283,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             }
 
             if (invokeInputs.getResult() == null) {
+                Set<String> acceptedToolCallIds = currentTurnToolCallIds(context);
                 for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
                     ctx.enterIteration(iteration);
                     int iterationNumber = iteration + 1;
@@ -2336,6 +2339,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                         List<ToolCall> toolCalls = aiMessage.getToolCalls();
                         ensureToolCallIds(toolCalls);
                         repairToolCallJsonObjectArguments(toolCalls);
+                        validateNewToolCallIds(toolCalls, acceptedToolCallIds);
                         context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
                         if (toolCalls == null || toolCalls.isEmpty()) {
                             if (ctx.hasPendingSteering()) {
@@ -2634,6 +2638,35 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         }
         payload.put("retry_tier", "client");
         return payload;
+    }
+
+    private Set<String> currentTurnToolCallIds(ModelContext context) {
+        Set<String> ids = new HashSet<>();
+        for (BaseMessage message : context.getMessages(null, true)) {
+            if (message instanceof UserMessage) {
+                ids.clear();
+                continue;
+            }
+            if (message instanceof AssistantMessage assistant && assistant.getToolCalls() != null) {
+                ids.addAll(toolCallIds(assistant.getToolCalls()));
+            }
+        }
+        return ids;
+    }
+
+    private void validateNewToolCallIds(List<ToolCall> toolCalls, Set<String> acceptedIds) {
+        if (toolCalls == null) {
+            return;
+        }
+        Set<String> batchIds = new HashSet<>();
+        for (ToolCall call : toolCalls) {
+            if (call != null && (acceptedIds.contains(call.getId()) || !batchIds.add(call.getId()))) {
+                // Reject before appending history or executing any part of a replayed batch.
+                throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_EXECUTION_ERROR,
+                        "error_msg", "Model protocol violation: duplicate tool_call_id in the current turn");
+            }
+        }
+        acceptedIds.addAll(batchIds);
     }
 
     private void ensureToolCallIds(List<ToolCall> toolCalls) {

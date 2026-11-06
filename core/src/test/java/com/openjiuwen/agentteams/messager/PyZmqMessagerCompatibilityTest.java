@@ -7,10 +7,11 @@ package com.openjiuwen.agentteams.messager;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.agentteams.schema.events.EventMessage;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Timeout;
 
 import java.io.IOException;
@@ -25,10 +26,17 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
 
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class PyZmqMessagerCompatibilityTest {
     private static final String LOOPBACK_WILDCARD_ENDPOINT = "tcp://127.0.0.1:*";
+
+    private static final long CHILD_READY_TIMEOUT_SECONDS = 30L;
+
+    @TempDir
+    private Path childLogDir;
 
     private final List<PyZmqMessager> liveMessagers = new ArrayList<>();
 
@@ -74,7 +82,6 @@ class PyZmqMessagerCompatibilityTest {
     }
 
     @Test
-    @Disabled("ZeroMQ direct transport times out waiting for acknowledgement on this environment")
     void directMessagesShouldRoundTripOverTcpBetweenIndependentComponents() throws InterruptedException {
         PyZmqMessager leader = startDirectMessager("leader");
         PyZmqMessager worker = startDirectMessager("worker");
@@ -143,7 +150,36 @@ class PyZmqMessagerCompatibilityTest {
     }
 
     @Test
-    @Disabled("ZeroMQ direct transport times out waiting for acknowledgement on this environment")
+    void topicCapacityDropsAreCountedWithoutClaimingDelivery() throws Exception {
+        String publishEndpoint = reserveLoopbackEndpoint();
+        String subscribeEndpoint = reserveLoopbackEndpoint();
+        PyZmqMessager broker = track(new PyZmqMessager(pubSubConfig(
+                "drop-broker", publishEndpoint, subscribeEndpoint, true)));
+        MessagerTransportConfig receiverConfig = pubSubConfig(
+                "drop-receiver", publishEndpoint, subscribeEndpoint, false);
+        receiverConfig.setDirectAddr(LOOPBACK_WILDCARD_ENDPOINT);
+        PyZmqMessager receiver = track(new PyZmqMessager(receiverConfig));
+        broker.start().join();
+        receiver.start().join();
+        PyZmqMessager sender = startDirectMessager("drop-sender");
+        sender.registerPeer(receiver.getLocalPeer());
+        CompletableFuture<Void> pending = new CompletableFuture<>();
+        receiver.subscribe("team:test:events", message -> pending).join();
+        receiver.registerDirectMessageHandler(message -> pending).join();
+        try (TopicDropCapture drop = new TopicDropCapture()) {
+            for (int index = 0; index < 256; index++) {
+                sender.send("drop-receiver", EventMessage.builder().eventType("pending").build()).join();
+            }
+            publishUntilDelivered(broker, drop.observed);
+
+            assertThat(receiver.getTopicDropCounts().get("CAPACITY_EXHAUSTED")).isPositive();
+            assertThat(receiver.getTopicDropCounts()).doesNotContainKeys("CLOSED", "SUBMISSION_REJECTED");
+        } finally {
+            pending.complete(null);
+        }
+    }
+
+    @Test
     void directTransportShouldRestartWithoutReusingClosedSockets() throws InterruptedException {
         PyZmqMessager receiver = startDirectMessager("restart-receiver");
         receiver.stop().join();
@@ -162,18 +198,25 @@ class PyZmqMessagerCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void directMessagesShouldCrossSeparateJvmBoundary() throws IOException, InterruptedException {
         PyZmqMessager parent = startDirectMessager("parent");
-        String childEndpoint = reserveLoopbackEndpoint();
-        parent.registerPeer(peer("child", childEndpoint));
+        CompletableFuture<String> ready = new CompletableFuture<>();
         CountDownLatch responseLatch = new CountDownLatch(1);
         AtomicReference<EventMessage> response = new AtomicReference<>();
         parent.registerDirectMessageHandler(message -> {
-            response.set(message);
-            responseLatch.countDown();
+            if ("ready".equals(message.getEventType())) {
+                ready.complete(String.valueOf(message.getPayload().get("endpoint")));
+            } else {
+                response.set(message);
+                responseLatch.countDown();
+            }
             return CompletableFuture.completedFuture(null);
         }).join();
-        Process child = startChildProcess(parent.getLocalPeer().getAddrs().get(0), childEndpoint);
+        Process child = startChildProcess(parent.getLocalPeer().getAddrs().get(0), LOOPBACK_WILDCARD_ENDPOINT);
+        child.onExit().thenAccept(exited -> ready.completeExceptionally(
+                new IllegalStateException("Child exited before ready: " + exited.exitValue())));
+        parent.registerPeer(peer("child", ready.orTimeout(CHILD_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS).join()));
 
         parent.send("child", EventMessage.builder().eventType("ping").payload(Map.of("origin", "parent")).build())
                 .join();
@@ -236,8 +279,8 @@ class PyZmqMessagerCompatibilityTest {
                 DirectTransportChild.class.getName(),
                 parentEndpoint,
                 childEndpoint));
-        builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        builder.redirectError(ProcessBuilder.Redirect.DISCARD);
+        builder.redirectErrorStream(true);
+        builder.redirectOutput(childLogDir.resolve("transport-child.log").toFile());
         Process process = builder.start();
         liveProcesses.add(process);
         return process;
@@ -250,6 +293,31 @@ class PyZmqMessagerCompatibilityTest {
     private static String reserveLoopbackEndpoint() throws IOException {
         try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             return "tcp://127.0.0.1:" + socket.getLocalPort();
+        }
+    }
+
+    private static final class TopicDropCapture extends Handler implements AutoCloseable {
+        private final CountDownLatch observed = new CountDownLatch(1);
+
+        private TopicDropCapture() {
+            Loggers.AGENT.addHandler(this);
+        }
+
+        @Override
+        public void publish(LogRecord record) {
+            if (record.getMessage().startsWith("PyZmq topic message dropped for node drop-receiver")) {
+                observed.countDown();
+            }
+        }
+
+        @Override
+        public void flush() {
+            // Events are observed synchronously; there is no buffered output.
+        }
+
+        @Override
+        public void close() {
+            Loggers.AGENT.removeHandler(this);
         }
     }
 
@@ -281,16 +349,22 @@ class PyZmqMessagerCompatibilityTest {
                     .requestTimeout(5.0d)
                     .build();
             PyZmqMessager child = new PyZmqMessager(config);
-            CountDownLatch completed = new CountDownLatch(1);
+            CompletableFuture<Void> completed = new CompletableFuture<>();
             child.start().join();
             try {
                 child.registerDirectMessageHandler(message -> child.send("parent", EventMessage.builder()
                         .eventType("pong")
                         .payload(Map.of("origin", message.getPayload().get("origin")))
-                        .build()).whenComplete((ignored, throwable) -> completed.countDown())).join();
-                if (!completed.await(15L, TimeUnit.SECONDS)) {
-                    throw new IllegalStateException("Child did not receive a direct transport message");
-                }
+                        .build()).whenComplete((ignored, throwable) -> {
+                            if (throwable == null) {
+                                completed.complete(null);
+                            } else {
+                                completed.completeExceptionally(throwable);
+                            }
+                        })).join();
+                child.send("parent", EventMessage.builder().eventType("ready")
+                        .payload(Map.of("endpoint", child.getLocalPeer().getAddrs().get(0))).build()).join();
+                completed.orTimeout(5, TimeUnit.SECONDS).join();
             } finally {
                 child.stop().join();
             }

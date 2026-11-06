@@ -163,6 +163,7 @@ final class RunBudgetTestFixture {
         private final AssistantMessage tail;
         private final long latencyMillis;
         private final AtomicInteger invokeCount = new AtomicInteger();
+        private final AtomicInteger tailCount = new AtomicInteger();
         private final List<List<BaseMessage>> messagesLog = new CopyOnWriteArrayList<>();
         private final List<ModelInvokeOptions> optionsLog = new CopyOnWriteArrayList<>();
         private Model model;
@@ -183,7 +184,27 @@ final class RunBudgetTestFixture {
 
         private AssistantMessage nextResponse() {
             AssistantMessage next = script.poll();
-            return next != null ? next : tail;
+            if (next != null) {
+                return next;
+            }
+            if (tail.getToolCalls() == null || tail.getToolCalls().isEmpty()) {
+                return tail;
+            }
+
+            // The tail models a new call on every round, not a replay of an earlier response.
+            int responseIndex = tailCount.incrementAndGet();
+            List<ToolCall> calls = new ArrayList<>();
+            for (ToolCall call : tail.getToolCalls()) {
+                calls.add(ToolCall.builder().id(call.getId() + "-tail-" + responseIndex)
+                        .type(call.getType()).name(call.getName()).arguments(call.getArguments())
+                        .index(call.getIndex()).build());
+            }
+            return AssistantMessage.builder().content(tail.getContent()).toolCalls(calls)
+                    .role(tail.getRole()).name(tail.getName()).metadata(tail.getMetadata())
+                    .usageMetadata(tail.getUsageMetadata()).finishReason(tail.getFinishReason())
+                    .parserContent(tail.getParserContent()).reasoningContent(tail.getReasoningContent())
+                    .promptTokenIds(tail.getPromptTokenIds()).completionTokenIds(tail.getCompletionTokenIds())
+                    .logprobs(tail.getLogprobs()).build();
         }
 
         private CompletionStage<AssistantMessage> answerInvoke(InvocationOnMock invocation) {
