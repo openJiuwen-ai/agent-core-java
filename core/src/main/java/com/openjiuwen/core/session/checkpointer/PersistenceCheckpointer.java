@@ -520,6 +520,50 @@ public class PersistenceCheckpointer extends Checkpointer {
         }
 
         @Override
+        void recover(BaseSession session, InteractiveInput inputs) {
+            if (session == null) {
+                return;
+            }
+            String typeKey = Checkpointer.resolveNsKey(session.sessionId(), namespace(), entityId(session),
+                    stateDumpTypeKey());
+            String blobKey = Checkpointer.resolveNsKey(session.sessionId(), namespace(), entityId(session),
+                    stateBlobsKey());
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            pipeline.exists(typeKey).join();
+            pipeline.exists(blobKey).join();
+            pipeline.get(typeKey).join();
+            pipeline.get(blobKey).join();
+            List<Object> result = execute(pipeline);
+            if (result == null || result.size() != 4
+                    || !(result.get(0) instanceof Boolean) || !(result.get(1) instanceof Boolean)) {
+                throw new IllegalArgumentException("Invalid agent checkpoint read result");
+            }
+            Object dumpType = result.get(2);
+            Object blob = result.get(3);
+            if (Boolean.FALSE.equals(result.get(0)) && Boolean.FALSE.equals(result.get(1))
+                    && dumpType == null && blob == null) {
+                return;
+            }
+            boolean complete = Boolean.TRUE.equals(result.get(0)) && Boolean.TRUE.equals(result.get(1))
+                    && dumpType != null && blob != null;
+            boolean emptyBlob = (blob instanceof byte[] bytes && bytes.length == 0)
+                    || (blob instanceof String text && text.isEmpty());
+            if (!complete || emptyBlob) {
+                throw new IllegalArgumentException("Incomplete agent checkpoint: type and payload must both exist");
+            }
+            if (!(dumpType instanceof String || dumpType instanceof byte[])
+                    || !"java".equals(decodeDumpType(dumpType))
+                    || !(blob instanceof byte[] || blob instanceof String)) {
+                throw new IllegalArgumentException("Unsupported agent checkpoint encoding");
+            }
+            Object state = deserializeState(dumpType, blob);
+            if (!(state instanceof Map<?, ?>)) {
+                throw new IllegalArgumentException("Agent checkpoint state must be a non-null Map");
+            }
+            restoreState(session, state);
+        }
+
+        @Override
         String namespace() {
             return SESSION_NAMESPACE_AGENT;
         }

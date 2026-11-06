@@ -317,8 +317,8 @@ class StepCheckpointResilienceTest {
     @DisplayName("3.16 a dump_type-only leftover is never consumed as a checkpoint")
     void dumpTypeOnlyLeftoverIsNeverResumed() {
         // Storage residue from a torn write: dump_type landed but the blob
-        // never did. The recover path must treat the session as having no
-        // state at all - a cursor cannot be restored from a missing blob.
+        // never did. Recovery must report the incomplete checkpoint and
+        // preserve the residue for explicit repair or reset.
         CrashInjectionKVStore crashStore = new CrashInjectionKVStore();
         crashStore.set(AGENT_STATE_DUMP_TYPE_KEY, "java").join();
         PersistenceCheckpointer crashedCheckpointer = new PersistenceCheckpointer(crashStore);
@@ -328,7 +328,8 @@ class StepCheckpointResilienceTest {
             // The session carries the same card as the crashed one so the
             // recover path reads the exact keys the residue was written to.
             AgentSession restarted = new AgentSession(SESSION_ID, null, probeAgentCard());
-            restarted.preRun(Map.of());
+            assertThat(org.assertj.core.api.Assertions.catchRuntimeException(() -> restarted.preRun(Map.of())))
+                    .hasMessageContaining("Incomplete agent checkpoint");
 
             assertThat(crashedCheckpointer.lastCompletedStep(restarted.getInner())).isNull();
             assertThat(trailOn(crashStore)).isEmpty();
