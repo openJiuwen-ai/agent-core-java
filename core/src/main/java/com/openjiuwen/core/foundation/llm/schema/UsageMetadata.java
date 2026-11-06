@@ -87,6 +87,35 @@ public class UsageMetadata implements Serializable {
     @JsonProperty("total_cost")
     private double totalCost = 0.0d;
 
+    /**
+     * Time to first output token, in <b>seconds</b>.
+     *
+     * <p>Measured from request dispatch to the first stream chunk that carries
+     * model output. Distinct from {@link #firstTokenTime}, which is a "first
+     * token instant" timestamp string (same family as
+     * {@link #requestStartTime}); this field is the elapsed duration. Kept
+     * separate so downstream consumers never have to reinterpret one field
+     * two ways.</p>
+     *
+     * <p>{@code null} means "not measured" — non-streaming calls, errors,
+     * cancellations, or providers that sent no output chunk. Callers must not
+     * substitute {@code 0}, which would be a valid measurement.</p>
+     */
+    @JsonProperty("ttft_seconds")
+    private Double ttftSeconds;
+
+    /**
+     * Average time per output token between the first and last output-bearing
+     * chunk, in <b>milliseconds</b>.
+     *
+     * <p>Divided by {@code outputTokens - 1}, not by the chunk count: a single
+     * chunk may carry several tokens, so chunk count is not a token count.
+     * {@code null} when fewer than two output tokens were produced, or when
+     * timing data is unavailable.</p>
+     */
+    @JsonProperty("inter_token_latency_ms")
+    private Double interTokenLatencyMs;
+
     public Map<String, Object> modelDump() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("code", code);
@@ -104,6 +133,12 @@ public class UsageMetadata implements Serializable {
         result.put("input_cost", inputCost);
         result.put("output_cost", outputCost);
         result.put("total_cost", totalCost);
+        if (ttftSeconds != null) {
+            result.put("ttft_seconds", ttftSeconds);
+        }
+        if (interTokenLatencyMs != null) {
+            result.put("inter_token_latency_ms", interTokenLatencyMs);
+        }
         return result;
     }
 

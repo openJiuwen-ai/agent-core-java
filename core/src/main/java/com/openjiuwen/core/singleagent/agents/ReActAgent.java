@@ -3259,10 +3259,16 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 AssistantMessageChunk chunk = iterator.next();
                 streamAttempt.markChunkReceived();
                 accumulatedChunk = accumulatedChunk == null ? chunk : (AssistantMessageChunk) accumulatedChunk.merge(chunk);
-                if (firstTokenTime == null) {
-                    firstTokenTime = System.nanoTime();
+                // Only chunks that actually carry model output advance the latency
+                // window: role-only deltas, heartbeats, and usage-only or finish-only
+                // frames would otherwise inflate both TTFT and inter-token latency.
+                if (chunk.carriesOutputToken()) {
+                    long now = System.nanoTime();
+                    if (firstTokenTime == null) {
+                        firstTokenTime = now;
+                    }
+                    lastTokenTime = now;
                 }
-                lastTokenTime = System.nanoTime();
                 chunkCount++;
                 ctx.getExtra().put("_stream_chunks_emitted", chunkCount);
                 AgentSessionApi session = ctx.getSession();
@@ -3318,11 +3324,24 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
             payload.put("result_type", "answer");
             payload.put("total_latency_ms", roundMillis(System.nanoTime() - callStartTime));
-            if (firstTokenTime != null) {
+            // TTFT / inter-token latency are computed centrally by the model layer
+            // and carried on usage metadata; fall back to the local window only when
+            // the model layer did not run (e.g. an undecorated client).
+            Double ttftSeconds = aiMessage.getUsageMetadata().getTtftSeconds();
+            if (ttftSeconds != null) {
+                payload.put("ttft_ms", roundMillis(ttftSeconds * 1_000_000_000.0d));
+            } else if (firstTokenTime != null) {
                 payload.put("ttft_ms", roundMillis(firstTokenTime - callStartTime));
             }
-            if (firstTokenTime != null && lastTokenTime != null && chunkCount > 1) {
-                payload.put("tpot_ms", roundMillis((lastTokenTime - firstTokenTime) / (double) (chunkCount - 1)));
+            Double interTokenMs = aiMessage.getUsageMetadata().getInterTokenLatencyMs();
+            if (interTokenMs != null) {
+                payload.put("tpot_ms", roundMillis(interTokenMs * 1_000_000.0d));
+            } else if (firstTokenTime != null && lastTokenTime != null
+                    && aiMessage.getUsageMetadata().getOutputTokens() > 1) {
+                // Denominator is the provider-reported output token count, not the
+                // chunk count: a single chunk may carry several tokens.
+                payload.put("tpot_ms", roundMillis((lastTokenTime - firstTokenTime)
+                        / (double) (aiMessage.getUsageMetadata().getOutputTokens() - 1)));
             }
             ctx.getSession().writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), payload));
         }

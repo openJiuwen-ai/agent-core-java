@@ -16,6 +16,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
@@ -976,6 +977,26 @@ public class Model {
         private final ModelRequestConfig modelConfig;
         private final ModelClientConfig modelClientConfig;
 
+        /**
+         * Monotonic start of the stream, captured before the first chunk is pulled.
+         *
+         * <p>{@link System#nanoTime()} is used because only differences within one
+         * JVM are meaningful here; the elapsed value never leaves this process.</p>
+         */
+        private final long startNanos = System.nanoTime();
+
+        /** Monotonic time of the first chunk carrying output; {@code null} until then. */
+        private Long firstTokenNanos;
+
+        /** Monotonic time of the most recent chunk carrying output. */
+        private Long lastTokenNanos;
+
+        /** Usage object of the latest chunk that reported one, backfilled at stream end. */
+        private UsageMetadata lastUsage;
+
+        /** Guards latency backfill so it happens at most once per stream. */
+        private boolean latencyBackfilled;
+
         private CallbackIterator(Iterator<AssistantMessageChunk> delegate, DecoratorFramework framework,
                                  InvocationRequest request, ModelRequestConfig modelConfig,
                                  ModelClientConfig modelClientConfig) {
@@ -988,12 +1009,26 @@ public class Model {
 
         @Override
         public boolean hasNext() {
-            return delegate.hasNext();
+            boolean hasNext = delegate.hasNext();
+            if (!hasNext) {
+                backfillLatency();
+            }
+            return hasNext;
         }
 
         @Override
         public AssistantMessageChunk next() {
             AssistantMessageChunk chunk = delegate.next();
+            if (chunk.getUsageMetadata() != null) {
+                lastUsage = chunk.getUsageMetadata();
+            }
+            if (chunk.carriesOutputToken()) {
+                long now = System.nanoTime();
+                if (firstTokenNanos == null) {
+                    firstTokenNanos = now;
+                }
+                lastTokenNanos = now;
+            }
             Map<String, Object> outKwargs = new LinkedHashMap<>();
             outKwargs.put("result", chunk);
             outKwargs.put("model_config", modelConfig);
@@ -1012,8 +1047,42 @@ public class Model {
             return effectiveChunk;
         }
 
+        /**
+         * Stamp TTFT and inter-token latency onto the last observed usage object.
+         *
+         * <p>Usage normally arrives only on the final chunk, so both metrics can
+         * only be computed once the stream is complete. Stamping the usage object
+         * itself (rather than raising a separate event) lets every existing
+         * consumer — {@code ReActAgent}, the tracer handler, the observability
+         * rail — read the values from the response it already holds.</p>
+         *
+         * <p>Missing measurements are left {@code null} instead of being written
+         * as zero: zero is itself a legitimate measurement, and conflating the
+         * two would corrupt downstream aggregation.</p>
+         */
+        private void backfillLatency() {
+            if (latencyBackfilled) {
+                return;
+            }
+            latencyBackfilled = true;
+            if (lastUsage == null || firstTokenNanos == null) {
+                return;
+            }
+            if (lastUsage.getTtftSeconds() == null) {
+                lastUsage.setTtftSeconds((firstTokenNanos - startNanos) / 1_000_000_000.0d);
+            }
+            if (lastUsage.getInterTokenLatencyMs() == null
+                    && lastTokenNanos != null
+                    && lastTokenNanos > firstTokenNanos
+                    && lastUsage.getOutputTokens() > 1) {
+                double elapsedMs = (lastTokenNanos - firstTokenNanos) / 1_000_000.0d;
+                lastUsage.setInterTokenLatencyMs(elapsedMs / (lastUsage.getOutputTokens() - 1));
+            }
+        }
+
         @Override
         public void close() throws Exception {
+            backfillLatency();
             if (delegate instanceof AutoCloseable closeable) {
                 closeable.close();
             }

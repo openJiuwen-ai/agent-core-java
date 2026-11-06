@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.session.tracer.InvokeType;
 import com.openjiuwen.core.session.tracer.NodeStatus;
@@ -877,6 +878,7 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
                 OptionalLong totalTokens = resolveTotalTokens(usageObj, inputTokens, outputTokens);
                 setTokenAttributes(span, inputTokens, outputTokens, totalTokens);
                 setUsageModelName(span, usageObj);
+                setStreamLatencyAttributes(span, usageObj);
             }
             setFinishReason(span, rawResponse);
             setResponseModel(span, rawResponse);
@@ -899,6 +901,19 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     private Optional<Object> resolveUsage(Object rawResponse) {
         if (rawResponse instanceof AssistantMessage assistantMsg) {
             return Optional.ofNullable(assistantMsg.getUsageMetadata());
+        }
+        // Streaming calls hand on_llm_end the full chunk list; usage is only
+        // reported by the trailing chunk, so scan backwards and take the first
+        // one that carries it.
+        if (rawResponse instanceof List<?> chunks) {
+            for (int i = chunks.size() - 1; i >= 0; i--) {
+                Object candidate = chunks.get(i);
+                if (candidate instanceof AssistantMessageChunk chunk
+                        && chunk.getUsageMetadata() != null) {
+                    return Optional.of(chunk.getUsageMetadata());
+                }
+            }
+            return Optional.empty();
         }
         if (rawResponse instanceof Map<?, ?> respMap) {
             Object fromMap = respMap.get("usage_metadata");
@@ -1087,6 +1102,50 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
                 }
             }
         }
+    }
+
+    /**
+     * Write streaming latency attributes (TTFT and inter-token latency) to the span.
+     *
+     * <p>Both values are computed by {@code Model.CallbackIterator} and carried
+     * on {@link UsageMetadata}. When a measurement is absent the corresponding
+     * attribute is simply not set — it is never written as {@code 0}, because
+     * zero is a legitimate measurement and would be indistinguishable from a
+     * real one downstream.</p>
+     *
+     * <p>TTFT goes to the standard {@code gen_ai.response.time_to_first_chunk}
+     * key in <b>seconds</b>; the project-local millisecond mirror is written
+     * alongside for consumers already keyed on it. Inter-token latency goes to
+     * the project extension key {@code openjiuwen.gen_ai.response.tpot_ms} in
+     * <b>milliseconds</b>.</p>
+     *
+     * @param span  the OTel span to attach attributes to
+     * @param usage the usage object carrying the latency values
+     * @since 0.1.7
+     */
+    private void setStreamLatencyAttributes(Span span, Object usage) {
+        if (!(usage instanceof UsageMetadata um)) {
+            return;
+        }
+        Double ttftSeconds = um.getTtftSeconds();
+        if (ttftSeconds != null && isFiniteNonNegative(ttftSeconds)) {
+            span.setAttribute(SemConv.GEN_AI_RESPONSE_TIME_TO_FIRST_CHUNK, ttftSeconds);
+            span.setAttribute(SemConv.GEN_AI_RESPONSE_TTFT_MS, ttftSeconds * 1000.0d);
+        }
+        Double interTokenMs = um.getInterTokenLatencyMs();
+        if (interTokenMs != null && isFiniteNonNegative(interTokenMs)) {
+            span.setAttribute(SemConv.OJ_GEN_AI_RESPONSE_TPOT_MS, interTokenMs);
+        }
+    }
+
+    /**
+     * Whether a candidate latency value is usable as a measurement.
+     *
+     * @param value the value to check
+     * @return {@code true} if the value is finite and non-negative
+     */
+    private static boolean isFiniteNonNegative(Double value) {
+        return value != null && !value.isNaN() && !value.isInfinite() && value >= 0.0d;
     }
 
     /**

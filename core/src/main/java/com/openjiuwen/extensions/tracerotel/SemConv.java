@@ -91,6 +91,26 @@ public final class SemConv {
     /** gen_ai.response.time_to_first_token_ms attribute key. */
     public static final String GEN_AI_RESPONSE_TTFT_MS = "gen_ai.response.time_to_first_token_ms";
 
+    /**
+     * gen_ai.response.time_to_first_chunk attribute key.
+     *
+     * <p>The standard span attribute for time to first output chunk, in
+     * <b>seconds</b>. Mirrors Python's
+     * {@code openjiuwen.extensions.observability.gen_ai_semconv}.
+     * {@link #GEN_AI_RESPONSE_TTFT_MS} is a project-local key carrying the same
+     * value in milliseconds; prefer this standard key for new consumers.</p>
+     */
+    public static final String GEN_AI_RESPONSE_TIME_TO_FIRST_CHUNK = "gen_ai.response.time_to_first_chunk";
+
+    /**
+     * openjiuwen.gen_ai.response.tpot_ms attribute key.
+     *
+     * <p>Average time per output token in <b>milliseconds</b>, divided by
+     * {@code output_tokens - 1}. Mirrors Python's
+     * {@code OJ_GEN_AI_RESPONSE_TPOT_MS}.</p>
+     */
+    public static final String OJ_GEN_AI_RESPONSE_TPOT_MS = "openjiuwen.gen_ai.response.tpot_ms";
+
     /** langfuse.gen_ai.prompt attribute key. */
     public static final String LANGFUSE_GEN_AI_PROMPT = "langfuse.gen_ai.prompt";
 
