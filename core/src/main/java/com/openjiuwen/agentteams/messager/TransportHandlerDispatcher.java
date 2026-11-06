@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Keeps asynchronous handlers off the socket owner and bounds their lifetime to one transport generation.
@@ -31,22 +32,29 @@ final class TransportHandlerDispatcher implements AutoCloseable {
     private boolean isClosed;
 
     TransportHandlerDispatcher(String threadSuffix) {
-        executor = OpenJiuwenExecutors.newBoundedModulePool("agent-team-handlers-" + threadSuffix,
-                4, MAX_PENDING_HANDLERS, true);
+        this(OpenJiuwenExecutors.newBoundedModulePool("agent-team-handlers-" + threadSuffix,
+                4, MAX_PENDING_HANDLERS, true));
     }
 
-    synchronized boolean dispatch(MessagerHandler handler, EventMessage message) {
-        if (isClosed || pending.size() >= MAX_PENDING_HANDLERS) {
-            return false;
+    TransportHandlerDispatcher(ExecutorService executor) {
+        this.executor = Objects.requireNonNull(executor, "executor");
+    }
+
+    synchronized DispatchResult dispatch(MessagerHandler handler, EventMessage message) {
+        if (isClosed) {
+            return DispatchResult.CLOSED;
+        }
+        if (pending.size() >= MAX_PENDING_HANDLERS) {
+            return DispatchResult.CAPACITY_EXHAUSTED;
         }
         HandlerTask task = new HandlerTask(handler, message);
         pending.add(task);
         try {
             task.submission = executor.submit(task);
-            return true;
+            return DispatchResult.ACCEPTED;
         } catch (RejectedExecutionException exception) {
             pending.remove(task);
-            return false;
+            return DispatchResult.SUBMISSION_REJECTED;
         }
     }
 
@@ -56,13 +64,30 @@ final class TransportHandlerDispatcher implements AutoCloseable {
 
     @Override
     public void close() {
+        close(System.nanoTime());
+    }
+
+    void close(long deadlineNanos) {
         synchronized (this) {
             isClosed = true;
             pending.forEach(HandlerTask::cancel);
             pending.clear();
         }
-        OpenJiuwenExecutors.shutdownNow(executor);
+
+        // The managed executor unregisters itself on termination; do not add a second shutdown budget.
+        executor.shutdownNow();
+        try {
+            long remainingNanos = Math.max(0L, deadlineNanos - System.nanoTime());
+            if (!executor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS)) {
+                Loggers.AGENT.warn("PyZmq handler shutdown deadline reached; interrupted workers may still be exiting");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
     }
+
+    /** Outcome of admitting a handler to this transport generation. */
+    enum DispatchResult {ACCEPTED, CLOSED, CAPACITY_EXHAUSTED, SUBMISSION_REJECTED}
 
     private final class HandlerTask implements Runnable {
         private final MessagerHandler handler;
@@ -85,15 +110,22 @@ final class TransportHandlerDispatcher implements AutoCloseable {
             if (isCancelled) {
                 return;
             }
-            try {
-                response = Objects.requireNonNull(handler.handle(message), "Handler returned no completion future");
-                if (isCancelled) {
-                    response.cancel(true);
-                }
-                response.whenComplete((ignored, failure) -> finish(failure));
-            } catch (RuntimeException exception) {
-                finish(exception);
+            CompletableFuture.completedFuture(message)
+                    .thenApply(event -> Objects.requireNonNull(handler.handle(event),
+                            "Handler returned no completion future"))
+                    .whenComplete(this::observeResponse);
+        }
+
+        private void observeResponse(CompletableFuture<Void> result, Throwable failure) {
+            if (failure != null) {
+                finish(failure);
+                return;
             }
+            response = result;
+            if (isCancelled) {
+                result.cancel(true);
+            }
+            result.whenComplete((ignored, responseFailure) -> finish(responseFailure));
         }
 
         private void finish(Throwable failure) {

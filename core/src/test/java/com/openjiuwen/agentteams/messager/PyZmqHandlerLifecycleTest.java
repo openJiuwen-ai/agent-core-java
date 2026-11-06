@@ -121,6 +121,37 @@ class PyZmqHandlerLifecycleTest {
                 .hasStackTraceContaining("from=sender, to=offline");
     }
 
+    @Test
+    void stopReleasesEndpointWithoutWaitingAnotherBudgetForUncooperativeHandler() throws Exception {
+        PyZmqMessager sender = transport("sender", 2.0);
+        PyZmqMessager receiver = transport("receiver", 0.1);
+        sender.registerPeer(receiver.getLocalPeer());
+        CountDownLatch entered = new CountDownLatch(1);
+        CompletableFuture<Void> release = new CompletableFuture<>();
+        CompletableFuture<Void> response = new CompletableFuture<>();
+        CompletableFuture<Void> cancelled = new CompletableFuture<>();
+        response.whenComplete((ignored, failure) -> cancelled.complete(null));
+        receiver.registerDirectMessageHandler(message -> {
+            entered.countDown();
+            release.join();
+            return response;
+        }).join();
+        try {
+            sender.send("receiver", event()).get(2, TimeUnit.SECONDS);
+            assertThat(entered.await(2, TimeUnit.SECONDS)).isTrue();
+            receiver.stop().get(3, TimeUnit.SECONDS);
+            PyZmqMessager replacement = new PyZmqMessager(MessagerTransportConfig.builder()
+                    .nodeId("replacement").directAddr(receiver.getLocalPeer().getAddrs().get(0)).build());
+            transports.add(replacement);
+            replacement.start().get(3, TimeUnit.SECONDS);
+            assertThat(release).isNotDone();
+        } finally {
+            release.complete(null);
+        }
+        cancelled.get(3, TimeUnit.SECONDS);
+        assertThat(response).isCancelled();
+    }
+
     private PyZmqMessager transport(String nodeId, double timeout) {
         PyZmqMessager transport = new PyZmqMessager(MessagerTransportConfig.builder()
                 .nodeId(nodeId).directAddr("tcp://127.0.0.1:*").requestTimeout(timeout).build());

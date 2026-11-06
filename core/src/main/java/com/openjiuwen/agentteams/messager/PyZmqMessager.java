@@ -7,6 +7,7 @@ package com.openjiuwen.agentteams.messager;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.agentteams.messager.TransportHandlerDispatcher.DispatchResult;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -35,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 /**
@@ -81,6 +83,8 @@ public class PyZmqMessager implements Messager {
     private final Map<String, MessagerHandler> directHandlers = new LinkedHashMap<>();
 
     private final List<PendingSend> pendingSends = new ArrayList<>();
+
+    private final Map<DispatchResult, AtomicLong> topicDropCounts = new ConcurrentHashMap<>();
 
     private volatile boolean isRunning;
 
@@ -141,6 +145,19 @@ public class PyZmqMessager implements Messager {
     public MessagerPeerConfig getLocalPeer() {
         List<String> addresses = isBlank(config.getDirectAddr()) ? List.of() : List.of(config.getDirectAddr());
         return MessagerPeerConfig.builder().agentId(localNodeId).addrs(addresses).build();
+    }
+
+    /**
+     * Return lifetime counts of topic messages rejected by this instance after receipt.
+     * PUB/SUB has no delivery acknowledgement; these counts do not include upstream network loss.
+     *
+     * @return immutable counts keyed by CLOSED, CAPACITY_EXHAUSTED, or SUBMISSION_REJECTED
+     * @since 2026-11-06
+     */
+    public Map<String, Long> getTopicDropCounts() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        topicDropCounts.forEach((reason, count) -> counts.put(reason.name(), count.get()));
+        return Map.copyOf(counts);
     }
 
     /**
@@ -514,7 +531,8 @@ public class PyZmqMessager implements Messager {
         try {
             WireEvent wireEvent = deserializeMessage(payload);
             MessagerHandler handler = directHandlers.get(wireEvent.recipientId());
-            return handler == null || handlerDispatcher.dispatch(handler, wireEvent.message());
+            return handler == null
+                    || handlerDispatcher.dispatch(handler, wireEvent.message()) == DispatchResult.ACCEPTED;
         } catch (IOException ioException) {
             Loggers.AGENT.warn(
                     "PyZmq discarded an invalid direct message for node {}", localNodeId, ioException);
@@ -542,13 +560,24 @@ public class PyZmqMessager implements Messager {
         if (handler == null) {
             return;
         }
+        if (isStopRequested) {
+            recordTopicDrop(DispatchResult.CLOSED);
+            return;
+        }
         try {
-            if (!isStopRequested && !handlerDispatcher.dispatch(handler, deserializeMessage(payload).message())) {
-                Loggers.AGENT.warn("PyZmq topic handler queue is full for node {}", localNodeId);
+            DispatchResult result = handlerDispatcher.dispatch(handler, deserializeMessage(payload).message());
+            if (result != DispatchResult.ACCEPTED) {
+                recordTopicDrop(result);
             }
         } catch (IOException ioException) {
             Loggers.AGENT.warn("PyZmq discarded an invalid topic message on {}", topic, ioException);
         }
+    }
+
+    private void recordTopicDrop(DispatchResult reason) {
+        long count = topicDropCounts.computeIfAbsent(reason, ignored -> new AtomicLong()).incrementAndGet();
+        Loggers.AGENT.warn("PyZmq topic message dropped for node {}, reason={}, dropped_count={}",
+                localNodeId, reason, count);
     }
 
     private void forwardMultipart(ZMQ.Socket source, ZMQ.Socket target) {
@@ -733,9 +762,13 @@ public class PyZmqMessager implements Messager {
         synchronized (lifecycleLock) {
             if (startFailure != null) {
                 result.completeExceptionally(startFailure);
-            } else if (!isRunning || isStopRequested) {
+                return;
+            }
+            if (!isRunning || isStopRequested) {
                 result.completeExceptionally(new IllegalStateException("PyZmq transport is stopping"));
-            } else if (!commandQueue.offer(new IoCommand(action, result))) {
+                return;
+            }
+            if (!commandQueue.offer(new IoCommand(action, result))) {
                 result.completeExceptionally(new IllegalStateException("PyZmq transport command queue is full"));
             }
         }
@@ -781,7 +814,6 @@ public class PyZmqMessager implements Messager {
     private void closeIoResources() {
         List<RuntimeException> closeFailures = new ArrayList<>();
         failOutstandingOperations(closeFailures);
-        handlerDispatcher.close();
         closeSocketSafely(router, closeFailures);
         closeSocketSafely(publisher, closeFailures);
         closeSocketSafely(subscriber, closeFailures);
@@ -790,6 +822,7 @@ public class PyZmqMessager implements Messager {
         closePollerSafely(closeFailures);
         closeContextSafely(closeFailures);
         clearIoFields();
+        handlerDispatcher.close(stopDeadlineNanos);
         throwCloseFailure(closeFailures);
     }
 

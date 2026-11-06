@@ -68,6 +68,21 @@ class LoopProgressRecoveryTest {
         assertThat(loopSession.state().get("post_body." + Constant.FINISH_INDEX)).isEqualTo(2);
     }
 
+    @Test
+    void standalonePostBodyAdvancesPersistedProgressAfterRecreation() {
+        WorkflowRuntimeSession postSession = WorkflowRuntimeSession.nodeSession(loopSession(), "post_body");
+        PostLoopBody first = new PostLoopBody();
+        first.setFinishIndex(2);
+        first.onInvoke(Map.of(), postSession);
+        assertThat(first.getFinishIndex()).isEqualTo(3);
+        PostLoopBody restored = new PostLoopBody();
+
+        restored.onInvoke(Map.of(), postSession);
+
+        assertThat(restored.getFinishIndex()).isEqualTo(4);
+        assertThat(postSession.state().get(Constant.FINISH_INDEX)).isEqualTo(4);
+    }
+
     private static WorkflowRuntimeSession loopSession() {
         WorkflowRuntimeSession root = new WorkflowRuntimeSession("loop-progress", null,
                 UUID.randomUUID().toString(), WorkflowRuntimeState.create(), null);

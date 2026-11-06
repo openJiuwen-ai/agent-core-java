@@ -2645,7 +2645,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         for (BaseMessage message : context.getMessages(null, true)) {
             if (message instanceof UserMessage) {
                 ids.clear();
-            } else if (message instanceof AssistantMessage assistant && assistant.getToolCalls() != null) {
+                continue;
+            }
+            if (message instanceof AssistantMessage assistant && assistant.getToolCalls() != null) {
                 ids.addAll(toolCallIds(assistant.getToolCalls()));
             }
         }
