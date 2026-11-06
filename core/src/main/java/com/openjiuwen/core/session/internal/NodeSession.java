@@ -171,7 +171,11 @@ public class NodeSession extends BaseSession {
     }
 
     private static String createParentId(BaseSession session) {
-        return session instanceof NodeSession nodeSession ? nodeSession.executableId() : "";
+        BaseSession parent = session;
+        while (parent instanceof WorkflowSession workflowSession) {
+            parent = workflowSession.parent();
+        }
+        return parent instanceof NodeSession nodeSession ? nodeSession.executableId() : "";
     }
 
     private static String createExecutableId(String nodeId, String parentId) {
