@@ -170,6 +170,22 @@ public class StreamActor {
     }
 
     /**
+     * Queues an END marker restored from a previous run without starting this consumer.
+     * Consumer preparation calls this before declaring readiness, so it must not wait
+     * for that readiness or take a producer lock held by a waiting first-frame sender.
+     * The processors still start only after all consumer inputs have been registered.
+     *
+     * @param producerId completed producer node id
+     * @param sourceAbility completed producer ability
+     */
+    void restoreProducerEnd(String producerId, ComponentAbility sourceAbility) {
+        StreamPayload payload = new StreamPayload(Map.of(producerId, "END_" + producerId), sourceAbility);
+        for (StreamProcessor processor : processors.values()) {
+            processor.receive(payload);
+        }
+    }
+
+    /**
      * Returns generator iterators for a consumer ability.
      *
      * @param ability consumer ability
