@@ -81,6 +81,8 @@ class StreamLatencyMetricsTest {
         UsageMetadata usage = UsageMetadata.builder().build();
         assertNull(usage.getTtftSeconds());
         assertNull(usage.getInterTokenLatencyMs());
+        assertNull(usage.getReasoningDurationMs());
+        assertNull(usage.getRetryCount());
     }
 
     @Test
@@ -89,13 +91,26 @@ class StreamLatencyMetricsTest {
         UsageMetadata empty = UsageMetadata.builder().build();
         assertFalse(empty.modelDump().containsKey("ttft_seconds"));
         assertFalse(empty.modelDump().containsKey("inter_token_latency_ms"));
+        assertFalse(empty.modelDump().containsKey("reasoning_duration_ms"));
+        assertFalse(empty.modelDump().containsKey("retry_count"));
 
         UsageMetadata measured = UsageMetadata.builder()
                 .ttftSeconds(0.42d)
                 .interTokenLatencyMs(12.5d)
+                .reasoningDurationMs(880.0d)
+                .retryCount(2)
                 .build();
         assertEquals(0.42d, measured.modelDump().get("ttft_seconds"));
         assertEquals(12.5d, measured.modelDump().get("inter_token_latency_ms"));
+        assertEquals(880.0d, measured.modelDump().get("reasoning_duration_ms"));
+        assertEquals(2, measured.modelDump().get("retry_count"));
+    }
+
+    @Test
+    @DisplayName("total latency defaults to zero seconds, matching the Python field")
+    void totalLatencyDefaultsToZero() {
+        assertEquals(0.0d, UsageMetadata.builder().build().getTotalLatency());
+        assertEquals(1.25d, UsageMetadata.builder().totalLatency(1.25d).build().modelDump().get("total_latency"));
     }
 
     @Test

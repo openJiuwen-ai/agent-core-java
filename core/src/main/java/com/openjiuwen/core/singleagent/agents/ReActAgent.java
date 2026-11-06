@@ -3323,7 +3323,15 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
             payload.put("result_type", "answer");
-            payload.put("total_latency_ms", roundMillis(System.nanoTime() - callStartTime));
+            // Prefer the model layer's whole-call measurement so this frame and the
+            // OTel span report the same window; the local clock starts after the
+            // request is dispatched and would come out slightly short.
+            double usageTotalLatency = aiMessage.getUsageMetadata().getTotalLatency();
+            if (usageTotalLatency > 0.0d) {
+                payload.put("total_latency_ms", roundMillis(usageTotalLatency * 1_000_000_000.0d));
+            } else {
+                payload.put("total_latency_ms", roundMillis(System.nanoTime() - callStartTime));
+            }
             // TTFT / inter-token latency are computed centrally by the model layer
             // and carried on usage metadata; fall back to the local window only when
             // the model layer did not run (e.g. an undecorated client).

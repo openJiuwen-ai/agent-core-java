@@ -40,6 +40,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Unified LLM invocation entry point.
@@ -352,13 +353,45 @@ public class Model {
     }
 
     public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+        // Capture the dispatch instant before the client opens the connection:
+        // client.stream() blocks until response headers arrive, so a timestamp
+        // taken inside the callback wrapper would already have lost the
+        // connect + time-to-first-byte leg of TTFT.
+        long dispatchNanos = System.nanoTime();
         InvocationRequest request = prepareInvokeRequest(messages, options, LLMCallEvents.LLM_STREAM_INPUT);
-        Iterator<AssistantMessageChunk> iterator = client.stream(request.messages(), request.options());
+        AtomicInteger retryCounter = new AtomicInteger();
+        InvocationRequest counted = withRetryCounter(request, retryCounter);
+        Iterator<AssistantMessageChunk> iterator = client.stream(counted.messages(), counted.options());
         DecoratorFramework framework = callbackFramework;
         if (framework == null) {
             return iterator;
         }
-        return new CallbackIterator(iterator, framework, request, modelConfig, modelClientConfig);
+        return new CallbackIterator(iterator, framework, request, modelConfig, modelClientConfig,
+                dispatchNanos, retryCounter);
+    }
+
+    /**
+     * Return a request whose retry listener also records the highest retry
+     * number seen, while still forwarding every event to the caller's listener.
+     *
+     * <p>The count is read back when the stream finishes rather than when it
+     * opens: first-segment retries can still fire while chunks are being
+     * pulled, so an early read would undercount.</p>
+     *
+     * @param request      the resolved invocation request
+     * @param retryCounter sink for the highest retry number seen
+     * @return an equivalent request with the counting listener installed
+     */
+    private static InvocationRequest withRetryCounter(InvocationRequest request, AtomicInteger retryCounter) {
+        ModelInvokeOptions options = request.options();
+        ModelRetryListener delegate = options.getRetryListener();
+        ModelRetryListener counting = event -> {
+            retryCounter.accumulateAndGet(event.retryCount(), Math::max);
+            if (delegate != null) {
+                delegate.onRetry(event);
+            }
+        };
+        return new InvocationRequest(request.messages(), options.toBuilder().retryListener(counting).build());
     }
 
     /**
@@ -978,12 +1011,14 @@ public class Model {
         private final ModelClientConfig modelClientConfig;
 
         /**
-         * Monotonic start of the stream, captured before the first chunk is pulled.
+         * Monotonic dispatch instant, captured by {@code Model.stream} before
+         * the client opens the connection.
          *
-         * <p>{@link System#nanoTime()} is used because only differences within one
-         * JVM are meaningful here; the elapsed value never leaves this process.</p>
+         * <p>{@link System#nanoTime()} is used because only differences within
+         * one JVM are meaningful here; the elapsed value never leaves this
+         * process.</p>
          */
-        private final long startNanos = System.nanoTime();
+        private final long startNanos;
 
         /** Monotonic time of the first chunk carrying output; {@code null} until then. */
         private Long firstTokenNanos;
@@ -991,20 +1026,32 @@ public class Model {
         /** Monotonic time of the most recent chunk carrying output. */
         private Long lastTokenNanos;
 
+        /** Monotonic time of the first chunk carrying {@code reasoning_content}. */
+        private Long reasoningFirstNanos;
+
+        /** Monotonic time of the most recent chunk carrying {@code reasoning_content}. */
+        private Long reasoningLastNanos;
+
         /** Usage object of the latest chunk that reported one, backfilled at stream end. */
         private UsageMetadata lastUsage;
 
         /** Guards latency backfill so it happens at most once per stream. */
         private boolean latencyBackfilled;
 
+        /** Highest retry number the client reported for this stream. */
+        private final AtomicInteger retryCounter;
+
         private CallbackIterator(Iterator<AssistantMessageChunk> delegate, DecoratorFramework framework,
                                  InvocationRequest request, ModelRequestConfig modelConfig,
-                                 ModelClientConfig modelClientConfig) {
+                                 ModelClientConfig modelClientConfig, long startNanos,
+                                 AtomicInteger retryCounter) {
             this.delegate = delegate;
             this.framework = framework;
             this.request = request;
             this.modelConfig = modelConfig;
             this.modelClientConfig = modelClientConfig;
+            this.startNanos = startNanos;
+            this.retryCounter = retryCounter;
         }
 
         @Override
@@ -1022,12 +1069,19 @@ public class Model {
             if (chunk.getUsageMetadata() != null) {
                 lastUsage = chunk.getUsageMetadata();
             }
+            long now = System.nanoTime();
             if (chunk.carriesOutputToken()) {
-                long now = System.nanoTime();
                 if (firstTokenNanos == null) {
                     firstTokenNanos = now;
                 }
                 lastTokenNanos = now;
+            }
+            String reasoning = chunk.getReasoningContent();
+            if (reasoning != null && !reasoning.isEmpty()) {
+                if (reasoningFirstNanos == null) {
+                    reasoningFirstNanos = now;
+                }
+                reasoningLastNanos = now;
             }
             Map<String, Object> outKwargs = new LinkedHashMap<>();
             outKwargs.put("result", chunk);
@@ -1048,13 +1102,15 @@ public class Model {
         }
 
         /**
-         * Stamp TTFT and inter-token latency onto the last observed usage object.
+         * Stamp TTFT, inter-token latency, total latency and reasoning duration
+         * onto the last observed usage object.
          *
-         * <p>Usage normally arrives only on the final chunk, so both metrics can
-         * only be computed once the stream is complete. Stamping the usage object
-         * itself (rather than raising a separate event) lets every existing
-         * consumer — {@code ReActAgent}, the tracer handler, the observability
-         * rail — read the values from the response it already holds.</p>
+         * <p>Usage normally arrives only on the final chunk, so the token-time
+         * metrics can only be computed once the stream is complete. Stamping
+         * the usage object itself (rather than raising a separate event) lets
+         * every existing consumer — {@code ReActAgent}, the tracer handler, the
+         * observability rail — read the values from the response it already
+         * holds.</p>
          *
          * <p>Missing measurements are left {@code null} instead of being written
          * as zero: zero is itself a legitimate measurement, and conflating the
@@ -1065,7 +1121,23 @@ public class Model {
                 return;
             }
             latencyBackfilled = true;
-            if (lastUsage == null || firstTokenNanos == null) {
+            long endNanos = System.nanoTime();
+            if (lastUsage == null) {
+                return;
+            }
+            lastUsage.setRetryCount(retryCounter.get());
+            // Total latency covers the whole call and is measurable even when no
+            // output chunk ever arrived (an early finish with usage only), so it
+            // is not gated on firstTokenNanos.
+            if (lastUsage.getTotalLatency() <= 0.0d) {
+                lastUsage.setTotalLatency((endNanos - startNanos) / 1_000_000_000.0d);
+            }
+            if (reasoningFirstNanos != null && reasoningLastNanos != null
+                    && lastUsage.getReasoningDurationMs() == null) {
+                lastUsage.setReasoningDurationMs(
+                        (reasoningLastNanos - reasoningFirstNanos) / 1_000_000.0d);
+            }
+            if (firstTokenNanos == null) {
                 return;
             }
             if (lastUsage.getTtftSeconds() == null) {
