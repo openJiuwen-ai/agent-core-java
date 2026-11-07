@@ -1,7 +1,7 @@
 {
-  "API_BASE": "",
-  "API_KEY": "",
-  "MODEL_PROVIDER": "",
-  "MODEL_NAME": "",
+  "API_BASE": "https://api.minimax.cn",
+  "API_KEY": "sk-api-nncGsye_lJxeuEtRNG-bDFrbhwgFv-HiIs9De426X_Ap1ANFP-82HaOEnrB0_SAfFhPMoLjqndSDok5Ubzzi2VuA2XqEyxac4EH9pboWc5yGD21RDrRKcGo",
+  "MODEL_PROVIDER": "OpenAI",
+  "MODEL_NAME": "MiniMax-H3",
   "LLM_SSL_VERIFY": "True"
 }

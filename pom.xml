@@ -17,6 +17,7 @@
         <module>core</module>
         <module>retrieval</module>
         <module>memory</module>
+        <module>designer</module>
     </modules>
 
     <properties>

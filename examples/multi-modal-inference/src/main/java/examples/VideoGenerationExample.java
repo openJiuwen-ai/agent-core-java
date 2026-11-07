@@ -71,7 +71,7 @@ public final class VideoGenerationExample {
                     "video_create_path", "/contents/generation/tasks",
                     "video_result_url_path", "content.video_url",
                     "resolution", "720p",
-                    "duration", "5",
+                    "duration", "4",
                     "preset_name", "ARK"));
 
     private VideoGenerationExample() {
