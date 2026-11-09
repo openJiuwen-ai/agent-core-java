@@ -128,6 +128,18 @@ class RuleBasedModelErrorClassifierTest {
     }
 
     @Test
+    void classify_inputLengthWordingWithoutExactKeyword_isContextLengthExceeded() {
+        ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
+            "{\"error\":{\"message\":\"input length is too large\","
+                + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
+            .orElseThrow();
+        ModelCallClassification result = classifier.classify(invalidParameterFacts(parsed));
+
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+        assertThat(result.isRetryable()).isFalse();
+    }
+
+    @Test
     void classify_otherInvalidParameter_isNotContextLength() {
         ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
             "{\"error\":{\"message\":\"wrong temperature value\","

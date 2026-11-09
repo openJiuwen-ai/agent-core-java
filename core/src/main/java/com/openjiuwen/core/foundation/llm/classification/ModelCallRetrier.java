@@ -36,6 +36,7 @@ import java.util.function.DoubleSupplier;
  * @since 2026-10-19
  */
 public final class ModelCallRetrier {
+    private static final int MAX_CAUSE_DEPTH = 32;
     private static final long BACKOFF_BASE_NANOS = 500_000_000L;
     private static final long BACKOFF_CAP_BASE_NANOS = 8_000_000_000L;
     private static final int BACKOFF_CAP_RETRY_NUMBER = 5;
@@ -147,6 +148,30 @@ public final class ModelCallRetrier {
         publishRetry(listener, toEvent(context, classification, failure, delay));
         sleepQuietly(delay);
         return true;
+    }
+
+    /**
+     * Whether a streamed first segment was already delivered before this failure.
+     *
+     * <p>Walks the cause chain so callers holding a wrapper exception still see the
+     * flag written by the model client. Shared by every whole-call retry channel:
+     * after the first segment is delivered, no channel may retry the whole call.</p>
+     *
+     * @param failure model call failure, may be null
+     * @return true when the first segment was received
+     * @since 2026-11-09
+     */
+    public static boolean isAfterFirstSegment(Throwable failure) {
+        Throwable cursor = failure;
+        int depth = 0;
+        while (cursor != null && depth < MAX_CAUSE_DEPTH) {
+            if (cursor instanceof BaseError baseError && isAfterFirstSegment(baseError)) {
+                return true;
+            }
+            cursor = cursor.getCause();
+            depth++;
+        }
+        return false;
     }
 
     static boolean isAfterFirstSegment(BaseError failure) {

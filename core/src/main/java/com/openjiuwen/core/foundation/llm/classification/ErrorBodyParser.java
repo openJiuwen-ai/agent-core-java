@@ -89,23 +89,8 @@ public final class ErrorBodyParser {
      */
     private static String unwrapSseData(String body) {
         String trimmed = body.trim();
-        if (!trimmed.startsWith("data:")) {
-            return trimmed;
-        }
-        String withoutPrefix = trimmed.substring("data:".length()).trim();
-        if (withoutPrefix.startsWith("{")) {
-            return withoutPrefix;
-        }
-        for (String line : trimmed.split("\\R")) {
-            String candidate = line.trim();
-            if (candidate.startsWith("data:")) {
-                String data = candidate.substring("data:".length()).trim();
-                if (!data.isEmpty()) {
-                    return data;
-                }
-            }
-        }
-        return trimmed;
+        return trimmed.startsWith("data:")
+            ? trimmed.substring("data:".length()).trim() : trimmed;
     }
 
     private static ParsedError fromNode(JsonNode node) {
