@@ -14,6 +14,8 @@ import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
@@ -30,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * End-to-end step-checkpoint resumption through the real ReActAgent loop.
@@ -51,6 +54,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 class StepCheckpointEndToEndTest {
     private static final String SESSION_ID = "step-e2e-session";
+
+    private static final String AGENT_ID = "step-e2e-agent";
+
+    private static final String TENANT_ID = "t1";
 
     private PersistenceCheckpointer checkpointer;
 
@@ -211,6 +218,92 @@ class StepCheckpointEndToEndTest {
         assertThat(actions.get(0).type())
                 .isEqualTo(StepCheckpointRecoveryService.RecoveryActionType.RECOVERED_BY_HOOK);
         assertThat(actions.get(0).detail()).isEqualTo("requeued");
+    }
+
+    @Test
+    @DisplayName("the recovery hook receives the owning session and agent identity")
+    void recoveryHookReceivesOwningSessionAndAgent() {
+        AgentSession crashed = new AgentSession(SESSION_ID, null, sessionCard());
+        checkpointer.preAgentExecute(crashed.getInner(), null);
+        checkpointer.stepCompleted(crashed.getInner(),
+                new StepCursor(3L, "TOOL_CALL", "probe_a", StepStatus.RUNNING, 321L));
+
+        AtomicReference<StepRecoveryHook.RecoveryRequest> seen = new AtomicReference<>();
+        StepCheckpointRecoveryService service = new StepCheckpointRecoveryService(checkpointer, request -> {
+            seen.set(request);
+            return StepRecoveryHook.RecoveryResult.recovered("resumed");
+        });
+        service.recoverLeftovers();
+
+        assertThat(seen.get()).isNotNull();
+        assertThat(seen.get().sessionId()).isEqualTo(SESSION_ID);
+        assertThat(seen.get().agentId()).isEqualTo(AGENT_ID);
+    }
+
+    @Test
+    @DisplayName("a pre-upgrade snapshot without owner keys recovers identity from its KV key")
+    void legacySnapshotRecoversIdentityFromBlobKey() {
+        persistLegacyRunningCursor(SESSION_ID);
+
+        List<StepCursor> running = checkpointer.scanRunningSteps();
+        assertThat(running).hasSize(1);
+        assertThat(running.get(0).getSessionId()).isEqualTo(SESSION_ID);
+        assertThat(running.get(0).getAgentId()).isEqualTo(AGENT_ID);
+    }
+
+    @Test
+    @DisplayName("a tenant-bound scan fills identity without the tenant prefix")
+    void tenantBoundScanStripsItsScannedPrefix() {
+        TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId(TENANT_ID).build());
+        try {
+            persistLegacyRunningCursor(SESSION_ID);
+
+            List<StepCursor> running = checkpointer.scanRunningSteps();
+            assertThat(running).hasSize(1);
+            assertThat(running.get(0).getSessionId()).isEqualTo(SESSION_ID);
+            assertThat(running.get(0).getAgentId()).isEqualTo(AGENT_ID);
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+        }
+    }
+
+    @Test
+    @DisplayName("an unbound scan of tenant-scoped keys keeps the prefix (documented limit)")
+    void unboundScanKeepsTheTenantPrefix() {
+        TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId(TENANT_ID).build());
+        try {
+            persistLegacyRunningCursor(SESSION_ID);
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+        }
+
+        List<StepCursor> running = checkpointer.scanRunningSteps();
+        assertThat(running).hasSize(1);
+        assertThat(running.get(0).getSessionId()).isEqualTo(TENANT_ID + ":" + SESSION_ID);
+        assertThat(running.get(0).getAgentId()).isEqualTo(AGENT_ID);
+    }
+
+    /**
+     * Persist a RUNNING cursor in the pre-upgrade shape: the map carries no
+     * session_id/agent_id keys at all, so the identity can only come from the
+     * KV key of the state blob.
+     *
+     * @param sessionId session owning the leftover cursor
+     */
+    private void persistLegacyRunningCursor(String sessionId) {
+        AgentSession crashed = new AgentSession(sessionId, null, sessionCard());
+        Map<String, Object> legacyCursor = Map.of(
+                "seq", 5L,
+                "step_type", "TOOL_CALL",
+                "step_name", "probe_a",
+                "status", "RUNNING",
+                "timestamp", 654L);
+        crashed.getInner().state().update(Map.of(StepCursor.STATE_KEY, legacyCursor));
+        checkpointer.postAgentExecute(crashed.getInner());
+    }
+
+    private static AgentCard sessionCard() {
+        return new AgentCard(AGENT_ID, AGENT_ID, "step checkpoint e2e agent");
     }
 
     private ReActAgent newAgent(StepCheckpointPolicy policy) {

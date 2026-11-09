@@ -35,6 +35,12 @@ public abstract class Checkpointer implements AutoCloseable {
     public static final String SESSION_NAMESPACE_WORKFLOW = "workflow";
     public static final String WORKFLOW_NAMESPACE_GRAPH = "workflow-graph";
 
+    /** Suffix of the KV key holding one agent's state blob. */
+    private static final String AGENT_STATE_BLOBS_SUFFIX = ":agent_state_blobs";
+
+    /** Marker separating session id and agent id inside an agent-state blob key. */
+    private static final String AGENT_NAMESPACE_MARKER = ":" + SESSION_NAMESPACE_AGENT + ":";
+
     public static String getThreadId(BaseSession session) {
         return String.join(":", session.sessionId(), workflowId(session));
     }
@@ -155,12 +161,13 @@ public abstract class Checkpointer implements AutoCloseable {
         if (session == null || cursor == null || session.state() == null) {
             return;
         }
+        StepCursor owned = cursor.withOwner(session.sessionId(), agentId(session));
         StepCursor previous = lastCompletedStep(session);
-        if (!cursor.isAfter(previous)) {
+        if (!owned.isAfter(previous)) {
             return;
         }
         Map<String, Object> update = new LinkedHashMap<>();
-        update.put(StepCursor.STATE_KEY, cursor.toMap());
+        update.put(StepCursor.STATE_KEY, owned.toMap());
         session.state().update(update);
         boolean isSaved = false;
         try {
@@ -211,7 +218,8 @@ public abstract class Checkpointer implements AutoCloseable {
             return;
         }
         Map<String, Object> update = new LinkedHashMap<>();
-        update.put(StepCursor.FAILED_STATE_KEY, cursor.toMap());
+        update.put(StepCursor.FAILED_STATE_KEY,
+                cursor.withOwner(session.sessionId(), agentId(session)).toMap());
         CheckpointSnapshotSession snapshot = new CheckpointSnapshotSession(session);
         preAgentExecute(snapshot, null);
         snapshot.state().update(update);
@@ -240,7 +248,9 @@ public abstract class Checkpointer implements AutoCloseable {
      * and the runtime dead-step sweeper.
      *
      * <p>The base implementation has no cross-session index and returns an
-     * empty list; backends with a queryable store override it.</p>
+     * empty list; backends with a queryable store override it. An override
+     * must return cursors carrying their owning session/agent identity, because
+     * recovery hands it to the business hook.</p>
      *
      * @return cursors of sessions with an unfinished last step, empty when none
      */
@@ -282,10 +292,15 @@ public abstract class Checkpointer implements AutoCloseable {
     /**
      * Collect cursors in RUNNING state from recovered state snapshots.
      *
-     * @param states snapshot maps keyed by session id, values may be anything
-     * @return one RUNNING cursor per session that has one
+     * <p>Entry keys are the storage keys the snapshots were read from; they are
+     * used to fill a missing session/agent identity on the cursor, so snapshots
+     * written before the cursor carried its identity still recover with one.</p>
+     *
+     * @param states snapshot maps keyed by their storage key, values may be anything
+     * @param scanPrefix prefix the caller used to scan {@code states}, null treated as empty
+     * @return one RUNNING cursor per scanned state blob that has one
      */
-    protected static List<StepCursor> runningCursorsFromStates(Map<String, Object> states) {
+    protected static List<StepCursor> runningCursorsFromStates(Map<String, Object> states, String scanPrefix) {
         List<StepCursor> running = new ArrayList<>();
         if (states == null) {
             return running;
@@ -299,10 +314,49 @@ public abstract class Checkpointer implements AutoCloseable {
             snapshotMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
             StepCursor cursor = StepCursor.fromState(normalized);
             if (isRunningCursor(cursor)) {
-                running.add(cursor);
+                running.add(withOwnerFromBlobKey(entry.getKey(), scanPrefix, cursor));
             }
         }
         return running;
+    }
+
+    /**
+     * Fill the owning session/agent identity of a scanned cursor from the KV
+     * key of its agent-state blob.
+     *
+     * <p>Snapshots written before the cursor carried its identity only expose
+     * it through the key shape
+     * {@code <prefix><sessionId>:agent:<agentId>:agent_state_blobs}. The prefix
+     * must be the one the caller actually scanned with: it is passed in rather
+     * than resolved here, because the tenant context at parse time may differ
+     * from the one the scan ran under. A scan performed without a bound tenant
+     * uses an empty prefix and also returns tenant-scoped keys; for those the
+     * restored session id keeps its {@code <tenantId>:} prefix, which callers
+     * must treat as opaque.</p>
+     *
+     * @param key KV key the cursor was read from, may be null
+     * @param scanPrefix prefix the caller used for the scan, null treated as empty
+     * @param cursor cursor read from that key, may be null
+     * @return the cursor with its identity filled, or the input cursor when it
+     *         already carries one or the key is not an agent-state blob key
+     */
+    public static StepCursor withOwnerFromBlobKey(String key, String scanPrefix, StepCursor cursor) {
+        if (cursor == null || key == null || !cursor.getSessionId().isEmpty()) {
+            return cursor;
+        }
+        String prefix = scanPrefix == null ? "" : scanPrefix;
+        String raw = key.startsWith(prefix) ? key.substring(prefix.length()) : key;
+        if (!raw.endsWith(AGENT_STATE_BLOBS_SUFFIX)) {
+            return cursor;
+        }
+        String body = raw.substring(0, raw.length() - AGENT_STATE_BLOBS_SUFFIX.length());
+        int marker = body.lastIndexOf(AGENT_NAMESPACE_MARKER);
+        if (marker <= 0) {
+            return cursor;
+        }
+        String ownerSessionId = body.substring(0, marker);
+        String ownerAgentId = body.substring(marker + AGENT_NAMESPACE_MARKER.length());
+        return cursor.withOwner(ownerSessionId, ownerAgentId);
     }
 
     public void preAgentTeamExecute(BaseSession session, Object inputs) {

@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Tests for the step-level checkpoint layer: cursor round-trip, policy
@@ -184,6 +185,47 @@ class StepCheckpointTest {
                 new StepCursor(1L, "TOOL_CALL", "search", StepStatus.COMPLETED, 7L));
 
         assertTrue(checkpointer.scanRunningSteps().isEmpty());
+    }
+
+    @Test
+    void scannedCursorAndRecoveryHookCarryOwningSessionId() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-owner", "agent-owner", state);
+        checkpointer.preAgentExecute(session, null);
+        checkpointer.stepCompleted(session,
+                new StepCursor(1L, "TOOL_CALL", "search", StepStatus.RUNNING, 9L));
+
+        List<StepCursor> scanned = checkpointer.scanRunningSteps();
+        assertEquals(1, scanned.size());
+        assertEquals("session-owner", scanned.get(0).getSessionId());
+
+        AtomicReference<StepRecoveryHook.RecoveryRequest> seen = new AtomicReference<>();
+        StepCheckpointRecoveryService service = new StepCheckpointRecoveryService(checkpointer, request -> {
+            seen.set(request);
+            return StepRecoveryHook.RecoveryResult.recovered("resumed");
+        });
+        service.recoverLeftovers();
+
+        assertNotNull(seen.get(), "the hook must be called for the leftover cursor");
+        assertEquals("session-owner", seen.get().sessionId());
+        assertEquals("session-owner", seen.get().cursor().getSessionId());
+    }
+
+    @Test
+    void fromMapToleratesMissingOwnerKeys() {
+        Map<String, Object> legacyCursor = Map.of(
+                "seq", 1L,
+                "step_type", "TOOL_CALL",
+                "step_name", "search",
+                "status", "RUNNING",
+                "timestamp", 7L);
+
+        StepCursor cursor = StepCursor.fromMap(legacyCursor);
+
+        assertNotNull(cursor);
+        assertEquals("", cursor.getSessionId());
+        assertEquals("", cursor.getAgentId());
     }
 
     @Test

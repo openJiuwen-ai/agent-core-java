@@ -359,6 +359,67 @@ class StepCheckpointAuditTrailTest {
         assertEquals("search", cursor.getStepName());
     }
 
+    @Test
+    void recoveryTreatsCollidingCursorFingerprintsAsDistinctSessions() {
+        // Two sessions crash on the same step in the same millisecond: the
+        // cursor fingerprint alone cannot tell them apart.
+        TestSession first = newSession("session-collide-a");
+        TestSession second = newSession("session-collide-b");
+        checkpointer.preAgentExecute(first, null);
+        checkpointer.preAgentExecute(second, null);
+        checkpointer.stepCompleted(first,
+                new StepCursor(1L, "TOOL_CALL", "search", StepStatus.RUNNING, 500L));
+        checkpointer.stepCompleted(second,
+                new StepCursor(1L, "TOOL_CALL", "search", StepStatus.RUNNING, 500L));
+
+        List<String> seenSessions = new ArrayList<>();
+        StepCheckpointRecoveryService service = new StepCheckpointRecoveryService(checkpointer, request -> {
+            seenSessions.add(request.sessionId());
+            return StepRecoveryHook.RecoveryResult.recovered(request.sessionId());
+        });
+
+        List<StepCheckpointRecoveryService.RecoveryAction> actions = service.recoverLeftovers();
+        assertEquals(2, actions.size());
+        for (StepCheckpointRecoveryService.RecoveryAction action : actions) {
+            assertEquals(StepCheckpointRecoveryService.RecoveryActionType.RECOVERED_BY_HOOK, action.type());
+        }
+        assertTrue(seenSessions.contains("session-collide-a"), "every colliding session must reach the hook");
+        assertTrue(seenSessions.contains("session-collide-b"), "every colliding session must reach the hook");
+
+        service.forget("session-collide-a");
+        seenSessions.clear();
+        List<StepCheckpointRecoveryService.RecoveryAction> again = service.recoverLeftovers();
+        assertEquals(1, seenSessions.size(), "forget must make the forgotten session recoverable again");
+        assertEquals("session-collide-a", seenSessions.get(0));
+        long skipped = again.stream()
+                .filter(action -> action.type()
+                        == StepCheckpointRecoveryService.RecoveryActionType.SKIPPED_ALREADY_PROCESSED)
+                .count();
+        assertEquals(1L, skipped, "the session that was not forgotten stays processed");
+    }
+
+    @Test
+    void recoveryProcessesTheSameSessionAgainAfterANewCursor() {
+        // A hook may resume the task; if it crashes again the cursor differs
+        // (new seq/timestamp) and recovery must run again in this process.
+        TestSession session = newSession("session-recursors");
+        checkpointer.preAgentExecute(session, null);
+        checkpointer.stepCompleted(session,
+                new StepCursor(1L, "TOOL_CALL", "search", StepStatus.RUNNING, 100L));
+
+        StepCheckpointRecoveryService service = new StepCheckpointRecoveryService(checkpointer,
+                request -> StepRecoveryHook.RecoveryResult.recovered("resumed"));
+        assertEquals(StepCheckpointRecoveryService.RecoveryActionType.RECOVERED_BY_HOOK,
+                service.recoverLeftovers().get(0).type());
+
+        checkpointer.stepCompleted(session,
+                new StepCursor(2L, "TOOL_CALL", "fetch", StepStatus.RUNNING, 200L));
+        List<StepCheckpointRecoveryService.RecoveryAction> second = service.recoverLeftovers();
+        assertEquals(1, second.size());
+        assertEquals(StepCheckpointRecoveryService.RecoveryActionType.RECOVERED_BY_HOOK, second.get(0).type(),
+                "a new cursor of the same session must not be swallowed by the processed registry");
+    }
+
     private TestSession newSession(String sessionId) {
         return new TestSession(sessionId, new AgentStateCollection());
     }

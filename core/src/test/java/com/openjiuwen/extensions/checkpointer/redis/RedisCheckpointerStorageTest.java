@@ -10,6 +10,8 @@ import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.Serializer;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.constants.SessionConstants;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.internal.NodeSession;
@@ -612,6 +614,21 @@ class RedisCheckpointerStorageTest {
         assertTrue(isGraphStateMissing(checkpointer, "session-1", "workflow-1"));
         assertTrue(isGraphStateMissing(checkpointer, "session-1", "workflow-1:sub:1"));
         assertEquals(3, getGraphState(checkpointer, "session-1", "workflow-2").getStep());
+    }
+
+    @Test
+    void scanRunningStepsCarriesSessionAndAgentIdentity() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
+        AgentSession session = agentSession("session-scan", agentConfig("agent-1"), checkpointer);
+
+        checkpointer.stepCompleted(session,
+                new StepCursor(1L, "TOOL_CALL", "search", StepStatus.RUNNING, 12L));
+
+        List<StepCursor> running = checkpointer.scanRunningSteps();
+        assertEquals(1, running.size());
+        assertEquals("session-scan", running.get(0).getSessionId());
+        assertEquals("agent-1", running.get(0).getAgentId());
     }
 
     private static RedisCheckpointer jsonCheckpointer(FakeRedisClient redisClient) {

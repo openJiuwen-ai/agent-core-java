@@ -156,12 +156,18 @@ public class AgentStorage extends BaseRedisStorage {
      * by a crashed process. Reads every blob under the agent namespace through
      * the KV prefix query and deserializes the step cursor from the snapshot.
      *
+     * <p>Returned cursors carry the owning session/agent identity. Blobs
+     * written before the cursor carried it are filled from the scanned key;
+     * note that {@link #resolveAgentId} falls back to the session id when a
+     * session does not expose {@code agentId()}, so such legacy entries can
+     * report {@code agentId == sessionId} instead of an empty agent id.</p>
+     *
      * @return one RUNNING cursor per session that has one, empty when none
      */
     public CompletableFuture<List<StepCursor>> scanRunningCursors() {
         try {
-            Map<String, Object> blobs = redisStore
-                    .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix("")).join();
+            String scanPrefix = TenantKVStoreKeyResolver.resolvePrefix("");
+            Map<String, Object> blobs = redisStore.getByPrefix(scanPrefix).join();
             List<StepCursor> running = new ArrayList<>();
             if (blobs == null || blobs.isEmpty()) {
                 return CompletableFuture.completedFuture(running);
@@ -181,7 +187,7 @@ public class AgentStorage extends BaseRedisStorage {
                 stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
                 StepCursor cursor = StepCursor.fromState(normalized);
                 if (cursor != null && cursor.getStatus() == StepStatus.RUNNING) {
-                    running.add(cursor);
+                    running.add(Checkpointer.withOwnerFromBlobKey(entry.getKey(), scanPrefix, cursor));
                 }
             }
             return CompletableFuture.completedFuture(running);
