@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agentteams.messager;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -148,7 +150,10 @@ public final class TeamTransportRuntime implements AutoCloseable {
             return;
         }
         if (network.isPresent()) {
-            network.get().release((PyZmqMessager) messager);
+            if (!(messager instanceof PyZmqMessager member)) {
+                throw new IllegalStateException("Owned ZeroMQ network requires a ZeroMQ member transport");
+            }
+            network.get().release(member);
             return;
         }
         List<RuntimeException> failures = new ArrayList<>();
@@ -199,28 +204,28 @@ public final class TeamTransportRuntime implements AutoCloseable {
             if (template.getMetadata() == null) {
                 template.setMetadata(new LinkedHashMap<>());
             }
-            boolean ownsProxy = canOwnProxy && !Boolean.FALSE.equals(template.getMetadata().get("pubsub_bind"));
-            prepareEndpoints(template, ownsProxy);
-            if (ownsProxy) {
+            boolean isProxyOwner = canOwnProxy && !Boolean.FALSE.equals(template.getMetadata().get("pubsub_bind"));
+            prepareEndpoints(template, isProxyOwner);
+            if (isProxyOwner) {
                 broker = Optional.of(startBroker(template));
             } else {
                 broker = Optional.empty();
             }
         }
 
-        private static void prepareEndpoints(MessagerTransportConfig config, boolean ownsProxy) {
+        private static void prepareEndpoints(MessagerTransportConfig config, boolean isProxyOwner) {
             if (!Double.isFinite(config.getRequestTimeout()) || config.getRequestTimeout() <= 0.0d) {
                 throw new IllegalArgumentException("Team transport requestTimeout must be finite and positive");
             }
             if (config.getMetadata() == null) {
                 config.setMetadata(new LinkedHashMap<>());
             }
-            if (isBlank(config.getPubsubPublishAddr()) && isBlank(config.getPubsubSubscribeAddr()) && ownsProxy) {
+            if (isBlank(config.getPubsubPublishAddr()) && isBlank(config.getPubsubSubscribeAddr()) && isProxyOwner) {
                 config.setPubsubPublishAddr(LOCAL_ENDPOINT);
                 config.setPubsubSubscribeAddr(LOCAL_ENDPOINT);
             }
-            validateEndpoint(config.getPubsubPublishAddr(), ownsProxy);
-            validateEndpoint(config.getPubsubSubscribeAddr(), ownsProxy);
+            validateEndpoint(config.getPubsubPublishAddr(), isProxyOwner);
+            validateEndpoint(config.getPubsubSubscribeAddr(), isProxyOwner);
             if (!isBlank(config.getDirectAddr())) {
                 validateEndpoint(config.getDirectAddr(), true);
             }
@@ -256,7 +261,10 @@ public final class TeamTransportRuntime implements AutoCloseable {
 
         private static void start(PyZmqMessager transport, double timeout) {
             try {
-                transport.start().orTimeout(Math.max(1L, Math.round(timeout * 1_000.0d)), TimeUnit.MILLISECONDS).join();
+                long timeoutMillis = BigDecimal.valueOf(timeout).movePointRight(3)
+                        .setScale(0, RoundingMode.HALF_UP).max(BigDecimal.ONE)
+                        .min(BigDecimal.valueOf(Long.MAX_VALUE)).longValueExact();
+                transport.start().orTimeout(timeoutMillis, TimeUnit.MILLISECONDS).join();
             } catch (CompletionException | IllegalStateException failure) {
                 List<RuntimeException> cleanup = new ArrayList<>();
                 stop(transport, cleanup);
@@ -326,15 +334,15 @@ public final class TeamTransportRuntime implements AutoCloseable {
         private void release(PyZmqMessager member) {
             List<RuntimeException> failures = new ArrayList<>();
             stop(member, failures);
-            boolean closesProxy;
+            boolean shouldCloseProxy;
             synchronized (lifecycleLock) {
                 members.values().removeIf(value -> value == member);
                 String memberId = member.getLocalPeer().getAgentId();
                 members.values().forEach(peer -> peer.unregisterPeer(memberId));
-                closesProxy = members.isEmpty();
-                isClosing = closesProxy;
+                shouldCloseProxy = members.isEmpty();
+                isClosing = shouldCloseProxy;
             }
-            if (closesProxy) {
+            if (shouldCloseProxy) {
                 broker.ifPresent(proxy -> stop(proxy, failures));
             }
             throwCloseFailure(failures);

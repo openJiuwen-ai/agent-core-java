@@ -17,6 +17,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -740,7 +741,8 @@ public class LeaderTeammateAgentTeam {
 
             return new LeaderTeammateAgentTeam(
                     TeamAgentSpec.builder().name(teamName).description(description).lifecycle(lifecycle)
-                            .teammateMode(teammateMode).spawnMode(spawnMode).transport(resolveConfiguredTransport())
+                            .teammateMode(teammateMode).spawnMode(spawnMode)
+                            .transport(resolveConfiguredTransport().orElse(null))
                             .transportConfig(transportConfig).storage(storage)
                             .connectionString(connectionString).teamMode(resolvedTeamMode).language(language)
                             .members(members).modelPool(modelPool).modelPoolStrategy(modelPoolStrategy)
@@ -748,11 +750,9 @@ public class LeaderTeammateAgentTeam {
                             .isExposeHumanAgentsToTeammates(isExposeHumanAgentsToTeammates).build());
         }
 
-        private String resolveConfiguredTransport() {
-            if (transport != null) {
-                return transport;
-            }
-            return transportConfig == null ? null : transportConfig.getBackend();
+        private Optional<String> resolveConfiguredTransport() {
+            return Optional.ofNullable(transport).or(() ->
+                    Optional.ofNullable(transportConfig).map(MessagerTransportConfig::getBackend));
         }
     }
 }

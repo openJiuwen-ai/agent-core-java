@@ -15,7 +15,6 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -86,7 +85,7 @@ public final class InProcessSpawn {
                 .build();
     }
 
-    private static Void invokeTeammate(TeamAgent teammate, String memberName, String query, String sessionId) {
+    private static void invokeTeammate(TeamAgent teammate, String memberName, String query, String sessionId) {
         Loggers.AGENT.info("inprocessSpawn: executor thread started for member={}", memberName);
         try (TeammateScope scope = new TeammateScope(teammate, sessionId)) {
             // Mirrors Python inprocess_spawn.py: the teammate's TeamBackend
@@ -101,12 +100,11 @@ public final class InProcessSpawn {
                 InterruptSignals.restoreCurrentThread();
                 Loggers.AGENT.info("inprocessSpawn: interrupted for member={}", memberName);
             }
-            return null;
         }
     }
 
     private static Future<?> submitTeammate(ExecutorService executor, TeamAgent teammate, String memberName,
-            Callable<Void> invocation) {
+            Runnable invocation) {
         TeammateTask task = new TeammateTask(teammate, memberName, invocation);
         try (SubmissionGuard submission = new SubmissionGuard(task)) {
             executor.execute(task);
@@ -200,8 +198,8 @@ public final class InProcessSpawn {
 
         private final AtomicBoolean isClaimed = new AtomicBoolean();
 
-        private TeammateTask(TeamAgent teammate, String memberName, Callable<Void> invocation) {
-            super(invocation);
+        private TeammateTask(TeamAgent teammate, String memberName, Runnable invocation) {
+            super(invocation, null);
             this.teammate = teammate;
             this.memberName = memberName;
         }

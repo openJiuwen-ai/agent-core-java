@@ -64,6 +64,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -1906,7 +1907,7 @@ public class TeamAgent implements DispatcherHost {
                 .language(stringValue(raw.get("language")))
                 .spawnMode(defaultString(raw, "spawn_mode", "process"))
                 .transport(raw.get("transport") == null ? null : stringValue(raw.get("transport")))
-                .transportConfig(deserializeTransportConfig(raw.get("transport_config")))
+                .transportConfig(deserializeTransportConfig(raw.get("transport_config")).orElse(null))
                 .storage(defaultString(raw, "storage", "sqlite"))
                 .connectionString(raw.get("connection_string") == null
                         ? null : stringValue(raw.get("connection_string")))
@@ -1920,8 +1921,9 @@ public class TeamAgent implements DispatcherHost {
         return values.get(key) == null ? fallback : stringValue(values.get(key));
     }
 
-    private static MessagerTransportConfig deserializeTransportConfig(Object value) {
-        return value == null ? null : OBJECT_MAPPER.convertValue(value, MessagerTransportConfig.class);
+    private static Optional<MessagerTransportConfig> deserializeTransportConfig(Object value) {
+        return Optional.ofNullable(value)
+                .map(config -> OBJECT_MAPPER.convertValue(config, MessagerTransportConfig.class));
     }
 
     @SuppressWarnings("unchecked")

@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agentteams.LeaderTeammateAgentTeam;
 import com.openjiuwen.agentteams.TeamConstants;
 import com.openjiuwen.agentteams.factory.TeamFactory;
+import com.openjiuwen.agentteams.messager.InProcessMessager;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.messager.PyZmqMessager;
 import com.openjiuwen.agentteams.messager.TeamTransportRuntime;
@@ -33,8 +34,11 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -75,6 +79,41 @@ class TeamTransportAssemblyTest {
         assertThat(team.transport()).isEqualTo("pyzmq");
         assertThat(team.spec().getTransportConfig().getBackend()).isEqualTo("pyzmq");
         assertThat(team.spec().getTransportConfig().getRequestTimeout()).isEqualTo(3.0d);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = "inprocess")
+    void missingTransportConfigurationPreservesLegacyBackend(String transport) {
+        LeaderTeammateAgentTeam team = LeaderTeammateAgentTeam.builder().teamName(name()).spawnMode("inprocess")
+                .transport(transport).transportConfig(null).storage("memory").build();
+
+        assertThat(team.isBuilt()).isFalse();
+        assertThat(team.transport()).isEqualTo(transport);
+        TeamAgent runtime = team.agent();
+        agents.add(runtime);
+
+        assertThat(team.transport()).isEqualTo("inprocess");
+        assertThat(team.spec().getTransportConfig()).isNull();
+        assertThat(runtime.getTeamBackend().getMessager()).isInstanceOf(InProcessMessager.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void legacySpawnPayloadAcceptsMissingOrNullTransportConfiguration(boolean hasNullConfiguration) {
+        String teamName = name();
+        Map<String, Object> spec = new LinkedHashMap<>(Map.of("name", teamName,
+                "spawn_mode", "inprocess", "storage", "memory"));
+        if (hasNullConfiguration) {
+            spec.put("transport_config", null);
+        }
+        TeamAgent teammate = TeamAgent.fromSpawnPayload(Map.of("spec", spec,
+                "context", Map.of("team_id", teamName, "member_name", "worker", "role", "teammate")));
+        agents.add(teammate);
+
+        assertThat(teammate.getSpec().getTransportConfig()).isNull();
+        assertThat(teammate.getSpec().getTransport()).isEqualTo("inprocess");
+        assertThat(teammate.getTeamBackend().getMessager()).isInstanceOf(InProcessMessager.class);
     }
 
     @Test
