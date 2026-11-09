@@ -565,7 +565,7 @@ public class AbilityManager {
         List<ExecutionResult> results = new ArrayList<>(Collections.nCopies(toolCalls.size(), null));
         List<Integer> batchIndices = new ArrayList<>();
         for (int index = 0; index < toolCalls.size(); index++) {
-            if (isParallelSafeToolCall(toolCalls.get(index))) {
+            if (isParallelSafeToolCall(toolCalls.get(index), session, tag)) {
                 batchIndices.add(index);
                 continue;
             }
@@ -1267,10 +1267,20 @@ public class AbilityManager {
     }
 
     boolean isParallelSafeToolCall(ToolCall toolCall) {
+        return isParallelSafeToolCall(toolCall, null, null);
+    }
+
+    private boolean isParallelSafeToolCall(ToolCall toolCall, Object session, Object tag) {
         if (toolCall == null) {
             return true;
         }
         ToolCard card = tools.get(toolCall.getName());
+        if (card == null) {
+            // Resume/parallel-worker paths may hold the tool only in the resource
+            // manager; resolve its card before treating the name as unknown.
+            Tool resolved = lookupTool(toolCall.getName(), session, tag);
+            card = resolved == null ? null : resolved.getCard();
+        }
         // Unknown cards are conservatively serial: a tool that never declared
         // parallel safety must not be dispatched concurrently by default.
         return card != null && card.isParallelSafe();
