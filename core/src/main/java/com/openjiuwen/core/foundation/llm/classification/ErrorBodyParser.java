@@ -73,10 +73,39 @@ public final class ErrorBodyParser {
             return Optional.empty();
         }
         try {
-            return Optional.of(MAPPER.readTree(body));
+            return Optional.of(MAPPER.readTree(unwrapSseData(body)));
         } catch (JsonProcessingException exception) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Some OpenAI-compatible providers return an SSE-framed error body even for
+     * HTTP 4xx responses ({@code data: {"error": ...}}); unwrap the data field
+     * before parsing.
+     *
+     * @param body raw body
+     * @return unwrapped JSON candidate
+     */
+    private static String unwrapSseData(String body) {
+        String trimmed = body.trim();
+        if (!trimmed.startsWith("data:")) {
+            return trimmed;
+        }
+        String withoutPrefix = trimmed.substring("data:".length()).trim();
+        if (withoutPrefix.startsWith("{")) {
+            return withoutPrefix;
+        }
+        for (String line : trimmed.split("\\R")) {
+            String candidate = line.trim();
+            if (candidate.startsWith("data:")) {
+                String data = candidate.substring("data:".length()).trim();
+                if (!data.isEmpty()) {
+                    return data;
+                }
+            }
+        }
+        return trimmed;
     }
 
     private static ParsedError fromNode(JsonNode node) {

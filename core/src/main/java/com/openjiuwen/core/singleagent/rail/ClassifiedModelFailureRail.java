@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
@@ -71,6 +72,11 @@ public class ClassifiedModelFailureRail extends AgentRail {
         if (context == null || context.getException() == null) {
             return;
         }
+        if (hasFirstSegmentReceived(context.getException())) {
+            // FEAT-064 L1 §1.2.7 MUST: no whole-call retry once the first streamed
+            // segment has been delivered downstream.
+            return;
+        }
         if (yieldsToBackupRail(context)) {
             return;
         }
@@ -93,6 +99,23 @@ public class ClassifiedModelFailureRail extends AgentRail {
         if (context.getAgent() instanceof ReActAgent reactAgent) {
             reactAgent.publishGuardrailRetry(context, retryCount, maxGuardrailRetries, delaySeconds);
         }
+    }
+
+    private static boolean hasFirstSegmentReceived(Throwable error) {
+        Throwable cursor = error;
+        int depth = 0;
+        while (cursor != null && depth < 32) {
+            if (cursor instanceof BaseError baseError
+                && baseError.getDetails() instanceof Map<?, ?> details) {
+                Object received = details.get(ModelCallClassification.DETAIL_FIRST_SEGMENT);
+                if (received instanceof Boolean isReceived && isReceived) {
+                    return true;
+                }
+            }
+            cursor = cursor.getCause();
+            depth++;
+        }
+        return false;
     }
 
     private boolean yieldsToBackupRail(AgentCallbackContext context) {

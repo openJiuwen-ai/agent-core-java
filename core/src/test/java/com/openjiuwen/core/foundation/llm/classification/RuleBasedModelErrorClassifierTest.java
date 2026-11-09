@@ -103,6 +103,51 @@ class RuleBasedModelErrorClassifierTest {
     }
 
     @Test
+    void parse_ssePrefixedAliyunError_extractsCodeAndMessage() {
+        ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
+            "data: {\"error\":{\"message\":\"Range of input length should be [1, 8192]\","
+                + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
+            .orElseThrow();
+
+        assertThat(parsed.code()).isEqualTo("invalid_parameter_error");
+        assertThat(parsed.message()).contains("Range of input length");
+    }
+
+    @Test
+    void classify_aliyunQwenInputLengthRange_isContextLengthExceeded() {
+        ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
+            "{\"error\":{\"message\":\"<400> InternalError.Algo.InvalidParameter: "
+                + "Range of input length should be [1, 8192]\","
+                + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
+            .orElseThrow();
+        ModelCallClassification result = classifier.classify(aliyunFacts(parsed));
+
+        assertThat(parsed.code()).isEqualTo("invalid_parameter_error");
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+        assertThat(result.isRetryable()).isFalse();
+    }
+
+    @Test
+    void classify_aliyunQwenOtherInvalidParameter_isNotContextLength() {
+        ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
+            "{\"error\":{\"message\":\"wrong temperature value\","
+                + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
+            .orElseThrow();
+        ModelCallClassification result = classifier.classify(aliyunFacts(parsed));
+
+        assertThat(result.category()).isNotEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+    }
+
+    private static ModelErrorFacts aliyunFacts(ErrorBodyParser.ParsedError parsed) {
+        return ModelErrorFacts.Builder.create()
+            .httpStatus(400)
+            .errorCode(parsed.code())
+            .errorMessage(parsed.message())
+            .stream(false)
+            .build();
+    }
+
+    @Test
     void classify_embeddedErrorBody_classifiedNotSuccess() {
         // Given HTTP 200 with an embedded error body, When classified, Then it is a failure
         ModelCallClassification result = classifier.classify(httpFacts(200,

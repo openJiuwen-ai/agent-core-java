@@ -56,6 +56,26 @@ class ClassifiedModelFailureRailTest {
     }
 
     @Test
+    void onModelException_rateLimitedAfterFirstSegment_noRetry() {
+        AgentCallbackContext ctx = contextWith(classifiedBodyWithFirstSegment(429, null, true));
+
+        rail.onModelException(ctx);
+
+        assertThat(ctx.consumeRetryRequest())
+            .as("first segment already delivered: no whole-call retry").isNull();
+    }
+
+    @Test
+    void onModelException_temporaryAfterFirstSegment_noRetry() {
+        AgentCallbackContext ctx = contextWith(classifiedBodyWithFirstSegment(500, null, true));
+
+        rail.onModelException(ctx);
+
+        assertThat(ctx.consumeRetryRequest())
+            .as("first segment already delivered: no whole-call retry").isNull();
+    }
+
+    @Test
     void onModelException_budgetExhausted_noFurtherRetry() {
         RecordingSession session = new RecordingSession(false);
         AgentCallbackContext ctx = streamingContextWith(classifiedHttp(429), agentWithMaxRetries(1), session);
@@ -183,11 +203,19 @@ class ClassifiedModelFailureRailTest {
     }
 
     private static RuntimeException classifiedBody(int status, String errorCode) {
+        return classifiedBodyWithFirstSegment(status, errorCode, null);
+    }
+
+    private static RuntimeException classifiedBodyWithFirstSegment(int status, String errorCode,
+            Boolean firstSegmentReceived) {
         ModelErrorFacts.Builder builder = ModelErrorFacts.Builder.create()
             .httpStatus(status)
             .stream(false);
         if (errorCode != null) {
             builder.errorCode(errorCode).errorMessage(errorCode);
+        }
+        if (firstSegmentReceived != null) {
+            builder.firstSegmentReceived(firstSegmentReceived);
         }
         ModelErrorFacts facts = builder.build();
         ModelCallClassification classification =
