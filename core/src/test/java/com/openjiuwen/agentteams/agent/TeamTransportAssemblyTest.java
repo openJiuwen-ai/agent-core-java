@@ -31,6 +31,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.parallel.Isolated;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -96,17 +98,23 @@ class TeamTransportAssemblyTest {
         assertThat(leader.getSpec().getTransportConfig().getDirectAddr()).isNull();
     }
 
-    @Test
-    void rejectedExecutorReleasesMemberTransportBeforeReportingFailure() {
+    @ParameterizedTest
+    @MethodSource("submissionFailures")
+    void rejectedExecutorReleasesMemberTransportBeforeReportingFailure(RuntimeException failure) {
         TeamAgent leader = leader();
         ExecutorService rejected = mock(ExecutorService.class);
-        doThrow(new RejectedExecutionException("fixture rejection")).when(rejected).execute(any(Runnable.class));
+        doThrow(failure).when(rejected).execute(any(Runnable.class));
 
         assertThatThrownBy(() -> InProcessSpawn.inprocessSpawn(leader, member(leader), rejected, "", "session"))
-                .isInstanceOf(RejectedExecutionException.class).hasMessage("fixture rejection");
+                .isSameAs(failure);
         try (TeamTransportRuntime replacement = leader.getTransportRuntime().fork("worker")) {
             assertThat(replacement.messager()).isInstanceOf(PyZmqMessager.class);
         }
+    }
+
+    private static List<RuntimeException> submissionFailures() {
+        return List.of(new RejectedExecutionException("fixture rejection"),
+                new IllegalStateException("fixture executor state"), new SecurityException("fixture executor access"));
     }
 
     @Test

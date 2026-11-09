@@ -628,14 +628,21 @@ public class PyZmqMessager implements Messager {
                 continue;
             }
             closeSocket(pending.socket());
-            if (new String(acknowledgement, StandardCharsets.UTF_8).startsWith("error:")) {
-                pending.future().completeExceptionally(new IllegalStateException(
-                        "ZeroMQ peer rejected delivery: " + pending.diagnostic()));
+            String response = new String(acknowledgement, StandardCharsets.UTF_8);
+            if (response.startsWith("error:")) {
+                pending.future().completeExceptionally(acknowledgementFailure(response, pending.diagnostic()));
             } else {
                 pending.future().complete(null);
             }
             iterator.remove();
         }
+    }
+
+    private static IllegalStateException acknowledgementFailure(String response, String diagnostic) {
+        if ("error:handler_unavailable".equals(response)) {
+            return new PeerUnavailableException(diagnostic);
+        }
+        return new IllegalStateException("ZeroMQ peer rejected delivery: " + diagnostic);
     }
 
     private void expirePendingSends() {
@@ -1007,7 +1014,11 @@ public class PyZmqMessager implements Messager {
                 continue;
             }
             if (now >= pending.deadlineNanos) {
-                pending.future.completeExceptionally(new TimeoutException("ZeroMQ subscription did not become ready"));
+                TimeoutException failure = new TimeoutException("ZeroMQ subscription did not become ready");
+                if (pending.lastProbeFailure != null) {
+                    failure.initCause(pending.lastProbeFailure);
+                }
+                pending.future.completeExceptionally(failure);
                 pending.requests.values().forEach(request -> request.cancel(false));
                 iterator.remove();
                 topicHandlers.remove(entry.getKey());
@@ -1054,7 +1065,11 @@ public class PyZmqMessager implements Messager {
         pending.requests.put(peer, acknowledgement);
         acknowledgement.whenComplete((ignored, failure) -> {
             if (failure != null && !acknowledgement.isCancelled()) {
-                pending.future.completeExceptionally(failure);
+                if (failure instanceof PeerUnavailableException || failure instanceof TimeoutException) {
+                    pending.lastProbeFailure = failure;
+                } else {
+                    pending.future.completeExceptionally(failure);
+                }
             }
         });
         EventMessage request = EventMessage.builder().eventType(READINESS_REQUEST).senderId(localNodeId)
@@ -1090,6 +1105,7 @@ public class PyZmqMessager implements Messager {
         private final CompletableFuture<Void> future;
         private final Set<String> publishers;
         private final Map<String, CompletableFuture<Void>> requests = new LinkedHashMap<>();
+        private Throwable lastProbeFailure;
         private long nextProbeNanos;
 
         private PendingSubscription(String nonce, byte[] payload, long deadlineNanos,
@@ -1099,6 +1115,14 @@ public class PyZmqMessager implements Messager {
             this.deadlineNanos = deadlineNanos;
             this.future = future;
             this.publishers = publishers;
+        }
+    }
+
+    private static final class PeerUnavailableException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
+
+        private PeerUnavailableException(String diagnostic) {
+            super("ZeroMQ peer rejected delivery: " + diagnostic);
         }
     }
 
