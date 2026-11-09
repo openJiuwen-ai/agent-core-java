@@ -122,6 +122,15 @@ class AbilityManagerParallelTest {
     }
 
     @Test
+    @DisplayName("未注册的工具名默认不并行（未知即串行）")
+    void unknownToolName_isNotParallelSafe() {
+        ToolCall unknown = ToolCall.builder().id("tc-unknown").name("missing-tool").arguments("{}").build();
+
+        assertThat(manager.isParallelSafeToolCall(unknown)).isFalse();
+        assertThat(manager.isParallelSafeToolCall(null)).as("null call keeps legacy no-op semantics").isTrue();
+    }
+
+    @Test
     @DisplayName("parallel_safe=false 的工具形成独占屏障")
     void executeTreatsNonParallelSafeToolAsBarrier() {
         List<String> order = new ArrayList<>();

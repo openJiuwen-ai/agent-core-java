@@ -1266,12 +1266,14 @@ public class AbilityManager {
         }
     }
 
-    private boolean isParallelSafeToolCall(ToolCall toolCall) {
+    boolean isParallelSafeToolCall(ToolCall toolCall) {
         if (toolCall == null) {
             return true;
         }
         ToolCard card = tools.get(toolCall.getName());
-        return card == null || card.isParallelSafe();
+        // Unknown cards are conservatively serial: a tool that never declared
+        // parallel safety must not be dispatched concurrently by default.
+        return card != null && card.isParallelSafe();
     }
 
     static Double resolveCallTimeout(ToolCard toolCard) {
