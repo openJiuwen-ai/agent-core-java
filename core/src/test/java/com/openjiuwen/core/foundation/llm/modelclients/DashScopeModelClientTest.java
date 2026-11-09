@@ -7,6 +7,8 @@ package com.openjiuwen.core.foundation.llm.modelclients;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ModelError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.SslUtils;
+import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -17,18 +19,23 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.sun.net.httpserver.HttpServer;
 
-import org.junit.jupiter.api.parallel.Isolated;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -39,12 +46,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 /**
@@ -478,6 +487,105 @@ class DashScopeModelClientTest {
         public void close() {
             server.stop(0);
         }
+    }
+
+    @Test
+    void mediaHttpClientDisablesEndpointVerificationWhenVerifySslIsOff() {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.DASH_SCOPE)
+                .apiKey("sk-test")
+                .apiBase("https://dashscope.example.test")
+                .verifySsl(false)
+                .build();
+
+        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(clientConfig);
+
+        assertThat(client.sslContext()).isNotNull();
+        assertThat(client.sslParameters().getEndpointIdentificationAlgorithm()).isEqualTo("");
+    }
+
+    @Test
+    void mediaHttpClientAppliesConfiguredSslContextByDefault() throws Exception {
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.DASH_SCOPE)
+                .apiKey("sk-test")
+                .apiBase("https://dashscope.example.test")
+                .build();
+
+        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(clientConfig);
+
+        assertThat(client.sslContext()).isNotSameAs(SSLContext.getDefault());
+        assertThat(client.sslContext().getDefaultSSLParameters().getProtocols()).contains("TLSv1.3");
+    }
+
+    @Test
+    void mediaHttpClientUsesGlobalProxyWhenConfigured() throws Exception {
+        setUrlEnvReader(name -> "https_proxy".equals(name) ? "http://proxy.example.test:3128" : null);
+
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.DASH_SCOPE)
+                .apiKey("sk-test")
+                .apiBase("https://dashscope.example.test")
+                .build();
+
+        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(clientConfig);
+
+        assertThat(client.proxy()).isPresent();
+        ProxySelector proxySelector = client.proxy().orElseThrow();
+        InetSocketAddress address = (InetSocketAddress) proxySelector
+                .select(URI.create("https://dashscope.example.test"))
+                .get(0)
+                .address();
+        assertThat(address.getHostString()).isEqualTo("proxy.example.test");
+        assertThat(address.getPort()).isEqualTo(3128);
+    }
+
+    @Test
+    void mediaHttpClientRejectsSslCertOutsideSafeCertDir() throws Exception {
+        Path safeCertDir = Files.createTempDirectory("dashscope-safe-cert");
+        Path outsideCert = Files.createTempFile("dashscope-outside-cert", ".pem");
+        setSslEnvReader(name -> "SAFE_CERT_DIR".equals(name) ? safeCertDir.toString() : null);
+        try {
+            ModelClientConfig clientConfig = ModelClientConfig.builder()
+                    .clientProvider(ProviderType.DASH_SCOPE)
+                    .apiKey("sk-test")
+                    .apiBase("https://dashscope.example.test")
+                    .sslCert(outsideCert.toString())
+                    .build();
+
+            Throwable thrown = catchThrowable(
+                    () -> DashScopeModelClient.createDashScopeHttpClient(clientConfig));
+
+            BaseError error = assertInstanceOf(BaseError.class, thrown);
+            assertThat(error.getStatus()).isEqualTo(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED);
+            // The empty temp file would also fail on size, so pin the directory boundary itself.
+            assertThat(error.getMessage()).contains("certificate path is outside the allowed directory");
+        } finally {
+            Files.deleteIfExists(outsideCert);
+            Files.deleteIfExists(safeCertDir);
+        }
+    }
+
+    @AfterEach
+    void restoreEnvReaders() throws Exception {
+        Method urlReset = UrlUtils.class.getDeclaredMethod("resetEnvReaderForTests");
+        urlReset.setAccessible(true);
+        urlReset.invoke(null);
+        Method sslReset = SslUtils.class.getDeclaredMethod("resetEnvReaderForTests");
+        sslReset.setAccessible(true);
+        sslReset.invoke(null);
+    }
+
+    private static void setUrlEnvReader(Function<String, String> reader) throws Exception {
+        Method method = UrlUtils.class.getDeclaredMethod("setEnvReaderForTests", Function.class);
+        method.setAccessible(true);
+        method.invoke(null, reader);
+    }
+
+    private static void setSslEnvReader(Function<String, String> reader) throws Exception {
+        Method method = SslUtils.class.getDeclaredMethod("setEnvReaderForTests", Function.class);
+        method.setAccessible(true);
+        method.invoke(null, reader);
     }
 
     private static DashScopeModelClient client(CapturingTransport transport) {
