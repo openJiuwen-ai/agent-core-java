@@ -4,14 +4,15 @@
 
 package com.openjiuwen.agentteams.agent;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agentteams.agent.coordination.CoordinationKernel;
 import com.openjiuwen.agentteams.agent.coordination.DispatcherHost;
 import com.openjiuwen.agentteams.agent.coordination.TeamAgentBlueprint;
 import com.openjiuwen.agentteams.agent.coordination.TeamInfra;
 import com.openjiuwen.agentteams.messager.Messager;
-import com.openjiuwen.agentteams.messager.MessagerFactory;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
+import com.openjiuwen.agentteams.messager.TeamTransportRuntime;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
@@ -66,6 +67,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Java coordination host mirroring the first real TeamAgent interaction slice.
@@ -79,6 +81,12 @@ public class TeamAgent implements DispatcherHost {
     private TeamAgentSpec spec;
     private TeamRuntimeContext context;
     private TeamBackend teamBackend;
+
+    @JsonIgnore
+    private TeamTransportRuntime transportRuntime;
+
+    @JsonIgnore
+    private final AtomicBoolean isClosed = new AtomicBoolean();
     private TeamMessageManager messageManager;
     private CoordinationManager coordinationManager;
     private CoordinationKernel coordinationKernel;
@@ -104,7 +112,25 @@ public class TeamAgent implements DispatcherHost {
      * @since 0.1.7
      */
     public TeamAgent configure(TeamAgentSpec spec, TeamRuntimeContext context) {
-        this.spec = spec.build();
+        return configure(spec, context, null);
+    }
+
+    /**
+     * Configure a member using an explicitly shared team transport owner.
+     *
+     * @param spec team blueprint
+     * @param context member context; null derives the default context
+     * @param parentTransport an in-process parent's network; null opens an independent transport
+     * @return this agent
+     * @since 2026-11-09
+     */
+    public TeamAgent configure(TeamAgentSpec spec, TeamRuntimeContext context, TeamTransportRuntime parentTransport) {
+        TeamAgentSpec configuredSpec = spec.build();
+        if (transportRuntime != null) {
+            close();
+        }
+        isClosed.set(false);
+        this.spec = configuredSpec;
         this.context = context != null ? context : TeamRuntimeContext.builder()
                 .teamId(this.spec.getName())
                 .lifecycle(TeamLifecycle.CREATED)
@@ -128,9 +154,22 @@ public class TeamAgent implements DispatcherHost {
             this.modelAllocator = ModelAllocators.buildModelAllocator(this.spec);
         }
         restoreAllocatorStateFromContext();
-        bootstrapCoordinationHost();
-        setupAgent();
-        return this;
+        try {
+            bootstrapCoordinationHost(parentTransport);
+            setupAgent();
+            return this;
+        } catch (BaseError | IllegalArgumentException | IllegalStateException | CompletionException failure) {
+            closeAfterConfigurationFailure(failure);
+            throw failure;
+        }
+    }
+
+    private void closeAfterConfigurationFailure(RuntimeException original) {
+        try {
+            close();
+        } catch (IllegalStateException | CompletionException failure) {
+            original.addSuppressed(failure);
+        }
     }
 
     /**
@@ -742,7 +781,7 @@ public class TeamAgent implements DispatcherHost {
         coordination.put("member_name", ctx.getMemberName());
         coordination.put("role", payloadRole(ctx.getRole()));
         coordination.put("persona", ctx.getMetadata() != null ? ctx.getMetadata().get("persona") : null);
-        coordination.put("transport", null);
+        coordination.put("transport", transportRuntime.memberConfiguration(ctx.getMemberName()));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("coordination", coordination);
@@ -762,7 +801,9 @@ public class TeamAgent implements DispatcherHost {
         ensureConfigured();
         Objects.requireNonNull(ctx, "ctx is required");
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("spec", serializeSpec(spec));
+        Map<String, Object> serializedSpec = serializeSpec(spec);
+        serializedSpec.put("transport_config", transportRuntime.memberConfiguration(ctx.getMemberName()));
+        payload.put("spec", serializedSpec);
         payload.put("context", serializeContext(ctx));
 
         SpawnAgentConfig spawnConfig = new SpawnAgentConfig(SpawnAgentKind.TEAM_AGENT);
@@ -880,9 +921,9 @@ public class TeamAgent implements DispatcherHost {
         applySessionId(sessionId);
     }
 
-    private void bootstrapCoordinationHost() {
+    private void bootstrapCoordinationHost(TeamTransportRuntime parentTransport) {
         String localMemberName = resolveLocalMemberName();
-        Messager messager = buildMessager(localMemberName);
+        Messager messager = buildMessager(localMemberName, parentTransport);
         initializeTeamBackend(localMemberName, messager);
         initializeCoordinationManagers();
         teamBackend.setOnAutoLaunch(this::launchTeamMember);
@@ -1017,12 +1058,20 @@ public class TeamAgent implements DispatcherHost {
         this.coordinationKernel = new CoordinationKernel(this, blueprint, infra);
     }
 
-    private Messager buildMessager(String localMemberName) {
-        return MessagerFactory.createMessager(MessagerTransportConfig.builder()
-                .backend(resolveTransport())
-                .teamName(context.getTeamId())
-                .nodeId(localMemberName)
-                .build());
+    private Messager buildMessager(String localMemberName, TeamTransportRuntime parentTransport) {
+        if (parentTransport != null) {
+            transportRuntime = parentTransport.fork(localMemberName);
+            return transportRuntime.messager();
+        }
+        MessagerTransportConfig config = spec.getTransportConfig() == null
+                ? new MessagerTransportConfig() : spec.getTransportConfig().copy();
+        config.setBackend(resolveTransport());
+        if (context.getRole() == TeamRole.LEADER) {
+            transportRuntime = TeamTransportRuntime.open(context.getTeamId(), localMemberName, config);
+        } else {
+            transportRuntime = TeamTransportRuntime.connect(context.getTeamId(), localMemberName, config);
+        }
+        return transportRuntime.messager();
     }
 
     private void setupAgent() {
@@ -1506,11 +1555,17 @@ public class TeamAgent implements DispatcherHost {
     }
 
     /**
-     * Close the memory manager and stop the coordination kernel.
+     * Cancel owned work, stop coordination, and release this member's transport lease once.
      */
     public void close() {
-        if (coordinationKernel != null) {
-            coordinationKernel.stop();
+        if (!isClosed.compareAndSet(false, true)) {
+            return;
+        }
+        try (TeamTransportRuntime owned = transportRuntime) {
+            if (streamController != null) {
+                streamController.cancelAgent();
+            }
+            stopCoordinationLoop();
         }
     }
 
@@ -1786,6 +1841,13 @@ public class TeamAgent implements DispatcherHost {
         data.put("description", spec.getDescription());
         data.put("lifecycle", spec.getLifecycle());
         data.put("language", spec.getLanguage());
+        data.put("spawn_mode", spec.getSpawnMode());
+        data.put("transport", spec.getTransport());
+        data.put("transport_config", spec.getTransportConfig());
+        data.put("storage", spec.getStorage());
+        data.put("connection_string", spec.getConnectionString());
+        data.put("teammate_mode", spec.getTeammateMode());
+        data.put("team_mode", spec.getTeamMode());
         List<Map<String, Object>> members = new ArrayList<>();
         for (TeamMemberSpec member : spec.getMembers()) {
             Map<String, Object> memberData = new LinkedHashMap<>();
@@ -1842,8 +1904,24 @@ public class TeamAgent implements DispatcherHost {
                 .description(stringValue(raw.get("description")))
                 .lifecycle(stringValue(raw.get("lifecycle")))
                 .language(stringValue(raw.get("language")))
+                .spawnMode(defaultString(raw, "spawn_mode", "process"))
+                .transport(raw.get("transport") == null ? null : stringValue(raw.get("transport")))
+                .transportConfig(deserializeTransportConfig(raw.get("transport_config")))
+                .storage(defaultString(raw, "storage", "sqlite"))
+                .connectionString(raw.get("connection_string") == null
+                        ? null : stringValue(raw.get("connection_string")))
+                .teammateMode(defaultString(raw, "teammate_mode", "build_mode"))
+                .teamMode(raw.get("team_mode") == null ? null : stringValue(raw.get("team_mode")))
                 .members(members)
                 .build();
+    }
+
+    private static String defaultString(Map<?, ?> values, String key, String fallback) {
+        return values.get(key) == null ? fallback : stringValue(values.get(key));
+    }
+
+    private static MessagerTransportConfig deserializeTransportConfig(Object value) {
+        return value == null ? null : OBJECT_MAPPER.convertValue(value, MessagerTransportConfig.class);
     }
 
     @SuppressWarnings("unchecked")

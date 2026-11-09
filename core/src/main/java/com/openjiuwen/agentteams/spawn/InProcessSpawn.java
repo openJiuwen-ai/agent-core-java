@@ -14,8 +14,12 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Spawn a teammate as in-process work on a shared executor.
@@ -63,39 +67,14 @@ public final class InProcessSpawn {
         AgentCard card = buildCard(teamAgent, ctx, memberSpec);
         Loggers.AGENT.info("inprocessSpawn: enter member={} sessionId={} thread={}",
                 ctx.getMemberName(), sessionId, Thread.currentThread().getName());
-        TeamAgent teammate = new TeamAgent().configure(teamAgent.getSpec(), ctx);
+        TeamAgent teammate = new TeamAgent().configure(teamAgent.getSpec(), ctx, teamAgent.getTransportRuntime());
 
         String query = initialMessage != null ? initialMessage : "";
 
         Loggers.AGENT.info("inprocessSpawn: submitting teammate={} to executor, queryLen={}",
                 ctx.getMemberName(), query.length());
-        Future<?> task = executor.submit(() -> {
-            Loggers.AGENT.info("inprocessSpawn: executor thread started for member={}", ctx.getMemberName());
-            SpawnContext.SessionToken token = null;
-            if (sessionId != null) {
-                token = SpawnContext.setSessionId(sessionId);
-            }
-            try {
-                // Mirrors Python inprocess_spawn.py: the teammate's TeamBackend
-                // already shares the process-global database via TeamBackend.getSharedDb
-                // (called inside the constructor), so no explicit shareDb step here.
-                // invokeForSpawn blocks on the coordinator loop until shutdown_member
-                // or clean_team stops it — no keep-alive sleep needed.
-                teammate.invokeForSpawn(query);
-                Loggers.AGENT.info("inprocessSpawn: member={} completed", ctx.getMemberName());
-                return null;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                Loggers.AGENT.info("inprocessSpawn: interrupted for member={}", ctx.getMemberName());
-            } catch (RuntimeException e) {
-                // Safety net: invokeForSpawn may throw various runtime exceptions
-                // (coordination kernel, stream controller, etc.); log and continue
-                Loggers.AGENT.error("inprocessSpawn: error for member={}", ctx.getMemberName(), e);
-            } finally {
-                SpawnContext.resetSessionId(token);
-            }
-            return null;
-        });
+        Future<?> task = submitTeammate(executor, teammate,
+                () -> invokeTeammate(teammate, ctx.getMemberName(), query, sessionId));
 
         String processId = "inproc-" + (ctx.getMemberName() != null
                 ? ctx.getMemberName()
@@ -104,6 +83,49 @@ public final class InProcessSpawn {
                 .processId(processId)
                 .task(task)
                 .build();
+    }
+
+    private static Void invokeTeammate(TeamAgent teammate, String memberName, String query, String sessionId) {
+        Loggers.AGENT.info("inprocessSpawn: executor thread started for member={}", memberName);
+        SpawnContext.SessionToken token = null;
+        if (sessionId != null) {
+            token = SpawnContext.setSessionId(sessionId);
+        }
+        try {
+            // Mirrors Python inprocess_spawn.py: the teammate's TeamBackend
+            // already shares the process-global database via TeamBackend.getSharedDb
+            // (called inside the constructor), so no explicit shareDb step here.
+            // invokeForSpawn blocks on the coordinator loop until shutdown_member
+            // or clean_team stops it — no keep-alive sleep needed.
+            teammate.invokeForSpawn(query);
+            Loggers.AGENT.info("inprocessSpawn: member={} completed", memberName);
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Loggers.AGENT.info("inprocessSpawn: interrupted for member={}", memberName);
+        } finally {
+            try {
+                teammate.close();
+            } finally {
+                SpawnContext.resetSessionId(token);
+            }
+        }
+        return null;
+    }
+
+    private static Future<?> submitTeammate(ExecutorService executor, TeamAgent teammate, Callable<Void> invocation) {
+        TeammateTask task = new TeammateTask(teammate, invocation);
+        try {
+            executor.execute(task);
+        } catch (RejectedExecutionException failure) {
+            try {
+                task.cancel(false);
+            } catch (IllegalStateException cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+        return task;
     }
 
     private static TeamMemberSpec resolveMemberSpec(TeamAgent teamAgent, TeamRuntimeContext ctx) {
@@ -141,5 +163,35 @@ public final class InProcessSpawn {
                         ? memberSpec.getDescription()
                         : "Teammate")
                 .build();
+    }
+
+    private static final class TeammateTask extends FutureTask<Void> {
+        private final TeamAgent teammate;
+
+        private final AtomicBoolean isClaimed = new AtomicBoolean();
+
+        private TeammateTask(TeamAgent teammate, Callable<Void> invocation) {
+            super(invocation);
+            this.teammate = teammate;
+        }
+
+        @Override
+        public void run() {
+            if (!isClaimed.compareAndSet(false, true)) {
+                return;
+            }
+            try {
+                super.run();
+            } finally {
+                teammate.close();
+            }
+        }
+
+        @Override
+        protected void done() {
+            if (isCancelled() && isClaimed.compareAndSet(false, true)) {
+                teammate.close();
+            }
+        }
     }
 }
