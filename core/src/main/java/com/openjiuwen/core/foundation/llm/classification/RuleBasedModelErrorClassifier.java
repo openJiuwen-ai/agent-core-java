@@ -58,8 +58,8 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
     private static final Set<String> TRUNCATION_KEYWORDS =
         Set.of("premature eof", "bytes received", "received no bytes", "chunked transfer encoding");
 
-    /** Aliyun DashScope OpenAI-compat wraps context-length overflow in this generic code. */
-    private static final String ALIYUN_INVALID_PARAMETER_CODE = "invalid_parameter_error";
+    /** Generic invalid-parameter code used by some OpenAI-compatible providers for context overflow. */
+    private static final String GENERIC_INVALID_PARAMETER_CODE = "invalid_parameter_error";
 
     private final List<ClassificationRule> rules;
 
@@ -178,12 +178,13 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
         if (containsAny(facts, CONTEXT_LENGTH_KEYWORDS)) {
             return Optional.of(permanent(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED));
         }
-        // Aliyun DashScope OpenAI-compat: HTTP 400 + code=invalid_parameter_error with
-        // "Range of input length should be [1, 8192]" in the message. The generic code
-        // alone is too broad; require the message to describe an input-length range.
+        // Some OpenAI-compatible providers wrap context-length overflow in a generic
+        // invalid_parameter_error code and describe the limit in the message (for example
+        // "Range of input length should be [1, 8192]"). The generic code alone is too
+        // broad; require the message to describe an input-length range.
         String code = facts.errorCode();
         String message = facts.errorMessage();
-        if (code != null && ALIYUN_INVALID_PARAMETER_CODE.equalsIgnoreCase(code.trim())
+        if (code != null && GENERIC_INVALID_PARAMETER_CODE.equalsIgnoreCase(code.trim())
             && message != null) {
             String lower = message.toLowerCase(Locale.ROOT);
             if (lower.contains("input length") || lower.contains("range of input")) {

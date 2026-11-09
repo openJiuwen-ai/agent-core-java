@@ -103,7 +103,7 @@ class RuleBasedModelErrorClassifierTest {
     }
 
     @Test
-    void parse_ssePrefixedAliyunError_extractsCodeAndMessage() {
+    void parse_ssePrefixedError_extractsCodeAndMessage() {
         ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
             "data: {\"error\":{\"message\":\"Range of input length should be [1, 8192]\","
                 + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
@@ -114,13 +114,13 @@ class RuleBasedModelErrorClassifierTest {
     }
 
     @Test
-    void classify_aliyunQwenInputLengthRange_isContextLengthExceeded() {
+    void classify_inputLengthRange_isContextLengthExceeded() {
         ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
             "{\"error\":{\"message\":\"<400> InternalError.Algo.InvalidParameter: "
                 + "Range of input length should be [1, 8192]\","
                 + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
             .orElseThrow();
-        ModelCallClassification result = classifier.classify(aliyunFacts(parsed));
+        ModelCallClassification result = classifier.classify(invalidParameterFacts(parsed));
 
         assertThat(parsed.code()).isEqualTo("invalid_parameter_error");
         assertThat(result.category()).isEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
@@ -128,17 +128,17 @@ class RuleBasedModelErrorClassifierTest {
     }
 
     @Test
-    void classify_aliyunQwenOtherInvalidParameter_isNotContextLength() {
+    void classify_otherInvalidParameter_isNotContextLength() {
         ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
             "{\"error\":{\"message\":\"wrong temperature value\","
                 + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
             .orElseThrow();
-        ModelCallClassification result = classifier.classify(aliyunFacts(parsed));
+        ModelCallClassification result = classifier.classify(invalidParameterFacts(parsed));
 
         assertThat(result.category()).isNotEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
     }
 
-    private static ModelErrorFacts aliyunFacts(ErrorBodyParser.ParsedError parsed) {
+    private static ModelErrorFacts invalidParameterFacts(ErrorBodyParser.ParsedError parsed) {
         return ModelErrorFacts.Builder.create()
             .httpStatus(400)
             .errorCode(parsed.code())
