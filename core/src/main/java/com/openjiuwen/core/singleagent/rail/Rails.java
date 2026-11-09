@@ -54,6 +54,10 @@ public final class Rails {
                 context.consumeRetryRequest();
                 context.setRetryAttempt(attempt);
                 context.setException(null);
+                // 输入准备属于操作本身；先完成准备，再让 before 回调检查或补充本次输入。
+                isFromOperation = true;
+                operation.beforeAttempt();
+                isFromOperation = false;
                 if (before != null) {
                     context.fire(before);
                 }
@@ -133,6 +137,14 @@ public final class Rails {
     @FunctionalInterface
     public interface RailedOperation {
         Object execute();
+
+        /**
+         * 在每次尝试的 before 回调之前准备输入，避免操作执行时覆盖回调已修改的内容。
+         * 不需要准备输入的操作沿用默认实现，现有 lambda 调用方式保持不变。
+         */
+        default void beforeAttempt() {
+            // 默认不需要准备工作。
+        }
 
         /**
          * Called after the exception event declines another retry and before the original failure is rethrown.

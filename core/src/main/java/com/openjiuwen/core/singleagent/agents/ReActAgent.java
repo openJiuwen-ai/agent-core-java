@@ -452,12 +452,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     public Object railedModelCall(AgentCallbackContext ctx) {
-        // Populate ModelCallInputs before BEFORE_MODEL_CALL so rails can inspect
-        // and edit the current request messages (security/tracing/observability).
-        // Do not rebuild on attempt 0 after those rails run — that would wipe
-        // BEFORE_MODEL_CALL edits (Python builds the final window inside the
-        // railed body from the post-rail prompt, while Java keeps rail-edited
-        // inputs as the request snapshot).
+        // 首次仍在进入 Rail 生命周期前准备消息，保留准备失败时的原有异常处理。
+        // 重试则在 beforeAttempt 中先采用恢复后的上下文，再让 Rail 注入本次技能正文等内容。
         prepareModelRequest(ctx);
         boolean isModelCallSuccessful = false;
         try {
@@ -471,13 +467,18 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                          * {@inheritDoc}
                          */
                         @Override
-                        public Object execute() {
-                            // On Rails.run retries (e.g. overflow compress+requestRetry),
-                            // rebuild from ModelContext so the provider sees the
-                            // post-recovery snapshot rather than the pre-failure one.
+                        public void beforeAttempt() {
+                            // 必须在 BEFORE_MODEL_CALL 之前重建，否则会覆盖 Rail 本轮注入的正文和记忆。
                             if (ctx.getRetryAttempt() > 0) {
                                 prepareModelRequest(ctx);
                             }
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        @Override
+                        public Object execute() {
                             return doRailedModelCall(ctx);
                         }
 
