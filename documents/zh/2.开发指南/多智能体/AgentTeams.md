@@ -173,6 +173,7 @@ LeaderTeammateAgentTeam team = LeaderTeammateAgentTeam.builder()
 | `teammateMode` | `build_mode` / `plan_mode` | `build_mode` |
 | `spawnMode` | `inprocess` / `process` | `inprocess` |
 | `transport` | `inprocess` / `pyzmq`（`spawnMode=inprocess` 时默认 `inprocess`） | null（按 spawnMode 推导） |
+| `transportConfig` | `MessagerTransportConfig`，端点、peer 和请求超时 | 未提供；本机 `pyzmq` 团队自动建立回环网络 |
 | `storage` | `sqlite` / `memory` / `postgresql` / `mysql` | `sqlite` |
 | `teamMode` | `default` / `predefined` / `hybrid` | 由预定义成员推导 |
 | `modelPoolStrategy` | `round_robin` / `by_model_name` | `round_robin` |
@@ -184,6 +185,8 @@ LeaderTeammateAgentTeam team = LeaderTeammateAgentTeam.builder()
 - `spawnMode=inprocess` 时 `transport` 默认为 `inprocess`，成员共享同一个 JVM；`process` 模式下成员以独立进程运行，需要配 `pyzmq` 传输。
 - `TeamRail` 会在 leader 的 prompt 里注入团队角色、工作流程、生命周期、人设、团队信息、成员关系等 prompt 段；当 `teamMode=predefined` 时，会从团队工具里排除 `spawn_member`。
 - 团队文件布局由 `TeamPaths` 统一管理：默认根 `~/.openjiuwen`，团队目录 `~/.openjiuwen/.agent_teams/<team_name>/`，团队共享内存目录在其下的 `team-workspace/team-memory/`。
+
+ZeroMQ 的配置入口、订阅就绪和资源释放规则见 [Team ZeroMQ 配置](TeamZeroMQ.md)。
 
 ### 方式 1：直接运行 leader
 

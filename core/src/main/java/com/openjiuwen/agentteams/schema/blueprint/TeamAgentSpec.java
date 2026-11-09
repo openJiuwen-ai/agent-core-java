@@ -5,6 +5,7 @@
 package com.openjiuwen.agentteams.schema.blueprint;
 
 import com.openjiuwen.agentteams.TeamConstants;
+import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
@@ -58,6 +59,9 @@ public class TeamAgentSpec {
     private String spawnMode = "process";
     @Builder.Default
     private String transport = null;
+
+    /** Complete transport settings; the legacy transport string remains supported. */
+    private MessagerTransportConfig transportConfig;
     @Builder.Default
     private String storage = "sqlite";
     @Builder.Default
@@ -119,6 +123,12 @@ public class TeamAgentSpec {
      * @since 0.1.7
      */
     public void defaultTransportForSpawnMode() {
+        if (transportConfig != null) {
+            transportConfig = transportConfig.copy();
+            if (transport == null) {
+                transport = transportConfig.getBackend();
+            }
+        }
         if (transport == null && "inprocess".equals(spawnMode)) {
             transport = "inprocess";
         }

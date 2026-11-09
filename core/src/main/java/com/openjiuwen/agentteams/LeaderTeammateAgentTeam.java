@@ -6,6 +6,7 @@ package com.openjiuwen.agentteams;
 
 import com.openjiuwen.agentteams.agent.TeamAgent;
 import com.openjiuwen.agentteams.factory.TeamFactory;
+import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
@@ -16,6 +17,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -467,6 +469,7 @@ public class LeaderTeammateAgentTeam {
         private String teammateMode = TEAMMATE_MODE_BUILD;
         private String spawnMode = SPAWN_MODE_INPROCESS;
         private String transport;
+        private MessagerTransportConfig transportConfig;
         private String storage = STORAGE_SQLITE;
         private String connectionString;
         private String teamMode;
@@ -555,6 +558,18 @@ public class LeaderTeammateAgentTeam {
          */
         public Builder transport(String transport) {
             this.transport = transport;
+            return this;
+        }
+
+        /**
+         * Set complete transport settings for this team.
+         *
+         * @param config addresses, peers, timeouts, and proxy ownership; null retains defaults
+         * @return this builder
+         * @since 2026-11-09
+         */
+        public Builder transportConfig(MessagerTransportConfig config) {
+            this.transportConfig = config == null ? null : config.copy();
             return this;
         }
 
@@ -726,11 +741,18 @@ public class LeaderTeammateAgentTeam {
 
             return new LeaderTeammateAgentTeam(
                     TeamAgentSpec.builder().name(teamName).description(description).lifecycle(lifecycle)
-                            .teammateMode(teammateMode).spawnMode(spawnMode).transport(transport).storage(storage)
+                            .teammateMode(teammateMode).spawnMode(spawnMode)
+                            .transport(resolveConfiguredTransport().orElse(null))
+                            .transportConfig(transportConfig).storage(storage)
                             .connectionString(connectionString).teamMode(resolvedTeamMode).language(language)
                             .members(members).modelPool(modelPool).modelPoolStrategy(modelPoolStrategy)
                             .humanAgentEnabled(isHumanAgentEnabled)
                             .isExposeHumanAgentsToTeammates(isExposeHumanAgentsToTeammates).build());
+        }
+
+        private Optional<String> resolveConfiguredTransport() {
+            return Optional.ofNullable(transport).or(() ->
+                    Optional.ofNullable(transportConfig).map(MessagerTransportConfig::getBackend));
         }
     }
 }
