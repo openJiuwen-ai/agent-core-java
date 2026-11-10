@@ -468,8 +468,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         String apiUrl = resolveApiUrl();
         HttpRequest request = requestBuilder(apiUrl, payload).build();
         double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
-        HttpResponse<InputStream> response = createHttpClient(apiUrl)
-                .send(request, IdleBoundInputStream.bodyHandler(idleSeconds));
+        HttpResponse<InputStream> response = sendWithClientEviction(apiUrl, request, idleSeconds);
         String body = IdleGuardedBodyReader.readFully(response.body(), idleSeconds, false);
         return new HttpResult(response.statusCode(), body);
     }
@@ -490,7 +489,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         validateApiBaseUrl();
         String apiUrl = resolveApiUrl();
         HttpRequest request = requestBuilder(apiUrl, payload).build();
-        return createHttpClient(apiUrl).send(request, IdleBoundInputStream.bodyHandler(idleSeconds));
+        return sendWithClientEviction(apiUrl, request, idleSeconds);
     }
 
     protected void validateApiBaseUrl() {
@@ -572,6 +571,25 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 .withSsl()
                 .withProxy()
                 .build();
+    }
+
+    private HttpResponse<InputStream> sendWithClientEviction(String apiUrl, HttpRequest request,
+            double idleSeconds) throws IOException, InterruptedException {
+        HttpClient client = createHttpClient(apiUrl);
+        try {
+            HttpResponse<InputStream> response = client.send(request,
+                    IdleBoundInputStream.bodyHandler(idleSeconds));
+            ModelHttpClients.noteSendSuccess(client);
+            return response;
+        } catch (IOException exception) {
+            // A dead verdict evicts (and threshold-registers) the client, then the failure
+            // surfaces. No in-call resend: the official selector-closed signal can also fire
+            // after the request bytes reached the wire (JDK 17 SocketTube post-write check),
+            // so resending could duplicate a call the server may have billed. The next call
+            // (or a retryable classification's new attempt) runs on a fresh client.
+            ModelHttpClients.evictIfDead(client, exception);
+            throw exception;
+        }
     }
 
     private Map<String, Object> requestLogMetadata(Map<String, Object> params, boolean stream) {
