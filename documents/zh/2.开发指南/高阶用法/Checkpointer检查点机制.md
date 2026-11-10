@@ -390,6 +390,54 @@ CheckpointerFactory.setDefaultCheckpointer(checkpointer);
 - workflow 新执行遇到旧 checkpoint 时，默认会报错；只有显式开启 `FORCE_DEL_WORKFLOW_STATE_KEY` 才会强制删旧状态。
 - graph checkpoint 和 workflow state 是分开存储、分开清理的，不能只理解成“一份 workflow 序列化”。
 - Redis 扩展当前有源码和测试，但当前主线仍以内置 `in_memory` 和 `persistence` 实现为准。
+- 用户暂停（PAUSED）依赖步级断点内核，自动恢复流水线不会替用户决定续跑；管控面的 pause/resume 入口见 runtime 侧文档。
+
+## 断点续跑与用户暂停（PAUSED，0.1.17+）
+
+从 0.1.17 起，agent 执行的步级断点信息记录在 agent state 的 step cursor 键上，与 `agent_state_blobs` 走同一条保存链路：
+
+| 键 | 含义 |
+| --- | --- |
+| `step_cursor` | 主游标：最近一个步的边界与状态（RUNNING / COMPLETED / FAILED） |
+| `step_cursor_paused` | 用户主动暂停游标，仅在暂停期间存在 |
+| `step_cursor_failed` | 失败步游标，恢复时按失败策略处理 |
+| `session_pause` | 暂停元数据（操作人、原因、时间戳） |
+
+`StepStatus` 的 `PAUSED` 取值表达的是**用户意图**，而不是崩溃残留，因此整个生命周期被设计成与自动恢复流水线隔离。
+
+### 暂停：`stepPaused(...)`
+
+`checkpointer.stepPaused(session, cursor, pauseInfo)` 在步边界冻结一次执行：
+
+1. 把游标状态强制置为 `PAUSED` 写入 `step_cursor_paused`；
+2. `pauseInfo` 非空时把暂停元数据写入 `session_pause`；
+3. 走常规保存链路（`postAgentExecute`）把**全量快照**落盘——游标、元数据和当时的活跃业务 state 在同一笔保存里，不会产生只含暂停增量的半写状态；
+4. 保存失败时回滚 update，状态回到暂停前的形状，下次保存不会复活旧的暂停证据。
+
+主游标 `step_cursor` 始终指向最后完成的步，`lastCompletedStep` 语义不受暂停影响。
+
+### 自动恢复跳过 PAUSED
+
+`StepCheckpointRecoveryService.recoverLeftovers()` 只扫 `scanRunningSteps()`。PAUSED 游标对自动恢复**不可见**：进程重启后不会自动续跑、也不会被标记为 lost，暂停证据原样保留，直到用户显式恢复。
+
+### 显式恢复：`resumePaused(...)`
+
+恢复 PAUSED 会话只有一条入口：
+
+```java
+List<StepCursor> paused = recoveryService.scanPausedSteps();   // 只读扫描，供管控面展示
+RecoveryAction action = recoveryService.resumePaused(cursor);   // RESUMED_EXPLICITLY
+```
+
+`resumePaused` 把暂停游标翻回 RUNNING（保留原 seq，续跑从被暂停的精确边界继续），并清掉 `step_cursor_paused` 与 `session_pause`，动作类型为 `RESUMED_EXPLICITLY`。它与自动扫描共享去重登记，进程内幂等；失败会释放登记并返回 `MARKED_LOST`。
+
+### 三种存储后端的一致语义
+
+游标键落在快照的 `agent_state` 分区内（即 `AgentStateCollection.getState()` 的包裹结构），三后端行为一致：
+
+- `InMemoryCheckpointer` / `PersistenceCheckpointer` / Redis 扩展的 `resumePaused` 统一调用 `Checkpointer.applyResumeToState(state, paused)` 做分区内的翻转与清理；
+- `applyResumeToState` 兼容旧格式把暂停键写在快照顶层的存量数据；
+- 所有写入仍走各后端已有的全量保存事务。
 
 ## 参考入口
 

@@ -24,6 +24,7 @@ import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.checkpointer.step.StepCursor;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.state.AgentStateCollection;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
@@ -278,6 +279,85 @@ public class InMemoryCheckpointer extends Checkpointer {
             }
         }
         return running;
+    }
+
+    /**
+     * Scan in-memory agent stores for sessions holding a persisted paused-step
+     * cursor, i.e. sessions a user explicitly suspended.
+     *
+     * @return one PAUSED cursor per paused session, empty when none
+     */
+    @Override
+    public List<StepCursor> scanPausedSteps() {
+        List<StepCursor> paused = new ArrayList<>();
+        for (Map.Entry<String, AgentStorage> entry : agentStores.entrySet()) {
+            StepCursor cursor = entry.getValue().lastPausedCursor();
+            if (cursor != null && cursor.getStatus() == StepStatus.PAUSED) {
+                paused.add(cursor);
+            }
+        }
+        return paused;
+    }
+
+    /**
+     * Return the persisted paused-step cursor of one session looked up by id.
+     *
+     * @param sessionId id of the session to inspect, never null or blank
+     * @return the paused cursor, or null when the session has none
+     */
+    @Override
+    public StepCursor lastPausedStep(String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            return null;
+        }
+        AgentStorage agentStorage = agentStores.get(tenantAwareSessionId(sessionId));
+        if (agentStorage == null) {
+            return null;
+        }
+        StepCursor cursor = agentStorage.lastPausedCursor();
+        return cursor != null && cursor.getStatus() == StepStatus.PAUSED ? cursor : null;
+    }
+
+    /**
+     * Resume one user-paused session: find the agent store owning the paused
+     * cursor, flip the main cursor back to RUNNING with the paused seq, and
+     * clear the paused evidence from the persisted state.
+     *
+     * @param cursor paused cursor of the session to resume, never null
+     */
+    @Override
+    public void resumePaused(StepCursor cursor) {
+        Objects.requireNonNull(cursor, "cursor");
+        for (Map.Entry<String, AgentStorage> entry : agentStores.entrySet()) {
+            StepCursor paused = entry.getValue().lastPausedCursor();
+            if (paused == null || paused.getSeq() != cursor.getSeq()
+                    || !paused.getStepName().equals(cursor.getStepName())) {
+                continue;
+            }
+            entry.getValue().applyResume();
+            return;
+        }
+        throw new IllegalStateException("No paused session found for cursor " + cursor);
+    }
+
+    /**
+     * Resume one user-paused session identified by id: flip the main cursor
+     * back to RUNNING with the paused seq and clear the paused evidence from
+     * the persisted state.
+     *
+     * @param sessionId id of the session to resume, never null or blank
+     * @throws IllegalStateException when the session has no paused cursor
+     */
+    @Override
+    public void resumePaused(String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            throw new IllegalStateException("Cannot resume a blank session id");
+        }
+        AgentStorage agentStorage = agentStores.get(tenantAwareSessionId(sessionId));
+        if (agentStorage == null || agentStorage.lastPausedCursor() == null) {
+            throw new IllegalStateException("No paused session found for session_id " + sessionId);
+        }
+        agentStorage.applyResume();
     }
 
     @Override
@@ -542,6 +622,31 @@ public class InMemoryCheckpointer extends Checkpointer {
                 }
             }
             return null;
+        }
+
+        StepCursor lastPausedCursor() {
+            for (Map<String, Object> state : stateBlobs.values()) {
+                StepCursor cursor = StepCursor.pausedFromState(state);
+                if (cursor != null) {
+                    return cursor;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Flip the main cursor to RUNNING at the paused seq and clear the
+         * paused evidence inside every persisted state blob of this store.
+         */
+        void applyResume() {
+            for (Map.Entry<String, Map<String, Object>> entry : stateBlobs.entrySet()) {
+                Map<String, Object> state = entry.getValue();
+                StepCursor paused = StepCursor.pausedFromState(state);
+                if (paused == null) {
+                    continue;
+                }
+                Checkpointer.applyResumeToState(state, paused);
+            }
         }
     }
 

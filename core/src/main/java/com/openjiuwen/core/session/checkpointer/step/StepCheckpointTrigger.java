@@ -10,6 +10,7 @@ import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -66,6 +67,22 @@ public class StepCheckpointTrigger {
         this.journal = journal;
         this.agentDefault = agentDefault;
         this.evaluator = evaluator == null ? new PolicyEvaluator() : evaluator;
+    }
+
+    /**
+     * Seed the sequence counter from the persisted resume point so cursors
+     * of this execution stay strictly increasing across invocations on the
+     * same session. Each trigger instance counts from zero, while the
+     * checkpointer rejects any cursor whose seq is not greater than the
+     * persisted one; without seeding, every invocation after the first (or
+     * after an explicit resume) would have its cursors silently dropped.
+     *
+     * @param lastSeq seq of the last persisted cursor, 0 when none exists
+     */
+    public void seedSeq(long lastSeq) {
+        if (lastSeq > seqCounter.get()) {
+            seqCounter.set(lastSeq);
+        }
     }
 
     /**
@@ -132,6 +149,45 @@ public class StepCheckpointTrigger {
                         "", StepStatus.FAILED, now));
             } catch (RuntimeException exception) {
                 log.debug("Failed-step journal append failed for session {}: {}",
+                        session.sessionId(), exception.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Persist the user-pause boundary unconditionally: the cursor advances to
+     * the next sequence number, is stored as PAUSED together with the pause
+     * metadata, and the full state snapshot flushes through the regular save
+     * path. Unlike {@link #stepCompleted} this bypasses the policy evaluation
+     * - pause evidence must never depend on the persistence verdict.
+     *
+     * @param session session being paused, carrying the live state to freeze,
+     *                may be null to no-op
+     * @param stepType step type recorded on the paused cursor
+     * @param stepName step name recorded on the paused cursor
+     * @param pauseInfo pause metadata (operator, reason, timestamps), may be null
+     */
+    public void pauseNow(BaseSession session, String stepType, String stepName, Map<String, Object> pauseInfo) {
+        if (session == null) {
+            return;
+        }
+        long seq = seqCounter.incrementAndGet();
+        long now = System.currentTimeMillis();
+        if (checkpointer != null) {
+            try {
+                checkpointer.stepPaused(session,
+                        new StepCursor(seq, stepType, stepName, StepStatus.PAUSED, now), pauseInfo);
+            } catch (RuntimeException exception) {
+                log.warn("Paused-step checkpoint could not be recorded for session {}: {}",
+                        session.sessionId(), exception.getMessage());
+            }
+        }
+        if (journal != null) {
+            try {
+                journal.append(new StepRecord(session.sessionId(), "", seq, stepType, stepName, "",
+                        StepStatus.PAUSED, now));
+            } catch (RuntimeException exception) {
+                log.debug("Paused-step journal append failed for session {}: {}",
                         session.sessionId(), exception.getMessage());
             }
         }

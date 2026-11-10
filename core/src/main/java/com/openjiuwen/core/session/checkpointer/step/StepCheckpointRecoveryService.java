@@ -54,6 +54,11 @@ public class StepCheckpointRecoveryService {
     /**
      * One scan pass over all sessions whose last step cursor is RUNNING.
      *
+     * <p>PAUSED cursors are deliberately invisible to this scan: a paused
+     * cursor records user intent, not a crash leftover, so the automatic
+     * pipeline never touches it and only {@link #resumePaused} may continue
+     * such a session.</p>
+     *
      * @return actions taken, one entry per processed leftover session
      */
     public List<RecoveryAction> recoverLeftovers() {
@@ -77,6 +82,100 @@ public class StepCheckpointRecoveryService {
             actions.add(recoverOne(cursor));
         }
         return actions;
+    }
+
+    /**
+     * Scan all sessions with a persisted PAUSED cursor, i.e. sessions a user
+     * explicitly suspended. Read-only: it neither resumes nor marks lost, it
+     * only reports so an operator-facing layer can offer the resume entry.
+     *
+     * @return paused cursors, empty when none or when the backend cannot scan
+     */
+    public List<StepCursor> scanPausedSteps() {
+        if (checkpointer == null) {
+            return List.of();
+        }
+        try {
+            return checkpointer.scanPausedSteps();
+        } catch (RuntimeException exception) {
+            log.warn("Paused cursor scan failed: {}", exception.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Explicitly resume one user-paused session: the paused cursor flips back
+     * to RUNNING on the main resume point and the paused evidence is cleared.
+     *
+     * <p>This is the only path allowed to continue a PAUSED session. It
+     * shares the processed registry with the automatic scan, so a resume is
+     * idempotent within a process and a later automatic scan will not process
+     * the session again.</p>
+     *
+     * @param cursor paused cursor of the session to resume, never null
+     * @return the action taken; {@code SKIPPED_ALREADY_PROCESSED} when the
+     *         session was already resumed in this process
+     */
+    public RecoveryAction resumePaused(StepCursor cursor) {
+        Objects.requireNonNull(cursor, "cursor");
+        if (checkpointer == null) {
+            return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, "no checkpointer");
+        }
+        if (!processedSessions.add(pausedKey(cursor))) {
+            return new RecoveryAction(cursor, RecoveryActionType.SKIPPED_ALREADY_PROCESSED, "already resumed");
+        }
+        try {
+            checkpointer.resumePaused(cursor);
+            log.info("Paused session resumed by explicit request: {}", cursor);
+            return new RecoveryAction(cursor, RecoveryActionType.RESUMED_EXPLICITLY, "resumed");
+        } catch (RuntimeException exception) {
+            processedSessions.remove(pausedKey(cursor));
+            log.warn("Explicit resume failed for cursor {}: {}", cursor, exception.getMessage());
+            return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, exception.getMessage());
+        }
+    }
+
+    /**
+     * Explicitly resume one user-paused session identified by id: the paused
+     * cursor is located through the checkpointer, flipped back to RUNNING on
+     * the main resume point and the paused evidence is cleared. Shares the
+     * processed registry with the cursor-based entry, so a resume is
+     * idempotent within a process.
+     *
+     * @param sessionId id of the session to resume, never null or blank
+     * @return the action taken; {@code MARKED_LOST} when the session has no
+     *         paused cursor or the backend cannot resolve it
+     */
+    public RecoveryAction resumePaused(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return new RecoveryAction(null, RecoveryActionType.MARKED_LOST, "blank session id");
+        }
+        StepCursor cursor = pausedCursor(sessionId);
+        if (cursor == null) {
+            return new RecoveryAction(null, RecoveryActionType.MARKED_LOST,
+                    "no paused cursor for session " + sessionId);
+        }
+        return resumePaused(cursor);
+    }
+
+    /**
+     * Read the persisted paused cursor of one session through the
+     * checkpointer, without requiring a live session object.
+     *
+     * @param sessionId id of the session to inspect, never null or blank
+     * @return the paused cursor, or null when the session is not paused or
+     *         the backend cannot resolve it
+     */
+    public StepCursor pausedCursor(String sessionId) {
+        if (checkpointer == null) {
+            return null;
+        }
+        try {
+            return checkpointer.lastPausedStep(sessionId);
+        } catch (RuntimeException exception) {
+            log.warn("Paused cursor lookup failed for session {}: {}", sessionId, exception.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -123,12 +222,17 @@ public class StepCheckpointRecoveryService {
         return cursor.getStepName() + "@" + cursor.getSeq() + "@" + cursor.getTimestamp();
     }
 
+    private static String pausedKey(StepCursor cursor) {
+        return "paused:" + cursor.getStepName() + "@" + cursor.getSeq() + "@" + cursor.getTimestamp();
+    }
+
     /** Action taken for one leftover session. */
     public enum RecoveryActionType {
         RECOVERED_BY_HOOK,
         MARKED_FAILED_BY_HOOK,
         MARKED_LOST,
-        SKIPPED_ALREADY_PROCESSED
+        SKIPPED_ALREADY_PROCESSED,
+        RESUMED_EXPLICITLY
     }
 
     /**

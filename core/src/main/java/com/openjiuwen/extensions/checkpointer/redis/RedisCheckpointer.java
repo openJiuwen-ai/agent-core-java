@@ -13,6 +13,7 @@ import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.step.StepCursor;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.checkpointer.CheckpointerProvider;
 import com.openjiuwen.core.session.constants.SessionConstants;
@@ -211,6 +212,68 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
             return List.of();
         }
         return agentStorage.scanRunningCursors().join();
+    }
+
+    /**
+     * Scan persisted agent state blobs for sessions holding a paused-step
+     * cursor, i.e. sessions a user explicitly suspended.
+     *
+     * @return one PAUSED cursor per paused session, empty when none
+     */
+    @Override
+    public List<StepCursor> scanPausedSteps() {
+        if (redisStore == null) {
+            return List.of();
+        }
+        return agentStorage.scanPausedCursors().join();
+    }
+
+    /**
+     * Resume one user-paused session by delegating to the agent storage's
+     * explicit resume path.
+     *
+     * @param cursor paused cursor of the session to resume, never null
+     */
+    @Override
+    public void resumePaused(StepCursor cursor) {
+        java.util.Objects.requireNonNull(cursor, "cursor");
+        if (redisStore == null) {
+            throw new IllegalStateException("Redis store is not available");
+        }
+        agentStorage.resumePaused(cursor).join();
+    }
+
+    /**
+     * Return the persisted paused-step cursor of one session looked up by id,
+     * deserialized from the session's agent-state blob.
+     *
+     * @param sessionId id of the session to inspect, never null or blank
+     * @return the paused cursor, or null when the session has none
+     */
+    @Override
+    public StepCursor lastPausedStep(String sessionId) {
+        if (sessionId == null || sessionId.isBlank() || redisStore == null) {
+            return null;
+        }
+        return agentStorage.lastPausedCursor(sessionId).join();
+    }
+
+    /**
+     * Resume one user-paused session identified by id by delegating to the
+     * agent storage's explicit resume path.
+     *
+     * @param sessionId id of the session to resume, never null or blank
+     * @throws IllegalStateException when the session has no paused cursor
+     */
+    @Override
+    public void resumePaused(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalStateException("Cannot resume a blank session id");
+        }
+        if (redisStore == null) {
+            throw new IllegalStateException("Redis store is not available");
+        }
+        agentStorage.resumePausedBySessionId(sessionId).join();
     }
 
     /**

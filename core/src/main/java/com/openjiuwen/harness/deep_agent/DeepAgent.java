@@ -47,9 +47,11 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
 import com.openjiuwen.core.session.checkpointer.step.KvStepJournal;
+import com.openjiuwen.core.session.checkpointer.step.PauseRequestRegistry;
 import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.session.checkpointer.step.StepJournal;
 import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.state.State;
@@ -2435,6 +2437,11 @@ public class DeepAgent implements AutoCloseable {
                 coordinator.addTokenUsage(resolveTokenUsage(roundResult));
                 coordinator.setLastResult(roundResult);
                 recordTaskLoopStepBoundary(session, roundResult, "round-" + (rounds.size()));
+                Map<String, Object> pauseInfo = consumePauseIfRequested(session);
+                if (pauseInfo != null) {
+                    pauseTaskLoopAtBoundary(session, roundResult, pauseInfo);
+                    break;
+                }
                 if (isExplicitCompletionPolicy) {
                     updateCompletionPromise(coordinator, roundResult);
                     if (!coordinator.shouldContinue()) {
@@ -4131,6 +4138,12 @@ public class DeepAgent implements AutoCloseable {
         }
         StepCheckpointPolicy effectivePolicy = config.getStepCheckpointPolicy();
         stepCheckpointTrigger = new StepCheckpointTrigger(checkpointer, journal, effectivePolicy);
+        if (checkpointer != null && baseSession != null) {
+            StepCursor last = checkpointer.lastCompletedStep(baseSession);
+            if (last != null) {
+                stepCheckpointTrigger.seedSeq(last.getSeq());
+            }
+        }
     }
 
     /**
@@ -4162,6 +4175,42 @@ public class DeepAgent implements AutoCloseable {
         }
         stepCheckpointTrigger.stepCompleted(baseSession, null, null,
                 new StepBoundary("PHASE", stepName, status, 0L));
+    }
+
+    /**
+     * Consumes the pending pause intent of the task-loop session, if any.
+     *
+     * @param session loop session carrying the pause intent
+     * @return the consumed pause metadata, or null when no pause was requested
+     */
+    private static Map<String, Object> consumePauseIfRequested(AgentSessionApi session) {
+        if (session == null) {
+            return null;
+        }
+        return PauseRequestRegistry.consumePauseRequest(session.getSessionId());
+    }
+
+    /**
+     * Persists the user-pause boundary at the finished round: the PAUSED step
+     * cursor and the pause metadata flush through the checkpoint save path on
+     * top of the just-completed round state, and the round result is marked
+     * {@code paused} so the task loop result carries the pause outcome.
+     *
+     * @param session loop session being paused
+     * @param roundResult result map of the finished round, mutated in place
+     * @param pauseInfo consumed pause metadata (operator, reason), may be null
+     */
+    private void pauseTaskLoopAtBoundary(AgentSessionApi session, Map<String, Object> roundResult,
+                                         Map<String, Object> pauseInfo) {
+        BaseSession baseSession = taskLoopBaseSession(session);
+        stepCheckpointTrigger.pauseNow(baseSession, "PHASE", "user-pause", pauseInfo);
+        if (roundResult != null) {
+            roundResult.put("result_type", "paused");
+            roundResult.put("output", "Paused by user request");
+            if (pauseInfo != null && !pauseInfo.isEmpty()) {
+                roundResult.put("pause_info", pauseInfo);
+            }
+        }
     }
 
     /**

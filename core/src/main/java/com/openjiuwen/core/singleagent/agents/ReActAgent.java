@@ -66,9 +66,11 @@ import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
 import com.openjiuwen.core.session.checkpointer.step.KvStepJournal;
 import com.openjiuwen.core.session.checkpointer.step.PolicyEvaluator;
+import com.openjiuwen.core.session.checkpointer.step.PauseRequestRegistry;
 import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.session.checkpointer.step.StepJournal;
 import com.openjiuwen.core.session.checkpointer.step.StepSignalContext;
 import com.openjiuwen.core.session.checkpointer.step.StepStatus;
@@ -2070,6 +2072,21 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .resolve(config.getStepCheckpointPolicy(), invokeOverride);
         stepCheckpointTrigger = new StepCheckpointTrigger(checkpointer, journal, effectivePolicy,
                 new PolicyEvaluator());
+        seedTriggerSeq(session, checkpointer);
+    }
+
+    private void seedTriggerSeq(AgentSessionApi session, Checkpointer checkpointer) {
+        if (checkpointer == null || session == null) {
+            return;
+        }
+        BaseSession baseSession = typedBaseSession(session);
+        if (baseSession == null) {
+            return;
+        }
+        StepCursor last = checkpointer.lastCompletedStep(baseSession);
+        if (last != null) {
+            stepCheckpointTrigger.seedSeq(last.getSeq());
+        }
     }
 
     private Checkpointer resolveCheckpointer(AgentSessionApi session) {
@@ -2288,6 +2305,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     Loggers.AGENT.info("ReAct iteration {}/{} started",
                             iterationNumber, ctx.getMaxIterations());
                     try {
+                        Map<String, Object> pauseInfo = consumePauseIfRequested(session);
+                        if (pauseInfo != null) {
+                            applyPausedResult(ctx, session, invokeInputs, pauseInfo);
+                            break;
+                        }
                         if (isCancelRequested(ctx)) {
                             applyCancelledResult(ctx, session, invokeInputs);
                             break;
@@ -2897,6 +2919,45 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         contextEngine.saveContexts(session);
         invokeInputs.setResult(cancelledInvokeResult());
         ctx.finish(AgentTerminationReason.CANCELLED);
+    }
+
+    /**
+     * Applies a consumed user-pause request: the PAUSED step cursor and the
+     * pause metadata persist through the checkpoint save path and the
+     * invocation ends with the {@code PAUSED} termination reason, so the
+     * session can continue from the persisted boundary on explicit resume.
+     *
+     * @param ctx callback context of the running invocation
+     * @param session invocation session carrying the paused boundary
+     * @param invokeInputs invocation inputs receiving the paused result
+     * @param pauseInfo consumed pause metadata (operator, reason), may be null
+     */
+    private void applyPausedResult(AgentCallbackContext ctx, AgentSessionApi session,
+                                   InvokeInputs invokeInputs, Map<String, Object> pauseInfo) {
+        BaseSession baseSession = typedBaseSession(session);
+        stepCheckpointTrigger.pauseNow(baseSession, "PHASE", "user-pause", pauseInfo);
+        contextEngine.saveContexts(session);
+        Map<String, Object> pausedResult = new LinkedHashMap<>();
+        pausedResult.put("output", "Paused by user request");
+        pausedResult.put("result_type", "paused");
+        if (pauseInfo != null && !pauseInfo.isEmpty()) {
+            pausedResult.put("pause_info", pauseInfo);
+        }
+        invokeInputs.setResult(pausedResult);
+        ctx.finish(AgentTerminationReason.PAUSED);
+    }
+
+    /**
+     * Consumes the pending pause intent of the invocation session, if any.
+     *
+     * @param session invocation session carrying the pause intent
+     * @return the consumed pause metadata, or null when no pause was requested
+     */
+    private static Map<String, Object> consumePauseIfRequested(AgentSessionApi session) {
+        if (session == null) {
+            return null;
+        }
+        return PauseRequestRegistry.consumePauseRequest(session.getSessionId());
     }
 
     private void runNamedStreamingInvoke(Object inputs, AgentSessionApi session, String streamThreadName) {

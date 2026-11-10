@@ -29,5 +29,8 @@ public enum AgentTerminationReason {
     ERROR,
 
     /** The caller cancelled the invocation, e.g. by closing the stream iterator. */
-    CANCELLED
+    CANCELLED,
+
+    /** The invocation was suspended at a step boundary by a user pause request. */
+    PAUSED
 }

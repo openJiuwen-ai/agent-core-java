@@ -28,6 +28,14 @@ public class StepCursor {
     /** Session state key under which the latest failed-step cursor is stored. */
     public static final String FAILED_STATE_KEY = "step_cursor_failed";
 
+    /**
+     * Session state key under which the latest paused-step cursor is stored.
+     * A paused cursor records a user-requested suspension point, never a
+     * crash leftover, so it lives on its own key and is invisible to the
+     * RUNNING-cursor recovery scan.
+     */
+    public static final String PAUSED_STATE_KEY = "step_cursor_paused";
+
     private long seq;
     private String stepType;
     private String stepName;
@@ -183,6 +191,57 @@ public class StepCursor {
             return fromMap(agentMap.get(FAILED_STATE_KEY));
         }
         return null;
+    }
+
+    /**
+     * Read the latest paused-step cursor from a session state snapshot, using
+     * the same top-level-then-agent-partition lookup as {@link #fromState}.
+     *
+     * @param state full state map as returned by {@code session.state().getState()}, may be null
+     * @return the paused cursor stored under {@link #PAUSED_STATE_KEY},
+     *         or null when absent or malformed
+     */
+    public static StepCursor pausedFromState(Map<String, Object> state) {
+        if (state == null) {
+            return null;
+        }
+        StepCursor cursor = fromMap(state.get(PAUSED_STATE_KEY));
+        if (cursor != null) {
+            return cursor;
+        }
+        Object agentPartition = state.get(State.AGENT_STATE_KEY);
+        if (agentPartition instanceof Map<?, ?> agentMap) {
+            return fromMap(agentMap.get(PAUSED_STATE_KEY));
+        }
+        return null;
+    }
+
+    /**
+     * Remove the latest paused-step cursor from a session state, used by the
+     * explicit resume path after the cursor has moved back to RUNNING.
+     *
+     * @param state full state map as returned by {@code session.state().getState()}, may be null
+     * @return true when a stored paused cursor was found and cleared
+     */
+    public static boolean clearPausedFromState(Map<String, Object> state) {
+        if (state == null) {
+            return false;
+        }
+        if (state.containsKey(PAUSED_STATE_KEY)) {
+            state.put(PAUSED_STATE_KEY, null);
+            return true;
+        }
+        Object agentPartition = state.get(State.AGENT_STATE_KEY);
+        if (agentPartition instanceof Map<?, ?> agentMap) {
+            return agentMap.containsKey(PAUSED_STATE_KEY) && clearPausedFromState(asMutable(agentMap));
+        }
+        return false;
+    }
+
+    private static Map<String, Object> asMutable(Map<?, ?> raw) {
+        Map<String, Object> mutable = new LinkedHashMap<>();
+        raw.forEach((key, value) -> mutable.put(String.valueOf(key), value));
+        return mutable;
     }
 
     /**

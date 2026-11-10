@@ -389,10 +389,11 @@ class StepCheckpointResilienceTest {
     void saveTransactionCrashKeepsStaleCursorGuard() {
         // The crash-timing matrix in one round: boundary seq=1 saves,
         // seq=2's save transaction dies mid-flight, and the invoke crashes.
-        // The restarted round re-binds a fresh trigger whose seq restarts at
-        // 1, so the seq=1 boundary of the resumed round must be rejected by
-        // the stale-cursor guard (isAfter 1>1 is false) - no new cursor and
-        // no save pipeline for it, while the audit journal still records it.
+        // The restarted round re-binds a fresh trigger whose seq is seeded
+        // from the persisted cursor, so the resumed round continues at seq=2
+        // and its boundary passes the stale-cursor guard (isAfter 2>1) - the
+        // cursor advances and the save pipeline issues one more successful
+        // write, while the audit journal still records every boundary.
         CrashInjectionKVStore crashStore = new CrashInjectionKVStore(1);
         PersistenceCheckpointer crashedCheckpointer = new PersistenceCheckpointer(crashStore);
         CheckpointerFactory.releaseDefaultCheckpointer();
@@ -419,12 +420,12 @@ class StepCheckpointResilienceTest {
                     Map.of("query", "resume after matrix crash", "conversation_id", SESSION_ID), restarted);
             assertThat(resumedResult).containsEntry("result_type", "answer");
 
-            // The guard rejected the resumed round's seq=1 boundary: the
-            // cursor stayed at the recovered seq=1 and no additional write
-            // pipeline was issued for it.
+            // The seeded trigger continues at seq=2: the cursor advanced past
+            // the recovered seq=1 and one more successful write pipeline was
+            // issued for it.
             StepCursor resume = crashedCheckpointer.lastCompletedStep(restarted.getInner());
             assertThat(resume).isNotNull();
-            assertThat(resume.getSeq()).isEqualTo(1L);
+            assertThat(resume.getSeq()).isEqualTo(2L);
             assertThat(crashStore.writePipelineFailures()).isEqualTo(2);
 
             // The journal audited every boundary - including the ones whose

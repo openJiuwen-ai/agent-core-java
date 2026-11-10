@@ -21,6 +21,7 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.checkpointer.step.StepCursor;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.state.AgentStateCollection;
 import com.openjiuwen.core.session.state.SessionStateAccess;
@@ -221,6 +222,116 @@ public class PersistenceCheckpointer extends Checkpointer {
      */
     @Override
     public List<StepCursor> scanRunningSteps() {
+        return cursorsFromStates(StepStatus.RUNNING);
+    }
+
+    /**
+     * Scan persisted agent state blobs for sessions holding a paused-step
+     * cursor, i.e. sessions a user explicitly suspended.
+     *
+     * @return one PAUSED cursor per paused session, empty when none
+     */
+    @Override
+    public List<StepCursor> scanPausedSteps() {
+        return cursorsFromStates(StepStatus.PAUSED);
+    }
+
+    /**
+     * Resume one user-paused session: locate the agent-state blob owning the
+     * paused cursor, flip the main cursor back to RUNNING with the paused
+     * seq, clear the paused evidence, and flush through the regular save
+     * transaction.
+     *
+     * @param cursor paused cursor of the session to resume, never null
+     */
+    @Override
+    public void resumePaused(StepCursor cursor) {
+        Objects.requireNonNull(cursor, "cursor");
+        Map<String, String> pausedKeys = pausedSessionKeys(cursor);
+        if (pausedKeys.isEmpty()) {
+            throw new IllegalStateException("No paused session found for cursor " + cursor);
+        }
+        for (Map.Entry<String, String> entry : pausedKeys.entrySet()) {
+            Object dumpType = kvStore.get(entry.getValue()).join();
+            Object blob = kvStore.get(entry.getKey()).join();
+            Object state = agentStorage.deserializeState(dumpType, blob);
+            if (!(state instanceof Map<?, ?> stateMap)) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+            StepCursor paused = StepCursor.pausedFromState(normalized);
+            if (paused == null) {
+                continue;
+            }
+            Checkpointer.applyResumeToState(normalized, paused);
+            persistResumedState(normalized, entry.getKey(), entry.getValue());
+            return;
+        }
+        throw new IllegalStateException("No paused session found for cursor " + cursor);
+    }
+
+    /**
+     * Return the persisted paused-step cursor of one session looked up by id,
+     * deserialized from the session's agent-state blob.
+     *
+     * @param sessionId id of the session to inspect, never null or blank
+     * @return the paused cursor, or null when the session has none
+     */
+    @Override
+    public StepCursor lastPausedStep(String sessionId) {
+        Map<String, Object> snapshot = agentStateSnapshot(sessionId);
+        if (snapshot == null) {
+            return null;
+        }
+        StepCursor cursor = StepCursor.pausedFromState(snapshot);
+        return cursor != null && cursor.getStatus() == StepStatus.PAUSED ? cursor : null;
+    }
+
+    /**
+     * Resume one user-paused session identified by id: flip the main cursor
+     * back to RUNNING with the paused seq, clear the paused evidence, and
+     * flush through the regular save transaction.
+     *
+     * @param sessionId id of the session to resume, never null or blank
+     * @throws IllegalStateException when the session has no persisted state
+     *         or no paused cursor
+     */
+    @Override
+    public void resumePaused(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalStateException("Cannot resume a blank session id");
+        }
+        Map<String, String> keys = agentStateKeys(sessionId);
+        if (keys.isEmpty()) {
+            throw new IllegalStateException("No persisted state found for session_id " + sessionId);
+        }
+        Map.Entry<String, String> entry = keys.entrySet().iterator().next();
+        Object dumpType = kvStore.get(entry.getValue()).join();
+        Object blob = kvStore.get(entry.getKey()).join();
+        Object state = agentStorage.deserializeState(dumpType, blob);
+        if (!(state instanceof Map<?, ?> stateMap)) {
+            throw new IllegalStateException("No paused session found for session_id " + sessionId);
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+        StepCursor paused = StepCursor.pausedFromState(normalized);
+        if (paused == null) {
+            throw new IllegalStateException("No paused session found for session_id " + sessionId);
+        }
+        Checkpointer.applyResumeToState(normalized, paused);
+        persistResumedState(normalized, entry.getKey(), entry.getValue());
+    }
+
+    private void persistResumedState(Map<String, Object> state, String blobKey, String dumpTypeKey) {
+        Serializer.TypedBytes typedBytes = agentStorage.serializeState(state);
+        BasedKVStorePipeline pipeline = kvStore.pipeline();
+        pipeline.set(dumpTypeKey, typedBytes.type(), null).join();
+        pipeline.set(blobKey, typedBytes.data(), null).join();
+        pipeline.execute().join();
+    }
+
+    private List<StepCursor> cursorsFromStates(StepStatus expected) {
         Map<String, Object> blobs = kvStore.getByPrefix(
                 TenantKVStoreKeyResolver.resolvePrefix("")).join();
         if (blobs == null || blobs.isEmpty()) {
@@ -238,7 +349,95 @@ public class PersistenceCheckpointer extends Checkpointer {
                 snapshots.put(entry.getKey(), normalized);
             }
         }
-        return runningCursorsFromStates(snapshots);
+        return cursorsFromStates(snapshots, expected);
+    }
+
+    private Map<String, Object> agentStateSnapshot(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        Map<String, String> keys = agentStateKeys(sessionId);
+        if (keys.isEmpty()) {
+            return null;
+        }
+        Map.Entry<String, String> entry = keys.entrySet().iterator().next();
+        Object dumpType = kvStore.get(entry.getValue()).join();
+        Object blob = kvStore.get(entry.getKey()).join();
+        Object state = agentStorage.deserializeState(dumpType, blob);
+        if (!(state instanceof Map<?, ?> stateMap)) {
+            return null;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+        return normalized;
+    }
+
+    private Map<String, String> agentStateKeys(String sessionId) {
+        Map<String, Object> blobs = kvStore.getByPrefix(
+                TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join();
+        Map<String, String> keys = new LinkedHashMap<>();
+        if (blobs == null) {
+            return keys;
+        }
+        for (Map.Entry<String, Object> entry : blobs.entrySet()) {
+            if (!entry.getKey().contains(":agent:") || !entry.getKey().endsWith(":agent_state_blobs")) {
+                continue;
+            }
+            keys.put(entry.getKey(), entry.getKey()
+                    .substring(0, entry.getKey().length() - ":agent_state_blobs".length())
+                    + ":agent_state_blobs_dump_type");
+        }
+        return keys;
+    }
+
+    private Map<String, String> pausedSessionKeys(StepCursor cursor) {
+        Map<String, Object> blobs = kvStore.getByPrefix(
+                TenantKVStoreKeyResolver.resolvePrefix("")).join();
+        Map<String, String> matches = new LinkedHashMap<>();
+        if (blobs == null) {
+            return matches;
+        }
+        for (Map.Entry<String, Object> entry : blobs.entrySet()) {
+            if (!entry.getKey().contains(":agent:") || !entry.getKey().endsWith(":agent_state_blobs")) {
+                continue;
+            }
+            Object state = agentStorage.deserializeBlob(entry.getValue());
+            if (!(state instanceof Map<?, ?> stateMap)) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+            StepCursor paused = StepCursor.pausedFromState(normalized);
+            if (paused != null && paused.getSeq() == cursor.getSeq()
+                    && paused.getStepName().equals(cursor.getStepName())) {
+                matches.put(entry.getKey(), entry.getKey()
+                        .substring(0, entry.getKey().length() - ":agent_state_blobs".length())
+                        + ":agent_state_blobs_dump_type");
+            }
+        }
+        return matches;
+    }
+
+    private static List<StepCursor> cursorsFromStates(Map<String, Object> states, StepStatus expected) {
+        List<StepCursor> matched = new ArrayList<>();
+        if (states == null) {
+            return matched;
+        }
+        for (Map.Entry<String, Object> entry : states.entrySet()) {
+            Object snapshot = entry.getValue();
+            if (!(snapshot instanceof Map<?, ?> snapshotMap)) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            snapshotMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+            StepCursor cursor = expected == StepStatus.PAUSED
+                    ? StepCursor.pausedFromState(normalized)
+                    : StepCursor.fromState(normalized);
+            if (cursor != null && cursor.getStatus() == expected) {
+                matched.add(cursor);
+            }
+        }
+        return matched;
     }
 
     @Override
