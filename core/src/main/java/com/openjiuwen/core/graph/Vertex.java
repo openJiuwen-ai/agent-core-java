@@ -1181,12 +1181,20 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                     LOGGER.error("Failed to flush deferred END_FRAME for node [{}]", nodeId, flushException);
                 }
             }
+            finishStreamCall(error);
+        }
+    }
+
+    private void finishStreamCall(Exception error) {
+        try {
+            // Publish the input snapshot before the batch side emits the final trace.
+            traceComponentStreamInputSend();
+        } finally {
             if (error == null) {
                 streamDone.complete(STREAM_DONE_SUCCESS);
             } else {
                 streamDone.complete(error);
             }
-            traceComponentStreamInputSend();
         }
     }
 
