@@ -185,6 +185,10 @@ public abstract class BaseOperation {
         Class<?> parameterType = parameter.getType();
         schema.put("description", humanize(parameter.getName()));
 
+        // Java Object 可承载字符串、数组或对象，不能将其限制为 JSON object。
+        if (parameterType == Object.class) {
+            return schema;
+        }
         if (parameterType == String.class || parameterType == char.class || parameterType == Character.class) {
             schema.put("type", "string");
         } else if (parameterType == boolean.class || parameterType == Boolean.class) {
