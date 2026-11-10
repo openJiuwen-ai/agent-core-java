@@ -319,25 +319,25 @@ public class InMemoryCheckpointer extends Checkpointer {
     }
 
     /**
-     * Resume one user-paused session: find the agent store owning the paused
-     * cursor, flip the main cursor back to RUNNING with the paused seq, and
-     * clear the paused evidence from the persisted state.
+     * Resume one user-paused session: locate the owning session store through
+     * the session id carried by the paused cursor (seq and step name alone are
+     * not unique across sessions), flip the main cursor back to RUNNING with
+     * the paused seq, and clear the paused evidence from the persisted state.
+     * A cursor without a session id is rejected: guessing the session from a
+     * whole-store scan could resume the wrong user's session.
      *
      * @param cursor paused cursor of the session to resume, never null
+     * @throws IllegalStateException when the cursor carries no session id or
+     *         no paused session matches it
      */
     @Override
     public void resumePaused(StepCursor cursor) {
         Objects.requireNonNull(cursor, "cursor");
-        for (Map.Entry<String, AgentStorage> entry : agentStores.entrySet()) {
-            StepCursor paused = entry.getValue().lastPausedCursor();
-            if (paused == null || paused.getSeq() != cursor.getSeq()
-                    || !paused.getStepName().equals(cursor.getStepName())) {
-                continue;
-            }
-            entry.getValue().applyResume();
-            return;
+        if (cursor.getSessionId() == null || cursor.getSessionId().isEmpty()) {
+            throw new IllegalStateException(
+                    "Cannot resume by cursor without a session id; use resumePaused(sessionId) instead");
         }
-        throw new IllegalStateException("No paused session found for cursor " + cursor);
+        resumePaused(cursor.getSessionId());
     }
 
     /**

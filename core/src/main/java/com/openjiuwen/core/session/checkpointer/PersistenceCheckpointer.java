@@ -237,38 +237,24 @@ public class PersistenceCheckpointer extends Checkpointer {
     }
 
     /**
-     * Resume one user-paused session: locate the agent-state blob owning the
-     * paused cursor, flip the main cursor back to RUNNING with the paused
-     * seq, clear the paused evidence, and flush through the regular save
-     * transaction.
+     * Resume one user-paused session: resolve the session id carried by the
+     * paused cursor and delegate to the by-id path, which locates the owning
+     * blob directly. seq and step name alone are not unique across sessions,
+     * so a cursor without a session id is rejected instead of guessing the
+     * session from a whole-store scan.
      *
      * @param cursor paused cursor of the session to resume, never null
+     * @throws IllegalStateException when the cursor carries no session id or
+     *         no paused session matches it
      */
     @Override
     public void resumePaused(StepCursor cursor) {
         Objects.requireNonNull(cursor, "cursor");
-        Map<String, String> pausedKeys = pausedSessionKeys(cursor);
-        if (pausedKeys.isEmpty()) {
-            throw new IllegalStateException("No paused session found for cursor " + cursor);
+        if (cursor.getSessionId() == null || cursor.getSessionId().isEmpty()) {
+            throw new IllegalStateException(
+                    "Cannot resume by cursor without a session id; use resumePaused(sessionId) instead");
         }
-        for (Map.Entry<String, String> entry : pausedKeys.entrySet()) {
-            Object dumpType = kvStore.get(entry.getValue()).join();
-            Object blob = kvStore.get(entry.getKey()).join();
-            Object state = agentStorage.deserializeState(dumpType, blob);
-            if (!(state instanceof Map<?, ?> stateMap)) {
-                continue;
-            }
-            Map<String, Object> normalized = new LinkedHashMap<>();
-            stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-            StepCursor paused = StepCursor.pausedFromState(normalized);
-            if (paused == null) {
-                continue;
-            }
-            Checkpointer.applyResumeToState(normalized, paused);
-            persistResumedState(normalized, entry.getKey(), entry.getValue());
-            return;
-        }
-        throw new IllegalStateException("No paused session found for cursor " + cursor);
+        resumePaused(cursor.getSessionId());
     }
 
     /**
@@ -306,21 +292,27 @@ public class PersistenceCheckpointer extends Checkpointer {
         if (keys.isEmpty()) {
             throw new IllegalStateException("No persisted state found for session_id " + sessionId);
         }
-        Map.Entry<String, String> entry = keys.entrySet().iterator().next();
-        Object dumpType = kvStore.get(entry.getValue()).join();
-        Object blob = kvStore.get(entry.getKey()).join();
-        Object state = agentStorage.deserializeState(dumpType, blob);
-        if (!(state instanceof Map<?, ?> stateMap)) {
-            throw new IllegalStateException("No paused session found for session_id " + sessionId);
+        // One session id may own several agent blobs (multi-agent sessions);
+        // scan all of them so the resume hits the blob actually holding the
+        // paused evidence instead of silently missing it.
+        for (Map.Entry<String, String> entry : keys.entrySet()) {
+            Object dumpType = kvStore.get(entry.getValue()).join();
+            Object blob = kvStore.get(entry.getKey()).join();
+            Object state = agentStorage.deserializeState(dumpType, blob);
+            if (!(state instanceof Map<?, ?> stateMap)) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+            StepCursor paused = StepCursor.pausedFromState(normalized);
+            if (paused == null) {
+                continue;
+            }
+            Checkpointer.applyResumeToState(normalized, paused);
+            persistResumedState(normalized, entry.getKey(), entry.getValue());
+            return;
         }
-        Map<String, Object> normalized = new LinkedHashMap<>();
-        stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-        StepCursor paused = StepCursor.pausedFromState(normalized);
-        if (paused == null) {
-            throw new IllegalStateException("No paused session found for session_id " + sessionId);
-        }
-        Checkpointer.applyResumeToState(normalized, paused);
-        persistResumedState(normalized, entry.getKey(), entry.getValue());
+        throw new IllegalStateException("No paused session found for session_id " + sessionId);
     }
 
     private void persistResumedState(Map<String, Object> state, String blobKey, String dumpTypeKey) {
@@ -356,20 +348,23 @@ public class PersistenceCheckpointer extends Checkpointer {
         if (sessionId == null || sessionId.isBlank()) {
             return null;
         }
-        Map<String, String> keys = agentStateKeys(sessionId);
-        if (keys.isEmpty()) {
-            return null;
+        // One session id may own several agent blobs (multi-agent sessions);
+        // scan all of them so lookups find the snapshot that actually holds
+        // the paused evidence instead of only the first one in key order.
+        for (Map.Entry<String, String> entry : agentStateKeys(sessionId).entrySet()) {
+            Object dumpType = kvStore.get(entry.getValue()).join();
+            Object blob = kvStore.get(entry.getKey()).join();
+            Object state = agentStorage.deserializeState(dumpType, blob);
+            if (!(state instanceof Map<?, ?> stateMap)) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+            if (StepCursor.pausedFromState(normalized) != null) {
+                return normalized;
+            }
         }
-        Map.Entry<String, String> entry = keys.entrySet().iterator().next();
-        Object dumpType = kvStore.get(entry.getValue()).join();
-        Object blob = kvStore.get(entry.getKey()).join();
-        Object state = agentStorage.deserializeState(dumpType, blob);
-        if (!(state instanceof Map<?, ?> stateMap)) {
-            return null;
-        }
-        Map<String, Object> normalized = new LinkedHashMap<>();
-        stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-        return normalized;
+        return null;
     }
 
     private Map<String, String> agentStateKeys(String sessionId) {
@@ -388,34 +383,6 @@ public class PersistenceCheckpointer extends Checkpointer {
                     + ":agent_state_blobs_dump_type");
         }
         return keys;
-    }
-
-    private Map<String, String> pausedSessionKeys(StepCursor cursor) {
-        Map<String, Object> blobs = kvStore.getByPrefix(
-                TenantKVStoreKeyResolver.resolvePrefix("")).join();
-        Map<String, String> matches = new LinkedHashMap<>();
-        if (blobs == null) {
-            return matches;
-        }
-        for (Map.Entry<String, Object> entry : blobs.entrySet()) {
-            if (!entry.getKey().contains(":agent:") || !entry.getKey().endsWith(":agent_state_blobs")) {
-                continue;
-            }
-            Object state = agentStorage.deserializeBlob(entry.getValue());
-            if (!(state instanceof Map<?, ?> stateMap)) {
-                continue;
-            }
-            Map<String, Object> normalized = new LinkedHashMap<>();
-            stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-            StepCursor paused = StepCursor.pausedFromState(normalized);
-            if (paused != null && paused.getSeq() == cursor.getSeq()
-                    && paused.getStepName().equals(cursor.getStepName())) {
-                matches.put(entry.getKey(), entry.getKey()
-                        .substring(0, entry.getKey().length() - ":agent_state_blobs".length())
-                        + ":agent_state_blobs_dump_type");
-            }
-        }
-        return matches;
     }
 
     private static List<StepCursor> cursorsFromStates(Map<String, Object> states, StepStatus expected) {

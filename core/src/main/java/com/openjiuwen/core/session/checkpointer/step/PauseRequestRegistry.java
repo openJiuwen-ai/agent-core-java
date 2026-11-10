@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.checkpointer.step;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -34,7 +36,9 @@ public final class PauseRequestRegistry {
      *
      * @param sessionId id of the session to pause, never null or blank
      * @param pauseInfo pause metadata persisted with the paused cursor
-     *                  (operator, reason, timestamps), may be null
+     *                  (operator, reason, timestamps), may be null; entries
+     *                  with null values are dropped because the persisted
+     *                  metadata map may not carry null values
      * @return true when the intent was newly published, false when a
      *         pending intent for the session already exists
      */
@@ -42,7 +46,20 @@ public final class PauseRequestRegistry {
         if (isBlank(sessionId)) {
             return false;
         }
-        return PAUSE_INTENTS.putIfAbsent(sessionId, pauseInfo == null ? Map.of() : Map.copyOf(pauseInfo)) == null;
+        return PAUSE_INTENTS.putIfAbsent(sessionId, copyMetadata(pauseInfo)) == null;
+    }
+
+    private static Map<String, Object> copyMetadata(Map<String, Object> pauseInfo) {
+        if (pauseInfo == null || pauseInfo.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> copy = new LinkedHashMap<>();
+        pauseInfo.forEach((key, value) -> {
+            if (key != null && value != null) {
+                copy.put(key, value);
+            }
+        });
+        return Collections.unmodifiableMap(copy);
     }
 
     /**

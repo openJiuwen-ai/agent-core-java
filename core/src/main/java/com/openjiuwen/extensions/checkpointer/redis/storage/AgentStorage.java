@@ -245,7 +245,12 @@ public class AgentStorage extends BaseRedisStorage {
                         continue;
                     }
                     Checkpointer.applyResumeToState(normalized, paused);
-                    return persistResumedState(normalized, redisKeySessionId(entry.getKey()));
+                    // Write back through the exact keys the blob was read from:
+                    // re-deriving them from the session id would miss the agent
+                    // segment (agentId may differ) and the tenant prefix.
+                    return persistResumedState(normalized, entry.getKey(),
+                            entry.getKey().substring(0,
+                                    entry.getKey().length() - STATE_BLOBS.length()) + STATE_BLOBS_DUMP_TYPE);
                 }
             }
             return CompletableFuture.failedFuture(
@@ -290,62 +295,32 @@ public class AgentStorage extends BaseRedisStorage {
     }
 
     /**
-     * Resume one user-paused session: overwrite the agent-state blob owning
-     * the paused cursor with the main cursor flipped back to RUNNING at the
-     * paused seq and the paused evidence removed.
+     * Resume one user-paused session: resolve the session id carried by the
+     * paused cursor and delegate to the by-id path, which locates the owning
+     * blob directly. seq and step name alone are not unique across sessions,
+     * so a cursor without a session id is rejected instead of guessing the
+     * session from a whole-store scan.
      *
      * @param cursor paused cursor of the session to resume, never null
      * @return future completing when the resumed state is persisted
      */
     public CompletableFuture<Void> resumePaused(StepCursor cursor) {
-        try {
-            java.util.Objects.requireNonNull(cursor, "cursor");
-            Map<String, Object> blobs = redisStore
-                    .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix("")).join();
-            if (blobs != null) {
-                for (Map.Entry<String, Object> entry : blobs.entrySet()) {
-                    if (!entry.getKey().endsWith(":" + STATE_BLOBS)
-                            || !entry.getKey().contains(":" + Checkpointer.SESSION_NAMESPACE_AGENT + ":")) {
-                        continue;
-                    }
-                    Object dumpType = blobs.get(entry.getKey().substring(0,
-                            entry.getKey().length() - STATE_BLOBS.length()) + STATE_BLOBS_DUMP_TYPE);
-                    Object state = deserializeState(dumpType, entry.getValue());
-                    if (!(state instanceof Map<?, ?> stateMap)) {
-                        continue;
-                    }
-                    Map<String, Object> normalized = new LinkedHashMap<>();
-                    stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-                    StepCursor paused = StepCursor.pausedFromState(normalized);
-                    if (paused == null || paused.getSeq() != cursor.getSeq()
-                            || !paused.getStepName().equals(cursor.getStepName())) {
-                        continue;
-                    }
-                    Checkpointer.applyResumeToState(normalized, paused);
-                    return persistResumedState(normalized, redisKeySessionId(entry.getKey()));
-                }
-            }
-            return CompletableFuture.failedFuture(
-                    new IllegalStateException("No paused session found for cursor " + cursor));
-        } catch (Throwable throwable) {
-            return CompletableFuture.failedFuture(wrapFailure(throwable));
+        java.util.Objects.requireNonNull(cursor, "cursor");
+        if (cursor.getSessionId() == null || cursor.getSessionId().isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                    "Cannot resume by cursor without a session id; use resumePausedBySessionId instead"));
         }
+        return resumePausedBySessionId(cursor.getSessionId());
     }
 
-    private CompletableFuture<Void> persistResumedState(Map<String, Object> state, String sessionId) {
+    private CompletableFuture<Void> persistResumedState(Map<String, Object> state, String blobKey,
+                                                        String dumpTypeKey) {
         var stateBlob = serializeState(state);
         BasedKVStorePipeline pipeline = redisStore.pipeline();
-        pipeline.set(makeRedisKey(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, sessionId,
-                STATE_BLOBS_DUMP_TYPE), stateBlob.type(), ttlSeconds);
-        pipeline.set(makeRedisKey(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, sessionId,
-                STATE_BLOBS), stateBlob.data(), ttlSeconds);
+        pipeline.set(dumpTypeKey, stateBlob.type(), ttlSeconds);
+        pipeline.set(blobKey, stateBlob.data(), ttlSeconds);
         pipeline.execute().join();
         return CompletableFuture.completedFuture(null);
-    }
-
-    private static String redisKeySessionId(String blobKey) {
-        int agentIndex = blobKey.indexOf(":" + Checkpointer.SESSION_NAMESPACE_AGENT + ":");
-        return agentIndex > 0 ? blobKey.substring(0, agentIndex) : blobKey;
     }
 
     private String resolveAgentId(BaseSession session) {

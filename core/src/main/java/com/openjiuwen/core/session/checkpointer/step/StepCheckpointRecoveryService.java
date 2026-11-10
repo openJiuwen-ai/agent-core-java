@@ -155,6 +155,11 @@ public class StepCheckpointRecoveryService {
             return new RecoveryAction(null, RecoveryActionType.MARKED_LOST,
                     "no paused cursor for session " + sessionId);
         }
+        if (cursor.getSessionId() == null || cursor.getSessionId().isEmpty()) {
+            // Backend lookups by id need not fill the cursor session id; the
+            // explicit resume is keyed on it, so stamp it before delegating.
+            cursor.setSessionId(sessionId);
+        }
         return resumePaused(cursor);
     }
 
@@ -223,7 +228,8 @@ public class StepCheckpointRecoveryService {
     }
 
     private static String pausedKey(StepCursor cursor) {
-        return "paused:" + cursor.getStepName() + "@" + cursor.getSeq() + "@" + cursor.getTimestamp();
+        return "paused:" + cursor.getSessionId() + "@"
+                + cursor.getStepName() + "@" + cursor.getSeq() + "@" + cursor.getTimestamp();
     }
 
     /** Action taken for one leftover session. */

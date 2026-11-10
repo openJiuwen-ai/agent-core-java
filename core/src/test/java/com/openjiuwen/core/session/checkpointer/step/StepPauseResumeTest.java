@@ -20,6 +20,7 @@ import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.AgentStateCollection;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 
 import org.junit.jupiter.api.AfterEach;
@@ -27,7 +28,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -493,6 +493,117 @@ class StepPauseResumeTest {
         StepCheckpointTrigger trigger = new StepCheckpointTrigger(new InMemoryCheckpointer(), null,
                 StepCheckpointPolicy.STEP_ALWAYS);
         assertDoesNotThrow(() -> trigger.pauseNow(null, "PHASE", "user-pause", null));
+    }
+
+    @Test
+    void pausedCursorCarriesOwningSessionId() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-owner", "agent-owner", state);
+        checkpointer.preAgentExecute(session, null);
+
+        checkpointer.stepPaused(session,
+                new StepCursor(1L, "PHASE", "round-1", StepStatus.COMPLETED, 1L), null);
+
+        // The persisted cursor records the owning session so whole-store
+        // resume matching never depends on seq alone.
+        assertEquals("session-owner", checkpointer.lastPausedStep(session).getSessionId());
+        assertEquals("session-owner", checkpointer.lastPausedStep("session-owner").getSessionId());
+    }
+
+    @Test
+    void resumeByCursorWithoutSessionIdIsRejected() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        StepCursor anonymous = new StepCursor(9L, "PHASE", "user-pause", StepStatus.PAUSED, 1L);
+        assertThrows(IllegalStateException.class, () -> checkpointer.resumePaused(anonymous));
+    }
+
+    @Test
+    void resumeByCursorOfOneSessionLeavesOtherPausedSessionsUntouched() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection stateA = new AgentStateCollection();
+        TestSession sessionA = new TestSession("session-pair-a", "agent-pair-a", stateA);
+        checkpointer.preAgentExecute(sessionA, null);
+        checkpointer.stepPaused(sessionA,
+                new StepCursor(1L, "PHASE", "user-pause", StepStatus.COMPLETED, 1L), null);
+        AgentStateCollection stateB = new AgentStateCollection();
+        TestSession sessionB = new TestSession("session-pair-b", "agent-pair-b", stateB);
+        checkpointer.preAgentExecute(sessionB, null);
+        checkpointer.stepPaused(sessionB,
+                new StepCursor(1L, "PHASE", "user-pause", StepStatus.COMPLETED, 1L), null);
+        // Two identical (seq, stepName) cursors: the resume must hit exactly
+        // the session named by the cursor, never the store iteration order.
+        StepCursor pausedA = checkpointer.lastPausedStep("session-pair-a");
+        assertEquals(StepStatus.PAUSED, checkpointer.lastPausedStep("session-pair-b").getStatus());
+
+        checkpointer.resumePaused(pausedA);
+
+        assertNull(checkpointer.lastPausedStep("session-pair-a"));
+        assertNotNull(checkpointer.lastPausedStep("session-pair-b"));
+    }
+
+    @Test
+    void stalePauseSeqDoesNotRollTheResumePointBack() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-stale-pause", "agent-stale-pause", state);
+        checkpointer.preAgentExecute(session, null);
+        checkpointer.stepCompleted(session,
+                new StepCursor(5L, "PHASE", "round-5", StepStatus.COMPLETED, 1L));
+
+        // A pause cursor at or below the persisted seq is rejected: an old
+        // pause must not overwrite a newer resume point.
+        checkpointer.stepPaused(session,
+                new StepCursor(5L, "PHASE", "stale-pause", StepStatus.COMPLETED, 2L), null);
+        assertNull(checkpointer.lastPausedStep(session));
+        checkpointer.stepPaused(session,
+                new StepCursor(3L, "PHASE", "older-pause", StepStatus.COMPLETED, 2L), null);
+        assertNull(checkpointer.lastPausedStep(session));
+        assertEquals(5L, checkpointer.lastCompletedStep(session).getSeq());
+    }
+
+    @Test
+    void clearPausedFromStateClearsTheAgentPartition() {
+        Map<String, Object> partition = new HashMap<>();
+        partition.put(StepCursor.PAUSED_STATE_KEY,
+                new StepCursor(1L, "PHASE", "user-pause", StepStatus.PAUSED, 1L).toMap());
+        Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put(State.AGENT_STATE_KEY, partition);
+
+        assertTrue(StepCursor.clearPausedFromState(snapshot));
+        assertNull(StepCursor.pausedFromState(snapshot));
+        // The mutation must land on the caller-held map, not a discarded copy.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> written = (Map<String, Object>) snapshot.get(State.AGENT_STATE_KEY);
+        assertTrue(written.containsKey(StepCursor.PAUSED_STATE_KEY));
+        assertNull(written.get(StepCursor.PAUSED_STATE_KEY));
+    }
+
+    @Test
+    void requestPauseToleratesNullMetadataValues() {
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("operator", "op-null-test");
+        meta.put("reason", null);
+        assertTrue(PauseRequestRegistry.requestPause("session-null-meta", meta));
+        Map<String, Object> consumed = PauseRequestRegistry.consumePauseRequest("session-null-meta");
+        assertEquals("op-null-test", consumed.get("operator"));
+        // Null-valued entries are dropped, not a NPE.
+        assertFalse(consumed.containsKey("reason"));
+    }
+
+    @Test
+    void secondPauseAtLaterBoundaryOverwritesTheFirst() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-repause", "agent-repause", state);
+        checkpointer.preAgentExecute(session, null);
+        checkpointer.stepPaused(session,
+                new StepCursor(1L, "PHASE", "user-pause", StepStatus.COMPLETED, 1L), null);
+        checkpointer.stepPaused(session,
+                new StepCursor(2L, "PHASE", "user-pause", StepStatus.COMPLETED, 2L), null);
+        StepCursor paused = checkpointer.lastPausedStep(session);
+        assertEquals(2L, paused.getSeq());
+        assertEquals("session-repause", paused.getSessionId());
     }
 
     private static final class TestSession extends BaseSession {

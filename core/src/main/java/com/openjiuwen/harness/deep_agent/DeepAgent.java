@@ -38,7 +38,6 @@ import com.openjiuwen.core.multitenant.workspace.WorkspaceStore;
 import com.openjiuwen.core.multitenant.workspace.WorkspaceStoreFactory;
 import com.openjiuwen.core.multitenant.workspace.WorkspaceType;
 import com.openjiuwen.core.multitenant.workspace.store.LocalWorkspaceStore;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -112,7 +111,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -2442,6 +2440,14 @@ public class DeepAgent implements AutoCloseable {
                     pauseTaskLoopAtBoundary(session, roundResult, pauseInfo);
                     break;
                 }
+                // The inner ReAct agent may have consumed the pause intent at
+                // its own iteration head (both loops share the registry key);
+                // its paused round result must end the task loop, otherwise
+                // later rounds keep running after the user asked to pause.
+                if (isInnerPausedRound(roundResult)) {
+                    pauseTaskLoopAtInnerBoundary(session, roundResult);
+                    break;
+                }
                 if (isExplicitCompletionPolicy) {
                     updateCompletionPromise(coordinator, roundResult);
                     if (!coordinator.shouldContinue()) {
@@ -4210,6 +4216,32 @@ public class DeepAgent implements AutoCloseable {
             if (pauseInfo != null && !pauseInfo.isEmpty()) {
                 roundResult.put("pause_info", pauseInfo);
             }
+        }
+    }
+
+    /**
+     * Whether the finished round was paused by the inner ReAct agent: the
+     * inner loop consumed the pause intent at its iteration head and ended
+     * with the paused result shape.
+     *
+     * @param roundResult result map of the finished round, may be null
+     * @return true when the round carries the inner paused outcome
+     */
+    private static boolean isInnerPausedRound(Map<String, Object> roundResult) {
+        return roundResult != null && "paused".equals(String.valueOf(roundResult.get("result_type")));
+    }
+
+    /**
+     * Ends the task loop on a round the inner agent already paused: the PAUSED
+     * cursor and pause metadata are already persisted by the inner loop, so
+     * only the round result is normalized to carry the pause outcome.
+     *
+     * @param session loop session paused by the inner agent
+     * @param roundResult result map of the inner paused round, mutated in place
+     */
+    private void pauseTaskLoopAtInnerBoundary(AgentSessionApi session, Map<String, Object> roundResult) {
+        if (roundResult != null && !roundResult.containsKey("pause_info")) {
+            roundResult.put("pause_info", Map.of("source", "inner-agent"));
         }
     }
 

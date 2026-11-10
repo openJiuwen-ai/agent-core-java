@@ -8,6 +8,8 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.Serializer;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
+import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -32,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -612,6 +615,58 @@ class RedisCheckpointerStorageTest {
         assertTrue(isGraphStateMissing(checkpointer, "session-1", "workflow-1"));
         assertTrue(isGraphStateMissing(checkpointer, "session-1", "workflow-1:sub:1"));
         assertEquals(3, getGraphState(checkpointer, "session-1", "workflow-2").getStep());
+    }
+
+    @Test
+    void pauseResumeRoundTripWritesBackThroughTheOriginalBlobKeys() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
+        Config config = agentConfig("agent-1");
+        AgentSession session = agentSession("session-redis-pause", config, checkpointer);
+        checkpointer.preAgentExecute(session, null);
+        session.state().update(Map.of("progress", "half"));
+
+        checkpointer.stepPaused(session,
+                new StepCursor(2L, "PHASE", "user-pause", StepStatus.COMPLETED, 1L),
+                Map.of("operator", "op-redis"));
+
+        // The paused cursor round-trips through the persisted blob and the
+        // main resume point stays untouched.
+        StepCursor paused = checkpointer.lastPausedStep("session-redis-pause");
+        assertNotNull(paused);
+        assertEquals(2L, paused.getSeq());
+        assertEquals("session-redis-pause", paused.getSessionId());
+        assertNull(checkpointer.lastCompletedStep(session));
+
+        checkpointer.resumePaused(paused);
+
+        // The resume write-back must land on the original blob keys the save
+        // path wrote, not on a key re-derived from the session id: with an
+        // agentId different from the sessionId the re-derived key would be an
+        // orphan and the session would stay paused forever.
+        Object dumpTypeValue = redisClient.get("session-redis-pause:agent:agent-1:agent_state_blobs_dump_type");
+        assertNotNull(dumpTypeValue, "resume write-back must refresh the original dump-type key");
+        Object resumedBlob = redisClient.get("session-redis-pause:agent:agent-1:agent_state_blobs");
+        assertNotNull(resumedBlob, "resumed state must be persisted on the original blob key");
+        assertTrue(asText(resumedBlob).contains("RUNNING"));
+        assertFalse(asText(resumedBlob).contains("PAUSED"));
+
+        AgentSession restored = agentSession("session-redis-pause", config, checkpointer);
+        checkpointer.preAgentExecute(restored, null);
+        StepCursor resumed = checkpointer.lastCompletedStep(restored);
+        assertNotNull(resumed);
+        assertEquals(2L, resumed.getSeq());
+        assertEquals(StepStatus.RUNNING, resumed.getStatus());
+        assertEquals("half", restored.state().get("progress"));
+        assertNull(checkpointer.lastPausedStep("session-redis-pause"));
+    }
+
+    @Test
+    void resumePausedByCursorRejectsCursorWithoutSessionId() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
+        StepCursor anonymous = new StepCursor(9L, "PHASE", "user-pause", StepStatus.PAUSED, 1L);
+        assertThrows(IllegalStateException.class, () -> checkpointer.resumePaused(anonymous));
     }
 
     private static RedisCheckpointer jsonCheckpointer(FakeRedisClient redisClient) {

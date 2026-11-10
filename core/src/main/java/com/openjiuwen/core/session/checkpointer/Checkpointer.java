@@ -251,11 +251,16 @@ public abstract class Checkpointer implements AutoCloseable {
      * <p>The paused cursor marks user intent: recovery scans skip it, and only
      * the explicit resume entry point may continue the session. The main
      * cursor under {@link StepCursor#STATE_KEY} keeps pointing at the last
-     * completed step, so {@link #lastCompletedStep} semantics are untouched.</p>
+     * completed step, so {@link #lastCompletedStep} semantics are untouched.
+     * The cursor carries the owning session id so whole-store resume matching
+     * never has to rely on seq alone, and a stale seq is rejected like in
+     * {@link #stepCompleted} so an old pause cannot roll the resume point
+     * back.</p>
      *
      * @param session session being paused, carrying the live state to freeze
      * @param cursor cursor describing the boundary where the execution stopped;
-     *               its status is forced to {@link StepStatus#PAUSED}
+     *               its status is forced to {@link StepStatus#PAUSED} and its
+     *               session id to the owning session
      * @param pauseInfo pause metadata map (operator, reason, timestamps), may
      *                  be null to persist the cursor only
      */
@@ -263,10 +268,13 @@ public abstract class Checkpointer implements AutoCloseable {
         if (session == null || cursor == null || session.state() == null) {
             return;
         }
+        StepCursor pausedCursor = new StepCursor(cursor.getSeq(), cursor.getStepType(), cursor.getStepName(),
+                StepStatus.PAUSED, cursor.getTimestamp(), session.sessionId());
+        if (!shouldPersistPausedCursor(session, pausedCursor)) {
+            return;
+        }
         Map<String, Object> update = new LinkedHashMap<>();
-        Map<String, Object> pausedCursor = cursor.toMap();
-        pausedCursor.put("status", StepStatus.PAUSED.name());
-        update.put(StepCursor.PAUSED_STATE_KEY, pausedCursor);
+        update.put(StepCursor.PAUSED_STATE_KEY, pausedCursor.toMap());
         if (pauseInfo != null && !pauseInfo.isEmpty()) {
             update.put(SESSION_PAUSE_STATE_KEY, new LinkedHashMap<>(pauseInfo));
         }
@@ -280,6 +288,25 @@ public abstract class Checkpointer implements AutoCloseable {
                 rollbackPausedUpdate(session, update);
             }
         }
+    }
+
+    /**
+     * Whether the paused cursor may overwrite the persisted pause evidence:
+     * the seq must be strictly greater than both the stored paused cursor and
+     * the main resume point, mirroring the monotonic guard of
+     * {@link #stepCompleted}. Pauses repeat legitimately at different
+     * boundaries, so unlike completion a newer paused cursor always wins.
+     *
+     * @param session session being paused
+     * @param pausedCursor pause-bound cursor already carrying the session id
+     * @return true when the cursor advances beyond the persisted cursors
+     */
+    private boolean shouldPersistPausedCursor(BaseSession session, StepCursor pausedCursor) {
+        StepCursor storedPaused = lastPausedStep(session);
+        if (storedPaused != null && !pausedCursor.isAfter(storedPaused)) {
+            return false;
+        }
+        return pausedCursor.isAfter(lastCompletedStep(session));
     }
 
     /**
@@ -417,7 +444,7 @@ public abstract class Checkpointer implements AutoCloseable {
     public static void applyResumeToState(Map<String, Object> state, StepCursor paused) {
         Map<String, Object> partition = pausedKeysPartition(state);
         partition.put(StepCursor.STATE_KEY, new StepCursor(paused.getSeq(), paused.getStepType(),
-                paused.getStepName(), StepStatus.RUNNING, System.currentTimeMillis()).toMap());
+                paused.getStepName(), StepStatus.RUNNING, System.currentTimeMillis(), paused.getSessionId()).toMap());
         partition.remove(StepCursor.PAUSED_STATE_KEY);
         partition.remove(SESSION_PAUSE_STATE_KEY);
     }

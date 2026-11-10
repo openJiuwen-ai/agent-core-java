@@ -41,6 +41,7 @@ public class StepCursor {
     private String stepName;
     private StepStatus status;
     private long timestamp;
+    private String sessionId = "";
 
     public StepCursor() {
         this(0L, "", "", StepStatus.RUNNING, 0L);
@@ -56,11 +57,30 @@ public class StepCursor {
      * @param timestamp wall-clock time in milliseconds
      */
     public StepCursor(long seq, String stepType, String stepName, StepStatus status, long timestamp) {
+        this(seq, stepType, stepName, status, timestamp, null);
+    }
+
+    /**
+     * Create a cursor with explicit fields including the owning session id.
+     * Paused cursors always carry it so the explicit resume can locate the
+     * session behind the cursor without an ambiguous whole-store scan.
+     *
+     * @param seq monotonically increasing step sequence number within a task
+     * @param stepType step category, e.g. TOOL_CALL / LLM_RESPONSE / PHASE
+     * @param stepName tool name or phase name
+     * @param status lifecycle status of the step
+     * @param timestamp wall-clock time in milliseconds
+     * @param sessionId id of the session owning the cursor; null falls back
+     *                  to the empty string for cursors without a known owner
+     */
+    public StepCursor(long seq, String stepType, String stepName, StepStatus status, long timestamp,
+                      String sessionId) {
         this.seq = seq;
         this.stepType = stepType == null ? "" : stepType;
         this.stepName = stepName == null ? "" : stepName;
         this.status = status == null ? StepStatus.RUNNING : status;
         this.timestamp = timestamp;
+        this.sessionId = sessionId == null ? "" : sessionId;
     }
 
     public long getSeq() {
@@ -104,6 +124,20 @@ public class StepCursor {
     }
 
     /**
+     * Id of the session owning this cursor, carried by paused cursors so the
+     * explicit resume can locate the session behind the cursor.
+     *
+     * @return owning session id, empty when the cursor has no known owner
+     */
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId == null ? "" : sessionId;
+    }
+
+    /**
      * Serialize to a plain map so the cursor rides inside the state snapshot
      * without requiring a dedicated serializer.
      *
@@ -116,6 +150,7 @@ public class StepCursor {
         map.put("step_name", stepName);
         map.put("status", status.name());
         map.put("timestamp", timestamp);
+        map.put("session_id", sessionId);
         return map;
     }
 
@@ -135,7 +170,8 @@ public class StepCursor {
                 stringValue(raw.get("step_type")),
                 stringValue(raw.get("step_name")),
                 StepStatus.fromString(raw.get("status")),
-                longValue(raw.get("timestamp")));
+                longValue(raw.get("timestamp")),
+                stringValue(raw.get("session_id")));
     }
 
     private static boolean hasSeqMarker(Map<?, ?> raw) {
@@ -233,7 +269,13 @@ public class StepCursor {
         }
         Object agentPartition = state.get(State.AGENT_STATE_KEY);
         if (agentPartition instanceof Map<?, ?> agentMap) {
-            return agentMap.containsKey(PAUSED_STATE_KEY) && clearPausedFromState(asMutable(agentMap));
+            Map<String, Object> partition = asMutable(agentMap);
+            if (!partition.containsKey(PAUSED_STATE_KEY)) {
+                return false;
+            }
+            partition.put(PAUSED_STATE_KEY, null);
+            state.put(State.AGENT_STATE_KEY, partition);
+            return true;
         }
         return false;
     }
@@ -267,18 +309,20 @@ public class StepCursor {
                 && timestamp == cursor.timestamp
                 && stepType.equals(cursor.stepType)
                 && stepName.equals(cursor.stepName)
-                && status == cursor.status;
+                && status == cursor.status
+                && sessionId.equals(cursor.sessionId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(seq, stepType, stepName, status, timestamp);
+        return Objects.hash(seq, stepType, stepName, status, timestamp, sessionId);
     }
 
     @Override
     public String toString() {
         return "StepCursor{seq=" + seq + ", stepType=" + stepType
-                + ", stepName=" + stepName + ", status=" + status + ", timestamp=" + timestamp + "}";
+                + ", stepName=" + stepName + ", status=" + status + ", timestamp=" + timestamp
+                + ", sessionId=" + sessionId + "}";
     }
 
     private static long longValue(Object value) {

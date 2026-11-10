@@ -161,22 +161,31 @@ public class StepCheckpointTrigger {
      * path. Unlike {@link #stepCompleted} this bypasses the policy evaluation
      * - pause evidence must never depend on the persistence verdict.
      *
+     * <p>The return value tells the caller whether the durable pause evidence
+     * was actually written: a failed write leaves the session running with no
+     * resumption point, so callers that surface the pause to the user must
+     * check it.</p>
+     *
      * @param session session being paused, carrying the live state to freeze,
      *                may be null to no-op
      * @param stepType step type recorded on the paused cursor
      * @param stepName step name recorded on the paused cursor
      * @param pauseInfo pause metadata (operator, reason, timestamps), may be null
+     * @return true when the paused cursor was persisted, false when the
+     *         session was absent or the checkpoint write failed
      */
-    public void pauseNow(BaseSession session, String stepType, String stepName, Map<String, Object> pauseInfo) {
+    public boolean pauseNow(BaseSession session, String stepType, String stepName, Map<String, Object> pauseInfo) {
         if (session == null) {
-            return;
+            return false;
         }
         long seq = seqCounter.incrementAndGet();
         long now = System.currentTimeMillis();
+        boolean isPersisted = false;
         if (checkpointer != null) {
             try {
                 checkpointer.stepPaused(session,
                         new StepCursor(seq, stepType, stepName, StepStatus.PAUSED, now), pauseInfo);
+                isPersisted = true;
             } catch (RuntimeException exception) {
                 log.warn("Paused-step checkpoint could not be recorded for session {}: {}",
                         session.sessionId(), exception.getMessage());
@@ -191,6 +200,7 @@ public class StepCheckpointTrigger {
                         session.sessionId(), exception.getMessage());
             }
         }
+        return isPersisted;
     }
 
     /**
