@@ -165,11 +165,13 @@ public class EventBus implements PollController {
                 runnable -> {
                     Thread thread = new Thread(runnable, threadName);
                     thread.setDaemon(true);
-                    thread.setUncaughtExceptionHandler((t, error) -> running.set(false));
+                    thread.setUncaughtExceptionHandler((failedThread, failure) -> Loggers.AGENT.error(
+                            "EventBus[{}] worker {} exited with {}", role.name(), failedThread.getName(),
+                            failure.getClass().getName()));
                     loopThread = thread;
                     return thread;
                 });
-        loopExecutor.execute(this::runLoop);
+        loopExecutor.execute(this::runOwnedLoop);
         startPollTasks();
     }
 
@@ -185,9 +187,9 @@ public class EventBus implements PollController {
      *
      * <p>Queued events are discarded instead of starting another round during shutdown.
      * A callback may request its own stop without joining itself. A timed-out worker
-     * remains owned by this bus, preventing a resumed team from creating a second loop.</p>
-     *
-     * @throws IllegalStateException if an external caller is interrupted or the callback does not stop in time
+     * remains owned by this bus, preventing a resumed team from creating a second loop.
+     * Shutdown timeout or interruption is reported as a warning so callers can finish
+     * their cleanup; interruption also preserves the calling thread's interrupt flag.</p>
      */
     public void stop() {
         Optional<ThreadPoolExecutor> stopRequest = requestStop();
@@ -225,11 +227,12 @@ public class EventBus implements PollController {
         try {
             if (!stoppingExecutor.awaitTermination(SHUTDOWN_JOIN_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                     && !stoppingExecutor.awaitTermination(1_000L, TimeUnit.MILLISECONDS)) {
-                throw new IllegalStateException("Team coordination loop is still stopping after the shutdown timeout");
+                Loggers.AGENT.warning("EventBus[{}] worker is still stopping after the shutdown timeout", role.name());
             }
         } catch (InterruptedException failure) {
             InterruptSignals.restoreCurrentThread();
-            throw new IllegalStateException("Interrupted while stopping the team coordination loop", failure);
+            Loggers.AGENT.warning("EventBus[{}] shutdown wait was interrupted; worker ownership is retained",
+                    role.name());
         }
     }
 
@@ -273,6 +276,24 @@ public class EventBus implements PollController {
     public void enqueue(CoordinationEvent event) {
         if (event != null) {
             eventQueue.offer(event);
+        }
+    }
+
+    private void runOwnedLoop() {
+        try {
+            runLoop();
+        } finally {
+            finishLoop();
+        }
+    }
+
+    private synchronized void finishLoop() {
+        running.set(false);
+        pollsPaused.set(false);
+        cancelPollTasks();
+        eventQueue.clear();
+        if (loopExecutor != null) {
+            loopExecutor.shutdown();
         }
     }
 
