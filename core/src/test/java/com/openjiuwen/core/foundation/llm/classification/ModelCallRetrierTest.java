@@ -237,6 +237,22 @@ class ModelCallRetrierTest {
         fail("BaseError expected but got " + error.getClass().getName());
     }
 
+    @Test
+    void isAfterFirstSegment_walksCauseChain() {
+        ModelErrorFacts facts = ModelErrorFacts.Builder.create()
+            .httpStatus(429)
+            .firstSegmentReceived(true)
+            .stream(true)
+            .build();
+        ModelCallClassification classification =
+            new RuleBasedModelErrorClassifier().classify(facts);
+        BaseError failure = ClassifiedModelErrors.toError(classification, facts, "HTTP 429", null);
+
+        assertThat(ModelCallRetrier.isAfterFirstSegment(new RuntimeException("wrapper", failure))).isTrue();
+        assertThat(ModelCallRetrier.isAfterFirstSegment(failure)).isTrue();
+        assertThat(ModelCallRetrier.isAfterFirstSegment(new RuntimeException("unrelated"))).isFalse();
+    }
+
     private static RetryContext context(int maxRetries) {
         return new RetryContext(new ModelCallRetryPolicy(maxRetries, true, true));
     }

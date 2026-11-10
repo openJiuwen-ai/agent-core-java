@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.rail;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
 import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
@@ -69,6 +70,11 @@ public class ClassifiedModelFailureRail extends AgentRail {
     @Override
     public void onModelException(AgentCallbackContext context) {
         if (context == null || context.getException() == null) {
+            return;
+        }
+        if (ModelCallRetrier.isAfterFirstSegment(context.getException())) {
+            // FEAT-064 L1 §1.2.7 MUST: no whole-call retry once the first streamed
+            // segment has been delivered downstream.
             return;
         }
         if (yieldsToBackupRail(context)) {

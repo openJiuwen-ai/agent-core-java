@@ -6,6 +6,10 @@ package com.openjiuwen.core.singleagent.rail;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorFacts;
+import com.openjiuwen.core.foundation.llm.classification.RuleBasedModelErrorClassifier;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -53,6 +57,24 @@ class ModelBackupRailTest {
     }
 
     @Test
+    void doesNotSwitchModelAfterFirstSegment() {
+        Model backup = model("backup");
+        Model primary = model("primary");
+        ModelBackupRail rail = new ModelBackupRail(List.of(backup));
+        TestAgent agent = new TestAgent();
+        agent.setLlm(primary);
+        AgentCallbackContext context = new AgentCallbackContext(agent);
+        context.setException(afterFirstSegment());
+
+        rail.onModelException(context);
+
+        assertThat(context.consumeRetryRequest())
+            .as("first segment already delivered: no whole-call retry").isNull();
+        assertThat(rail.getIndex()).isZero();
+        assertThat(agent.getLlm()).isSameAs(primary);
+    }
+
+    @Test
     void leavesContextUntouchedWhenNoBackupModelExists() {
         ModelBackupRail rail = new ModelBackupRail(List.of());
         AgentCallbackContext context = new AgentCallbackContext(new TestAgent());
@@ -78,6 +100,16 @@ class ModelBackupRailTest {
         assertThat(context.consumeRetryRequest()).isNull();
         assertThat(rail.getIndex()).isZero();
         assertThat(agent.getLlm()).isSameAs(primary);
+    }
+
+    private static RuntimeException afterFirstSegment() {
+        ModelErrorFacts facts = ModelErrorFacts.Builder.create()
+            .httpStatus(429)
+            .firstSegmentReceived(true)
+            .stream(false)
+            .build();
+        ModelCallClassification classification = new RuleBasedModelErrorClassifier().classify(facts);
+        return ClassifiedModelErrors.toError(classification, facts, "HTTP 429", null);
     }
 
     private static Model model(String value) {

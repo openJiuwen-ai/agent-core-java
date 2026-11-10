@@ -122,6 +122,29 @@ class AbilityManagerParallelTest {
     }
 
     @Test
+    @DisplayName("仅注册在 resourceMgr 的工具按卡声明并行（resume 路径查找回退）")
+    void resourceManagerRegisteredToolWithoutLocalCard_isParallelSafe() {
+        String toolId = "resource-only-" + UUID.randomUUID();
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("resource-only").build(),
+                inputs -> "resource-only-result");
+        Runner.resourceMgr().addTool(tool, null);
+        toolIds.add(toolId);
+
+        assertThat(manager.isParallelSafeToolCall(
+                ToolCall.builder().id("tc-resource-only").name(toolId).arguments("{}").build())).isTrue();
+    }
+
+    @Test
+    @DisplayName("未注册的工具名默认不并行（未知即串行）")
+    void unknownToolName_isNotParallelSafe() {
+        ToolCall unknown = ToolCall.builder().id("tc-unknown").name("missing-tool").arguments("{}").build();
+
+        assertThat(manager.isParallelSafeToolCall(unknown)).isFalse();
+        assertThat(manager.isParallelSafeToolCall(null)).as("null call keeps legacy no-op semantics").isTrue();
+    }
+
+    @Test
     @DisplayName("parallel_safe=false 的工具形成独占屏障")
     void executeTreatsNonParallelSafeToolAsBarrier() {
         List<String> order = new ArrayList<>();
