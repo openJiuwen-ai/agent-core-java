@@ -74,6 +74,8 @@ public class PyZmqMessager implements Messager {
 
     private static final int SOCKET_LINGER_MILLIS = 0;
 
+    private static final long MAX_DIRECT_HANDSHAKE_MILLIS = 30_000L;
+
     private static final long MAX_STOP_DRAIN_MILLIS = 5_000L;
 
     private final MessagerTransportConfig config;
@@ -702,6 +704,7 @@ public class PyZmqMessager implements Messager {
         try {
             String identity = localNodeId + ":" + messageId;
             dealer.setIdentity(identity.getBytes(StandardCharsets.UTF_8));
+            configureDirectHandshake(dealer);
             connectOrThrow(dealer, peer.getAddrs().get(0));
             if (!dealer.send(payload)) {
                 throw new IllegalStateException("Failed to send ZeroMQ direct event");
@@ -712,8 +715,22 @@ public class PyZmqMessager implements Messager {
         long timeoutMillis = requestTimeoutMillis();
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         pendingSends.add(new PendingSend(dealer, result, deadline, "phase=ack, message=" + messageId
-                + ", from=" + safeNodeId(localNodeId) + ", to=" + safeNodeId(agentId)));
+                + ", from=" + safeNodeId(localNodeId) + ", to=" + safeNodeId(agentId)
+                + ", request_timeout_ms=" + timeoutMillis + ", handshake_timeout_ms=" + directHandshakeMillis()));
         Loggers.AGENT.debug("PyZmq sent direct event from {} to {}", localNodeId, agentId);
+    }
+
+    private void configureDirectHandshake(ZMQ.Socket dealer) {
+        // JeroMQ otherwise waits 30 seconds for a greeting, longer than a typical send deadline.
+        // Reconnect the same pending socket before expiry; never replay an acknowledged application message.
+        if (!dealer.setHandshakeIvl(directHandshakeMillis())) {
+            throw new IllegalStateException("Failed to configure ZeroMQ direct handshake timeout");
+        }
+    }
+
+    private int directHandshakeMillis() {
+        // Reserve part of short request budgets for reconnection without lengthening JeroMQ's default.
+        return (int) Math.max(1L, Math.min(MAX_DIRECT_HANDSHAKE_MILLIS, requestTimeoutMillis() / 3L));
     }
 
     private IllegalStateException closeFailedDealer(ZMQ.Socket dealer, RuntimeException transportException) {
