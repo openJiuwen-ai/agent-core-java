@@ -669,6 +669,17 @@ class RedisCheckpointerStorageTest {
         assertThrows(IllegalStateException.class, () -> checkpointer.resumePaused(anonymous));
     }
 
+    @Test
+    void resumePausedByIdWithoutPausedSessionThrowsPlainIllegalState() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
+        // The async storage layer fails the future with IllegalStateException;
+        // the synchronous facade must surface the same exception type instead
+        // of a CompletionException wrapper, matching the other backends.
+        assertThrows(IllegalStateException.class,
+                () -> checkpointer.resumePaused("session-without-pause"));
+    }
+
     private static RedisCheckpointer jsonCheckpointer(FakeRedisClient redisClient) {
         return new RedisCheckpointer(
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),

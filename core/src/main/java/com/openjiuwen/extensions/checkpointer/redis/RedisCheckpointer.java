@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -231,15 +233,46 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
      * Resume one user-paused session by delegating to the agent storage's
      * explicit resume path.
      *
+     * <p>A cursor without a session id is rejected synchronously so the
+     * exception contract stays aligned with the in-memory and persistence
+     * backends: the caller always sees a plain IllegalStateException instead
+     * of a CompletionException wrapped around an async failure.</p>
+     *
      * @param cursor paused cursor of the session to resume, never null
+     * @throws IllegalStateException when the cursor carries no session id
      */
     @Override
     public void resumePaused(StepCursor cursor) {
         java.util.Objects.requireNonNull(cursor, "cursor");
+        if (cursor.getSessionId() == null || cursor.getSessionId().isEmpty()) {
+            throw new IllegalStateException(
+                    "Cannot resume by cursor without a session id; use resumePaused(sessionId) instead");
+        }
         if (redisStore == null) {
             throw new IllegalStateException("Redis store is not available");
         }
-        agentStorage.resumePaused(cursor).join();
+        unwrapJoin(agentStorage.resumePaused(cursor));
+    }
+
+    /**
+     * Block on the given future and rethrow its failure as-is: a failed
+     * future carrying a RuntimeException surfaces as that exception, not as
+     * a CompletionException wrapper.
+     *
+     * @param future future to join on
+     * @param <T> result type of the future
+     * @return the future's result when it completes normally
+     */
+    private <T> T unwrapJoin(CompletableFuture<T> future) {
+        try {
+            return future.join();
+        } catch (CompletionException completionException) {
+            Throwable cause = completionException.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw completionException;
+        }
     }
 
     /**
@@ -272,7 +305,7 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
         if (redisStore == null) {
             throw new IllegalStateException("Redis store is not available");
         }
-        agentStorage.resumePausedBySessionId(sessionId).join();
+        unwrapJoin(agentStorage.resumePausedBySessionId(sessionId));
     }
 
     /**
