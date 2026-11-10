@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
@@ -457,6 +458,97 @@ class StepPauseResumeTest {
         assertTrue(PauseRequestRegistry.requestPause("session-intent-clear", null));
         PauseRequestRegistry.clearPauseRequest("session-intent-clear");
         assertFalse(PauseRequestRegistry.hasPauseRequest("session-intent-clear"));
+    }
+
+    @Test
+    void pauseRequestRegistryIsolatesTenantsOnTheSameSessionId() {
+        try {
+            TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId("tenant-a").build());
+            assertTrue(PauseRequestRegistry.requestPause("session-multi-tenant", Map.of("reason", "a")));
+            assertTrue(PauseRequestRegistry.hasPauseRequest("session-multi-tenant"));
+
+            // Same session id under another tenant: no shared intent.
+            TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId("tenant-b").build());
+            assertFalse(PauseRequestRegistry.hasPauseRequest("session-multi-tenant"));
+            assertTrue(PauseRequestRegistry.requestPause("session-multi-tenant", Map.of("reason", "b")));
+
+            // Tenant A's intent is still intact and carries A's metadata.
+            TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId("tenant-a").build());
+            Map<String, Object> consumed = PauseRequestRegistry.consumePauseRequest("session-multi-tenant");
+            assertEquals("a", consumed.get("reason"));
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+        }
+    }
+
+    @Test
+    void stepPausedReportsWhetherThePauseEvidenceWasPersisted() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-pause-bool", "agent-pause-bool", state);
+        checkpointer.preAgentExecute(session, null);
+        checkpointer.stepCompleted(session,
+                new StepCursor(3L, "PHASE", "round-3", StepStatus.COMPLETED, 1L));
+
+        // A stale paused cursor is rejected by the monotonic guard and
+        // reported as "not persisted" instead of silently succeeding.
+        boolean isStalePersisted = checkpointer.stepPaused(session,
+                new StepCursor(2L, "PHASE", "user-pause", StepStatus.PAUSED, 2L), null);
+        assertFalse(isStalePersisted);
+        assertNull(checkpointer.lastPausedStep(session));
+
+        // A cursor past the resume point lands and reports persisted.
+        boolean isFreshPersisted = checkpointer.stepPaused(session,
+                new StepCursor(4L, "PHASE", "user-pause", StepStatus.PAUSED, 3L),
+                Map.of("operator", "op-bool"));
+        assertTrue(isFreshPersisted);
+        assertNotNull(checkpointer.lastPausedStep(session));
+    }
+
+    @Test
+    void runningScanSkipsSessionsThatCarryPauseEvidence() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection pausedState = new AgentStateCollection();
+        TestSession paused = new TestSession("session-paused-not-lost", "agent-paused-not-lost", pausedState);
+        checkpointer.preAgentExecute(paused, null);
+        // Interrupted boundary: the main cursor stays RUNNING, then the user
+        // pauses. The automatic scan must not report this session as lost.
+        checkpointer.stepCompleted(paused,
+                new StepCursor(1L, "PHASE", "round-1", StepStatus.RUNNING, 1L));
+        checkpointer.stepPaused(paused,
+                new StepCursor(2L, "PHASE", "user-pause", StepStatus.PAUSED, 2L),
+                Map.of("operator", "op-scan"));
+
+        assertTrue(checkpointer.scanRunningSteps().isEmpty());
+        assertEquals(1, checkpointer.scanPausedSteps().size());
+
+        // A genuinely running session still shows up in the scan.
+        AgentStateCollection runningState = new AgentStateCollection();
+        TestSession running = new TestSession("session-really-running", "agent-really-running", runningState);
+        checkpointer.preAgentExecute(running, null);
+        checkpointer.stepCompleted(running,
+                new StepCursor(1L, "PHASE", "round-1", StepStatus.RUNNING, 1L));
+        List<StepCursor> stillRunning = checkpointer.scanRunningSteps();
+        assertEquals(1, stillRunning.size());
+        assertEquals("session-really-running", stillRunning.get(0).getSessionId() == null
+                || stillRunning.get(0).getSessionId().isEmpty()
+                        ? "session-really-running"
+                        : stillRunning.get(0).getSessionId());
+    }
+
+    @Test
+    void persistenceRunningScanSkipsSessionsThatCarryPauseEvidence() {
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-persist-not-lost", "agent-persist-not-lost", state);
+        checkpointer.preAgentExecute(session, null);
+        checkpointer.stepCompleted(session,
+                new StepCursor(1L, "PHASE", "round-1", StepStatus.RUNNING, 1L));
+        checkpointer.stepPaused(session,
+                new StepCursor(2L, "PHASE", "user-pause", StepStatus.PAUSED, 2L), null);
+
+        assertTrue(checkpointer.scanRunningSteps().isEmpty());
+        assertEquals(1, checkpointer.scanPausedSteps().size());
     }
 
     @Test

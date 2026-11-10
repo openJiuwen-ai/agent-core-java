@@ -263,15 +263,18 @@ public abstract class Checkpointer implements AutoCloseable {
      *               session id to the owning session
      * @param pauseInfo pause metadata map (operator, reason, timestamps), may
      *                  be null to persist the cursor only
+     * @return true when the paused evidence was persisted; false when the
+     *         inputs were absent or the stale-seq guard skipped the write,
+     *         leaving the previous pause evidence untouched
      */
-    public void stepPaused(BaseSession session, StepCursor cursor, Map<String, Object> pauseInfo) {
+    public boolean stepPaused(BaseSession session, StepCursor cursor, Map<String, Object> pauseInfo) {
         if (session == null || cursor == null || session.state() == null) {
-            return;
+            return false;
         }
         StepCursor pausedCursor = new StepCursor(cursor.getSeq(), cursor.getStepType(), cursor.getStepName(),
                 StepStatus.PAUSED, cursor.getTimestamp(), session.sessionId());
         if (!shouldPersistPausedCursor(session, pausedCursor)) {
-            return;
+            return false;
         }
         Map<String, Object> update = new LinkedHashMap<>();
         update.put(StepCursor.PAUSED_STATE_KEY, pausedCursor.toMap());
@@ -288,6 +291,7 @@ public abstract class Checkpointer implements AutoCloseable {
                 rollbackPausedUpdate(session, update);
             }
         }
+        return isSaved;
     }
 
     /**
@@ -494,8 +498,13 @@ public abstract class Checkpointer implements AutoCloseable {
     /**
      * Collect cursors in RUNNING state from recovered state snapshots.
      *
+     * <p>Snapshots that still carry paused evidence are skipped: a paused
+     * session records user intent, not a crash leftover, so it must never
+     * feed the automatic recovery pipeline even when its main cursor stayed
+     * RUNNING (e.g. the interrupted boundary persisted before the pause).</p>
+     *
      * @param states snapshot maps keyed by session id, values may be anything
-     * @return one RUNNING cursor per session that has one
+     * @return one RUNNING cursor per session that has one and holds no pause evidence
      */
     protected static List<StepCursor> runningCursorsFromStates(Map<String, Object> states) {
         List<StepCursor> running = new ArrayList<>();
@@ -510,7 +519,7 @@ public abstract class Checkpointer implements AutoCloseable {
             Map<String, Object> normalized = new LinkedHashMap<>();
             snapshotMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
             StepCursor cursor = StepCursor.fromState(normalized);
-            if (isRunningCursor(cursor)) {
+            if (isRunningCursor(cursor) && StepCursor.pausedFromState(normalized) == null) {
                 running.add(cursor);
             }
         }

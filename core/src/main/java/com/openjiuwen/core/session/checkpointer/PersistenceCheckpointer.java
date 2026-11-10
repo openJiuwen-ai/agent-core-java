@@ -400,9 +400,16 @@ public class PersistenceCheckpointer extends Checkpointer {
             StepCursor cursor = expected == StepStatus.PAUSED
                     ? StepCursor.pausedFromState(normalized)
                     : StepCursor.fromState(normalized);
-            if (cursor != null && cursor.getStatus() == expected) {
-                matched.add(cursor);
+            if (cursor == null || cursor.getStatus() != expected) {
+                continue;
             }
+            if (expected == StepStatus.RUNNING && StepCursor.pausedFromState(normalized) != null) {
+                // Paused evidence marks user intent: such sessions must not
+                // surface as RUNNING leftovers or the automatic pipeline
+                // would mark them lost against the documented pause contract.
+                continue;
+            }
+            matched.add(cursor);
         }
         return matched;
     }

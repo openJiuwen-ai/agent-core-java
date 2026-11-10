@@ -172,7 +172,8 @@ public class StepCheckpointTrigger {
      * @param stepName step name recorded on the paused cursor
      * @param pauseInfo pause metadata (operator, reason, timestamps), may be null
      * @return true when the paused cursor was persisted, false when the
-     *         session was absent or the checkpoint write failed
+     *         session was absent, the checkpoint write failed, or the
+     *         stale-seq guard skipped the write
      */
     public boolean pauseNow(BaseSession session, String stepType, String stepName, Map<String, Object> pauseInfo) {
         if (session == null) {
@@ -183,9 +184,8 @@ public class StepCheckpointTrigger {
         boolean isPersisted = false;
         if (checkpointer != null) {
             try {
-                checkpointer.stepPaused(session,
+                isPersisted = checkpointer.stepPaused(session,
                         new StepCursor(seq, stepType, stepName, StepStatus.PAUSED, now), pauseInfo);
-                isPersisted = true;
             } catch (RuntimeException exception) {
                 log.warn("Paused-step checkpoint could not be recorded for session {}: {}",
                         session.sessionId(), exception.getMessage());

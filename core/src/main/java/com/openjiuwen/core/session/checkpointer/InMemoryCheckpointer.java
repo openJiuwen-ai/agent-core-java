@@ -274,7 +274,10 @@ public class InMemoryCheckpointer extends Checkpointer {
         List<StepCursor> running = new ArrayList<>();
         for (Map.Entry<String, AgentStorage> entry : agentStores.entrySet()) {
             StepCursor cursor = entry.getValue().lastCursor();
-            if (isRunningCursor(cursor)) {
+            // Paused evidence marks user intent: such sessions must not
+            // surface as RUNNING leftovers or the automatic pipeline would
+            // mark them lost against the documented pause contract.
+            if (isRunningCursor(cursor) && entry.getValue().lastPausedCursor() == null) {
                 running.add(cursor);
             }
         }
@@ -637,6 +640,9 @@ public class InMemoryCheckpointer extends Checkpointer {
         /**
          * Flip the main cursor to RUNNING at the paused seq and clear the
          * paused evidence inside every persisted state blob of this store.
+         * The mutated snapshot replaces the stored one instead of being
+         * edited in place, so a concurrent recover deep-copying the blob
+         * never iterates a map that changes under it.
          */
         void applyResume() {
             for (Map.Entry<String, Map<String, Object>> entry : stateBlobs.entrySet()) {
@@ -645,7 +651,9 @@ public class InMemoryCheckpointer extends Checkpointer {
                 if (paused == null) {
                     continue;
                 }
-                Checkpointer.applyResumeToState(state, paused);
+                Map<String, Object> resumed = deepCopyMap(state);
+                Checkpointer.applyResumeToState(resumed, paused);
+                stateBlobs.replace(entry.getKey(), state, resumed);
             }
         }
     }

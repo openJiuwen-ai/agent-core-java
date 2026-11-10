@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.checkpointer.step;
 
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -11,6 +13,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Process-local registry of user pause intents, keyed by session id.
+ *
+ * <p>Registry keys carry the tenant prefix of the calling thread (same
+ * composite form as the in-memory checkpointer's session keys), so same-named
+ * sessions of different tenants never share one pause intent.</p>
  *
  * <p>A pause request published here is observed by the agent execution loops
  * at their next step boundary (ReAct iteration head, DeepAgent task-loop
@@ -46,7 +52,7 @@ public final class PauseRequestRegistry {
         if (isBlank(sessionId)) {
             return false;
         }
-        return PAUSE_INTENTS.putIfAbsent(sessionId, copyMetadata(pauseInfo)) == null;
+        return PAUSE_INTENTS.putIfAbsent(registryKey(sessionId), copyMetadata(pauseInfo)) == null;
     }
 
     private static Map<String, Object> copyMetadata(Map<String, Object> pauseInfo) {
@@ -73,7 +79,7 @@ public final class PauseRequestRegistry {
         if (isBlank(sessionId)) {
             return null;
         }
-        return PAUSE_INTENTS.remove(sessionId);
+        return PAUSE_INTENTS.remove(registryKey(sessionId));
     }
 
     /**
@@ -83,7 +89,7 @@ public final class PauseRequestRegistry {
      * @return true when a pause intent is pending
      */
     public static boolean hasPauseRequest(String sessionId) {
-        return !isBlank(sessionId) && PAUSE_INTENTS.containsKey(sessionId);
+        return !isBlank(sessionId) && PAUSE_INTENTS.containsKey(registryKey(sessionId));
     }
 
     /**
@@ -95,8 +101,26 @@ public final class PauseRequestRegistry {
      */
     public static void clearPauseRequest(String sessionId) {
         if (!isBlank(sessionId)) {
-            PAUSE_INTENTS.remove(sessionId);
+            PAUSE_INTENTS.remove(registryKey(sessionId));
         }
+    }
+
+    /**
+     * Build the registry key for one session: the tenant prefix of the
+     * current thread followed by the session id, mirroring the composite
+     * session key form of the tenant-aware checkpointer backends. Called
+     * without a bound tenant it falls back to the bare session id, so the
+     * tenant-less mode keeps its previous key shape.
+     *
+     * @param sessionId caller-provided session id, never null or blank
+     * @return the tenant-scoped registry key
+     */
+    private static String registryKey(String sessionId) {
+        var ctx = TenantContextHolder.getCurrentTenant();
+        if (ctx != null && ctx.isTenantAware()) {
+            return ctx.safeTenantId() + ":" + sessionId;
+        }
+        return sessionId;
     }
 
     private static boolean isBlank(String value) {
