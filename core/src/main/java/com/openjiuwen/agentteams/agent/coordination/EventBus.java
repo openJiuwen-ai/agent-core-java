@@ -11,6 +11,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -189,10 +190,11 @@ public class EventBus implements PollController {
      * @throws IllegalStateException if an external caller is interrupted or the callback does not stop in time
      */
     public void stop() {
-        ThreadPoolExecutor stoppingExecutor = requestStop();
-        if (stoppingExecutor == null) {
+        Optional<ThreadPoolExecutor> stopRequest = requestStop();
+        if (stopRequest.isEmpty()) {
             return;
         }
+        ThreadPoolExecutor stoppingExecutor = stopRequest.orElseThrow();
         if (Thread.currentThread() != loopThread) {
             awaitLoopStopped(stoppingExecutor);
         }
@@ -205,9 +207,9 @@ public class EventBus implements PollController {
         }
     }
 
-    private synchronized ThreadPoolExecutor requestStop() {
+    private synchronized Optional<ThreadPoolExecutor> requestStop() {
         if (loopExecutor == null) {
-            return null;
+            return Optional.empty();
         }
         Loggers.AGENT.info("EventBus[{}] stopping", role.name());
         running.set(false);
@@ -216,7 +218,7 @@ public class EventBus implements PollController {
         eventQueue.clear();
         eventQueue.offer(InnerEventMessage.builder().eventType(InnerEventType.SHUTDOWN).build());
         loopExecutor.shutdown();
-        return loopExecutor;
+        return Optional.of(loopExecutor);
     }
 
     private void awaitLoopStopped(ThreadPoolExecutor stoppingExecutor) {
