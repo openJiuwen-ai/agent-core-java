@@ -6,10 +6,13 @@ package com.openjiuwen.agentteams.agent.coordination;
 
 import com.openjiuwen.agentteams.schema.events.CoordinationEvent;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
@@ -70,6 +73,7 @@ public class EventBus implements PollController {
     private final AtomicBoolean pollsPaused = new AtomicBoolean(false);
 
     private volatile Consumer<CoordinationEvent> wakeCallback;
+    private volatile Thread loopThread;
     private ThreadPoolExecutor loopExecutor;
     private ScheduledExecutorService pollExecutor;
     private ScheduledFuture<?> mailboxPollTask;
@@ -145,6 +149,9 @@ public class EventBus implements PollController {
         if (running.get()) {
             return;
         }
+        if (loopExecutor != null && !loopExecutor.isTerminated()) {
+            throw new IllegalStateException("Team coordination loop is still stopping");
+        }
         if (callback != null) {
             this.wakeCallback = callback;
         }
@@ -154,14 +161,17 @@ public class EventBus implements PollController {
         eventQueue.clear();
         String threadName = "agent-teams-coordinator-" + role.name().toLowerCase(Locale.ROOT);
         loopExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<>(),
+                new ArrayBlockingQueue<>(1),
                 runnable -> {
                     Thread thread = new Thread(runnable, threadName);
                     thread.setDaemon(true);
-                    thread.setUncaughtExceptionHandler((t, error) -> running.set(false));
+                    thread.setUncaughtExceptionHandler((failedThread, failure) -> Loggers.AGENT.error(
+                            "EventBus[{}] worker {} exited with {}", role.name(), failedThread.getName(),
+                            failure.getClass().getName()));
+                    loopThread = thread;
                     return thread;
                 });
-        loopExecutor.execute(this::runLoop);
+        loopExecutor.execute(this::runOwnedLoop);
         startPollTasks();
     }
 
@@ -173,33 +183,57 @@ public class EventBus implements PollController {
     }
 
     /**
-     * Stop loops, cancel poll timer, drain.
+     * Stop loops, cancel polling, and await the current callback outside the lifecycle monitor.
      *
-     * <p>Idempotent. Enqueues a SHUTDOWN inner event and joins the loop thread
-     * with a 5s timeout. Resets the pause flag before touching poll tasks so
-     * partial failures still leave the state machine consistent.
+     * <p>Queued events are discarded instead of starting another round during shutdown.
+     * A callback may request its own stop without joining itself. A timed-out worker
+     * remains owned by this bus, preventing a resumed team from creating a second loop.
+     * Shutdown timeout or interruption is reported as a warning so callers can finish
+     * their cleanup; interruption also preserves the calling thread's interrupt flag.</p>
      */
-    public synchronized void stop() {
-        if (!running.get()) {
+    public void stop() {
+        Optional<ThreadPoolExecutor> stopRequest = requestStop();
+        if (stopRequest.isEmpty()) {
             return;
+        }
+        ThreadPoolExecutor stoppingExecutor = stopRequest.orElseThrow();
+        if (Thread.currentThread() != loopThread) {
+            awaitLoopStopped(stoppingExecutor);
+        }
+        synchronized (this) {
+            if (loopExecutor == stoppingExecutor && stoppingExecutor.isTerminated()) {
+                loopExecutor = null;
+                loopThread = null;
+                eventQueue.clear();
+            }
+        }
+    }
+
+    private synchronized Optional<ThreadPoolExecutor> requestStop() {
+        if (loopExecutor == null) {
+            return Optional.empty();
         }
         Loggers.AGENT.info("EventBus[{}] stopping", role.name());
         running.set(false);
         pollsPaused.set(false);
         cancelPollTasks();
-        eventQueue.offer(InnerEventMessage.builder().eventType(InnerEventType.SHUTDOWN).build());
-        if (loopExecutor != null) {
-            loopExecutor.shutdown();
-            try {
-                if (!loopExecutor.awaitTermination(SHUTDOWN_JOIN_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                    loopExecutor.awaitTermination(1_000L, TimeUnit.MILLISECONDS);
-                }
-            } catch (InterruptedException e) {
-                // best-effort shutdown; do not self-interrupt (G.CON.10)
-            }
-            loopExecutor = null;
-        }
         eventQueue.clear();
+        eventQueue.offer(InnerEventMessage.builder().eventType(InnerEventType.SHUTDOWN).build());
+        loopExecutor.shutdown();
+        return Optional.of(loopExecutor);
+    }
+
+    private void awaitLoopStopped(ThreadPoolExecutor stoppingExecutor) {
+        try {
+            if (!stoppingExecutor.awaitTermination(SHUTDOWN_JOIN_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    && !stoppingExecutor.awaitTermination(1_000L, TimeUnit.MILLISECONDS)) {
+                Loggers.AGENT.warning("EventBus[{}] worker is still stopping after the shutdown timeout", role.name());
+            }
+        } catch (InterruptedException failure) {
+            InterruptSignals.restoreCurrentThread();
+            Loggers.AGENT.warning("EventBus[{}] shutdown wait was interrupted; worker ownership is retained",
+                    role.name());
+        }
     }
 
     /**
@@ -245,8 +279,26 @@ public class EventBus implements PollController {
         }
     }
 
+    private void runOwnedLoop() {
+        try {
+            runLoop();
+        } finally {
+            finishLoop();
+        }
+    }
+
+    private synchronized void finishLoop() {
+        running.set(false);
+        pollsPaused.set(false);
+        cancelPollTasks();
+        eventQueue.clear();
+        if (loopExecutor != null) {
+            loopExecutor.shutdown();
+        }
+    }
+
     private void runLoop() {
-        while (running.get() || !eventQueue.isEmpty()) {
+        while (running.get()) {
             CoordinationEvent event;
             try {
                 event = eventQueue.poll(QUEUE_POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -256,6 +308,9 @@ public class EventBus implements PollController {
                     break;
                 }
                 continue;
+            }
+            if (!running.get()) {
+                break;
             }
             if (event == null) {
                 continue;
