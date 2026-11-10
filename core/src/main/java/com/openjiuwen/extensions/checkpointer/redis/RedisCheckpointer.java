@@ -13,7 +13,6 @@ import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.step.StepCursor;
-import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.checkpointer.CheckpointerProvider;
 import com.openjiuwen.core.session.constants.SessionConstants;
