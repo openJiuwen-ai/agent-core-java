@@ -3347,7 +3347,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             } else if (firstTokenTime != null) {
                 payload.put("ttft_ms", roundMillis(firstTokenTime - callStartTime));
             } else {
-                // No TTFT measurement available from either source.
+                Loggers.AGENT.debug("No TTFT measurement available from either source.");
             }
             Double interTokenMs = aiMessage.getUsageMetadata().getInterTokenLatencyMs();
             if (interTokenMs != null) {
@@ -3362,7 +3362,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 payload.put("tpot_ms", roundMillis((lastTokenTime - firstTokenTime)
                         / (double) (aiMessage.getUsageMetadata().getOutputTokens() - 1)));
             } else {
-                // No inter-token measurement available from either source.
+                Loggers.AGENT.debug("No inter-token measurement available from either source.");
             }
             ctx.getSession().writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), payload));
         }

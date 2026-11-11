@@ -1085,7 +1085,8 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
      * @param outputCost output cost, or empty when unreported
      * @param totalCost  total cost, or empty when unreported
      */
-    private void setCostAttributes(Span span, OptionalDouble inputCost, OptionalDouble outputCost, OptionalDouble totalCost) {
+    private void setCostAttributes(Span span, OptionalDouble inputCost, OptionalDouble outputCost,
+        OptionalDouble totalCost) {
         if (isPositive(inputCost)) {
             span.setAttribute(SemConv.OJ_GEN_AI_USAGE_INPUT_COST, inputCost.getAsDouble());
         }
