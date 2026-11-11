@@ -16,7 +16,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Registry keys carry the tenant prefix of the calling thread (same
  * composite form as the in-memory checkpointer's session keys), so same-named
- * sessions of different tenants never share one pause intent.</p>
+ * sessions of different tenants never share one pause intent. The key is
+ * resolved from the thread's tenant context on both the publishing and the
+ * consuming side, so both sides must resolve the same context — the session's
+ * tenant bound on both threads, or neither — matching the consistency the
+ * tenant-aware checkpointer backends already impose on pause/resume flows.</p>
  *
  * <p>A pause request published here is observed by the agent execution loops
  * at their next step boundary (ReAct iteration head, DeepAgent task-loop

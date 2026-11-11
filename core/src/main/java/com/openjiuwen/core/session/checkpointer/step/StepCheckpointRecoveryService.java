@@ -29,12 +29,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ol>
  *
  * <p>Callers (restart wiring, sweeper) share one instance; the processed
- * registry makes duplicate scans idempotent within a process.</p>
+ * registry makes duplicate scans idempotent within a process. Explicit
+ * resumes register in the same marker key space as the automatic scan, so
+ * a resumed session's running continuation is never re-classified as a
+ * crash leftover.</p>
  *
  * @since 0.1.17
  */
 public class StepCheckpointRecoveryService {
     private static final Logger log = LoggerFactory.getLogger(StepCheckpointRecoveryService.class);
+
+    /** Prefix for markers of cursors that carry no session id. */
+    private static final String LEGACY_CURSOR_PREFIX = "legacy:";
 
     private final Checkpointer checkpointer;
     private final StepRecoveryHook hook;
@@ -74,8 +80,8 @@ public class StepCheckpointRecoveryService {
             return actions;
         }
         for (StepCursor cursor : running) {
-            String sessionId = cursorKey(cursor);
-            if (!processedSessions.add(sessionId)) {
+            String marker = sessionMarker(cursor);
+            if (!processedSessions.add(marker)) {
                 actions.add(new RecoveryAction(cursor, RecoveryActionType.SKIPPED_ALREADY_PROCESSED, ""));
                 continue;
             }
@@ -108,9 +114,10 @@ public class StepCheckpointRecoveryService {
      * to RUNNING on the main resume point and the paused evidence is cleared.
      *
      * <p>This is the only path allowed to continue a PAUSED session. It
-     * shares the processed registry with the automatic scan, so a resume is
-     * idempotent within a process and a later automatic scan will not process
-     * the session again.</p>
+     * shares the processed registry and the cursor marker key space with the
+     * automatic scan, so a resume is idempotent within a process and the
+     * running continuation the resume creates is not re-processed by a later
+     * automatic scan.</p>
      *
      * @param cursor paused cursor of the session to resume, never null
      * @return the action taken; {@code SKIPPED_ALREADY_PROCESSED} when the
@@ -121,7 +128,7 @@ public class StepCheckpointRecoveryService {
         if (checkpointer == null) {
             return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, "no checkpointer");
         }
-        if (!processedSessions.add(pausedKey(cursor))) {
+        if (!processedSessions.add(sessionMarker(cursor))) {
             return new RecoveryAction(cursor, RecoveryActionType.SKIPPED_ALREADY_PROCESSED, "already resumed");
         }
         try {
@@ -129,7 +136,7 @@ public class StepCheckpointRecoveryService {
             log.info("Paused session resumed by explicit request: {}", cursor);
             return new RecoveryAction(cursor, RecoveryActionType.RESUMED_EXPLICITLY, "resumed");
         } catch (RuntimeException exception) {
-            processedSessions.remove(pausedKey(cursor));
+            processedSessions.remove(sessionMarker(cursor));
             log.warn("Explicit resume failed for cursor {}: {}", cursor, exception.getMessage());
             return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, exception.getMessage());
         }
@@ -214,22 +221,37 @@ public class StepCheckpointRecoveryService {
     }
 
     /**
-     * Forget the processed marker of one session so a later scan may process
+     * Forget the processed markers of one session so a later scan may process
      * it again, used after a session was re-registered.
      *
      * @param sessionId session id to forget
      */
     public void forget(String sessionId) {
-        processedSessions.remove(sessionId);
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        processedSessions.removeIf(marker -> marker.startsWith(sessionId + "@")
+                || marker.startsWith(LEGACY_CURSOR_PREFIX + sessionId + "@"));
     }
 
-    private static String cursorKey(StepCursor cursor) {
-        return cursor.getStepName() + "@" + cursor.getSeq() + "@" + cursor.getTimestamp();
-    }
-
-    private static String pausedKey(StepCursor cursor) {
-        return "paused:" + cursor.getSessionId() + "@"
-                + cursor.getStepName() + "@" + cursor.getSeq() + "@" + cursor.getTimestamp();
+    /**
+     * Build the processed-registry marker of one cursor. The marker keys on
+     * the session id and the cursor seq, so the automatic scan and the
+     * explicit resume share one key space: a session resumed explicitly is
+     * skipped by the next automatic scan (its continuation carries the same
+     * seq), and a cursor without a session id keeps a prefixed field-based
+     * marker so legacy in-process markers stay consistent.
+     *
+     * @param cursor cursor to key, never null
+     * @return the registry marker of the cursor
+     */
+    private static String sessionMarker(StepCursor cursor) {
+        String sessionId = cursor.getSessionId();
+        if (sessionId == null || sessionId.isEmpty()) {
+            return LEGACY_CURSOR_PREFIX + cursor.getStepName() + "@" + cursor.getSeq() + "@"
+                    + cursor.getTimestamp();
+        }
+        return sessionId + "@" + cursor.getSeq();
     }
 
     /** Action taken for one leftover session. */

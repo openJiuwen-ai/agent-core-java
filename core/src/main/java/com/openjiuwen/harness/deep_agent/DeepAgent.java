@@ -2437,8 +2437,13 @@ public class DeepAgent implements AutoCloseable {
                 recordTaskLoopStepBoundary(session, roundResult, "round-" + (rounds.size()));
                 Map<String, Object> pauseInfo = consumePauseIfRequested(session);
                 if (pauseInfo != null) {
-                    pauseTaskLoopAtBoundary(session, roundResult, pauseInfo);
-                    break;
+                    if (pauseTaskLoopAtBoundary(session, roundResult, pauseInfo)) {
+                        break;
+                    }
+                    // The pause evidence could not be persisted: the consumed
+                    // request is discarded and the loop continues with the
+                    // next round instead of ending with a paused shape that no
+                    // resume can continue.
                 }
                 // The inner ReAct agent may have consumed the pause intent at
                 // its own iteration head (both loops share the registry key);
@@ -4205,11 +4210,21 @@ public class DeepAgent implements AutoCloseable {
      * @param session loop session being paused
      * @param roundResult result map of the finished round, mutated in place
      * @param pauseInfo consumed pause metadata (operator, reason), may be null
+     * @return true when the pause evidence was persisted and the round result
+     *         carries the paused shape; false when the cursor could not be
+     *         persisted, leaving the round result in its own shape so no
+     *         resume will be attempted
      */
-    private void pauseTaskLoopAtBoundary(AgentSessionApi session, Map<String, Object> roundResult,
-                                         Map<String, Object> pauseInfo) {
+    private boolean pauseTaskLoopAtBoundary(AgentSessionApi session, Map<String, Object> roundResult,
+                                            Map<String, Object> pauseInfo) {
         BaseSession baseSession = taskLoopBaseSession(session);
-        stepCheckpointTrigger.pauseNow(baseSession, "PHASE", "user-pause", pauseInfo);
+        boolean isPausePersisted = stepCheckpointTrigger.pauseNow(baseSession, "PHASE", "user-pause", pauseInfo);
+        if (!isPausePersisted) {
+            Loggers.AGENT.warning("User pause requested but the paused cursor could not be persisted for session {};"
+                    + " the round result keeps its own shape so no resume will be attempted",
+                    session == null ? null : session.getSessionId());
+            return false;
+        }
         if (roundResult != null) {
             roundResult.put("result_type", "paused");
             roundResult.put("output", "Paused by user request");
@@ -4217,6 +4232,7 @@ public class DeepAgent implements AutoCloseable {
                 roundResult.put("pause_info", pauseInfo);
             }
         }
+        return true;
     }
 
     /**

@@ -166,19 +166,26 @@ public class StepCheckpointTrigger {
      * resumption point, so callers that surface the pause to the user must
      * check it.</p>
      *
+     * <p>Before taking the next sequence number the counter is seeded from
+     * the persisted resume point, so a trigger whose counter trails the store
+     * (an un-seeded inner-loop trigger) cannot mint a paused cursor that the
+     * stale-seq guard would silently drop.</p>
+     *
      * @param session session being paused, carrying the live state to freeze,
      *                may be null to no-op
      * @param stepType step type recorded on the paused cursor
      * @param stepName step name recorded on the paused cursor
      * @param pauseInfo pause metadata (operator, reason, timestamps), may be null
      * @return true when the paused cursor was persisted, false when the
-     *         session was absent, the checkpoint write failed, or the
-     *         stale-seq guard skipped the write
+     *         session was absent, the checkpoint write failed, or no newer
+     *         pause evidence could be written because the store already
+     *         holds an equal or newer cursor
      */
     public boolean pauseNow(BaseSession session, String stepType, String stepName, Map<String, Object> pauseInfo) {
         if (session == null) {
             return false;
         }
+        seedFromPersistedResumePoint(session);
         long seq = seqCounter.incrementAndGet();
         long now = System.currentTimeMillis();
         boolean isPersisted = false;
@@ -201,6 +208,28 @@ public class StepCheckpointTrigger {
             }
         }
         return isPersisted;
+    }
+
+    /**
+     * Lift the sequence counter to the persisted resume point of the session
+     * before minting a paused cursor, so the cursor stays above the store and
+     * passes the stale-seq guard.
+     *
+     * @param session session about to persist a pause boundary
+     */
+    private void seedFromPersistedResumePoint(BaseSession session) {
+        if (checkpointer == null) {
+            return;
+        }
+        try {
+            StepCursor last = checkpointer.lastCompletedStep(session);
+            if (last != null) {
+                seedSeq(last.getSeq());
+            }
+        } catch (RuntimeException exception) {
+            log.debug("Pause boundary seeding skipped for session {}: {}",
+                    session.sessionId(), exception.getMessage());
+        }
     }
 
     /**

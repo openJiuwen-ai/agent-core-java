@@ -2307,8 +2307,14 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     try {
                         Map<String, Object> pauseInfo = consumePauseIfRequested(session);
                         if (pauseInfo != null) {
-                            applyPausedResult(ctx, session, invokeInputs, pauseInfo);
-                            break;
+                            if (applyPausedResult(ctx, session, invokeInputs, pauseInfo)) {
+                                break;
+                            }
+                            // The pause evidence could not be persisted, so the
+                            // consumed request is discarded and the loop keeps
+                            // running rather than ending with a shape no resume
+                            // can continue.
+                            continue;
                         }
                         if (isCancelRequested(ctx)) {
                             applyCancelledResult(ctx, session, invokeInputs);
@@ -2931,11 +2937,20 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
      * @param session invocation session carrying the paused boundary
      * @param invokeInputs invocation inputs receiving the paused result
      * @param pauseInfo consumed pause metadata (operator, reason), may be null
+     * @return true when the pause evidence was persisted and the invocation
+     *         ended as paused; false when the cursor could not be persisted,
+     *         leaving the invocation running without a paused result shape
      */
-    private void applyPausedResult(AgentCallbackContext ctx, AgentSessionApi session,
-                                   InvokeInputs invokeInputs, Map<String, Object> pauseInfo) {
+    private boolean applyPausedResult(AgentCallbackContext ctx, AgentSessionApi session,
+                                      InvokeInputs invokeInputs, Map<String, Object> pauseInfo) {
         BaseSession baseSession = typedBaseSession(session);
-        stepCheckpointTrigger.pauseNow(baseSession, "PHASE", "user-pause", pauseInfo);
+        boolean isPausePersisted = stepCheckpointTrigger.pauseNow(baseSession, "PHASE", "user-pause", pauseInfo);
+        if (!isPausePersisted) {
+            Loggers.AGENT.warning("User pause requested but the paused cursor could not be persisted for session {};"
+                    + " the invocation keeps running so no resume will be attempted",
+                    session == null ? null : session.getSessionId());
+            return false;
+        }
         contextEngine.saveContexts(session);
         Map<String, Object> pausedResult = new LinkedHashMap<>();
         pausedResult.put("output", "Paused by user request");
@@ -2945,6 +2960,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         }
         invokeInputs.setResult(pausedResult);
         ctx.finish(AgentTerminationReason.PAUSED);
+        return true;
     }
 
     /**
