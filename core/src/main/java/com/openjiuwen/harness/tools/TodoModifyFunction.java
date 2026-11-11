@@ -74,9 +74,14 @@ import java.util.function.Function;
  * @since 0.1.16
  */
 public final class TodoModifyFunction extends LocalFunction {
+    /**这些属性应该在todoModify的每一项中，如果模型让其出现在参数顶层，会被补入每个任务对象的修改字段。 */
     private static final List<String> TODO_UPDATE_FIELDS = List.of("content", "activeForm", "active_form",
             "description", "status", "priority", "selected_model_id", "depends_on", "result_summary", "meta_data");
+
+    /** 会话锁的分段数，同一会话 ID 总是映射到同一段。 */
     private static final int SESSION_LOCK_STRIPES = 64;
+
+    /** 按会话 ID 分段的锁，保证同一会话的 todo 修改串行执行。 */
     private static final StripedKeyLocks SESSION_LOCKS = new StripedKeyLocks(SESSION_LOCK_STRIPES);
 
     /**
