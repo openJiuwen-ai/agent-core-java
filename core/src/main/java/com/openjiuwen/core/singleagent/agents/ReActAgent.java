@@ -3328,7 +3328,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             // request is dispatched and would come out slightly short.
             double usageTotalLatency = aiMessage.getUsageMetadata().getTotalLatency();
             if (usageTotalLatency > 0.0d) {
-                payload.put("total_latency_ms", roundMillis(usageTotalLatency * 1_000_000_000.0d));
+                payload.put("total_latency_ms", roundMillis(
+                        BigDecimal.valueOf(usageTotalLatency)
+                                .multiply(BigDecimal.valueOf(1_000_000_000L))
+                                .doubleValue()));
             } else {
                 payload.put("total_latency_ms", roundMillis(System.nanoTime() - callStartTime));
             }
@@ -3337,19 +3340,29 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             // the model layer did not run (e.g. an undecorated client).
             Double ttftSeconds = aiMessage.getUsageMetadata().getTtftSeconds();
             if (ttftSeconds != null) {
-                payload.put("ttft_ms", roundMillis(ttftSeconds * 1_000_000_000.0d));
+                payload.put("ttft_ms", roundMillis(
+                        BigDecimal.valueOf(ttftSeconds)
+                                .multiply(BigDecimal.valueOf(1_000_000_000L))
+                                .doubleValue()));
             } else if (firstTokenTime != null) {
                 payload.put("ttft_ms", roundMillis(firstTokenTime - callStartTime));
+            } else {
+                // No TTFT measurement available from either source.
             }
             Double interTokenMs = aiMessage.getUsageMetadata().getInterTokenLatencyMs();
             if (interTokenMs != null) {
-                payload.put("tpot_ms", roundMillis(interTokenMs * 1_000_000.0d));
+                payload.put("tpot_ms", roundMillis(
+                        BigDecimal.valueOf(interTokenMs)
+                                .multiply(BigDecimal.valueOf(1_000_000L))
+                                .doubleValue()));
             } else if (firstTokenTime != null && lastTokenTime != null
                     && aiMessage.getUsageMetadata().getOutputTokens() > 1) {
                 // Denominator is the provider-reported output token count, not the
                 // chunk count: a single chunk may carry several tokens.
                 payload.put("tpot_ms", roundMillis((lastTokenTime - firstTokenTime)
                         / (double) (aiMessage.getUsageMetadata().getOutputTokens() - 1)));
+            } else {
+                // No inter-token measurement available from either source.
             }
             ctx.getSession().writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), payload));
         }

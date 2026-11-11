@@ -33,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 /**
@@ -1051,7 +1052,10 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
             if (um.getCacheTokens() > 0) {
                 span.setAttribute(SemConv.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, um.getCacheTokens());
             }
-            setCostAttributes(span, um.getInputCost(), um.getOutputCost(), um.getTotalCost());
+            setCostAttributes(span,
+                    OptionalDouble.of(um.getInputCost()),
+                    OptionalDouble.of(um.getOutputCost()),
+                    OptionalDouble.of(um.getTotalCost()));
             Integer retryCount = um.getRetryCount();
             if (retryCount != null && retryCount > 0) {
                 span.setAttribute(SemConv.OJ_REQUEST_RETRY_COUNT, retryCount.longValue());
@@ -1077,24 +1081,25 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
      * Write the three cost attributes, skipping any that is absent or zero.
      *
      * @param span       the OTel span to attach attributes to
-     * @param inputCost  input cost, or {@code null} when unreported
-     * @param outputCost output cost, or {@code null} when unreported
-     * @param totalCost  total cost, or {@code null} when unreported
+     * @param inputCost  input cost, or empty when unreported
+     * @param outputCost output cost, or empty when unreported
+     * @param totalCost  total cost, or empty when unreported
      */
-    private void setCostAttributes(Span span, Double inputCost, Double outputCost, Double totalCost) {
+    private void setCostAttributes(Span span, OptionalDouble inputCost, OptionalDouble outputCost, OptionalDouble totalCost) {
         if (isPositive(inputCost)) {
-            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_INPUT_COST, inputCost);
+            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_INPUT_COST, inputCost.getAsDouble());
         }
         if (isPositive(outputCost)) {
-            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_OUTPUT_COST, outputCost);
+            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_OUTPUT_COST, outputCost.getAsDouble());
         }
         if (isPositive(totalCost)) {
-            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_TOTAL_COST, totalCost);
+            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_TOTAL_COST, totalCost.getAsDouble());
         }
     }
 
-    private static boolean isPositive(Double value) {
-        return value != null && !value.isNaN() && !value.isInfinite() && value > 0.0d;
+    private static boolean isPositive(OptionalDouble value) {
+        return value.isPresent() && !Double.isNaN(value.getAsDouble())
+                && !Double.isInfinite(value.getAsDouble()) && value.getAsDouble() > 0.0d;
     }
 
     /**
@@ -1209,7 +1214,8 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
         }
         Double ttftSeconds = um.getTtftSeconds();
         if (isFiniteNonNegative(ttftSeconds)) {
-            span.setAttribute(SemConv.OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS, ttftSeconds * 1000.0d);
+            span.setAttribute(SemConv.OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS,
+                    BigDecimal.valueOf(ttftSeconds).multiply(BigDecimal.valueOf(1000L)).doubleValue());
         }
         Double interTokenMs = um.getInterTokenLatencyMs();
         if (isFiniteNonNegative(interTokenMs)) {
@@ -1218,7 +1224,8 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
         // total_latency is seconds on UsageMetadata; the project key is milliseconds.
         double totalLatencySeconds = um.getTotalLatency();
         if (totalLatencySeconds > 0.0d && !Double.isInfinite(totalLatencySeconds)) {
-            span.setAttribute(SemConv.OJ_GEN_AI_RESPONSE_TOTAL_LATENCY_MS, totalLatencySeconds * 1000.0d);
+            span.setAttribute(SemConv.OJ_GEN_AI_RESPONSE_TOTAL_LATENCY_MS,
+                    BigDecimal.valueOf(totalLatencySeconds).multiply(BigDecimal.valueOf(1000L)).doubleValue());
         }
         Double reasoningMs = um.getReasoningDurationMs();
         if (isFiniteNonNegative(reasoningMs)) {
@@ -1240,19 +1247,19 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
      * Coerce an arbitrary object to a {@code double}.
      *
      * @param value the value to coerce (may be {@code null})
-     * @return the double value, or {@code null} if not coercible
+     * @return an {@link OptionalDouble} containing the double value, or empty if not coercible
      */
-    private static Double coerceDouble(Object value) {
+    private static OptionalDouble coerceDouble(Object value) {
         if (value == null) {
-            return null;
+            return OptionalDouble.empty();
         }
         if (value instanceof Number n) {
-            return n.doubleValue();
+            return OptionalDouble.of(n.doubleValue());
         }
         try {
-            return Double.parseDouble(String.valueOf(value));
+            return OptionalDouble.of(Double.parseDouble(String.valueOf(value)));
         } catch (NumberFormatException e) {
-            return null;
+            return OptionalDouble.empty();
         }
     }
 

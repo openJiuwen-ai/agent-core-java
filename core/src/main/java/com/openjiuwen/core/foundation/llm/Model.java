@@ -1036,7 +1036,7 @@ public class Model {
         private UsageMetadata lastUsage;
 
         /** Guards latency backfill so it happens at most once per stream. */
-        private boolean latencyBackfilled;
+        private boolean isLatencyBackfilled;
 
         /** Highest retry number the client reported for this stream. */
         private final AtomicInteger retryCounter;
@@ -1117,10 +1117,10 @@ public class Model {
          * two would corrupt downstream aggregation.</p>
          */
         private void backfillLatency() {
-            if (latencyBackfilled) {
+            if (isLatencyBackfilled) {
                 return;
             }
-            latencyBackfilled = true;
+            isLatencyBackfilled = true;
             long endNanos = System.nanoTime();
             if (lastUsage == null) {
                 return;

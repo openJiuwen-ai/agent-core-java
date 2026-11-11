@@ -55,9 +55,9 @@ public class AssistantMessageChunk extends AssistantMessage {
                 if (call == null) {
                     continue;
                 }
-                boolean named = call.getName() != null && !call.getName().isEmpty();
+                boolean isNamed = call.getName() != null && !call.getName().isEmpty();
                 boolean hasArguments = call.getArguments() != null && !call.getArguments().isEmpty();
-                if (named || hasArguments) {
+                if (isNamed || hasArguments) {
                     return true;
                 }
             }
