@@ -29,6 +29,7 @@ import com.openjiuwen.harness.tools.TodoStorage;
 import com.openjiuwen.harness.tools.TodoStorageFactory;
 import com.openjiuwen.harness.tools.TodoTool;
 import com.openjiuwen.harness.tools.TodoItem;
+import com.openjiuwen.harness.tools.TodoModifyFunction;
 import com.openjiuwen.harness.tools.TodoStatus;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.spi.store.BaseKVStore;
@@ -170,7 +171,7 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
                 new LocalFunction(card("todo_list", deepAgent, language), inputs -> todoTool.list(sessionId(inputs))));
         tools.add(new LocalFunction(card("todo_get", deepAgent, language),
                 inputs -> todoTool.get(sessionId(inputs), string(inputs.get("id")))));
-        tools.add(new LocalFunction(card("todo_modify", deepAgent, language),
+        tools.add(new TodoModifyFunction(card("todo_modify", deepAgent, language),
                 inputs -> todoTool.modify(sessionId(inputs), inputs)));
         for (Tool tool : tools) {
             deepAgent.registerHarnessTool(tool);
