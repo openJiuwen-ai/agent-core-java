@@ -121,8 +121,11 @@ public final class TodoModifyFunction extends LocalFunction {
     }
 
     /**
-     * 解析加锁用的会话 ID，优先级与 TaskPlanningRail 解析存储会话一致：
-     * 调用传入的会话、线程绑定的会话、参数中的 session_id，最后为 default。
+     * 解析加锁用的会话 ID，与存储侧实际使用的会话保持一致。
+     *
+     * <p>有效会话：kwargs 中有 session 时用它，否则用线程绑定的会话（与 LocalFunction 调用函数前
+     * 用 kwargs 中的 session 覆盖线程会话的行为一致）。之后与 TaskPlanningRail.sessionId 相同：
+     * 有效会话的 ID 非空白时用它，否则用非空白的参数 session_id，否则为 default。</p>
      *
      * @param inputs 已规范化的调用参数
      * @param kwargs 调用附加参数，可能包含 session
@@ -130,18 +133,19 @@ public final class TodoModifyFunction extends LocalFunction {
      */
     private static String resolveSessionId(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Object session = kwargs == null ? null : kwargs.get("session");
-        if (session instanceof Session current && current.getSessionId() != null) {
-            return current.getSessionId();
-        }
-        Session holder = SessionContextHolder.getCurrentSession();
-        if (holder != null && holder.getSessionId() != null) {
-            return holder.getSessionId();
+        Session effective = session instanceof Session current ? current : SessionContextHolder.getCurrentSession();
+        if (effective != null && hasText(effective.getSessionId())) {
+            return effective.getSessionId();
         }
         Object explicit = inputs.get("session_id");
-        if (explicit != null) {
+        if (explicit != null && hasText(String.valueOf(explicit))) {
             return String.valueOf(explicit);
         }
         return "default";
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     /**

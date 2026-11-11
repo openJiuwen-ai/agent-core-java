@@ -228,6 +228,20 @@ class TodoModifyFunctionTest {
                 "todos", List.of(Map.of("id", "task-1", "result_summary", "first")));
         Map<String, Object> second = Map.of("action", "update",
                 "todos", List.of(Map.of("id", "task-2", "result_summary", "second")));
+        assertConcurrentUpdatesKeepBoth(first, second);
+    }
+
+    @Test
+    void blankSessionIdShouldShareLockWithOmittedSessionId() throws Exception {
+        Map<String, Object> blankSession = Map.of("action", "update", "session_id", "",
+                "todos", List.of(Map.of("id", "task-1", "result_summary", "first")));
+        Map<String, Object> omittedSession = Map.of("action", "update",
+                "todos", List.of(Map.of("id", "task-2", "result_summary", "second")));
+        assertConcurrentUpdatesKeepBoth(blankSession, omittedSession);
+    }
+
+    private void assertConcurrentUpdatesKeepBoth(Map<String, Object> first, Map<String, Object> second)
+            throws Exception {
         for (int round = 0; round < 50; round++) {
             todoTool.save(SESSION_ID, List.of(
                     TodoItem.builder().id("task-1").content("Analyze workbook").status(TodoStatus.PENDING).build(),
