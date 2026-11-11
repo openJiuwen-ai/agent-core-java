@@ -11,8 +11,9 @@
 }
 ```
 
-`status`、`result_summary`、`task_id` 不属于顶层参数。`update` 必须提供非空 `todos`，
-每项包含非空 `id` 和至少一个修改字段；仅传 ID 的调用会失败，避免将无修改误报为成功。
+`status`、`result_summary`、`task_id` 不属于顶层参数。工具描述沿用 0.1.17 的中英文说明，
+包含各 action 的 JSON 示例、单个 `in_progress` 限制、插入目标状态和模型选择规则。
+根 Schema 不额外设置 `additionalProperties`；0.1.16 的通用校验器仍拒绝未声明的顶层字段。
 保留 0.1.16 的任务字段：`content`、`activeForm`、`description`、`status`、`priority`、
 `selected_model_id`、`depends_on`、`result_summary`、`meta_data`。
 
@@ -26,14 +27,8 @@
 `invoke` 和 `stream` 使用相同的转换过程，不修改调用方的原始参数。
 直接调用 `TodoTool.modify` 的旧 Java API 保持原样；通用 `SchemaUtils` 的校验行为未修改。
 
+适配层只负责旧参数转换，不增加任务更新的业务校验。空更新、任务不存在等情况仍由
+0.1.16 的 `TodoTool` 返回失败的 `ToolOutput`；仅传合法任务 ID 时，沿用原有成功返回且不修改
+任务内容的行为。顶层字段错误或缺少 `action` 的规范调用仍在通用 Schema 校验阶段抛出异常。
+
 回归测试入口：`core/src/test/java/com/openjiuwen/harness/tools/TodoModifyFunctionTest.java`。
-
-## 附件分析中发现的 writeFile 校验问题
-
-0.1.16 的系统操作工具曾将 Java `Object` 参数统一标为 JSON `object`。
-`writeFile` 的 `content` 声明为 `Object`，实际支持字符串，因此正常文本会在工具校验阶段被拒绝。
-修正后，Java `Object` 参数不附加错误的 JSON 类型限制；`Map` 参数仍要求 JSON object。
-文本、旧结构化文本和直接 Java 调用的二进制内容均通过工具入口测试，通用校验器未修改。
-
-0.1.17 的文件写入接口已改为字符串和字节数组重载，生成的 `content` 为 string 类型；
-该版本的本地 JAR 不会因文本 `content` 触发上述 object 类型校验错误。

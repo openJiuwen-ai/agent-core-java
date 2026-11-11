@@ -12,7 +12,6 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -21,9 +20,6 @@ import java.util.function.Function;
  * @since 0.1.16
  */
 public final class TodoModifyFunction extends LocalFunction {
-    private static final Set<String> UPDATE_FIELDS = Set.of("content", "activeForm", "active_form", "description",
-            "status", "priority", "selected_model_id", "depends_on", "result_summary", "meta_data");
-
     /**
      * 创建待办修改工具，保留父类的参数校验和会话上下文处理。
      *
@@ -62,15 +58,12 @@ public final class TodoModifyFunction extends LocalFunction {
                 normalized.put("todos", normalizeLegacyUpdates(legacyUpdates));
             }
         }
-        if ("update".equals(normalized.get("action"))) {
-            validateUpdates(normalized.get("todos"));
-        }
         return normalized;
     }
 
     private static List<Map<String, Object>> normalizeLegacyUpdates(Object rawUpdates) {
         if (!(rawUpdates instanceof List<?> updates)) {
-            throw new IllegalArgumentException("todo_modify updates must be a non-empty list");
+            throw new IllegalArgumentException("todo_modify updates must be a list");
         }
         List<Map<String, Object>> normalized = new ArrayList<>(updates.size());
         for (Object value : updates) {
@@ -90,25 +83,5 @@ public final class TodoModifyFunction extends LocalFunction {
             normalized.add(item);
         }
         return normalized;
-    }
-
-    private static void validateUpdates(Object rawTodos) {
-        if (!(rawTodos instanceof List<?> todos) || todos.isEmpty()) {
-            throw new IllegalArgumentException("todo_modify update requires a non-empty todos list");
-        }
-        for (Object value : todos) {
-            if (!(value instanceof Map<?, ?> todo)) {
-                throw new IllegalArgumentException("todo_modify todos items must be objects");
-            }
-            if (!(todo.get("id") instanceof String id) || id.isBlank()) {
-                throw new IllegalArgumentException("todo_modify update requires todos[].id");
-            }
-            if (todo.containsKey("task_id")) {
-                throw new IllegalArgumentException("todo_modify todos uses id, not task_id");
-            }
-            if (todo.keySet().stream().noneMatch(UPDATE_FIELDS::contains)) {
-                throw new IllegalArgumentException("todo_modify update requires fields to change inside each todo");
-            }
-        }
     }
 }

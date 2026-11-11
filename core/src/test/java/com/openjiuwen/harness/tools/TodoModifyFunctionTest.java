@@ -7,6 +7,7 @@ package com.openjiuwen.harness.tools;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.openjiuwen.core.common.exception.ValidationError;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.harness.prompts.sections.tools.ToolMetadataRegistry;
 
@@ -98,13 +99,27 @@ class TodoModifyFunctionTest {
         List<Map<String, Object>> malformedCalls = List.of(
                 Map.of("action", "update", "status", "completed", "todos", List.of(Map.of("id", "task-1"))),
                 Map.of("action", "update", "status", "completed", "task_id", "task-1"),
-                Map.of("todos", List.of(Map.of("id", "task-1", "status", "completed"))),
                 Map.of("action", "update", "ids", List.of("task-1"), "status", "completed"));
         for (Map<String, Object> inputs : malformedCalls) {
-            assertThatThrownBy(() -> function.invoke(inputs, Map.of())).isInstanceOf(Exception.class);
+            assertThatThrownBy(() -> function.invoke(inputs, Map.of())).isInstanceOf(ValidationError.class)
+                    .hasMessageContaining("Unexpected keyword argument");
+            assertThatThrownBy(() -> function.stream(inputs, Map.of())).isInstanceOf(ValidationError.class)
+                    .hasMessageContaining("Unexpected keyword argument");
             assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
                     .containsExactly(TodoStatus.PENDING, TodoStatus.PENDING);
         }
+    }
+
+    @Test
+    void canonicalUpdateWithoutActionShouldFailSchemaValidation() throws IOException {
+        Map<String, Object> inputs = Map.of("todos", List.of(Map.of("id", "task-1", "status", "completed")));
+
+        assertThatThrownBy(() -> function.invoke(inputs, Map.of())).isInstanceOf(ValidationError.class)
+                .hasMessageContaining("Missing required field: action");
+        assertThatThrownBy(() -> function.stream(inputs, Map.of())).isInstanceOf(ValidationError.class)
+                .hasMessageContaining("Missing required field: action");
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
+                .containsExactly(TodoStatus.PENDING, TodoStatus.PENDING);
     }
 
     @Test
@@ -117,17 +132,51 @@ class TodoModifyFunctionTest {
     }
 
     @Test
-    void emptyOrIneffectiveUpdatesShouldFailInBothInvocationModes() throws IOException {
+    void emptyUpdatesShouldKeepBusinessFailureInBothInvocationModes() throws Exception {
         List<Map<String, Object>> invalidCalls = List.of(Map.of("action", "update"),
-                Map.of("action", "update", "todos", List.of()),
-                Map.of("action", "update", "todos", List.of(Map.of("id", "task-1"))),
-                Map.of("action", "update", "todos", List.of(Map.of("task_id", "task-1", "status", "completed"))));
+                Map.of("action", "update", "todos", List.of()));
         for (Map<String, Object> inputs : invalidCalls) {
-            assertThatThrownBy(() -> function.invoke(inputs, Map.of())).isInstanceOf(IllegalArgumentException.class);
-            assertThatThrownBy(() -> function.stream(inputs, Map.of())).isInstanceOf(IllegalArgumentException.class);
+            assertFailure(function.invoke(inputs, Map.of()), "todo items must be a non-empty list");
+            assertFailure(function.stream(inputs, Map.of()).next(), "todo items must be a non-empty list");
         }
         assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
                 .containsExactly(TodoStatus.PENDING, TodoStatus.PENDING);
+    }
+
+    @Test
+    void idOnlyUpdateShouldKeepExistingNoOpBehavior() throws Exception {
+        Map<String, Object> inputs = Map.of("action", "update", "todos", List.of(Map.of("id", "task-1")));
+
+        assertSuccess(function.invoke(inputs, Map.of()));
+        assertSuccess(function.stream(inputs, Map.of()).next());
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
+                .containsExactly(TodoStatus.PENDING, TodoStatus.PENDING);
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getContent)
+                .containsExactly("Analyze workbook", "Check result");
+    }
+
+    @Test
+    void missingOrUnknownIdShouldKeepBusinessFailure() throws Exception {
+        List<Map<String, Object>> updates = List.of(Map.of("status", "completed"),
+                Map.of("id", "", "status", "completed"), Map.of("id", "missing", "status", "completed"));
+        for (Map<String, Object> update : updates) {
+            Map<String, Object> inputs = Map.of("action", "update", "todos", List.of(update));
+            assertFailure(function.invoke(inputs, Map.of()), "todo item not found");
+            assertFailure(function.stream(inputs, Map.of()).next(), "todo item not found");
+        }
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
+                .containsExactly(TodoStatus.PENDING, TodoStatus.PENDING);
+    }
+
+    @Test
+    void taskIdAliasShouldKeepExistingBusinessBehavior() throws Exception {
+        Map<String, Object> inputs = Map.of("action", "update", "todos",
+                List.of(Map.of("task_id", "task-1", "status", "completed")));
+
+        assertSuccess(function.invoke(inputs, Map.of()));
+        assertSuccess(function.stream(inputs, Map.of()).next());
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
+                .containsExactly(TodoStatus.COMPLETED, TodoStatus.PENDING);
     }
 
     @Test
@@ -153,15 +202,23 @@ class TodoModifyFunctionTest {
         for (String language : List.of("cn", "en")) {
             ToolCard card = ToolMetadataRegistry.buildToolCard("todo_modify", "todo_modify", language);
             assertThat(card.getInputParams()).containsEntry("required", List.of("action"))
-                    .containsEntry("additionalProperties", false);
+                    .doesNotContainKey("additionalProperties");
             assertThat(card.getInputParams().get("properties")).isInstanceOfSatisfying(Map.class, properties ->
                     assertThat(properties).containsKeys("todos", "ids", "todo_data").doesNotContainKey("updates"));
-            assertThat(card.getDescription()).contains("result_summary").contains("task-1");
+            assertThat(card.getDescription()).contains("\"action\": \"update\"", "\"todo_data\"",
+                    "\"selected_model_id\"", "in_progress");
         }
     }
 
     private static void assertSuccess(Object result) {
         assertThat(result).isInstanceOfSatisfying(ToolOutput.class,
                 output -> assertThat(output.isSuccess()).isTrue());
+    }
+
+    private static void assertFailure(Object result, String expectedError) {
+        assertThat(result).isInstanceOfSatisfying(ToolOutput.class, output -> {
+            assertThat(output.isSuccess()).isFalse();
+            assertThat(output.getError()).contains(expectedError);
+        });
     }
 }
