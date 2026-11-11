@@ -16,11 +16,13 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelClients;
 import com.openjiuwen.core.runner.callback.CallbackDecorators;
+import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.LLMCallEvents;
 
@@ -39,6 +41,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Unified LLM invocation entry point.
@@ -351,13 +354,45 @@ public class Model {
     }
 
     public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+        // Capture the dispatch instant before the client opens the connection:
+        // client.stream() blocks until response headers arrive, so a timestamp
+        // taken inside the callback wrapper would already have lost the
+        // connect + time-to-first-byte leg of TTFT.
+        long dispatchNanos = System.nanoTime();
         InvocationRequest request = prepareInvokeRequest(messages, options, LLMCallEvents.LLM_STREAM_INPUT);
-        Iterator<AssistantMessageChunk> iterator = client.stream(request.messages(), request.options());
-        DecoratorFramework framework = callbackFramework;
+        AtomicInteger retryCounter = new AtomicInteger();
+        InvocationRequest counted = withRetryCounter(request, retryCounter);
+        Iterator<AssistantMessageChunk> iterator = client.stream(counted.messages(), counted.options());
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         if (framework == null) {
             return iterator;
         }
-        return new CallbackIterator(iterator, framework, request, modelConfig, modelClientConfig);
+        return new CallbackIterator(iterator, framework, request, modelConfig, modelClientConfig,
+                dispatchNanos, retryCounter);
+    }
+
+    /**
+     * Return a request whose retry listener also records the highest retry
+     * number seen, while still forwarding every event to the caller's listener.
+     *
+     * <p>The count is read back when the stream finishes rather than when it
+     * opens: first-segment retries can still fire while chunks are being
+     * pulled, so an early read would undercount.</p>
+     *
+     * @param request      the resolved invocation request
+     * @param retryCounter sink for the highest retry number seen
+     * @return an equivalent request with the counting listener installed
+     */
+    private static InvocationRequest withRetryCounter(InvocationRequest request, AtomicInteger retryCounter) {
+        ModelInvokeOptions options = request.options();
+        ModelRetryListener delegate = options.getRetryListener();
+        ModelRetryListener counting = event -> {
+            retryCounter.accumulateAndGet(event.retryCount(), Math::max);
+            if (delegate != null) {
+                delegate.onRetry(event);
+            }
+        };
+        return new InvocationRequest(request.messages(), options.toBuilder().retryListener(counting).build());
     }
 
     /**
@@ -711,7 +746,7 @@ public class Model {
                                                    String inputEvent) {
         List<BaseMessage> resolvedMessages = safeMessages(messages);
         ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         if (framework == null) {
             return new InvocationRequest(resolvedMessages, resolvedOptions);
         }
@@ -730,7 +765,7 @@ public class Model {
 
     private AssistantMessage transformOutput(String outputEvent, InvocationRequest request, AssistantMessage message,
                                              Class<AssistantMessage> responseType) {
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         if (framework == null) {
             return message;
         }
@@ -976,24 +1011,79 @@ public class Model {
         private final ModelRequestConfig modelConfig;
         private final ModelClientConfig modelClientConfig;
 
+        /**
+         * Monotonic dispatch instant, captured by {@code Model.stream} before
+         * the client opens the connection.
+         *
+         * <p>{@link System#nanoTime()} is used because only differences within
+         * one JVM are meaningful here; the elapsed value never leaves this
+         * process.</p>
+         */
+        private final long startNanos;
+
+        /** Monotonic time of the first chunk carrying output; {@code null} until then. */
+        private Long firstTokenNanos;
+
+        /** Monotonic time of the most recent chunk carrying output. */
+        private Long lastTokenNanos;
+
+        /** Monotonic time of the first chunk carrying {@code reasoning_content}. */
+        private Long reasoningFirstNanos;
+
+        /** Monotonic time of the most recent chunk carrying {@code reasoning_content}. */
+        private Long reasoningLastNanos;
+
+        /** Usage object of the latest chunk that reported one, backfilled at stream end. */
+        private UsageMetadata lastUsage;
+
+        /** Guards latency backfill so it happens at most once per stream. */
+        private boolean isLatencyBackfilled;
+
+        /** Highest retry number the client reported for this stream. */
+        private final AtomicInteger retryCounter;
+
         private CallbackIterator(Iterator<AssistantMessageChunk> delegate, DecoratorFramework framework,
                                  InvocationRequest request, ModelRequestConfig modelConfig,
-                                 ModelClientConfig modelClientConfig) {
+                                 ModelClientConfig modelClientConfig, long startNanos,
+                                 AtomicInteger retryCounter) {
             this.delegate = delegate;
             this.framework = framework;
             this.request = request;
             this.modelConfig = modelConfig;
             this.modelClientConfig = modelClientConfig;
+            this.startNanos = startNanos;
+            this.retryCounter = retryCounter;
         }
 
         @Override
         public boolean hasNext() {
-            return delegate.hasNext();
+            boolean hasNext = delegate.hasNext();
+            if (!hasNext) {
+                backfillLatency();
+            }
+            return hasNext;
         }
 
         @Override
         public AssistantMessageChunk next() {
             AssistantMessageChunk chunk = delegate.next();
+            if (chunk.getUsageMetadata() != null) {
+                lastUsage = chunk.getUsageMetadata();
+            }
+            long now = System.nanoTime();
+            if (chunk.carriesOutputToken()) {
+                if (firstTokenNanos == null) {
+                    firstTokenNanos = now;
+                }
+                lastTokenNanos = now;
+            }
+            String reasoning = chunk.getReasoningContent();
+            if (reasoning != null && !reasoning.isEmpty()) {
+                if (reasoningFirstNanos == null) {
+                    reasoningFirstNanos = now;
+                }
+                reasoningLastNanos = now;
+            }
             Map<String, Object> outKwargs = new LinkedHashMap<>();
             outKwargs.put("result", chunk);
             outKwargs.put("model_config", modelConfig);
@@ -1012,8 +1102,60 @@ public class Model {
             return effectiveChunk;
         }
 
+        /**
+         * Stamp TTFT, inter-token latency, total latency and reasoning duration
+         * onto the last observed usage object.
+         *
+         * <p>Usage normally arrives only on the final chunk, so the token-time
+         * metrics can only be computed once the stream is complete. Stamping
+         * the usage object itself (rather than raising a separate event) lets
+         * every existing consumer — {@code ReActAgent}, the tracer handler, the
+         * observability rail — read the values from the response it already
+         * holds.</p>
+         *
+         * <p>Missing measurements are left {@code null} instead of being written
+         * as zero: zero is itself a legitimate measurement, and conflating the
+         * two would corrupt downstream aggregation.</p>
+         */
+        private void backfillLatency() {
+            if (isLatencyBackfilled) {
+                return;
+            }
+            isLatencyBackfilled = true;
+            long endNanos = System.nanoTime();
+            if (lastUsage == null) {
+                return;
+            }
+            lastUsage.setRetryCount(retryCounter.get());
+            // Total latency covers the whole call and is measurable even when no
+            // output chunk ever arrived (an early finish with usage only), so it
+            // is not gated on firstTokenNanos.
+            if (lastUsage.getTotalLatency() <= 0.0d) {
+                lastUsage.setTotalLatency((endNanos - startNanos) / 1_000_000_000.0d);
+            }
+            if (reasoningFirstNanos != null && reasoningLastNanos != null
+                    && lastUsage.getReasoningDurationMs() == null) {
+                lastUsage.setReasoningDurationMs(
+                        (reasoningLastNanos - reasoningFirstNanos) / 1_000_000.0d);
+            }
+            if (firstTokenNanos == null) {
+                return;
+            }
+            if (lastUsage.getTtftSeconds() == null) {
+                lastUsage.setTtftSeconds((firstTokenNanos - startNanos) / 1_000_000_000.0d);
+            }
+            if (lastUsage.getInterTokenLatencyMs() == null
+                    && lastTokenNanos != null
+                    && lastTokenNanos > firstTokenNanos
+                    && lastUsage.getOutputTokens() > 1) {
+                double elapsedMs = (lastTokenNanos - firstTokenNanos) / 1_000_000.0d;
+                lastUsage.setInterTokenLatencyMs(elapsedMs / (lastUsage.getOutputTokens() - 1));
+            }
+        }
+
         @Override
         public void close() throws Exception {
+            backfillLatency();
             if (delegate instanceof AutoCloseable closeable) {
                 closeable.close();
             }

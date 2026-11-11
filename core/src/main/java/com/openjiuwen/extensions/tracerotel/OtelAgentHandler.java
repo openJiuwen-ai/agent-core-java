@@ -10,12 +10,14 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.session.tracer.InvokeType;
 import com.openjiuwen.core.session.tracer.NodeStatus;
 import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.TraceExtAgentHandler;
 
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
@@ -31,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 /**
@@ -876,7 +879,9 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
                 OptionalLong outputTokens = resolveOutputTokens(usageObj);
                 OptionalLong totalTokens = resolveTotalTokens(usageObj, inputTokens, outputTokens);
                 setTokenAttributes(span, inputTokens, outputTokens, totalTokens);
+                setUsageBreakdownAttributes(span, usageObj);
                 setUsageModelName(span, usageObj);
+                setStreamLatencyAttributes(span, usageObj);
             }
             setFinishReason(span, rawResponse);
             setResponseModel(span, rawResponse);
@@ -899,6 +904,19 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     private Optional<Object> resolveUsage(Object rawResponse) {
         if (rawResponse instanceof AssistantMessage assistantMsg) {
             return Optional.ofNullable(assistantMsg.getUsageMetadata());
+        }
+        // Streaming calls hand on_llm_end the full chunk list; usage is only
+        // reported by the trailing chunk, so scan backwards and take the first
+        // one that carries it.
+        if (rawResponse instanceof List<?> chunks) {
+            for (int i = chunks.size() - 1; i >= 0; i--) {
+                Object candidate = chunks.get(i);
+                if (candidate instanceof AssistantMessageChunk chunk
+                        && chunk.getUsageMetadata() != null) {
+                    return Optional.of(chunk.getUsageMetadata());
+                }
+            }
+            return Optional.empty();
         }
         if (rawResponse instanceof Map<?, ?> respMap) {
             Object fromMap = respMap.get("usage_metadata");
@@ -1004,13 +1022,85 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
                                     OptionalLong totalTokens) {
         if (inputTokens.isPresent()) {
             span.setAttribute(SemConv.GEN_AI_USAGE_PROMPT_TOKENS, inputTokens.getAsLong());
+            span.setAttribute(SemConv.GEN_AI_USAGE_INPUT_TOKENS, inputTokens.getAsLong());
         }
         if (outputTokens.isPresent()) {
             span.setAttribute(SemConv.GEN_AI_USAGE_COMPLETION_TOKENS, outputTokens.getAsLong());
+            span.setAttribute(SemConv.GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens.getAsLong());
         }
         if (totalTokens.isPresent()) {
             span.setAttribute(SemConv.GEN_AI_USAGE_TOTAL_TOKENS, totalTokens.getAsLong());
         }
+    }
+
+    /**
+     * Set the usage breakdown and cost attributes on the span.
+     *
+     * <p>Cache-read tokens come from {@link UsageMetadata#getCacheTokens()},
+     * which Java clients fill from {@code prompt_tokens_details.cached_tokens}.
+     * Costs come straight from {@code UsageMetadata} — never recomputed here,
+     * because pricing belongs to the provider table.</p>
+     *
+     * <p>Zero-valued costs are skipped: a call whose price the provider did not
+     * report must not look like a free one.</p>
+     *
+     * @param span  the OTel span to attach attributes to
+     * @param usage the usage object (may be {@code null})
+     */
+    private void setUsageBreakdownAttributes(Span span, Object usage) {
+        if (usage instanceof UsageMetadata um) {
+            if (um.getCacheTokens() > 0) {
+                span.setAttribute(SemConv.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, um.getCacheTokens());
+            }
+            setCostAttributes(span,
+                    OptionalDouble.of(um.getInputCost()),
+                    OptionalDouble.of(um.getOutputCost()),
+                    OptionalDouble.of(um.getTotalCost()));
+            Integer retryCount = um.getRetryCount();
+            if (retryCount != null && retryCount > 0) {
+                span.setAttribute(SemConv.OJ_REQUEST_RETRY_COUNT, retryCount.longValue());
+            }
+            return;
+        }
+        if (usage instanceof Map<?, ?> uMap) {
+            OptionalLong cacheRead = coerceLong(uMap.get("cache_read_tokens"));
+            if (cacheRead.isEmpty()) {
+                cacheRead = coerceLong(uMap.get("cache_tokens"));
+            }
+            if (cacheRead.isPresent() && cacheRead.getAsLong() > 0) {
+                span.setAttribute(SemConv.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, cacheRead.getAsLong());
+            }
+            setCostAttributes(span,
+                    coerceDouble(uMap.get("input_cost")),
+                    coerceDouble(uMap.get("output_cost")),
+                    coerceDouble(uMap.get("total_cost")));
+        }
+    }
+
+    /**
+     * Write the three cost attributes, skipping any that is absent or zero.
+     *
+     * @param span       the OTel span to attach attributes to
+     * @param inputCost  input cost, or empty when unreported
+     * @param outputCost output cost, or empty when unreported
+     * @param totalCost  total cost, or empty when unreported
+     */
+    private void setCostAttributes(Span span, OptionalDouble inputCost, OptionalDouble outputCost,
+        OptionalDouble totalCost) {
+        if (isPositive(inputCost)) {
+            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_INPUT_COST, inputCost.getAsDouble());
+        }
+        if (isPositive(outputCost)) {
+            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_OUTPUT_COST, outputCost.getAsDouble());
+        }
+        if (isPositive(totalCost)) {
+            span.setAttribute(SemConv.OJ_GEN_AI_USAGE_TOTAL_COST, totalCost.getAsDouble());
+        }
+    }
+
+    private static boolean isPositive(OptionalDouble value) {
+        return value.isPresent() && !Double.isNaN(value.getAsDouble())
+                && !Double.isInfinite(value.getAsDouble()) && value.getAsDouble() > 0.0d;
     }
 
     /**
@@ -1040,10 +1130,14 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     }
 
     /**
-     * Set the {@code gen_ai.response.finish_reason} attribute on the span.
+     * Set the finish reason attributes on the span.
      *
      * <p>Reads {@link AssistantMessage#getFinishReason()} for POJO responses,
-     * or the {@code finish_reason} key for map-style responses.</p>
+     * or the {@code finish_reason} key for map-style responses. The value is
+     * written to both the singular project-era key and the plural standard key
+     * — GenAI semantic conventions define {@code gen_ai.response.finish_reasons}
+     * as a string array, and Python only writes the plural form, so new
+     * consumers reading the standard key would otherwise see nothing.</p>
      *
      * @param span        the OTel span to attach the attribute to
      * @param rawResponse the raw response object (may be {@code null})
@@ -1062,6 +1156,8 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
         }
         if (finishReason != null && !"null".equals(finishReason)) {
             span.setAttribute(SemConv.GEN_AI_RESPONSE_FINISH_REASON, finishReason);
+            span.setAttribute(AttributeKey.stringArrayKey(SemConv.GEN_AI_RESPONSE_FINISH_REASONS),
+                    List.of(finishReason));
         }
     }
 
@@ -1086,6 +1182,85 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
                     span.setAttribute(SemConv.GEN_AI_RESPONSE_MODEL, modelStr);
                 }
             }
+        }
+    }
+
+    /**
+     * Write streaming latency attributes (TTFT, inter-token latency, total
+     * latency and reasoning duration) to the span.
+     *
+     * <p>All four values are computed by {@code Model.CallbackIterator} and
+     * carried on {@link UsageMetadata}. When a measurement is absent the
+     * corresponding attribute is simply not set — it is never written as
+     * {@code 0}, because zero is a legitimate measurement and would be
+     * indistinguishable from a real one downstream.</p>
+     *
+     * <p><b>TTFT key choice.</b> TTFT measures to the first chunk that carries
+     * model output, whereas the standard
+     * {@code gen_ai.response.time_to_first_chunk} measures to the first chunk of
+     * any kind. The two differ by seconds on a reasoning model whose provider
+     * opens with a role-only delta, so TTFT is written to the project key
+     * {@code openjiuwen.gen_ai.response.time_to_first_token_ms} (milliseconds) and
+     * the standard key is left unset. Java cannot observe the raw first frame
+     * without changes in the model clients; until then, reporting a value under
+     * the standard key would be a silent unit/semantics substitution.</p>
+     *
+     * @param span  the OTel span to attach attributes to
+     * @param usage the usage object carrying the latency values
+     * @since 0.1.7
+     */
+    private void setStreamLatencyAttributes(Span span, Object usage) {
+        if (!(usage instanceof UsageMetadata um)) {
+            return;
+        }
+        Double ttftSeconds = um.getTtftSeconds();
+        if (isFiniteNonNegative(ttftSeconds)) {
+            span.setAttribute(SemConv.OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS,
+                    BigDecimal.valueOf(ttftSeconds).multiply(BigDecimal.valueOf(1000L)).doubleValue());
+        }
+        Double interTokenMs = um.getInterTokenLatencyMs();
+        if (isFiniteNonNegative(interTokenMs)) {
+            span.setAttribute(SemConv.OJ_GEN_AI_RESPONSE_TPOT_MS, interTokenMs);
+        }
+        // total_latency is seconds on UsageMetadata; the project key is milliseconds.
+        double totalLatencySeconds = um.getTotalLatency();
+        if (totalLatencySeconds > 0.0d && !Double.isInfinite(totalLatencySeconds)) {
+            span.setAttribute(SemConv.OJ_GEN_AI_RESPONSE_TOTAL_LATENCY_MS,
+                    BigDecimal.valueOf(totalLatencySeconds).multiply(BigDecimal.valueOf(1000L)).doubleValue());
+        }
+        Double reasoningMs = um.getReasoningDurationMs();
+        if (isFiniteNonNegative(reasoningMs)) {
+            span.setAttribute(SemConv.OJ_GEN_AI_REASONING_DURATION_MS, reasoningMs);
+        }
+    }
+
+    /**
+     * Whether a candidate latency value is usable as a measurement.
+     *
+     * @param value the value to check
+     * @return {@code true} if the value is finite and non-negative
+     */
+    private static boolean isFiniteNonNegative(Double value) {
+        return value != null && !value.isNaN() && !value.isInfinite() && value >= 0.0d;
+    }
+
+    /**
+     * Coerce an arbitrary object to a {@code double}.
+     *
+     * @param value the value to coerce (may be {@code null})
+     * @return an {@link OptionalDouble} containing the double value, or empty if not coercible
+     */
+    private static OptionalDouble coerceDouble(Object value) {
+        if (value == null) {
+            return OptionalDouble.empty();
+        }
+        if (value instanceof Number n) {
+            return OptionalDouble.of(n.doubleValue());
+        }
+        try {
+            return OptionalDouble.of(Double.parseDouble(String.valueOf(value)));
+        } catch (NumberFormatException e) {
+            return OptionalDouble.empty();
         }
     }
 

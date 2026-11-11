@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.graph.pregel;
 
+import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.WorkflowEvents;
 
@@ -101,7 +102,7 @@ public final class NodeTask {
     }
 
     private void triggerEdgeTraversed() {
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         if (framework == null || messages.isEmpty()) {
             return;
         }
