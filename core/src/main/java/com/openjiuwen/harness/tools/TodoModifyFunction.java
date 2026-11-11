@@ -16,12 +16,11 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
- * todo_modify 的调用入口：在通用参数校验前规范化参数，并按会话串行执行修改。
+ * 待办修改工具 todo_modify 的调用入口：在通用参数校验前规范化参数，并按会话串行执行修改。
  *
  * <p>以下 4 类示例中的任务 ID 为示例值。</p>
  *
@@ -74,7 +73,7 @@ import java.util.function.Function;
  * @since 0.1.16
  */
 public final class TodoModifyFunction extends LocalFunction {
-    /**这些属性应该在todoModify的每一项中，如果模型让其出现在参数顶层，会被补入每个任务对象的修改字段。 */
+    /** 这些属性应该在todoModify的每一项中，如果模型让其出现在参数顶层，会被补入每个任务对象的修改字段。 */
     private static final List<String> TODO_UPDATE_FIELDS = List.of("content", "activeForm", "active_form",
             "description", "status", "priority", "selected_model_id", "depends_on", "result_summary", "meta_data");
 
@@ -197,11 +196,11 @@ public final class TodoModifyFunction extends LocalFunction {
         if (topLevelFields.isEmpty()) {
             return;
         }
-        Optional<List<Map<String, Object>>> todos = copyTodoObjects(normalized.get("todos"));
+        List<Map<String, Object>> todos = copyTodoObjects(normalized.get("todos"));
         if (todos.isEmpty()) {
             return;
         }
-        for (Map<String, Object> todo : todos.get()) {
+        for (Map<String, Object> todo : todos) {
             for (Map.Entry<String, Object> field : topLevelFields.entrySet()) {
                 if (!todo.containsKey(field.getKey())) {
                     todo.put(field.getKey(), field.getValue());
@@ -209,30 +208,36 @@ public final class TodoModifyFunction extends LocalFunction {
             }
         }
         topLevelFields.keySet().forEach(normalized::remove);
-        normalized.put("todos", todos.get());
+        normalized.put("todos", todos);
         Loggers.TOOL.warning("todo_modify moved top-level update fields " + topLevelFields.keySet()
                 + " into each todo item");
     }
 
-    private static Optional<List<Map<String, Object>>> copyTodoObjects(Object rawTodos) {
+    /**
+     * 复制 todos 中的任务对象，供补入顶层字段时修改。
+     *
+     * @param rawTodos 参数中的 todos 值
+     * @return 任务对象副本；todos 不是非空对象列表或含非字符串键时返回空列表，表示不处理
+     */
+    private static List<Map<String, Object>> copyTodoObjects(Object rawTodos) {
         if (!(rawTodos instanceof List<?> todos) || todos.isEmpty()) {
-            return Optional.empty();
+            return List.of();
         }
         List<Map<String, Object>> copies = new ArrayList<>(todos.size());
         for (Object value : todos) {
             if (!(value instanceof Map<?, ?> todo)) {
-                return Optional.empty();
+                return List.of();
             }
             Map<String, Object> copy = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : todo.entrySet()) {
                 if (!(entry.getKey() instanceof String key)) {
-                    return Optional.empty();
+                    return List.of();
                 }
                 copy.put(key, entry.getValue());
             }
             copies.add(copy);
         }
-        return Optional.of(copies);
+        return copies;
     }
 
     private static List<Map<String, Object>> normalizeLegacyUpdates(Object rawUpdates) {
