@@ -23,6 +23,7 @@ import com.openjiuwen.core.graph.pregel.Interrupt;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.runner.callback.CallbackDecorators;
+import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.WorkflowEvents;
 import com.openjiuwen.core.session.BaseSession;
@@ -492,7 +493,7 @@ public class Workflow {
     @SuppressWarnings("unchecked")
     public WorkflowOutput invoke(Object inputs, Object session, ModelContext context,
                                  boolean isSub, boolean skipInputsValidate, List<StreamMode> streamModes) {
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         WorkflowCallInput request = prepareWorkflowCall(
                 framework,
                 WorkflowEvents.WORKFLOW_INVOKE_INPUT,
@@ -670,7 +671,7 @@ public class Workflow {
 
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context,
                                    List<StreamMode> streamModes, boolean isSub, boolean skipInputsValidate) {
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         WorkflowCallInput request = prepareWorkflowCall(
                 framework,
                 WorkflowEvents.WORKFLOW_STREAM_INPUT,

@@ -6,6 +6,7 @@ package com.openjiuwen.core.graph.pregel;
 
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.store.Store;
+import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.WorkflowEvents;
 
@@ -132,7 +133,7 @@ public class Pregel {
     }
 
     private static void triggerLoopEvent(String event, PregelConfig config, Integer totalSteps, boolean includeSteps) {
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         if (framework == null) {
             return;
         }

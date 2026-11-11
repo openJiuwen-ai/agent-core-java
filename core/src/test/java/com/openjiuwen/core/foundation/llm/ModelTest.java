@@ -245,7 +245,9 @@ class ModelTest {
         assertSame(source.getModelConfig(), wrapper.getModelConfig());
         assertEquals("ok", wrapper.invoke("hello").toCompletableFuture().join().getContentAsString());
         assertEquals(1, client.invokeOptions.size());
-        assertSame(client.streamIterator, wrapper.stream("hello"));
+        Iterator<AssistantMessageChunk> streamed = wrapper.stream("hello");
+        assertTrue(streamed.hasNext());
+        assertEquals("chunk", streamed.next().getContent());
     }
 
     @Test

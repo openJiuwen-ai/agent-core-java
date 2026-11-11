@@ -22,6 +22,7 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelClients;
 import com.openjiuwen.core.runner.callback.CallbackDecorators;
+import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.LLMCallEvents;
 
@@ -362,7 +363,7 @@ public class Model {
         AtomicInteger retryCounter = new AtomicInteger();
         InvocationRequest counted = withRetryCounter(request, retryCounter);
         Iterator<AssistantMessageChunk> iterator = client.stream(counted.messages(), counted.options());
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         if (framework == null) {
             return iterator;
         }
@@ -745,7 +746,7 @@ public class Model {
                                                    String inputEvent) {
         List<BaseMessage> resolvedMessages = safeMessages(messages);
         ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         if (framework == null) {
             return new InvocationRequest(resolvedMessages, resolvedOptions);
         }
@@ -764,7 +765,7 @@ public class Model {
 
     private AssistantMessage transformOutput(String outputEvent, InvocationRequest request, AssistantMessage message,
                                              Class<AssistantMessage> responseType) {
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         if (framework == null) {
             return message;
         }
