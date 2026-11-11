@@ -116,6 +116,36 @@ class DeepAgentPauseResumeTest {
         assertThat(pausedCursorOfProbe()).isNull();
     }
 
+    @Test
+    @DisplayName("a pause at an error round keeps the error shape and records the pause in pause_info")
+    void pauseAtErrorRoundKeepsTheErrorShape() {
+        installCheckpointer(new PersistenceCheckpointer(new InMemoryKVStore()));
+        agent = newDeepAgent();
+        // The model throws during round one: the round resolves with the
+        // error shape ({error: message}), and the pause request published on
+        // the same call must not overwrite that evidence when the boundary
+        // consumes the pause.
+        installFailingThenEchoModel(agent);
+
+        Map<String, Object> result = agent.invoke(
+                Map.of("query", "pause me while failing", "conversation_id", SESSION_ID));
+
+        assertThat(roundsOf(result)).hasSize(1);
+        assertThat(result).doesNotContainEntry("result_type", "paused");
+        // The error evidence survives in the round (and the final round copied
+        // into final_result); the pause is recorded through pause_info alone.
+        assertThat(roundsOf(result).get(0)).containsKey("error");
+        assertThat((Map<String, Object>) result.get("final_result"))
+                .containsKey("error")
+                .containsEntry("pause_info", Map.of("operator", "op-pause"));
+
+        // The pause cursor is still persisted: a later explicit resume
+        // continues the session from the failed round's boundary.
+        StepCursor paused = pausedCursorOfProbe();
+        assertThat(paused).isNotNull();
+        assertThat(paused.getStatus()).isEqualTo(StepStatus.PAUSED);
+    }
+
     private void installCheckpointer(PersistenceCheckpointer target) {
         checkpointer = target;
         CheckpointerFactory.setDefaultCheckpointer(target);
@@ -166,6 +196,26 @@ class DeepAgentPauseResumeTest {
         Model model = new Model((messages, modelConfig, clientConfig, options) -> {
             if (isPausePublished.compareAndSet(false, true)) {
                 PauseRequestRegistry.requestPause(SESSION_ID, Map.of("operator", "op-pause"));
+            }
+            return CompletableFuture.completedFuture(
+                    echoMessage("model:" + extractLastMessageText(messages)));
+        });
+        deepAgent.getAgent().setLlm(model);
+    }
+
+    /**
+     * Scripted model that publishes the pause intent and then throws: the
+     * round fails while the pause intent is pending, so the round tail both
+     * carries the error shape and consumes the pause.
+     *
+     * @param deepAgent agent whose inner ReAct model is replaced
+     */
+    private static void installFailingThenEchoModel(DeepAgent deepAgent) {
+        AtomicBoolean isPausePublished = new AtomicBoolean(false);
+        Model model = new Model((messages, modelConfig, clientConfig, options) -> {
+            if (isPausePublished.compareAndSet(false, true)) {
+                PauseRequestRegistry.requestPause(SESSION_ID, Map.of("operator", "op-pause"));
+                throw new IllegalStateException("model exploded");
             }
             return CompletableFuture.completedFuture(
                     echoMessage("model:" + extractLastMessageText(messages)));

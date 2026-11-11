@@ -627,7 +627,7 @@ class RedisCheckpointerStorageTest {
         session.state().update(Map.of("progress", "half"));
 
         checkpointer.stepPaused(session,
-                new StepCursor(2L, "PHASE", "user-pause", StepStatus.COMPLETED, 1L),
+                new StepCursor(2L, "PHASE", "user-pause", StepStatus.PAUSED, 1L),
                 Map.of("operator", "op-redis"));
 
         // The paused cursor round-trips through the persisted blob and the
@@ -635,6 +635,7 @@ class RedisCheckpointerStorageTest {
         StepCursor paused = checkpointer.lastPausedStep("session-redis-pause");
         assertNotNull(paused);
         assertEquals(2L, paused.getSeq());
+        assertEquals(StepStatus.PAUSED, paused.getStatus());
         assertEquals("session-redis-pause", paused.getSessionId());
         assertNull(checkpointer.lastCompletedStep(session));
 

@@ -29,8 +29,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tests for the user-initiated pause/resume capability on the step checkpoint
@@ -265,6 +267,53 @@ class StepPauseResumeTest {
         TestSession restored = new TestSession("session-halfwrite", "agent-halfwrite", restoredState);
         checkpointer.preAgentExecute(restored, null);
         assertFalse(restoredState.getState().containsKey(Checkpointer.SESSION_PAUSE_STATE_KEY));
+    }
+
+    @Test
+    void pauseFailureRollbackRestoresThePreviousPauseEvidence() {
+        FailingSaveCheckpointer checkpointer = new FailingSaveCheckpointer(new InMemoryKVStore());
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-rollback", "agent-rollback", state);
+        checkpointer.preAgentExecute(session, null);
+
+        // First pause succeeds and leaves its evidence in the live state.
+        checkpointer.stepPaused(session,
+                new StepCursor(2L, "PHASE", "round-2", StepStatus.COMPLETED, 2L),
+                Map.of("operator", "op-first"));
+        StepCursor firstPaused = checkpointer.lastPausedStep(session);
+        assertNotNull(firstPaused);
+        Map<String, Object> firstPauseInfo =
+                new LinkedHashMap<>((Map<String, Object>) session.state().get(Checkpointer.SESSION_PAUSE_STATE_KEY));
+
+        // Second pause fails mid-save: the save error propagates (the trigger
+        // layer catches it), and the rollback must restore the first pause's
+        // cursor and metadata instead of wiping the live evidence.
+        checkpointer.setFailNextSave(true);
+        assertThrows(IllegalStateException.class, () -> checkpointer.stepPaused(session,
+                new StepCursor(3L, "PHASE", "round-3", StepStatus.COMPLETED, 3L),
+                Map.of("operator", "op-second")));
+
+        StepCursor rolledBack = checkpointer.lastPausedStep(session);
+        assertNotNull(rolledBack, "failed pause must not wipe the earlier pause evidence");
+        assertEquals(2L, rolledBack.getSeq());
+        assertEquals(StepStatus.PAUSED, rolledBack.getStatus());
+        assertEquals(firstPauseInfo, session.state().get(Checkpointer.SESSION_PAUSE_STATE_KEY));
+
+        // A later successful save flushes the surviving evidence, not an
+        // emptied snapshot that would silently drop the pending pause intent.
+        AgentStateCollection restoredState = new AgentStateCollection();
+        TestSession restored = new TestSession("session-rollback", "agent-rollback", restoredState);
+        checkpointer.preAgentExecute(restored, null);
+        StepCursor persisted = checkpointer.lastPausedStep(restored);
+        assertNotNull(persisted);
+        assertEquals(2L, persisted.getSeq());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> restoredAgentState =
+                (Map<String, Object>) restoredState.getState().get(State.AGENT_STATE_KEY);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> persistedPauseInfo =
+                (Map<String, Object>) restoredAgentState.get(Checkpointer.SESSION_PAUSE_STATE_KEY);
+        assertEquals("op-first", persistedPauseInfo.get("operator"));
     }
 
     @Test
@@ -842,6 +891,31 @@ class StepPauseResumeTest {
         @SuppressWarnings("unused")
         String agentId() {
             return agentId;
+        }
+    }
+
+    /**
+     * Persistence checkpointer whose save path fails once on demand: used to
+     * exercise the pause rollback path, which must restore the pause evidence
+     * held before the failed write.
+     */
+    private static final class FailingSaveCheckpointer extends PersistenceCheckpointer {
+        private final AtomicBoolean shouldFailNextSave = new AtomicBoolean(false);
+
+        private FailingSaveCheckpointer(InMemoryKVStore kvStore) {
+            super(kvStore);
+        }
+
+        void setFailNextSave(boolean fail) {
+            shouldFailNextSave.set(fail);
+        }
+
+        @Override
+        public void postAgentExecute(BaseSession session) {
+            if (shouldFailNextSave.compareAndSet(true, false)) {
+                throw new IllegalStateException("injected save failure");
+            }
+            super.postAgentExecute(session);
         }
     }
 }

@@ -276,6 +276,8 @@ public abstract class Checkpointer implements AutoCloseable {
         if (!shouldPersistPausedCursor(session, pausedCursor)) {
             return false;
         }
+        StepCursor previousPaused = lastPausedStep(session);
+        Object previousPauseInfo = session.state().get(SESSION_PAUSE_STATE_KEY);
         Map<String, Object> update = new LinkedHashMap<>();
         update.put(StepCursor.PAUSED_STATE_KEY, pausedCursor.toMap());
         if (pauseInfo != null && !pauseInfo.isEmpty()) {
@@ -288,7 +290,7 @@ public abstract class Checkpointer implements AutoCloseable {
             isSaved = true;
         } finally {
             if (!isSaved) {
-                rollbackPausedUpdate(session, update);
+                rollbackPausedUpdate(session, previousPaused, previousPauseInfo, update);
             }
         }
         return isSaved;
@@ -314,18 +316,26 @@ public abstract class Checkpointer implements AutoCloseable {
     }
 
     /**
-     * Undo a failed pause save by deleting the paused keys from the live
-     * state, mirroring the {@link #stepCompleted} rollback: the state keeps
-     * its pre-pause shape and the next save cannot resurrect stale evidence.
+     * Undo a failed pause save by restoring the pause evidence the live state
+     * held before the update, mirroring the {@link #stepCompleted} rollback:
+     * the state keeps its pre-pause shape, so the evidence of an earlier
+     * successful pause survives and the next save cannot publish a snapshot
+     * that silently drops the user's pending pause intent.
      *
      * @param session session whose pause save failed
+     * @param previousPaused paused cursor persisted before the failed write,
+     *                       null when the session had none
+     * @param previousPauseInfo pause metadata held before the failed write,
+     *                          null when the session had none
      * @param update the update map previously applied to the live state
      */
-    private void rollbackPausedUpdate(BaseSession session, Map<String, Object> update) {
+    private void rollbackPausedUpdate(BaseSession session, StepCursor previousPaused,
+                                      Object previousPauseInfo, Map<String, Object> update) {
         Map<String, Object> rollback = new LinkedHashMap<>();
-        rollback.put(StepCursor.PAUSED_STATE_KEY, null);
+        rollback.put(StepCursor.PAUSED_STATE_KEY, previousPaused == null ? null : previousPaused.toMap());
         if (update.containsKey(SESSION_PAUSE_STATE_KEY)) {
-            rollback.put(SESSION_PAUSE_STATE_KEY, null);
+            rollback.put(SESSION_PAUSE_STATE_KEY,
+                    previousPauseInfo instanceof Map<?, ?> previousMap ? new LinkedHashMap<>(previousMap) : null);
         }
         session.state().update(rollback);
     }

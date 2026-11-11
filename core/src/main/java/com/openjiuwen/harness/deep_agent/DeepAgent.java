@@ -4204,14 +4204,17 @@ public class DeepAgent implements AutoCloseable {
     /**
      * Persists the user-pause boundary at the finished round: the PAUSED step
      * cursor and the pause metadata flush through the checkpoint save path on
-     * top of the just-completed round state, and the round result is marked
-     * {@code paused} so the task loop result carries the pause outcome.
+     * top of the just-completed round state. A round without its own outcome
+     * (answer) is marked {@code paused} so the task loop result carries the
+     * pause outcome; a round that already ended as {@code interrupt} or
+     * {@code error} keeps that shape and records the pause through
+     * {@code pause_info} alone, so the outcome evidence stays visible.
      *
      * @param session loop session being paused
      * @param roundResult result map of the finished round, mutated in place
      * @param pauseInfo consumed pause metadata (operator, reason), may be null
      * @return true when the pause evidence was persisted and the round result
-     *         carries the paused shape; false when the cursor could not be
+     *         carries the pause outcome; false when the cursor could not be
      *         persisted, leaving the round result in its own shape so no
      *         resume will be attempted
      */
@@ -4226,10 +4229,25 @@ public class DeepAgent implements AutoCloseable {
             return false;
         }
         if (roundResult != null) {
-            roundResult.put("result_type", "paused");
-            roundResult.put("output", "Paused by user request");
-            if (pauseInfo != null && !pauseInfo.isEmpty()) {
-                roundResult.put("pause_info", pauseInfo);
+            // A round that already carries its own outcome (interrupt, error)
+            // keeps that shape: overwriting result_type/output would erase the
+            // evidence the caller and the resume flow need, so the pause is
+            // recorded through pause_info alone. Any other round is marked
+            // paused so the task-loop result carries the pause outcome.
+            Object roundOutcome = roundResult.get("result_type");
+            boolean hasOwnOutcome = "interrupt".equals(String.valueOf(roundOutcome))
+                    || "error".equals(String.valueOf(roundOutcome))
+                    || roundResult.containsKey("error");
+            if (hasOwnOutcome) {
+                if (pauseInfo != null && !pauseInfo.isEmpty()) {
+                    roundResult.putIfAbsent("pause_info", pauseInfo);
+                }
+            } else {
+                roundResult.put("result_type", "paused");
+                roundResult.put("output", "Paused by user request");
+                if (pauseInfo != null && !pauseInfo.isEmpty()) {
+                    roundResult.put("pause_info", pauseInfo);
+                }
             }
         }
         return true;
