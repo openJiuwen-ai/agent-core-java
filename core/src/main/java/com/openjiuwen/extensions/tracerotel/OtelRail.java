@@ -20,6 +20,7 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.deep_agent.DeepAgentSession;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -311,8 +312,8 @@ public class OtelRail extends AgentRail {
      * Resolve the {@link Tracer} from the callback context's session.
      *
      * <p>First attempts direct {@code session.tracer()}. If the session is a
-     * public {@code AgentSession} facade (which does not expose {@code tracer()}),
-     * unwraps via {@code getInner()} and retries on the runtime kernel.
+     * supported session facade (including {@code DeepAgentSession}), unwraps
+     * via {@code getInner()} and retries on the runtime kernel.
      * All failures are logged once (rate-limited) to avoid spamming the log
      * on every callback.</p>
      *
@@ -367,7 +368,7 @@ public class OtelRail extends AgentRail {
     }
 
     /**
-     * Unwrap public {@link AgentSession} facades via {@code getInner()} and
+     * Unwrap supported session facades via {@code getInner()} and
      * retrieve the Tracer from the underlying internal session.
      *
      * @param session the potentially-wrapped session
@@ -381,6 +382,8 @@ public class OtelRail extends AgentRail {
             inner = teamSession.getInner();
         } else if (session instanceof AgentGroupSession groupSession) {
             inner = groupSession.getInner();
+        } else if (session instanceof DeepAgentSession deepSession) {
+            inner = deepSession.getInner();
         }
         if (inner == null) {
             return Optional.empty();
