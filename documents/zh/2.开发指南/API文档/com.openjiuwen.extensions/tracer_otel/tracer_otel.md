@@ -39,7 +39,7 @@ OtelTracerConfig config = OtelTracerConfig.builder()
         .protocol("grpc")
         .serviceName("my-agent-service")
         .sampleRate(1.0)
-        .redactionEnabled(true)
+        .isRedactionEnabled(true)
         .build();
 
 // 2. 初始化 OTel Tracer
@@ -140,9 +140,9 @@ public final class OtelTracerConfig
 | `public Builder scheduleDelayMillis(int)` | 设置导出间隔 |
 | `public Builder exportTimeoutMs(int)` | 设置导出超时 |
 | `public Builder maxExportBatchSize(int)` | 设置单批最大数 |
-| `public Builder redactionEnabled(boolean)` | 设置脱敏总开关 |
-| `public Builder redactPrompts(Boolean)` | 覆盖 prompt 脱敏 |
-| `public Builder redactCompletions(Boolean)` | 覆盖 completion 脱敏 |
+| `public Builder isRedactionEnabled(boolean)` | 设置脱敏总开关 |
+| `public Builder shouldRedactPrompts(Boolean)` | 覆盖 prompt 脱敏 |
+| `public Builder shouldRedactCompletions(Boolean)` | 覆盖 completion 脱敏 |
 | `public Builder maxAttrLength(int)` | 设置截断上限 |
 | `public OtelTracerConfig build()` | 构建不可变配置，校验 `sampleRate ∈ [0.0, 1.0]` |
 
@@ -154,9 +154,9 @@ OtelTracerConfig config = OtelTracerConfig.builder()
         .exporterEndpoint("http://localhost:4317")
         .protocol("grpc")
         .sampleRate(0.5)
-        .redactionEnabled(true)
-        .redactPrompts(false)   // prompt 不脱敏
-        .redactCompletions(true) // completion 强制脱敏
+        .isRedactionEnabled(true)
+        .shouldRedactPrompts(false)   // prompt 不脱敏
+        .shouldRedactCompletions(true) // completion 强制脱敏
         .build();
 ```
 
@@ -249,12 +249,79 @@ public final class SemConv
 | `GEN_AI_SYSTEM` | `"gen_ai.system"` | LLM 系统标识键 |
 | `GEN_AI_SYSTEM_VALUE` | `"openjiuwen"` | 本框架的 `gen_ai.system` 取值 |
 | `GEN_AI_REQUEST_MODEL` | `"gen_ai.request.model"` | 请求模型名 |
+| `GEN_AI_RESPONSE_MODEL` | `"gen_ai.response.model"` | 响应模型名（从 usage 或响应体回读） |
 | `GEN_AI_OPERATION_NAME` | `"gen_ai.operation.name"` | 操作名（`"chat"` / `"execute_tool"`） |
+| `GEN_AI_PROVIDER_NAME` | `"gen_ai.provider.name"` | 供应商名 |
 | `GEN_AI_PROMPT` | `"gen_ai.prompt"` | 输入 prompt |
 | `GEN_AI_COMPLETION` | `"gen_ai.completion"` | 输出 completion |
-| `GEN_AI_USAGE_PROMPT_TOKENS` | `"gen_ai.usage.prompt_tokens"` | 输入 token 数 |
-| `GEN_AI_USAGE_COMPLETION_TOKENS` | `"gen_ai.usage.completion_tokens"` | 输出 token 数 |
+| `GEN_AI_REQUEST_TEMPERATURE` | `"gen_ai.request.temperature"` | 采样温度 |
+| `GEN_AI_REQUEST_TOP_P` | `"gen_ai.request.top_p"` | top_p |
+| `GEN_AI_REQUEST_MAX_TOKENS` | `"gen_ai.request.max_tokens"` | 最大输出 token 数 |
+| `GEN_AI_REQUEST_MESSAGE_COUNT` | `"gen_ai.request.message_count"` | 输入消息条数 |
+| `GEN_AI_RESPONSE_FINISH_REASON` | `"gen_ai.response.finish_reason"` | 结束原因（单值） |
+| `GEN_AI_RESPONSE_FINISH_REASONS` | `"gen_ai.response.finish_reasons"` | 结束原因数组（按规范要求以数组上报） |
 | `GEN_AI_TOOL_NAME` | `"gen_ai.tool.name"` | 工具名 |
+| `GEN_AI_TOOL_INPUT` | `"gen_ai.tool.input"` | 工具入参 |
+| `GEN_AI_TOOL_OUTPUT` | `"gen_ai.tool.output"` | 工具出参 |
+| `GEN_AI_TOOL_ID` | `"gen_ai.tool.id"` | 工具调用 ID |
+| `GEN_AI_TOOL_CALLS` | `"gen_ai.tool_calls"` | 工具调用列表 |
+| `GEN_AI_TOOL_DEFINITIONS` | `"gen_ai.tool.definitions"` | 工具定义列表 |
+
+### Token 用量属性（`gen_ai.usage.*`）
+
+| 常量 | 值 | 说明 |
+| --- | --- | --- |
+| `GEN_AI_USAGE_PROMPT_TOKENS` | `"gen_ai.usage.prompt_tokens"` | 输入 token 数（旧键） |
+| `GEN_AI_USAGE_COMPLETION_TOKENS` | `"gen_ai.usage.completion_tokens"` | 输出 token 数（旧键） |
+| `GEN_AI_USAGE_TOTAL_TOKENS` | `"gen_ai.usage.total_tokens"` | 总 token 数 |
+| `GEN_AI_USAGE_INPUT_TOKENS` | `"gen_ai.usage.input_tokens"` | 输入 token 数（现行 GenAI 语义键） |
+| `GEN_AI_USAGE_OUTPUT_TOKENS` | `"gen_ai.usage.output_tokens"` | 输出 token 数（现行 GenAI 语义键） |
+| `GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS` | `"gen_ai.usage.cache_read.input_tokens"` | 缓存命中的输入 token 数 |
+
+> **新旧键双写**：`input_tokens`/`output_tokens` 与 `prompt_tokens`/`completion_tokens` 同时上报，兼容仍读旧键的看板。`total_tokens` 优先取模型服务返回值，仅在缺失且输入、输出均存在时按 `input + output` 计算。
+>
+> `cache_read.input_tokens` 来自 `UsageMetadata.getCacheTokens()`，各客户端从 `prompt_tokens_details.cached_tokens` 填充；仅当 `> 0` 时写入，避免把「不支持缓存」误报成「缓存命中 0」。
+
+### 流式延迟指标（`openjiuwen.gen_ai.*`）
+
+以下四项是流式调用的延迟观测指标，全部由 `Model.CallbackIterator` 在唯一的流式收口点计算，经 `UsageMetadata` 携带，最终由 `OtelAgentHandler.setStreamLatencyAttributes()` 写入 LLM Span。
+
+| 常量 | 属性键 | 单位 | 计算方式 |
+| --- | --- | --- | --- |
+| `OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS` | `"openjiuwen.gen_ai.response.time_to_first_token_ms"` | 毫秒 | 请求下发 → 首个**携带模型输出**的 chunk 的时间差（TTFT） |
+| `OJ_GEN_AI_RESPONSE_TPOT_MS` | `"openjiuwen.gen_ai.response.tpot_ms"` | 毫秒 | 首个到末个输出 chunk 的耗时 ÷ `(output_tokens - 1)`（TPOT） |
+| `OJ_GEN_AI_RESPONSE_TOTAL_LATENCY_MS` | `"openjiuwen.gen_ai.response.total_latency_ms"` | 毫秒 | 请求下发 → 流结束的整段耗时 |
+| `OJ_GEN_AI_REASONING_DURATION_MS` | `"openjiuwen.gen_ai.reasoning.duration_ms"` | 毫秒 | 首个到末个 `reasoning_content` chunk 的耗时 |
+
+**指标语义要点**
+
+1. **TTFT 的起点是请求下发，不是首帧到达**。`startNanos` 在 `client.stream()` 调用之前采集，因此覆盖建连、TLS 握手、首字节等待等全部前置开销。若起点后移到首个 chunk，测量会漏掉整段网络等待。
+2. **TTFT 的终点是「携带输出」的 chunk，不是任意首帧**。判定由 `AssistantMessageChunk.carriesOutputToken()` 完成：`content` 非空、或 `reasoning_content` 非空、或存在带 `name`/`arguments` 的 `tool_call` 才算有效输出。role-only 帧、心跳帧、纯 usage 帧、纯 finish 帧一律不计入——推理模型的供应商常在 prefill 完成前数秒就推一个 role-only delta，把它当首 token 会让 TTFT 严重偏小。
+3. **TPOT 的分母是 `output_tokens - 1`，不是 chunk 数**。一个 chunk 可能承载多个 token，chunk 数不等于 token 数。仅在 `output_tokens > 1` 且存在两个以上输出 chunk 时计算。
+4. **缺失即不写，绝不写 0**。四项指标都是 `Double` 可空类型，`null` 表示「未测量」（非流式调用、出错、取消、供应商没发输出 chunk、非推理模型）。`0` 本身是合法测量值，写成 `0` 会让下游无法区分「真的瞬时」和「没测到」。
+5. **总延迟不受首发 token 限制**。即使整条流没有产出任何输出 chunk（例如只带回 usage 的提前结束），`total_latency_ms` 依然可测，因此它不被 `firstTokenNanos` 门控。
+6. **回填时机**：usage 通常只在末帧到达，所以四项指标只能在流结束（`hasNext()` 返回 false）或 `close()` 时回填到最后一个带 usage 的 chunk 对象上。借助对象引用传递，`ReActAgent`、tracer handler、observability rail 等既有消费者无需改动即可读到。
+
+**为什么 TTFT 不写标准键**
+
+标准语义约定中的 `gen_ai.response.time_to_first_chunk`（`GEN_AI_RESPONSE_TIME_TO_FIRST_CHUNK`，单位**秒**）衡量的是「任意类型的首个 chunk」，与「首个携带输出的 chunk」在推理模型上可相差数秒。Java 侧目前只能在输出判定之后观测 chunk，若把 TTFT 写到标准键，等于在标准名称下悄悄替换了测量语义。因此：
+
+- TTFT 写入项目键 `openjiuwen.gen_ai.response.time_to_first_token_ms`
+- 标准键 `gen_ai.response.time_to_first_chunk` **保持不写**，留给未来能对原始首帧计时的数据源
+- 旧键 `GEN_AI_RESPONSE_TTFT_MS`（`"gen_ai.response.time_to_first_token_ms"`）仅为源码兼容保留，handler 不再写入——它借用了标准 `gen_ai.*` 命名空间却用了非标准名字
+
+### 成本与重试属性（`openjiuwen.gen_ai.usage.*` / `openjiuwen.request.*`）
+
+| 常量 | 属性键 | 说明 |
+| --- | --- | --- |
+| `OJ_GEN_AI_USAGE_INPUT_COST` | `"openjiuwen.gen_ai.usage.input_cost"` | 输入成本，取自供应商价目表 |
+| `OJ_GEN_AI_USAGE_OUTPUT_COST` | `"openjiuwen.gen_ai.usage.output_cost"` | 输出成本 |
+| `OJ_GEN_AI_USAGE_TOTAL_COST` | `"openjiuwen.gen_ai.usage.total_cost"` | 总成本 |
+| `OJ_REQUEST_RETRY_COUNT` | `"openjiuwen.request.retry_count"` | 本次调用的重试次数 |
+
+> **成本一律不重算**：三项成本直接读取 `UsageMetadata`，本模块不做任何价格计算——定价属于供应商价目表的职责。**值为 0 时跳过**，否则「供应商没报价」会被误读成「这次调用免费」。
+>
+> `retry_count` 由流式路径上的重试监听器累加，`0` 表示「没有重试」，是真实测量值而非缺失，因此只要 `> 0` 才写（与其他指标的「缺失不写 0」一致）。
 
 ### Workflow 自定义属性（`openjiuwen.workflow.*`）
 
@@ -349,9 +416,9 @@ Prompt / Completion 脱敏与截断工具。轻量内联实现，不依赖 `obse
 ```java
 // prompt 强制不脱敏，completion 强制脱敏
 OtelTracerConfig config = OtelTracerConfig.builder()
-        .redactionEnabled(true)
-        .redactPrompts(false)
-        .redactCompletions(true)
+        .isRedactionEnabled(true)
+        .shouldRedactPrompts(false)
+        .shouldRedactCompletions(true)
         .build();
 
 String prompt = RedactionUtils.redact("hello", config, "prompts");
@@ -493,8 +560,41 @@ public class OtelAgentHandler extends TraceExtAgentHandler
 | --- | --- |
 | `onLlmStart(TraceAgentSpan span, Object inputs, Map instanceInfo)` | 创建 CLIENT Span，设置 `gen_ai.request.model`、`gen_ai.operation.name="chat"`、`gen_ai.prompt`（脱敏后） |
 | `onLlmRequest(TraceAgentSpan span, Map kwargs)` | 添加 `llm.request` 事件 |
-| `onLlmEnd(TraceAgentSpan span, Object outputs)` | 设置 `gen_ai.completion`（脱敏后），结束 Span，状态置 OK |
+| `onLlmEnd(TraceAgentSpan span, Object outputs)` | 设置 `gen_ai.completion`（脱敏后），写入 token 用量、成本、延迟指标、`finish_reason` 与 `gen_ai.response.model`，结束 Span，状态置 OK |
 | `onLlmError(TraceAgentSpan span, Throwable error)` | 状态置 ERROR，记录异常事件，设置 `openjiuwen.error` 与 `openjiuwen.agent.error_message` |
+
+### 响应属性写入流程
+
+`onLlmEnd` 通过 `recordResponseAttrs(state, rawResponse)` 统一回读响应属性，支持 POJO 与 Map 两种形态：
+
+```
+recordResponseAttrs
+├── resolveUsage(rawResponse)
+│   ├── AssistantMessage.getUsageMetadata()        // 非流式
+│   └── List<chunk> 逆序扫描，取首个带 usage 的末帧  // 流式
+└── 命中 usage 后依次调用
+    ├── setTokenAttributes              → 输入/输出/总 token（新旧键双写）
+    ├── setUsageBreakdownAttributes     → cache_read、三项成本、retry_count
+    ├── setUsageModelName               → gen_ai.response.model（来自 usage）
+    ├── setStreamLatencyAttributes      → TTFT / TPOT / 总延迟 / 推理时长
+    ├── setFinishReason                 → finish_reason + finish_reasons 数组
+    └── setResponseModel                → gen_ai.response.model（来自响应体，兜底）
+```
+
+| 私有方法 | 写入内容 |
+| --- | --- |
+| `setTokenAttributes` | `gen_ai.usage.{prompt,completion,total,input,output}_tokens` |
+| `setUsageBreakdownAttributes` | `gen_ai.usage.cache_read.input_tokens`、三项成本、`openjiuwen.request.retry_count` |
+| `setUsageModelName` | `gen_ai.response.model`（读 `UsageMetadata.getModelName()`） |
+| `setStreamLatencyAttributes` | `time_to_first_token_ms`、`tpot_ms`、`total_latency_ms`、`reasoning.duration_ms` |
+| `setFinishReason` | `gen_ai.response.finish_reason` + `gen_ai.response.finish_reasons` |
+| `setResponseModel` | `gen_ai.response.model`（仅 Map 响应，兜底 `setUsageModelName`） |
+
+**流式路径 usage 回读**：`onLlmEnd` 在流式场景收到的是 `List<AssistantMessageChunk>`，而 usage 只挂在末帧，因此 `resolveUsage` 逆序扫描取第一个非空 usage。token 指标受正常路径保护；`total_tokens` 缺失时按 `input + output` 补齐。
+
+### 容错约定
+
+`recordResponseAttrs` 整体包裹 try/catch，捕获 `NullPointerException` / `ClassCastException` / `IllegalArgumentException` / `IllegalStateException` 后以 `debug` 级别记录并跳过——OTel 上报失败绝不传播到业务流。
 
 ### 非 LLM 事件方法
 
@@ -655,6 +755,79 @@ Agent agent = Agent.builder()
 
 ---
 
+## 流式延迟指标采集链路
+
+TTFT / TPOT 这类指标无法从 Span 的开始、结束时间推导出来——OTel Span 只知道整段耗时，不知道流里第一个 token 在第几毫秒出现。因此本模块的延迟指标走了一条独立的采集链路：**在模型层收口点计时 → 挂到 `UsageMetadata` 上 → 由 Handler 读出并写入 Span**。
+
+### 完整链路
+
+```
+Model.stream(request)
+    │
+    ├── startNanos = System.nanoTime()          ← 在 client.stream() 之前采集
+    │
+    ├── client.stream(messages, options)        ← 建连 / TLS / 首字节等待
+    │
+    └── new CallbackIterator(delegate, framework, ..., startNanos, retryCounter)
+            │
+            ├── next()  逐帧判定
+            │     ├── chunk.carriesOutputToken()        → 记 firstTokenNanos / lastTokenNanos
+            │     ├── chunk.getReasoningContent() 非空   → 记 reasoningFirstNanos / reasoningLastNanos
+            │     └── chunk.getUsageMetadata() 非空      → 存为 lastUsage
+            │
+            └── backfillLatency()   在 hasNext()==false 或 close() 时执行一次
+                  ├── lastUsage.setRetryCount(...)
+                  ├── setTotalLatency(整段耗时)
+                  ├── setReasoningDurationMs(reasoningLast - reasoningFirst)
+                  ├── setTtftSeconds((firstTokenNanos - startNanos) / 1e9)
+                  └── setInterTokenLatencyMs(elapsed / (output_tokens - 1))
+                          │
+                          ▼
+                  UsageMetadata（随响应对象/末帧返回）
+                          │
+                          ▼
+              TraceAgentHandler.onLlmEnd → OtelAgentHandler.recordResponseAttrs
+                          │
+                          ├── resolveUsage → List<chunk> 逆序取末帧 usage
+                          └── setStreamLatencyAttributes → span.setAttribute(...)
+```
+
+### 为什么在 `Model.CallbackIterator` 收口
+
+`CallbackIterator` 是所有模型客户端（OpenAI / Qwen / 自研等）流式调用的唯一共同出口：无论具体客户端如何实现，返回的 `Iterator<AssistantMessageChunk>` 都会被这层包装。把计时放在这里，等于**一次实现覆盖全部客户端**，不需要每个 `ModelClient` 各自埋点，也不会因为新增客户端而漏采。
+
+### 时间基准
+
+- 使用 `System.nanoTime()` 而非 `System.currentTimeMillis()`：后者是墙上时钟，会被 NTP 校时、夏令时调整影响，计算出的耗时可能出现负数或跳变；`nanoTime()` 是单调时钟，只用于同一 JVM 内的差值计算，不跨进程传递。
+- 所有时刻都在 `next()` 被调用的瞬间采集，因此测量的是**消费者实际拿到 chunk 的时刻**，包含了框架内部排队、上游背压等真实延迟。
+
+### 回调框架装配依赖（重要）
+
+`CallbackIterator` 只在 `framework != null` 时才被构造。若组件上的 `callbackFramework` 为 `null`，`Model.stream()` 会直接返回裸 iterator，**上述全部延迟指标与 `LLM_STREAM_INPUT`/`LLM_STREAM_OUTPUT` 事件都不会产生**。
+
+组件级 `callbackFramework` 是静态字段，仅由测试通过 `setCallbackFramework(...)` 赋值，生产装配路径没有赋值点。因此 `Model`、`Tool`、`Workflow`、`Pregel`、`NodeTask` 统一改为经 `CallbackUtils.resolveCallbackFramework(componentFramework)` 解析：
+
+| 优先级 | 来源 | 说明 |
+| --- | --- | --- |
+| 1 | 组件上显式设置的 `callbackFramework` | 测试与特殊场景可精确控制 |
+| 2 | `CallbackUtils.frameworkSupplier` | 测试可替换的注入点 |
+| 3 | `Runner.callbackFramework()` | 进程级全局单例，生产默认落点 |
+
+这与 Python 侧 `_fw = Runner.callback_framework` 的行为对齐。缺了这层回退，埋点会「代码在、数据无」——最典型的现象是 Span 正常上报但延迟属性全部缺失。
+
+> `Runner` 仅在 `resolveCallbackFramework` 方法体内引用，避免 `CallbackUtils` 类加载时触发 `Runner` 的初始化链。
+
+### 延迟指标的自检方法
+
+判断延迟属性是否真的写进了 Span，看两点：
+
+1. **Span 上有无 `openjiuwen.gen_ai.response.time_to_first_token_ms`**。完全没有 → 大概率是回调框架未装配（见上一节），而非指标计算错误。
+2. **值是否明显偏小**。若 TTFT 小于供应商的首帧推送延迟（例如推理模型常见 100~300ms 的 prefill 停顿），要怀疑「role-only 帧被当成首 token」——检查 `carriesOutputToken()` 判定是否被绕过。
+
+`ModelStreamLatencyProductionWiringTest` 就是按这个思路写的回归用例：全真实装配（ReActAgent → Model → 真实 `OpenAIModelClient` → 本地 SSE stub → `OtelRail`），stub 先推 role-only 帧再停顿 150ms 才给首个 content 帧，断言 TTFT 必须 `> 120ms`，从而同时守住「属性必须存在」和「首帧语义必须正确」两件事。
+
+---
+
 ## package-info
 
 包级文档，说明本模块提供 `OtelTracerConfig`（配置）、`OtelTracerSetup`（初始化）、`OtelAgentHandler` 与 `OtelWorkflowHandler`（Span 创建）、`OtelRail`（Agent 生命周期集成），对应 Python 的 `openjiuwen.extensions.tracer_otel` 包。
@@ -663,15 +836,25 @@ Agent agent = Agent.builder()
 
 ## 测试总览
 
-本模块共 97 个单元测试，全部通过：
+本模块相关单元测试（含延迟指标与装配回归）：
 
 | 测试类 | 测试数 | 覆盖范围 |
 | --- | --- | --- |
-| `OtelTracerSetupTest` | 20 | 初始化 / 采样率验证 / 采样率集成 |
-| `OtelAgentHandlerTest` | 19 | LLM 事件 / 脱敏 / 非 LLM 事件 / 父子关系 / 规范化 / 容错 |
-| `OtelWorkflowHandlerTest` | 20 | 生命周期 / 组件类型 / 异常处理 / 数据缓冲 / 子 Workflow / 容错 |
+| `OtelTracerSetupTest` | 21 | 初始化 / 采样率验证 / 采样率集成 |
+| `OtelAgentHandlerTest` | 29 | LLM 事件 / 脱敏 / 非 LLM 事件 / 父子关系 / 规范化 / 容错 |
+| `OtelWorkflowHandlerTest` | 22 | 生命周期 / 组件类型 / 异常处理 / 数据缓冲 / 子 Workflow / 容错 |
 | `RedactionUtilsTest` | 25 | 截断 / 哈希 / 脱敏判定 / 脱敏应用 |
 | `OtelSpanManagerTest` | 13 | push / pop / get / 缓冲行为 |
+| `TracerExtDispatchWhenNestedMissingTest` | 2 | 嵌套场景下扩展 handler 分发 |
+| `OtelExitFlushSubprocessTest` | 1 | 进程退出时 Span 刷写 |
+| `ModelStreamLatencyProductionWiringTest` | 1 | 生产装配下 TTFT/TPOT/总延迟必须回填（含首帧语义校验） |
+
+配套的模型层指标采集单元测试位于 `core/src/test/java/com/openjiuwen/core/foundation/llm/`：
+
+| 测试类 | 覆盖范围 |
+| --- | --- |
+| `StreamTimingCollectionTest` | `CallbackIterator` 的 TTFT / TPOT / 总延迟 / 推理时长计算，含 role-only 帧排除、单 token 边界 |
+| `StreamLatencyMetricsTest` | `UsageMetadata` 延迟字段的回填与 `null` 语义 |
 
 测试基础设施见 `ConftestOtel`：使用 `InMemorySpanExporter` + `SdkTracerProvider` + `SimpleSpanProcessor`，提供 `clearExporter()` 与 `jaegerIsAvailable()` 辅助方法。
 
