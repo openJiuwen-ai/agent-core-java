@@ -121,4 +121,23 @@ class OtelRailModelReportTest {
 
         assertThat(info.get("class_name")).isEqualTo("cfg-model");
     }
+
+    @Test
+    @DisplayName("beforeModelCall tolerates a blank pool key without failing the model call")
+    void blankPoolKeyDoesNotInterruptModelCall() {
+        ReActAgent agent =
+                new ReActAgent(AgentCard.builder().id("otel-rail-blank-id").name("otel-rail-blank-id").build());
+        agent.configure(ReActAgentConfig.builder().modelName("cfg-model").build());
+        // Blank pool key on the inputs snapshot means "no dynamic model": the rail
+        // must skip the pool lookup instead of letting id validation fail the call.
+        ModelCallInputs inputs = ModelCallInputs.builder().messages(List.of()).modelId("   ").build();
+        AgentCallbackContext.AgentCallbackContextBuilder builder =
+                AgentCallbackContext.builder().agent(agent).inputs(inputs);
+        Tracer tracer = attachSession(builder);
+
+        Map<?, ?> info = instanceInfoOf(tracer, builder.build());
+
+        assertThat(info.get("class_name")).isEqualTo("cfg-model");
+        assertThat(info.containsKey("model_id")).isFalse();
+    }
 }

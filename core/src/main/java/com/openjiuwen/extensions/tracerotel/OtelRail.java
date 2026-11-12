@@ -152,9 +152,10 @@ public class OtelRail extends AgentRail {
                 inputsDict.put("messages", modelCallInputs.getMessages());
             }
             // Report the raw framework model-pool key; normalization is left to
-            // the caller/collector side.
+            // the caller/collector side. Blank keys mean "no dynamic model" and
+            // must not emit an empty attribute.
             String modelId = currentModelId(ctx, modelCallInputs);
-            if (modelId != null) {
+            if (modelId != null && !modelId.isBlank()) {
                 instanceInfo.put("model_id", modelId);
             }
         }
@@ -455,12 +456,12 @@ public class OtelRail extends AgentRail {
     /**
      * Look up the model name of a registered pool entry.
      *
-     * @param modelId the framework model-pool key, may be {@code null}
+     * @param modelId the framework model-pool key, may be {@code null} or blank
      * @return the pooled model name, or {@code null} when it cannot be resolved
      * @since 0.1.16
      */
     private static String modelNameFromPool(String modelId) {
-        if (modelId == null) {
+        if (modelId == null || modelId.isBlank()) {
             return null;
         }
         try {
