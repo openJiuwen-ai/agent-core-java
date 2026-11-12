@@ -504,8 +504,12 @@ public class ReActAgent extends BaseAgent {
         var contextWindow = context.getContextWindow(systemMessages, tools != null ? tools : null,
                 null, null, buildContextWindowKwargs(ctx));
 
+        // Resolve once before BEFORE_MODEL_CALL so rails can report the model that is
+        // actually used instead of the static configuration.
+        Model activeModel = getLlm(ctx);
         ctx.setInputs(ModelCallInputs.builder().messages(new ArrayList<>(contextWindow.getMessages()))
-                .tools(contextWindow.getToolList()).build());
+                .tools(contextWindow.getToolList()).modelName(resolveModelName(activeModel))
+                .modelId(ctx.getDynamicModelId()).build());
 
         return railedModelCall(ctx, buildKvCacheInvokeKwargs(ctx)).orElse(null);
     }
@@ -1865,8 +1869,12 @@ public class ReActAgent extends BaseAgent {
         var contextWindow = context.getContextWindow(systemMessages, tools != null ? tools : null,
                 null, null, buildContextWindowKwargs(ctx));
 
+        // Resolve once before BEFORE_MODEL_CALL so rails can report the model that is
+        // actually used instead of the static configuration.
+        Model activeModel = getLlm(ctx);
         ctx.setInputs(ModelCallInputs.builder().messages(new ArrayList<>(contextWindow.getMessages()))
-                .tools(contextWindow.getToolList()).build());
+                .tools(contextWindow.getToolList()).modelName(resolveModelName(activeModel))
+                .modelId(ctx.getDynamicModelId()).build());
     }
 
     /**

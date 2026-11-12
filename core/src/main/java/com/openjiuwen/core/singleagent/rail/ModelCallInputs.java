@@ -33,4 +33,18 @@ public class ModelCallInputs implements EventInputs {
     private List<Object> messages = new ArrayList<>();
     private List<ToolInfo> tools;
     private Object response;
+    /**
+     * Name of the model actually used for this call, derived from the resolved
+     * {@code Model}; may be {@code null} when the caller does not fill it in.
+     *
+     * @since 0.1.16
+     */
+    private String modelName;
+    /**
+     * Framework model-pool key ({@code ctx.dynamicModelId}) of the actual model,
+     * kept verbatim; may be {@code null} when the default model is used.
+     *
+     * @since 0.1.16
+     */
+    private String modelId;
 }

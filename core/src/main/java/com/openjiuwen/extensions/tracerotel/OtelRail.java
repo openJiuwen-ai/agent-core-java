@@ -4,7 +4,9 @@
 
 package com.openjiuwen.extensions.tracerotel;
 
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.internal.AgentSession;
@@ -139,15 +141,22 @@ public class OtelRail extends AgentRail {
         ctx.getExtra().put(OTEL_LLM_SPAN_KEY, llmSpan);
 
         Map<String, Object> instanceInfo = new HashMap<>();
-        instanceInfo.put("class_name", getModelName(ctx));
+        instanceInfo.put("class_name", resolveLlmModelName(ctx));
         instanceInfo.put("type", "llm");
 
         Map<String, Object> inputsDict = new HashMap<>();
-        if (ctx.getInputs() instanceof ModelCallInputs modelCallInputs
-                && modelCallInputs.getMessages() != null) {
-            // Pass the raw messages list; the downstream OtelAgentHandler
-            // serializes it to JSON via normalizeLlmPayload() (Jackson).
-            inputsDict.put("messages", modelCallInputs.getMessages());
+        if (ctx.getInputs() instanceof ModelCallInputs modelCallInputs) {
+            if (modelCallInputs.getMessages() != null) {
+                // Pass the raw messages list; the downstream OtelAgentHandler
+                // serializes it to JSON via normalizeLlmPayload() (Jackson).
+                inputsDict.put("messages", modelCallInputs.getMessages());
+            }
+            // Report the raw framework model-pool key; normalization is left to
+            // the caller/collector side.
+            String modelId = currentModelId(ctx, modelCallInputs);
+            if (modelId != null) {
+                instanceInfo.put("model_id", modelId);
+            }
         }
 
         Map<String, Object> kwargs = new HashMap<>();
@@ -395,6 +404,77 @@ public class OtelRail extends AgentRail {
             }
         }
         return agent.getClass().getSimpleName();
+    }
+
+    /**
+     * Resolve the model name to report for the current LLM call.
+     * <p>
+     * Rails such as the harness {@code TaskPlanningRail} may switch the model
+     * during {@code BEFORE_MODEL_CALL}, which happens after the agent captured
+     * {@link ModelCallInputs}. Because this rail runs last (priority 0), the
+     * framework pool key on the context is authoritative here, so the pooled
+     * model is consulted first. Falls back to the name recorded in the inputs
+     * and finally to the static config-derived name.
+     *
+     * @param ctx the agent callback context providing the rail inputs
+     * @return the model name to report; never {@code null} when a fallback succeeds
+     * @since 0.1.16
+     */
+    private static String resolveLlmModelName(AgentCallbackContext ctx) {
+        ModelCallInputs modelCallInputs = ctx.getInputs() instanceof ModelCallInputs inputs ? inputs : null;
+        String pooledName = modelNameFromPool(currentModelId(ctx, modelCallInputs));
+        if (pooledName != null) {
+            return pooledName;
+        }
+        if (modelCallInputs != null) {
+            String inputModelName = modelCallInputs.getModelName();
+            if (inputModelName != null && !inputModelName.isBlank()) {
+                return inputModelName;
+            }
+        }
+        return getModelName(ctx);
+    }
+
+    /**
+     * Return the framework model-pool key used by the current call, preferring the
+     * live context value over the snapshot captured in {@link ModelCallInputs}.
+     *
+     * @param ctx the agent callback context
+     * @param modelCallInputs the captured inputs, may be {@code null}
+     * @return the pool key, or {@code null} when the default model is used
+     * @since 0.1.16
+     */
+    private static String currentModelId(AgentCallbackContext ctx, ModelCallInputs modelCallInputs) {
+        String dynamicModelId = ctx.getDynamicModelId();
+        if (dynamicModelId != null && !dynamicModelId.isBlank()) {
+            return dynamicModelId;
+        }
+        return modelCallInputs != null ? modelCallInputs.getModelId() : null;
+    }
+
+    /**
+     * Look up the model name of a registered pool entry.
+     *
+     * @param modelId the framework model-pool key, may be {@code null}
+     * @return the pooled model name, or {@code null} when it cannot be resolved
+     * @since 0.1.16
+     */
+    private static String modelNameFromPool(String modelId) {
+        if (modelId == null) {
+            return null;
+        }
+        try {
+            if (Runner.resourceMgr().getModel(modelId) instanceof Model model
+                    && model.getModelConfig() != null) {
+                String name = model.getModelConfig().getModelName();
+                if (name != null && !name.isBlank()) {
+                    return name;
+                }
+            }
+        } catch (NullPointerException | ClassCastException | IllegalArgumentException | IllegalStateException e) {
+            LOG.debug("otel rail: failed to resolve model '{}' from the framework pool", modelId, e);
+        }
+        return null;
     }
 
     /**
