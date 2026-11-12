@@ -20,6 +20,9 @@ import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 
 class TodoModifyFunctionTest {
     private static final String SESSION_ID = "todo-modify-contract";
@@ -97,7 +100,6 @@ class TodoModifyFunctionTest {
     @Test
     void historicalMalformedCallsShouldFailWithoutChangingStoredTodos() throws IOException {
         List<Map<String, Object>> malformedCalls = List.of(
-                Map.of("action", "update", "status", "completed", "todos", List.of(Map.of("id", "task-1"))),
                 Map.of("action", "update", "status", "completed", "task_id", "task-1"),
                 Map.of("action", "update", "ids", List.of("task-1"), "status", "completed"));
         for (Map<String, Object> inputs : malformedCalls) {
@@ -123,12 +125,53 @@ class TodoModifyFunctionTest {
     }
 
     @Test
-    void topLevelStatusShouldStillBeRejectedBySchemaValidation() throws IOException {
-        Map<String, Object> inputs = Map.of("action", "update", "status", "completed",
-                "todos", List.of(Map.of("id", "task-1", "result_summary", "done")));
+    void topLevelUpdateFieldsShouldMoveIntoEveryTodoWithoutChangingInput() throws Exception {
+        Map<String, Object> inputs = Map.of("action", "update", "status", "completed", "result_summary", "done",
+                "todos", List.of(Map.of("id", "task-1"), Map.of("id", "task-2")));
 
-        assertThatThrownBy(() -> function.invoke(inputs, Map.of())).hasMessageContaining("status");
-        assertThat(todoTool.load(SESSION_ID).get(0).getStatus()).isEqualTo(TodoStatus.PENDING);
+        assertSuccess(function.invoke(inputs, Map.of()));
+
+        assertThat(inputs).containsKeys("status", "result_summary");
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
+                .containsExactly(TodoStatus.COMPLETED, TodoStatus.COMPLETED);
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getResultSummary)
+                .containsExactly("done", "done");
+    }
+
+    @Test
+    void streamShouldMoveTopLevelStatusIntoTodo() throws Exception {
+        Iterator<Object> chunks = function.stream(Map.of("action", "update", "status", "completed",
+                "todos", List.of(Map.of("id", "task-1"))), Map.of());
+
+        assertSuccess(chunks.next());
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
+                .containsExactly(TodoStatus.COMPLETED, TodoStatus.PENDING);
+    }
+
+    @Test
+    void todoLevelFieldShouldTakePrecedenceOverTopLevelField() throws Exception {
+        Map<String, Object> inputs = Map.of("action", "update", "status", "completed",
+                "todos", List.of(Map.of("id", "task-1"), Map.of("id", "task-2", "status", "in_progress")));
+
+        assertSuccess(function.invoke(inputs, Map.of()));
+
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
+                .containsExactly(TodoStatus.COMPLETED, TodoStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void topLevelFieldsShouldOnlyMoveForUpdateWithTodoObjects() throws IOException {
+        List<Map<String, Object>> rejectedCalls = List.of(
+                Map.of("action", "cancel", "ids", List.of("task-1"), "status", "completed"),
+                Map.of("action", "update", "status", "completed", "todos", List.of("task-1")),
+                Map.of("action", "update", "owner", "someone",
+                        "todos", List.of(Map.of("id", "task-1", "status", "completed"))));
+        for (Map<String, Object> inputs : rejectedCalls) {
+            assertThatThrownBy(() -> function.invoke(inputs, Map.of())).isInstanceOf(ValidationError.class)
+                    .hasMessageContaining("Unexpected keyword argument");
+        }
+        assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getStatus)
+                .containsExactly(TodoStatus.PENDING, TodoStatus.PENDING);
     }
 
     @Test
@@ -180,6 +223,42 @@ class TodoModifyFunctionTest {
     }
 
     @Test
+    void concurrentUpdatesOfDifferentTodosShouldNotOverwriteEachOther() throws Exception {
+        Map<String, Object> first = Map.of("action", "update",
+                "todos", List.of(Map.of("id", "task-1", "result_summary", "first")));
+        Map<String, Object> second = Map.of("action", "update",
+                "todos", List.of(Map.of("id", "task-2", "result_summary", "second")));
+        assertConcurrentUpdatesKeepBoth(first, second);
+    }
+
+    @Test
+    void blankSessionIdShouldShareLockWithOmittedSessionId() throws Exception {
+        Map<String, Object> blankSession = Map.of("action", "update", "session_id", "",
+                "todos", List.of(Map.of("id", "task-1", "result_summary", "first")));
+        Map<String, Object> omittedSession = Map.of("action", "update",
+                "todos", List.of(Map.of("id", "task-2", "result_summary", "second")));
+        assertConcurrentUpdatesKeepBoth(blankSession, omittedSession);
+    }
+
+    private void assertConcurrentUpdatesKeepBoth(Map<String, Object> first, Map<String, Object> second)
+            throws Exception {
+        for (int round = 0; round < 50; round++) {
+            todoTool.save(SESSION_ID, List.of(
+                    TodoItem.builder().id("task-1").content("Analyze workbook").status(TodoStatus.PENDING).build(),
+                    TodoItem.builder().id("task-2").content("Check result").status(TodoStatus.PENDING).build()));
+            CountDownLatch start = new CountDownLatch(1);
+            FutureTask<Object> firstCall = startCall("todo-modify-first-" + round, start, first);
+            FutureTask<Object> secondCall = startCall("todo-modify-second-" + round, start, second);
+            start.countDown();
+
+            assertSuccess(firstCall.get(10, TimeUnit.SECONDS));
+            assertSuccess(secondCall.get(10, TimeUnit.SECONDS));
+            assertThat(todoTool.load(SESSION_ID)).extracting(TodoItem::getResultSummary)
+                    .containsExactly("first", "second");
+        }
+    }
+
+    @Test
     void otherActionsShouldKeepExistingBehavior() throws Exception {
         Map<String, Object> item = Map.of("id", "task-3", "content", "Export", "activeForm", "Exporting",
                 "description", "Export workbook", "status", "pending");
@@ -208,6 +287,15 @@ class TodoModifyFunctionTest {
             assertThat(card.getDescription()).contains("\"action\": \"update\"", "\"todo_data\"",
                     "\"selected_model_id\"", "in_progress");
         }
+    }
+
+    private FutureTask<Object> startCall(String threadName, CountDownLatch start, Map<String, Object> inputs) {
+        FutureTask<Object> call = new FutureTask<>(() -> {
+            start.await();
+            return function.invoke(inputs, Map.of());
+        });
+        new Thread(call, threadName).start();
+        return call;
     }
 
     private static void assertSuccess(Object result) {
