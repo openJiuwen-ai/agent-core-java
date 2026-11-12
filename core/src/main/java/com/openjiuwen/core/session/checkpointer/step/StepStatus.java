@@ -18,7 +18,14 @@ public enum StepStatus {
     /** The step completed successfully; recovery resumes from the next boundary. */
     COMPLETED,
     /** The step failed; recovery applies the failure policy instead of blind replay. */
-    FAILED;
+    FAILED,
+    /**
+     * The execution was suspended by an explicit user pause at this boundary.
+     * Recovery scans must not auto-resume or mark lost a PAUSED cursor: it
+     * records user intent, and only the explicit resume entry point
+     * ({@code StepCheckpointRecoveryService#resumePaused}) may continue it.
+     */
+    PAUSED;
 
     /**
      * Parse a status from its persisted string form.

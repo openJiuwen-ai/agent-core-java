@@ -28,11 +28,20 @@ public class StepCursor {
     /** Session state key under which the latest failed-step cursor is stored. */
     public static final String FAILED_STATE_KEY = "step_cursor_failed";
 
+    /**
+     * Session state key under which the latest paused-step cursor is stored.
+     * A paused cursor records a user-requested suspension point, never a
+     * crash leftover, so it lives on its own key and is invisible to the
+     * RUNNING-cursor recovery scan.
+     */
+    public static final String PAUSED_STATE_KEY = "step_cursor_paused";
+
     private long seq;
     private String stepType;
     private String stepName;
     private StepStatus status;
     private long timestamp;
+    private String sessionId = "";
 
     public StepCursor() {
         this(0L, "", "", StepStatus.RUNNING, 0L);
@@ -48,11 +57,30 @@ public class StepCursor {
      * @param timestamp wall-clock time in milliseconds
      */
     public StepCursor(long seq, String stepType, String stepName, StepStatus status, long timestamp) {
+        this(seq, stepType, stepName, status, timestamp, null);
+    }
+
+    /**
+     * Create a cursor with explicit fields including the owning session id.
+     * Paused cursors always carry it so the explicit resume can locate the
+     * session behind the cursor without an ambiguous whole-store scan.
+     *
+     * @param seq monotonically increasing step sequence number within a task
+     * @param stepType step category, e.g. TOOL_CALL / LLM_RESPONSE / PHASE
+     * @param stepName tool name or phase name
+     * @param status lifecycle status of the step
+     * @param timestamp wall-clock time in milliseconds
+     * @param sessionId id of the session owning the cursor; null falls back
+     *                  to the empty string for cursors without a known owner
+     */
+    public StepCursor(long seq, String stepType, String stepName, StepStatus status, long timestamp,
+                      String sessionId) {
         this.seq = seq;
         this.stepType = stepType == null ? "" : stepType;
         this.stepName = stepName == null ? "" : stepName;
         this.status = status == null ? StepStatus.RUNNING : status;
         this.timestamp = timestamp;
+        this.sessionId = sessionId == null ? "" : sessionId;
     }
 
     public long getSeq() {
@@ -96,6 +124,20 @@ public class StepCursor {
     }
 
     /**
+     * Id of the session owning this cursor, carried by paused cursors so the
+     * explicit resume can locate the session behind the cursor.
+     *
+     * @return owning session id, empty when the cursor has no known owner
+     */
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId == null ? "" : sessionId;
+    }
+
+    /**
      * Serialize to a plain map so the cursor rides inside the state snapshot
      * without requiring a dedicated serializer.
      *
@@ -108,6 +150,7 @@ public class StepCursor {
         map.put("step_name", stepName);
         map.put("status", status.name());
         map.put("timestamp", timestamp);
+        map.put("session_id", sessionId);
         return map;
     }
 
@@ -127,7 +170,8 @@ public class StepCursor {
                 stringValue(raw.get("step_type")),
                 stringValue(raw.get("step_name")),
                 StepStatus.fromString(raw.get("status")),
-                longValue(raw.get("timestamp")));
+                longValue(raw.get("timestamp")),
+                stringValue(raw.get("session_id")));
     }
 
     private static boolean hasSeqMarker(Map<?, ?> raw) {
@@ -186,6 +230,66 @@ public class StepCursor {
     }
 
     /**
+     * Read the latest paused-step cursor from a session state snapshot, using
+     * the same top-level-then-agent-partition lookup as {@link #fromState}.
+     *
+     * @param state full state map as returned by {@code session.state().getState()}, may be null
+     * @return the paused cursor stored under {@link #PAUSED_STATE_KEY},
+     *         or null when absent or malformed
+     */
+    public static StepCursor pausedFromState(Map<String, Object> state) {
+        if (state == null) {
+            return null;
+        }
+        StepCursor cursor = fromMap(state.get(PAUSED_STATE_KEY));
+        if (cursor != null) {
+            return cursor;
+        }
+        Object agentPartition = state.get(State.AGENT_STATE_KEY);
+        if (agentPartition instanceof Map<?, ?> agentMap) {
+            return fromMap(agentMap.get(PAUSED_STATE_KEY));
+        }
+        return null;
+    }
+
+    /**
+     * Remove the latest paused-step cursor from a session state, used by the
+     * explicit resume path after the cursor has moved back to RUNNING.
+     *
+     * <p>The cursor entry is removed entirely rather than blanked to null, so
+     * a serialized snapshot of the state carries no leftover key.</p>
+     *
+     * @param state full state map as returned by {@code session.state().getState()}, may be null
+     * @return true when a stored paused cursor was found and cleared
+     */
+    public static boolean clearPausedFromState(Map<String, Object> state) {
+        if (state == null) {
+            return false;
+        }
+        if (state.containsKey(PAUSED_STATE_KEY)) {
+            state.remove(PAUSED_STATE_KEY);
+            return true;
+        }
+        Object agentPartition = state.get(State.AGENT_STATE_KEY);
+        if (agentPartition instanceof Map<?, ?> agentMap) {
+            Map<String, Object> partition = asMutable(agentMap);
+            if (!partition.containsKey(PAUSED_STATE_KEY)) {
+                return false;
+            }
+            partition.remove(PAUSED_STATE_KEY);
+            state.put(State.AGENT_STATE_KEY, partition);
+            return true;
+        }
+        return false;
+    }
+
+    private static Map<String, Object> asMutable(Map<?, ?> raw) {
+        Map<String, Object> mutable = new LinkedHashMap<>();
+        raw.forEach((key, value) -> mutable.put(String.valueOf(key), value));
+        return mutable;
+    }
+
+    /**
      * Whether this cursor advanced beyond the given one, used by recovery to
      * reject stale or out-of-order writes.
      *
@@ -208,18 +312,20 @@ public class StepCursor {
                 && timestamp == cursor.timestamp
                 && stepType.equals(cursor.stepType)
                 && stepName.equals(cursor.stepName)
-                && status == cursor.status;
+                && status == cursor.status
+                && sessionId.equals(cursor.sessionId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(seq, stepType, stepName, status, timestamp);
+        return Objects.hash(seq, stepType, stepName, status, timestamp, sessionId);
     }
 
     @Override
     public String toString() {
         return "StepCursor{seq=" + seq + ", stepType=" + stepType
-                + ", stepName=" + stepName + ", status=" + status + ", timestamp=" + timestamp + "}";
+                + ", stepName=" + stepName + ", status=" + status + ", timestamp=" + timestamp
+                + ", sessionId=" + sessionId + "}";
     }
 
     private static long longValue(Object value) {

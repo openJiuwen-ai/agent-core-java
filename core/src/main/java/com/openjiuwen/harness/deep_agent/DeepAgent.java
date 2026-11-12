@@ -38,7 +38,6 @@ import com.openjiuwen.core.multitenant.workspace.WorkspaceStore;
 import com.openjiuwen.core.multitenant.workspace.WorkspaceStoreFactory;
 import com.openjiuwen.core.multitenant.workspace.WorkspaceType;
 import com.openjiuwen.core.multitenant.workspace.store.LocalWorkspaceStore;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -47,9 +46,11 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
 import com.openjiuwen.core.session.checkpointer.step.KvStepJournal;
+import com.openjiuwen.core.session.checkpointer.step.PauseRequestRegistry;
 import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.session.checkpointer.step.StepJournal;
 import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.state.State;
@@ -110,7 +111,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -2435,6 +2435,24 @@ public class DeepAgent implements AutoCloseable {
                 coordinator.addTokenUsage(resolveTokenUsage(roundResult));
                 coordinator.setLastResult(roundResult);
                 recordTaskLoopStepBoundary(session, roundResult, "round-" + (rounds.size()));
+                Map<String, Object> pauseInfo = consumePauseIfRequested(session);
+                if (pauseInfo != null) {
+                    if (pauseTaskLoopAtBoundary(session, roundResult, pauseInfo)) {
+                        break;
+                    }
+                    // The pause evidence could not be persisted: the consumed
+                    // request is discarded and the loop continues with the
+                    // next round instead of ending with a paused shape that no
+                    // resume can continue.
+                }
+                // The inner ReAct agent may have consumed the pause intent at
+                // its own iteration head (both loops share the registry key);
+                // its paused round result must end the task loop, otherwise
+                // later rounds keep running after the user asked to pause.
+                if (isInnerPausedRound(roundResult)) {
+                    pauseTaskLoopAtInnerBoundary(session, roundResult);
+                    break;
+                }
                 if (isExplicitCompletionPolicy) {
                     updateCompletionPromise(coordinator, roundResult);
                     if (!coordinator.shouldContinue()) {
@@ -4131,6 +4149,19 @@ public class DeepAgent implements AutoCloseable {
         }
         StepCheckpointPolicy effectivePolicy = config.getStepCheckpointPolicy();
         stepCheckpointTrigger = new StepCheckpointTrigger(checkpointer, journal, effectivePolicy);
+        if (checkpointer != null && baseSession != null) {
+            StepCursor last = checkpointer.lastCompletedStep(baseSession);
+            if (last != null) {
+                stepCheckpointTrigger.seedSeq(last.getSeq());
+            }
+            // Pause evidence left by a previous process holds a seq beyond
+            // the resume point; seeding past it keeps the next pauseNow above
+            // the stale-seq guard instead of being silently rejected.
+            StepCursor lastPaused = checkpointer.lastPausedStep(baseSession);
+            if (lastPaused != null) {
+                stepCheckpointTrigger.seedSeq(lastPaused.getSeq());
+            }
+        }
     }
 
     /**
@@ -4162,6 +4193,97 @@ public class DeepAgent implements AutoCloseable {
         }
         stepCheckpointTrigger.stepCompleted(baseSession, null, null,
                 new StepBoundary("PHASE", stepName, status, 0L));
+    }
+
+    /**
+     * Consumes the pending pause intent of the task-loop session, if any.
+     *
+     * @param session loop session carrying the pause intent
+     * @return the consumed pause metadata, or null when no pause was requested
+     */
+    private static Map<String, Object> consumePauseIfRequested(AgentSessionApi session) {
+        if (session == null) {
+            return null;
+        }
+        return PauseRequestRegistry.consumePauseRequest(session.getSessionId());
+    }
+
+    /**
+     * Persists the user-pause boundary at the finished round: the PAUSED step
+     * cursor and the pause metadata flush through the checkpoint save path on
+     * top of the just-completed round state. A round without its own outcome
+     * (answer) is marked {@code paused} so the task loop result carries the
+     * pause outcome; a round that already ended as {@code interrupt} or
+     * {@code error} keeps that shape and records the pause through
+     * {@code pause_info} alone, so the outcome evidence stays visible.
+     *
+     * @param session loop session being paused
+     * @param roundResult result map of the finished round, mutated in place
+     * @param pauseInfo consumed pause metadata (operator, reason), may be null
+     * @return true when the pause evidence was persisted and the round result
+     *         carries the pause outcome; false when the cursor could not be
+     *         persisted, leaving the round result in its own shape so no
+     *         resume will be attempted
+     */
+    private boolean pauseTaskLoopAtBoundary(AgentSessionApi session, Map<String, Object> roundResult,
+                                            Map<String, Object> pauseInfo) {
+        BaseSession baseSession = taskLoopBaseSession(session);
+        boolean isPausePersisted = stepCheckpointTrigger.pauseNow(baseSession, "PHASE", "user-pause", pauseInfo);
+        if (!isPausePersisted) {
+            Loggers.AGENT.warning("User pause requested but the paused cursor could not be persisted for session {};"
+                    + " the round result keeps its own shape so no resume will be attempted",
+                    session == null ? null : session.getSessionId());
+            return false;
+        }
+        if (roundResult != null) {
+            // A round that already carries its own outcome (interrupt, error)
+            // keeps that shape: overwriting result_type/output would erase the
+            // evidence the caller and the resume flow need, so the pause is
+            // recorded through pause_info alone. Any other round is marked
+            // paused so the task-loop result carries the pause outcome.
+            Object roundOutcome = roundResult.get("result_type");
+            boolean hasOwnOutcome = "interrupt".equals(String.valueOf(roundOutcome))
+                    || "error".equals(String.valueOf(roundOutcome))
+                    || roundResult.containsKey("error");
+            if (hasOwnOutcome) {
+                if (pauseInfo != null && !pauseInfo.isEmpty()) {
+                    roundResult.putIfAbsent("pause_info", pauseInfo);
+                }
+            } else {
+                roundResult.put("result_type", "paused");
+                roundResult.put("output", "Paused by user request");
+                if (pauseInfo != null && !pauseInfo.isEmpty()) {
+                    roundResult.put("pause_info", pauseInfo);
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Whether the finished round was paused by the inner ReAct agent: the
+     * inner loop consumed the pause intent at its iteration head and ended
+     * with the paused result shape.
+     *
+     * @param roundResult result map of the finished round, may be null
+     * @return true when the round carries the inner paused outcome
+     */
+    private static boolean isInnerPausedRound(Map<String, Object> roundResult) {
+        return roundResult != null && "paused".equals(String.valueOf(roundResult.get("result_type")));
+    }
+
+    /**
+     * Ends the task loop on a round the inner agent already paused: the PAUSED
+     * cursor and pause metadata are already persisted by the inner loop, so
+     * only the round result is normalized to carry the pause outcome.
+     *
+     * @param session loop session paused by the inner agent
+     * @param roundResult result map of the inner paused round, mutated in place
+     */
+    private void pauseTaskLoopAtInnerBoundary(AgentSessionApi session, Map<String, Object> roundResult) {
+        if (roundResult != null && !roundResult.containsKey("pause_info")) {
+            roundResult.put("pause_info", Map.of("source", "inner-agent"));
+        }
     }
 
     /**
