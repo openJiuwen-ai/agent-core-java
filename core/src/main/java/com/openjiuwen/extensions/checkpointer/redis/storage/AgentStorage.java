@@ -214,18 +214,22 @@ public class AgentStorage extends BaseRedisStorage {
     }
 
     /**
-     * Resume one user-paused session identified by id: overwrite the
-     * session's agent-state blob with the main cursor flipped back to
-     * RUNNING at the paused seq and the paused evidence removed.
+     * Resume one user-paused session identified by id: overwrite every
+     * agent-state blob of the session that holds paused evidence with the
+     * main cursor flipped back to RUNNING at the paused seq and the paused
+     * evidence removed. A multi-agent session may hold paused evidence in
+     * several blobs, so one agent's continuation must not leave its siblings
+     * paused behind a session the caller considers resumed.
      *
      * @param sessionId id of the session to resume, never null or blank
-     * @return future completing when the resumed state is persisted
+     * @return future completing when the resumed states are persisted
      */
     public CompletableFuture<Void> resumePausedBySessionId(String sessionId) {
         try {
             java.util.Objects.requireNonNull(sessionId, "sessionId");
             Map<String, Object> blobs = redisStore
                     .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join();
+            boolean hasResumedOne = false;
             if (blobs != null) {
                 for (Map.Entry<String, Object> entry : blobs.entrySet()) {
                     if (!entry.getKey().endsWith(":" + STATE_BLOBS)
@@ -248,13 +252,17 @@ public class AgentStorage extends BaseRedisStorage {
                     // Write back through the exact keys the blob was read from:
                     // re-deriving them from the session id would miss the agent
                     // segment (agentId may differ) and the tenant prefix.
-                    return persistResumedState(normalized, entry.getKey(),
+                    persistResumedState(normalized, entry.getKey(),
                             entry.getKey().substring(0,
                                     entry.getKey().length() - STATE_BLOBS.length()) + STATE_BLOBS_DUMP_TYPE);
+                    hasResumedOne = true;
                 }
             }
-            return CompletableFuture.failedFuture(
-                    new IllegalStateException("No paused session found for session_id " + sessionId));
+            if (!hasResumedOne) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("No paused session found for session_id " + sessionId));
+            }
+            return CompletableFuture.completedFuture(null);
         } catch (Throwable throwable) {
             return CompletableFuture.failedFuture(wrapFailure(throwable));
         }

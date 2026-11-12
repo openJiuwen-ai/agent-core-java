@@ -211,9 +211,12 @@ public class StepCheckpointTrigger {
     }
 
     /**
-     * Lift the sequence counter to the persisted resume point of the session
-     * before minting a paused cursor, so the cursor stays above the store and
-     * passes the stale-seq guard.
+     * Lift the sequence counter above the persisted cursors of the session
+     * before minting a paused cursor, so the cursor stays above both the
+     * resume point and any stored pause evidence and passes the stale-seq
+     * guard: a trigger whose counter trails the store (an un-seeded
+     * inner-loop trigger, or one facing pause evidence left by a sibling
+     * trigger) cannot mint a paused cursor that would be silently dropped.
      *
      * @param session session about to persist a pause boundary
      */
@@ -222,9 +225,13 @@ public class StepCheckpointTrigger {
             return;
         }
         try {
-            StepCursor last = checkpointer.lastCompletedStep(session);
-            if (last != null) {
-                seedSeq(last.getSeq());
+            StepCursor lastCompleted = checkpointer.lastCompletedStep(session);
+            if (lastCompleted != null) {
+                seedSeq(lastCompleted.getSeq());
+            }
+            StepCursor lastPaused = checkpointer.lastPausedStep(session);
+            if (lastPaused != null) {
+                seedSeq(lastPaused.getSeq());
             }
         } catch (RuntimeException exception) {
             log.debug("Pause boundary seeding skipped for session {}: {}",

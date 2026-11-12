@@ -277,7 +277,10 @@ public class PersistenceCheckpointer extends Checkpointer {
     /**
      * Resume one user-paused session identified by id: flip the main cursor
      * back to RUNNING with the paused seq, clear the paused evidence, and
-     * flush through the regular save transaction.
+     * flush through the regular save transaction. A multi-agent session may
+     * hold paused evidence in several agent blobs, so every blob carrying it
+     * is resumed - one agent's continuation must not leave its siblings
+     * paused behind a session the caller considers resumed.
      *
      * @param sessionId id of the session to resume, never null or blank
      * @throws IllegalStateException when the session has no persisted state
@@ -293,8 +296,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             throw new IllegalStateException("No persisted state found for session_id " + sessionId);
         }
         // One session id may own several agent blobs (multi-agent sessions);
-        // scan all of them so the resume hits the blob actually holding the
-        // paused evidence instead of silently missing it.
+        // resume every blob holding paused evidence so the whole session
+        // continues instead of only the first agent in key order.
+        boolean hasResumedOne = false;
         for (Map.Entry<String, String> entry : keys.entrySet()) {
             Object dumpType = kvStore.get(entry.getValue()).join();
             Object blob = kvStore.get(entry.getKey()).join();
@@ -310,9 +314,11 @@ public class PersistenceCheckpointer extends Checkpointer {
             }
             Checkpointer.applyResumeToState(normalized, paused);
             persistResumedState(normalized, entry.getKey(), entry.getValue());
-            return;
+            hasResumedOne = true;
         }
-        throw new IllegalStateException("No paused session found for session_id " + sessionId);
+        if (!hasResumedOne) {
+            throw new IllegalStateException("No paused session found for session_id " + sessionId);
+        }
     }
 
     private void persistResumedState(Map<String, Object> state, String blobKey, String dumpTypeKey) {

@@ -117,7 +117,11 @@ public class StepCheckpointRecoveryService {
      * shares the processed registry and the cursor marker key space with the
      * automatic scan, so a resume is idempotent within a process and the
      * running continuation the resume creates is not re-processed by a later
-     * automatic scan.</p>
+     * automatic scan. A multi-agent session may hold paused cursors beyond
+     * the requested one, so the session's paused cursors are collected before
+     * the resume clears them and registered afterwards: the continuations its
+     * sibling agents create must not be re-classified as crash leftovers by a
+     * later scan.</p>
      *
      * @param cursor paused cursor of the session to resume, never null
      * @return the action taken; {@code SKIPPED_ALREADY_PROCESSED} when the
@@ -131,8 +135,10 @@ public class StepCheckpointRecoveryService {
         if (!processedSessions.add(sessionMarker(cursor))) {
             return new RecoveryAction(cursor, RecoveryActionType.SKIPPED_ALREADY_PROCESSED, "already resumed");
         }
+        List<String> sessionPauseMarkers = collectSessionPauseMarkers(cursor);
         try {
             checkpointer.resumePaused(cursor);
+            processedSessions.addAll(sessionPauseMarkers);
             log.info("Paused session resumed by explicit request: {}", cursor);
             return new RecoveryAction(cursor, RecoveryActionType.RESUMED_EXPLICITLY, "resumed");
         } catch (RuntimeException exception) {
@@ -140,6 +146,34 @@ public class StepCheckpointRecoveryService {
             log.warn("Explicit resume failed for cursor {}: {}", cursor, exception.getMessage());
             return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, exception.getMessage());
         }
+    }
+
+    /**
+     * Collect the registry markers of all paused cursors of the resumed
+     * session, taken before the resume clears the evidence. The resumed
+     * continuation keeps the paused seq, so the markers match the cursors the
+     * automatic scan sees afterwards.
+     *
+     * @param resumedCursor paused cursor that drives the resume
+     * @return markers of the session's paused cursors, empty on scan failure
+     */
+    private List<String> collectSessionPauseMarkers(StepCursor resumedCursor) {
+        String sessionId = resumedCursor.getSessionId();
+        if (sessionId == null || sessionId.isEmpty()) {
+            return List.of();
+        }
+        List<String> markers = new ArrayList<>();
+        try {
+            for (StepCursor paused : checkpointer.scanPausedSteps()) {
+                if (sessionId.equals(paused.getSessionId())) {
+                    markers.add(sessionMarker(paused));
+                }
+            }
+        } catch (RuntimeException exception) {
+            log.warn("Pause marker collection skipped for session {}: {}",
+                    sessionId, exception.getMessage());
+        }
+        return markers;
     }
 
     /**

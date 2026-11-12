@@ -256,6 +256,9 @@ public class StepCursor {
      * Remove the latest paused-step cursor from a session state, used by the
      * explicit resume path after the cursor has moved back to RUNNING.
      *
+     * <p>The cursor entry is removed entirely rather than blanked to null, so
+     * a serialized snapshot of the state carries no leftover key.</p>
+     *
      * @param state full state map as returned by {@code session.state().getState()}, may be null
      * @return true when a stored paused cursor was found and cleared
      */
@@ -264,7 +267,7 @@ public class StepCursor {
             return false;
         }
         if (state.containsKey(PAUSED_STATE_KEY)) {
-            state.put(PAUSED_STATE_KEY, null);
+            state.remove(PAUSED_STATE_KEY);
             return true;
         }
         Object agentPartition = state.get(State.AGENT_STATE_KEY);
@@ -273,7 +276,7 @@ public class StepCursor {
             if (!partition.containsKey(PAUSED_STATE_KEY)) {
                 return false;
             }
-            partition.put(PAUSED_STATE_KEY, null);
+            partition.remove(PAUSED_STATE_KEY);
             state.put(State.AGENT_STATE_KEY, partition);
             return true;
         }

@@ -713,11 +713,12 @@ class StepPauseResumeTest {
 
         assertTrue(StepCursor.clearPausedFromState(snapshot));
         assertNull(StepCursor.pausedFromState(snapshot));
-        // The mutation must land on the caller-held map, not a discarded copy.
+        // The mutation must land on the caller-held map, not a discarded copy,
+        // and the paused-cursor entry is removed entirely: a serialized
+        // snapshot must carry no leftover null-valued paused-cursor key.
         @SuppressWarnings("unchecked")
         Map<String, Object> written = (Map<String, Object>) snapshot.get(State.AGENT_STATE_KEY);
-        assertTrue(written.containsKey(StepCursor.PAUSED_STATE_KEY));
-        assertNull(written.get(StepCursor.PAUSED_STATE_KEY));
+        assertFalse(written.containsKey(StepCursor.PAUSED_STATE_KEY));
     }
 
     @Test
@@ -835,7 +836,7 @@ class StepPauseResumeTest {
     }
 
     @Test
-    void triggerPauseNowReportsFalseWhenTheStoreHoldsNewerPauseEvidence() {
+    void triggerPauseNowOverwritesStalePauseEvidenceWithANewerCursor() {
         InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
         AgentStateCollection state = new AgentStateCollection();
         TestSession session = new TestSession("session-pause-stale", "agent-pause-stale", state);
@@ -843,19 +844,156 @@ class StepPauseResumeTest {
         checkpointer.stepCompleted(session,
                 new StepCursor(2L, "PHASE", "round-2", StepStatus.COMPLETED, 1L));
         checkpointer.stepPaused(session,
-                new StepCursor(4L, "PHASE", "user-pause", StepStatus.PAUSED, 2L), null);
+                new StepCursor(4L, "PHASE", "user-pause", StepStatus.PAUSED, 2L),
+                Map.of("operator", "op-old"));
 
-        // The counter seeds to the completed resume point (2) and mints 3,
-        // but the store already holds pause evidence at seq 4: the stale-seq
-        // guard rejects the write and pauseNow must report it.
+        // The counter seeds above both the resume point and the stored pause
+        // evidence, so the new pause is persisted at a seq strictly greater
+        // than the stored one; pauses repeat legitimately, and a newer
+        // paused cursor always wins over stale evidence.
         StepCheckpointTrigger trigger = new StepCheckpointTrigger(checkpointer, null, StepCheckpointPolicy.STEP_ALWAYS);
-        assertFalse(trigger.pauseNow(session, "PHASE", "user-pause", null));
+        assertTrue(trigger.pauseNow(session, "PHASE", "user-pause", Map.of("operator", "op-new")));
 
-        // The rejected write left the stored pause evidence untouched.
-        assertEquals(4L, checkpointer.lastPausedStep(session).getSeq());
+        StepCursor paused = checkpointer.lastPausedStep(session);
+        assertNotNull(paused);
+        assertTrue(paused.getSeq() > 4L, "the new pause must overwrite the stored evidence");
+        assertEquals("op-new",
+                ((Map<?, ?>) session.state().get(Checkpointer.SESSION_PAUSE_STATE_KEY)).get("operator"));
     }
 
-    private static final class TestSession extends BaseSession {
+    @Test
+    void triggerPauseNowSeedsPastStoredPauseEvidence() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("session-pause-reseed", "agent-pause-reseed", state);
+        checkpointer.preAgentExecute(session, null);
+        checkpointer.stepPaused(session,
+                new StepCursor(4L, "PHASE", "user-pause", StepStatus.PAUSED, 1L),
+                Map.of("operator", "op-old"));
+
+        // A fresh trigger facing stored pause evidence at seq 4: the seed
+        // must lift the counter past it, so the new pause is persisted at a
+        // later boundary instead of being silently rejected by the
+        // stale-seq guard.
+        StepCheckpointTrigger trigger = new StepCheckpointTrigger(checkpointer, null, StepCheckpointPolicy.STEP_ALWAYS);
+        assertTrue(trigger.pauseNow(session, "PHASE", "user-pause", Map.of("operator", "op-new")));
+
+        StepCursor paused = checkpointer.lastPausedStep(session);
+        assertNotNull(paused);
+        assertTrue(paused.getSeq() > 4L, "the new pause must carry a seq above the stored evidence");
+        assertEquals("op-new", ((Map<?, ?>) session.state().get(Checkpointer.SESSION_PAUSE_STATE_KEY)).get("operator"));
+    }
+
+    @Test
+    void persistenceResumeBySessionIdResumesEveryPausedAgentOfTheSession() {
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
+        AgentStateCollection stateA = new AgentStateCollection();
+        TestSession agentA = new TestSession("session-multi-agent", "agent-multi-a", stateA);
+        checkpointer.preAgentExecute(agentA, null);
+        checkpointer.stepPaused(agentA,
+                new StepCursor(2L, "PHASE", "user-pause", StepStatus.PAUSED, 1L), null);
+        AgentStateCollection stateB = new AgentStateCollection();
+        TestSession agentB = new TestSession("session-multi-agent", "agent-multi-b", stateB);
+        checkpointer.preAgentExecute(agentB, null);
+        checkpointer.stepPaused(agentB,
+                new StepCursor(5L, "PHASE", "user-pause", StepStatus.PAUSED, 2L), null);
+
+        assertEquals(2, checkpointer.scanPausedSteps().size());
+
+        StepCheckpointRecoveryService service = new StepCheckpointRecoveryService(checkpointer, null);
+        assertEquals(StepCheckpointRecoveryService.RecoveryActionType.RESUMED_EXPLICITLY,
+                service.resumePaused("session-multi-agent").type());
+
+        // Both agents of the session continue: neither keeps paused evidence
+        // behind a session the caller considers resumed.
+        assertNull(checkpointer.lastPausedStep("session-multi-agent"));
+        assertEquals(0, checkpointer.scanPausedSteps().size());
+
+        AgentStateCollection restoredA = new AgentStateCollection();
+        TestSession restoredA2 = new TestSession("session-multi-agent", "agent-multi-a", restoredA);
+        checkpointer.preAgentExecute(restoredA2, null);
+        StepCursor resumedA = checkpointer.lastCompletedStep(restoredA2);
+        assertNotNull(resumedA);
+        assertEquals(2L, resumedA.getSeq());
+        assertEquals(StepStatus.RUNNING, resumedA.getStatus());
+
+        AgentStateCollection restoredB = new AgentStateCollection();
+        TestSession restoredB2 = new TestSession("session-multi-agent", "agent-multi-b", restoredB);
+        checkpointer.preAgentExecute(restoredB2, null);
+        StepCursor resumedB = checkpointer.lastCompletedStep(restoredB2);
+        assertNotNull(resumedB);
+        assertEquals(5L, resumedB.getSeq());
+        assertEquals(StepStatus.RUNNING, resumedB.getStatus());
+    }
+
+    @Test
+    void resumePausedRegistersTheSessionPausedMarkersBeforeClearingThem() {
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
+        AgentStateCollection stateA = new AgentStateCollection();
+        TestSession agentA = new TestSession("session-marker-sibs", "agent-marker-a", stateA);
+        checkpointer.preAgentExecute(agentA, null);
+        checkpointer.stepCompleted(agentA,
+                new StepCursor(1L, "PHASE", "round-1", StepStatus.RUNNING, 1L));
+        checkpointer.stepPaused(agentA,
+                new StepCursor(2L, "PHASE", "user-pause", StepStatus.PAUSED, 1L), null);
+        AgentStateCollection stateB = new AgentStateCollection();
+        TestSession agentB = new TestSession("session-marker-sibs", "agent-marker-b", stateB);
+        checkpointer.preAgentExecute(agentB, null);
+        checkpointer.stepCompleted(agentB,
+                new StepCursor(3L, "PHASE", "round-3", StepStatus.RUNNING, 2L));
+        checkpointer.stepPaused(agentB,
+                new StepCursor(4L, "PHASE", "user-pause", StepStatus.PAUSED, 2L), null);
+
+        StepCheckpointRecoveryService service = new StepCheckpointRecoveryService(checkpointer, null);
+        List<StepCursor> pausedCursors = service.scanPausedSteps();
+        assertEquals(2, pausedCursors.size());
+        StepCursor pausedA = pausedCursors.stream()
+                .filter(cursor -> cursor.getSeq() == 2L).findFirst().orElseThrow();
+
+        assertEquals(StepCheckpointRecoveryService.RecoveryActionType.RESUMED_EXPLICITLY,
+                service.resumePaused(pausedA).type());
+
+        // The full-session resume cleared both agents' paused evidence and
+        // flipped both main cursors to RUNNING; the automatic scan must skip
+        // the whole session as already processed instead of marking the
+        // sibling continuation lost as a crash leftover.
+        List<StepCheckpointRecoveryService.RecoveryAction> actions = service.recoverLeftovers();
+        assertEquals(2, actions.size());
+        for (StepCheckpointRecoveryService.RecoveryAction action : actions) {
+            assertEquals(StepCheckpointRecoveryService.RecoveryActionType.SKIPPED_ALREADY_PROCESSED,
+                    action.type());
+        }
+
+        AgentStateCollection restoredB = new AgentStateCollection();
+        TestSession restoredB2 = new TestSession("session-marker-sibs", "agent-marker-b", restoredB);
+        checkpointer.preAgentExecute(restoredB2, null);
+        StepCursor resumedB = checkpointer.lastCompletedStep(restoredB2);
+        assertNotNull(resumedB);
+        assertEquals(4L, resumedB.getSeq());
+        assertEquals(StepStatus.RUNNING, resumedB.getStatus());
+    }
+
+    @Test
+    void clearPausedFromStateLeavesNoNullValuedKeyBehind() {
+        Map<String, Object> partition = new HashMap<>();
+        partition.put(StepCursor.PAUSED_STATE_KEY,
+                new StepCursor(1L, "PHASE", "user-pause", StepStatus.PAUSED, 1L).toMap());
+        Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put(State.AGENT_STATE_KEY, partition);
+
+        assertTrue(StepCursor.clearPausedFromState(snapshot));
+        assertNull(StepCursor.pausedFromState(snapshot));
+        // The cleared entry is removed entirely, not blanked to null: a
+        // serialized snapshot must carry no leftover paused-cursor key.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> written = (Map<String, Object>) snapshot.get(State.AGENT_STATE_KEY);
+        assertFalse(written.containsKey(StepCursor.PAUSED_STATE_KEY));
+    }
+
+    // Public so the checkpointer's cross-package reflection on agentId()
+    // reaches the declaring class: identity lookups fail closed to an empty
+    // entity id on inaccessible types.
+    public static final class TestSession extends BaseSession {
         private final String sessionId;
         private final String agentId;
         private final SessionStateAccess state;
@@ -889,7 +1027,7 @@ class StepPauseResumeTest {
         }
 
         @SuppressWarnings("unused")
-        String agentId() {
+        public String agentId() {
             return agentId;
         }
     }

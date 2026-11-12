@@ -4154,6 +4154,13 @@ public class DeepAgent implements AutoCloseable {
             if (last != null) {
                 stepCheckpointTrigger.seedSeq(last.getSeq());
             }
+            // Pause evidence left by a previous process holds a seq beyond
+            // the resume point; seeding past it keeps the next pauseNow above
+            // the stale-seq guard instead of being silently rejected.
+            StepCursor lastPaused = checkpointer.lastPausedStep(baseSession);
+            if (lastPaused != null) {
+                stepCheckpointTrigger.seedSeq(lastPaused.getSeq());
+            }
         }
     }
 
