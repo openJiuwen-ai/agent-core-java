@@ -154,10 +154,9 @@ public class OtelRail extends AgentRail {
             // Report the raw framework model-pool key; normalization is left to
             // the caller/collector side. Blank keys mean "no dynamic model" and
             // must not emit an empty attribute.
-            String modelId = currentModelId(ctx, modelCallInputs);
-            if (modelId != null && !modelId.isBlank()) {
-                instanceInfo.put("model_id", modelId);
-            }
+            currentModelId(ctx, modelCallInputs)
+                    .filter(id -> !id.isBlank())
+                    .ifPresent(id -> instanceInfo.put("model_id", id));
         }
 
         Map<String, Object> kwargs = new HashMap<>();
@@ -423,9 +422,9 @@ public class OtelRail extends AgentRail {
      */
     private static String resolveLlmModelName(AgentCallbackContext ctx) {
         ModelCallInputs modelCallInputs = ctx.getInputs() instanceof ModelCallInputs inputs ? inputs : null;
-        String pooledName = modelNameFromPool(currentModelId(ctx, modelCallInputs));
-        if (pooledName != null) {
-            return pooledName;
+        Optional<String> pooledName = modelNameFromPool(currentModelId(ctx, modelCallInputs));
+        if (pooledName.isPresent()) {
+            return pooledName.get();
         }
         if (modelCallInputs != null) {
             String inputModelName = modelCallInputs.getModelName();
@@ -442,40 +441,43 @@ public class OtelRail extends AgentRail {
      *
      * @param ctx the agent callback context
      * @param modelCallInputs the captured inputs, may be {@code null}
-     * @return the pool key, or {@code null} when the default model is used
+     * @return the pool key, empty when the default model is used
      * @since 0.1.16
      */
-    private static String currentModelId(AgentCallbackContext ctx, ModelCallInputs modelCallInputs) {
+    private static Optional<String> currentModelId(AgentCallbackContext ctx, ModelCallInputs modelCallInputs) {
         String dynamicModelId = ctx.getDynamicModelId();
         if (dynamicModelId != null && !dynamicModelId.isBlank()) {
-            return dynamicModelId;
+            return Optional.of(dynamicModelId);
         }
-        return modelCallInputs != null ? modelCallInputs.getModelId() : null;
+        if (modelCallInputs == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(modelCallInputs.getModelId());
     }
 
     /**
      * Look up the model name of a registered pool entry.
      *
-     * @param modelId the framework model-pool key, may be {@code null} or blank
-     * @return the pooled model name, or {@code null} when it cannot be resolved
+     * @param modelId the framework model-pool key, empty when absent
+     * @return the pooled model name, empty when it cannot be resolved
      * @since 0.1.16
      */
-    private static String modelNameFromPool(String modelId) {
-        if (modelId == null || modelId.isBlank()) {
-            return null;
+    private static Optional<String> modelNameFromPool(Optional<String> modelId) {
+        if (modelId.isEmpty() || modelId.get().isBlank()) {
+            return Optional.empty();
         }
         try {
-            if (Runner.resourceMgr().getModel(modelId) instanceof Model model
+            if (Runner.resourceMgr().getModel(modelId.get()) instanceof Model model
                     && model.getModelConfig() != null) {
                 String name = model.getModelConfig().getModelName();
                 if (name != null && !name.isBlank()) {
-                    return name;
+                    return Optional.of(name);
                 }
             }
         } catch (NullPointerException | ClassCastException | IllegalArgumentException | IllegalStateException e) {
-            LOG.debug("otel rail: failed to resolve model '{}' from the framework pool", modelId, e);
+            LOG.debug("otel rail: failed to resolve model '{}' from the framework pool", modelId.get(), e);
         }
-        return null;
+        return Optional.empty();
     }
 
     /**
