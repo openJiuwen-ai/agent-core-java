@@ -71,7 +71,12 @@ public interface StepRecoveryHook {
     /**
      * Inputs handed to the hook for one leftover session.
      *
-     * @param sessionId owning session id
+     * <p>Both ids come from the persisted cursor. They are empty only when the
+     * cursor could not be traced back to its session (for example a cursor
+     * persisted by an older release whose storage key is not scannable), so a
+     * hook must keep working when either value is empty.</p>
+     *
+     * @param sessionId owning session id, empty when unknown
      * @param agentId agent id within the session, empty when unknown
      * @param cursor last persisted step cursor, never null
      */

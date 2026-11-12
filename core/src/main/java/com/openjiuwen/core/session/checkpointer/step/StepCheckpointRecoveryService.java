@@ -29,7 +29,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ol>
  *
  * <p>Callers (restart wiring, sweeper) share one instance; the processed
- * registry makes duplicate scans idempotent within a process.</p>
+ * registry makes duplicate scans idempotent within a process per owning
+ * session and cursor, so a session that crashes again on a later step is
+ * recovered again rather than skipped.</p>
+ *
+ * <p>The request handed to the hook carries the owning session/agent identity
+ * the scan restored from storage, empty when the scan could not determine
+ * it.</p>
  *
  * @since 0.1.17
  */
@@ -69,8 +75,8 @@ public class StepCheckpointRecoveryService {
             return actions;
         }
         for (StepCursor cursor : running) {
-            String sessionId = cursorKey(cursor);
-            if (!processedSessions.add(sessionId)) {
+            String processedKey = ownerKey(cursor) + "|" + cursorKey(cursor);
+            if (!processedSessions.add(processedKey)) {
                 actions.add(new RecoveryAction(cursor, RecoveryActionType.SKIPPED_ALREADY_PROCESSED, ""));
                 continue;
             }
@@ -89,7 +95,7 @@ public class StepCheckpointRecoveryService {
     public RecoveryAction recoverOne(StepCursor cursor) {
         Objects.requireNonNull(cursor, "cursor");
         StepRecoveryHook.RecoveryRequest request = new StepRecoveryHook.RecoveryRequest(
-                "", "", cursor);
+                cursor.getSessionId(), cursor.getAgentId(), cursor);
         if (hook != null) {
             try {
                 StepRecoveryHook.RecoveryResult result = hook.recover(request);
@@ -110,15 +116,44 @@ public class StepCheckpointRecoveryService {
     }
 
     /**
-     * Forget the processed marker of one session so a later scan may process
-     * it again, used after a session was re-registered.
+     * Forget the processed markers of one session so a later scan may process
+     * it again, used after a session was re-registered. Matches the session
+     * itself as well as every agent it owns within the session.
      *
-     * @param sessionId session id to forget
+     * @param sessionId session id to forget, null or empty is a no-op
      */
     public void forget(String sessionId) {
-        processedSessions.remove(sessionId);
+        if (sessionId == null || sessionId.isEmpty()) {
+            return;
+        }
+        String ownerPrefix = sessionId + "|";
+        processedSessions.removeIf(key -> key.equals(sessionId) || key.startsWith(ownerPrefix));
     }
 
+    /**
+     * Identity part of the processed marker: the owning session plus the agent
+     * inside it, both empty when the scan could not determine them.
+     *
+     * @param cursor scanned cursor
+     * @return owner identity, empty when unknown
+     */
+    private static String ownerKey(StepCursor cursor) {
+        String sessionId = cursor.getSessionId();
+        if (sessionId == null || sessionId.isEmpty()) {
+            return "";
+        }
+        String agentId = cursor.getAgentId();
+        return agentId == null || agentId.isEmpty() ? sessionId : sessionId + "|" + agentId;
+    }
+
+    /**
+     * Cursor fingerprint of one step, kept so the processed registry still
+     * distinguishes a later crash of the same session from the one already
+     * handled in this process.
+     *
+     * @param cursor scanned cursor
+     * @return fingerprint of the step the cursor points at
+     */
     private static String cursorKey(StepCursor cursor) {
         return cursor.getStepName() + "@" + cursor.getSeq() + "@" + cursor.getTimestamp();
     }

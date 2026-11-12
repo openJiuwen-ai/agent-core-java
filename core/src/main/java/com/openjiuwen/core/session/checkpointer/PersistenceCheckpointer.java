@@ -221,8 +221,8 @@ public class PersistenceCheckpointer extends Checkpointer {
      */
     @Override
     public List<StepCursor> scanRunningSteps() {
-        Map<String, Object> blobs = kvStore.getByPrefix(
-                TenantKVStoreKeyResolver.resolvePrefix("")).join();
+        String scanPrefix = TenantKVStoreKeyResolver.resolvePrefix("");
+        Map<String, Object> blobs = kvStore.getByPrefix(scanPrefix).join();
         if (blobs == null || blobs.isEmpty()) {
             return List.of();
         }
@@ -238,7 +238,7 @@ public class PersistenceCheckpointer extends Checkpointer {
                 snapshots.put(entry.getKey(), normalized);
             }
         }
-        return runningCursorsFromStates(snapshots);
+        return runningCursorsFromStates(snapshots, scanPrefix);
     }
 
     @Override

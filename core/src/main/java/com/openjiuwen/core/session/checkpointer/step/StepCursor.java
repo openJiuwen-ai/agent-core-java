@@ -19,6 +19,12 @@ import java.util.Objects;
  * "which step was reached" and restores the state of that exact moment -
  * there is no window where the cursor and the state disagree.</p>
  *
+ * <p>The cursor also carries the identity of the session it belongs to, filled
+ * by the checkpointer when the cursor is persisted, so a cursor scanned back
+ * from storage can be traced to its session. That identity is metadata:
+ * {@link #equals} and {@link #hashCode} keep comparing the step description
+ * only.</p>
+ *
  * @since 0.1.17
  */
 public class StepCursor {
@@ -33,6 +39,8 @@ public class StepCursor {
     private String stepName;
     private StepStatus status;
     private long timestamp;
+    private String sessionId = "";
+    private String agentId = "";
 
     public StepCursor() {
         this(0L, "", "", StepStatus.RUNNING, 0L);
@@ -48,11 +56,29 @@ public class StepCursor {
      * @param timestamp wall-clock time in milliseconds
      */
     public StepCursor(long seq, String stepType, String stepName, StepStatus status, long timestamp) {
+        this(seq, stepType, stepName, status, timestamp, "", "");
+    }
+
+    /**
+     * Create a cursor carrying the identity of the session it belongs to.
+     *
+     * @param seq monotonically increasing step sequence number within a task
+     * @param stepType step category, e.g. TOOL_CALL / LLM_RESPONSE / PHASE
+     * @param stepName tool name or phase name
+     * @param status lifecycle status of the step
+     * @param timestamp wall-clock time in milliseconds
+     * @param sessionId owning session id, empty when unknown
+     * @param agentId agent id within the session, empty when unknown
+     */
+    public StepCursor(long seq, String stepType, String stepName, StepStatus status, long timestamp,
+                      String sessionId, String agentId) {
         this.seq = seq;
         this.stepType = stepType == null ? "" : stepType;
         this.stepName = stepName == null ? "" : stepName;
         this.status = status == null ? StepStatus.RUNNING : status;
         this.timestamp = timestamp;
+        this.sessionId = sessionId == null ? "" : sessionId;
+        this.agentId = agentId == null ? "" : agentId;
     }
 
     public long getSeq() {
@@ -95,6 +121,43 @@ public class StepCursor {
         this.timestamp = timestamp;
     }
 
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId == null ? "" : sessionId;
+    }
+
+    public String getAgentId() {
+        return agentId;
+    }
+
+    public void setAgentId(String agentId) {
+        this.agentId = agentId == null ? "" : agentId;
+    }
+
+    /**
+     * Return a cursor stamped with the owning session/agent identity.
+     *
+     * <p>Only missing values are filled, an explicitly set identity always
+     * wins, and the argument is never mutated. The persistence entry points
+     * call this so the cursor inside the snapshot can be traced back to its
+     * session.</p>
+     *
+     * @param ownerSessionId owning session id, null or empty when unknown
+     * @param ownerAgentId agent id within the session, null or empty when unknown
+     * @return this cursor when nothing changes, otherwise a stamped copy
+     */
+    public StepCursor withOwner(String ownerSessionId, String ownerAgentId) {
+        String nextSessionId = sessionId.isEmpty() ? normalize(ownerSessionId) : sessionId;
+        String nextAgentId = agentId.isEmpty() ? normalize(ownerAgentId) : agentId;
+        if (nextSessionId.equals(sessionId) && nextAgentId.equals(agentId)) {
+            return this;
+        }
+        return new StepCursor(seq, stepType, stepName, status, timestamp, nextSessionId, nextAgentId);
+    }
+
     /**
      * Serialize to a plain map so the cursor rides inside the state snapshot
      * without requiring a dedicated serializer.
@@ -108,6 +171,8 @@ public class StepCursor {
         map.put("step_name", stepName);
         map.put("status", status.name());
         map.put("timestamp", timestamp);
+        map.put("session_id", sessionId);
+        map.put("agent_id", agentId);
         return map;
     }
 
@@ -127,7 +192,9 @@ public class StepCursor {
                 stringValue(raw.get("step_type")),
                 stringValue(raw.get("step_name")),
                 StepStatus.fromString(raw.get("status")),
-                longValue(raw.get("timestamp")));
+                longValue(raw.get("timestamp")),
+                stringValue(raw.get("session_id")),
+                stringValue(raw.get("agent_id")));
     }
 
     private static boolean hasSeqMarker(Map<?, ?> raw) {
@@ -219,7 +286,12 @@ public class StepCursor {
     @Override
     public String toString() {
         return "StepCursor{seq=" + seq + ", stepType=" + stepType
-                + ", stepName=" + stepName + ", status=" + status + ", timestamp=" + timestamp + "}";
+                + ", stepName=" + stepName + ", status=" + status + ", timestamp=" + timestamp
+                + ", sessionId=" + sessionId + ", agentId=" + agentId + "}";
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value;
     }
 
     private static long longValue(Object value) {
