@@ -55,6 +55,16 @@ public final class LoopQueues {
         return !followUp.isEmpty();
     }
 
+    /**
+     * Reports whether the steering queue holds any message.
+     *
+     * @return true if at least one steering message is queued
+     * @since 0.1.17
+     */
+    public boolean hasSteering() {
+        return !steering.isEmpty();
+    }
+
     public List<String> drainSteering() {
         return drain(steering);
     }
