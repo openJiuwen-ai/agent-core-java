@@ -74,6 +74,7 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -125,7 +126,7 @@ public class OpenAIModelClient extends BaseModelClient
     private static final String RETRY_LISTENER_KWARG = "__openjiuwen_retry_listener";
     private static final String REQUEST_HEADERS_KWARG = "__openjiuwen_request_headers";
 
-    private volatile HttpClient httpClient;
+    private final AtomicReference<HttpClient> httpClient;
     private final ModelCallRetrier retrier;
     private final Map<String, String> baseHeaders;
 
@@ -168,7 +169,7 @@ public class OpenAIModelClient extends BaseModelClient
     OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
             ModelCallRetrier retrier, ModelCircuitBreaker circuitBreaker) {
         super(modelConfig, modelClientConfig);
-        this.httpClient = createHttpClient(modelClientConfig);
+        this.httpClient = new AtomicReference<>(createHttpClient(modelClientConfig));
         this.retrier = retrier;
         this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
         this.circuitBreaker = circuitBreaker;
@@ -1370,19 +1371,14 @@ public class OpenAIModelClient extends BaseModelClient
     private <T> HttpResponse<T> sendGenerationRequest(String path, Float timeout, String authorization,
             Map<String, String> requestHeaders, HttpResponse.BodyHandler<T> bodyHandler)
             throws IOException, InterruptedException {
-        HttpClient sender = httpClient;
+        HttpClient sender = httpClient.get();
         try {
             HttpResponse<T> response = sender.send(buildGetRequest(modelClientConfig.getApiBase(), path,
                     timeout, authorization, requestHeaders), bodyHandler);
             ModelHttpClients.noteSendSuccess(sender);
             return response;
         } catch (IOException exception) {
-            // Guarded rebuild: only swap when this thread's sender still is the field's
-            // instance. This narrows (not eliminates) the orphan window to the build call
-            // itself — a losing racer still builds a client it then drops, which GC reclaims.
-            if (ModelHttpClients.evictIfDead(sender, exception).isDead() && httpClient == sender) {
-                httpClient = createHttpClient(modelClientConfig);
-            }
+            recoverDeadClient(sender, exception);
             throw exception;
         }
     }
@@ -1698,7 +1694,7 @@ public class OpenAIModelClient extends BaseModelClient
             PreparedRequest preparedRequest,
             int retryCount,
             double idleSeconds) throws IOException, InterruptedException {
-        HttpClient sender = httpClient;
+        HttpClient sender = httpClient.get();
         try {
             HttpResponse<InputStream> response = sender.send(
                     buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
@@ -1706,12 +1702,7 @@ public class OpenAIModelClient extends BaseModelClient
             ModelHttpClients.noteSendSuccess(sender);
             return response;
         } catch (IOException exception) {
-            // Guarded rebuild: only swap when this thread's sender still is the field's
-            // instance. This narrows (not eliminates) the orphan window to the build call
-            // itself — a losing racer still builds a client it then drops, which GC reclaims.
-            if (ModelHttpClients.evictIfDead(sender, exception).isDead() && httpClient == sender) {
-                httpClient = createHttpClient(modelClientConfig);
-            }
+            recoverDeadClient(sender, exception);
             throw exception;
         }
     }
@@ -2660,13 +2651,23 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     HttpClient httpClientForTesting() {
-        return httpClient;
+        return httpClient.get();
     }
 
     // Test seam (L2 §4.3): injects a failing stub into the instance field so hook tests can
     // drive the eviction/rebuild path without reflection.
     void replaceHttpClientForTesting(HttpClient replacement) {
-        this.httpClient = Objects.requireNonNull(replacement);
+        this.httpClient.set(Objects.requireNonNull(replacement));
+    }
+
+    private void recoverDeadClient(HttpClient sender, IOException exception) {
+        if (!ModelHttpClients.evictIfDead(sender, exception).isDead() || httpClient.get() != sender) {
+            return;
+        }
+        HttpClient replacement = createHttpClient(modelClientConfig);
+        // A newer sender may be installed while the replacement is being built. Install this
+        // replacement only if the field still holds the same failed sender.
+        httpClient.compareAndSet(sender, replacement);
     }
 
     private HttpClient createHttpClient(ModelClientConfig clientConfig) {
