@@ -36,14 +36,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 /**
- * Reproduction for GitCode issue #296: trace_id is lost on TaskScheduler's
+ * Regression test for GitCode issue #296: trace_id is lost on TaskScheduler's
  * {@code task-*} threads, so tool-execution logs fall back to the
  * {@code default_trace_id} placeholder instead of the session id.
  *
  * <p>Contract under test: a log emitted on the task execution thread carries
  * the same MDC {@code trace_id} as a log emitted on the session thread.</p>
  */
-class Issue296TaskThreadTraceIdTest {
+class TaskSchedulerTraceIdRegressionTest {
 
     private static final String SESSION_ID = "session-issue-296";
     private static final String TASK_ID = "task-issue-296";
