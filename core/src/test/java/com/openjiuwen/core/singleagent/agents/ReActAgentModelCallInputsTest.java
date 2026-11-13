@@ -5,13 +5,17 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -28,6 +32,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -114,6 +119,39 @@ class ReActAgentModelCallInputsTest {
         assertThat(inputs).isNotNull();
         assertThat(inputs.getModelName()).isEqualTo("model-b");
         assertThat(inputs.getModelId()).isEqualTo("pkg-b");
+    }
+
+    @Test
+    @DisplayName("a pool supplier failure does not bypass the BEFORE_MODEL_CALL rail channel")
+    void poolSupplierFailureDoesNotBypassBeforeModelCallRails() {
+        String brokenPoolId = "mci-broken-pool-" + UUID.randomUUID();
+        Runner.resourceMgr().updateModel(brokenPoolId, () -> {
+            throw new BaseError(StatusCode.ERROR);
+        });
+        try {
+            ReActAgent agent = newAgent(newModel("model-a"));
+            AtomicBoolean railInvoked = new AtomicBoolean(false);
+            agent.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL,
+                    callbackCtx -> {
+                        railInvoked.set(true);
+                        return CompletableFuture.completedFuture(null);
+                    }, 100).toCompletableFuture().join();
+            agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE,
+                    callbackCtx -> {
+                        callbackCtx.setDynamicModelId(brokenPoolId);
+                        return CompletableFuture.completedFuture(null);
+                    }, 100).toCompletableFuture().join();
+
+            // The model call itself still fails: the real resolution happens inside the
+            // railed operation and reaches the ON_MODEL_EXCEPTION channel.
+            assertThatThrownBy(() -> agent.invoke(Map.of("query", "hi"), new MinimalSession("mci-broken-pool")))
+                    .isInstanceOf(BaseError.class);
+            // The pre-model-call snapshot resolution is reporting only and must not
+            // raise before the BEFORE_MODEL_CALL rails get their chance to run.
+            assertThat(railInvoked).isTrue();
+        } finally {
+            Runner.resourceMgr().removeModelForce(brokenPoolId, true);
+        }
     }
 
     private static final class MinimalSession implements AgentSessionApi, ContextEngine.SessionPort {

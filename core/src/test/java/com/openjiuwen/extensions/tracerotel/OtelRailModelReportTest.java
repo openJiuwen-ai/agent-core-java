@@ -11,6 +11,9 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.tracer.SpanManager;
 import com.openjiuwen.core.session.tracer.Tracer;
@@ -26,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -144,5 +148,34 @@ class OtelRailModelReportTest {
 
         assertThat(info.get("class_name")).isEqualTo("cfg-model");
         assertThat(info.containsKey("model_id")).isFalse();
+    }
+
+    @Test
+    @DisplayName("beforeModelCall tolerates a failing pool supplier without failing the model call")
+    void poolSupplierFailureDoesNotInterruptModelCall() {
+        String brokenPoolId = "otel-rail-broken-pool-" + UUID.randomUUID();
+        Runner.resourceMgr().updateModel(brokenPoolId, () -> {
+            throw new BaseError(StatusCode.ERROR);
+        });
+        try {
+            ReActAgent agent =
+                    new ReActAgent(AgentCard.builder().id("otel-rail-broken").name("otel-rail-broken").build());
+            agent.configure(ReActAgentConfig.builder().modelName("cfg-model").build());
+            // Pool suppliers run synchronously and may raise unchecked exceptions the
+            // rail never declared (e.g. BaseError from a third-party client factory):
+            // the observability lookup must degrade, not fail the model call.
+            ModelCallInputs inputs =
+                    ModelCallInputs.builder().messages(List.of()).modelId(brokenPoolId).build();
+            AgentCallbackContext.Builder builder =
+                    AgentCallbackContext.builder().agent(agent).inputs(inputs);
+            Tracer tracer = attachSession(builder);
+
+            Map<?, ?> info = instanceInfoOf(tracer, builder.build());
+
+            assertThat(info.get("class_name")).isEqualTo("cfg-model");
+            assertThat(info.get("model_id")).isEqualTo(brokenPoolId);
+        } finally {
+            Runner.resourceMgr().removeModelForce(brokenPoolId, true);
+        }
     }
 }

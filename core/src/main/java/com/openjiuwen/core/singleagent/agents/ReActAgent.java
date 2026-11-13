@@ -468,7 +468,13 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         Model activeModel;
         try {
             activeModel = getLlm(ctx);
-        } catch (IllegalStateException | IllegalArgumentException | CompletionException e) {
+        } catch (RuntimeException e) {
+            // Reporting only: pool suppliers run synchronously and may raise any
+            // unchecked exception. A resolution failure here falls back to the
+            // configured name and never bypasses the ON_MODEL_EXCEPTION channel
+            // that the real resolution inside the railed operation still uses.
+            LOGGER.fine(() -> "react agent: model snapshot resolution failed, model_id="
+                    + ctx.getDynamicModelId() + ", reason=" + e);
             activeModel = null;
         }
         ModelCallInputs modelCallInputs = ModelCallInputs.class.cast(ctx.getInputs());
