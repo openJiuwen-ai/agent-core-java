@@ -48,6 +48,16 @@ import java.util.OptionalLong;
  * @since 0.1.7
  */
 public class OtelAgentHandler extends TraceExtAgentHandler {
+    /**
+     * System property selecting the LLM span naming strategy: {@code fixed} renders
+     * {@code "llm.chat"} so spans aggregate across models; any other value (default)
+     * keeps the legacy {@code "llm.<modelName>"} naming.
+     */
+    private static final String LLM_SPAN_NAME_PROPERTY = "openjiuwen.otel.llm-span-name";
+
+    /** Span name used by the {@code fixed} naming strategy. */
+    private static final String FIXED_LLM_SPAN_NAME = "llm.chat";
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Tracer otelTracer;
@@ -299,6 +309,25 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     // ================================================================
 
     /**
+     * Resolve the LLM span name based on the configured naming strategy.
+     *
+     * <p>System property {@code openjiuwen.otel.llm-span-name} selects the mode:
+     * {@code fixed} renders {@code "llm.chat"} so spans aggregate across models;
+     * any other value (default) keeps the legacy {@code "llm.<modelName>"} naming.
+     * The model identity always stays available via {@code gen_ai.request.model}.</p>
+     *
+     * @param className the model name from instance info (may be empty)
+     * @return the resolved span name
+     * @since 0.1.17
+     */
+    private static String llmSpanName(String className) {
+        if ("fixed".equalsIgnoreCase(System.getProperty(LLM_SPAN_NAME_PROPERTY))) {
+            return FIXED_LLM_SPAN_NAME;
+        }
+        return "llm." + (className != null && !className.isEmpty() ? className : "unknown");
+    }
+
+    /**
      * Handle the start of an LLM invocation.
      *
      * @param span         the originating {@link TraceAgentSpan}
@@ -310,11 +339,12 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     public void onLlmStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         try {
             Context parentCtx = resolveParentContext(span).orElse(null);
+            String className = instanceInfo != null
+                    ? String.valueOf(instanceInfo.getOrDefault("class_name", ""))
+                    : "";
             OtelSpanState state = startAndPush(
-                    "llm." + (instanceInfo != null ? instanceInfo.getOrDefault("class_name", "unknown") : "unknown"),
-                    SpanKind.CLIENT, parentCtx, span);
-            state.getSpan().setAttribute(SemConv.GEN_AI_REQUEST_MODEL,
-                    instanceInfo != null ? String.valueOf(instanceInfo.getOrDefault("class_name", "")) : "");
+                    llmSpanName(className), SpanKind.CLIENT, parentCtx, span);
+            state.getSpan().setAttribute(SemConv.GEN_AI_REQUEST_MODEL, className);
             Object modelId = instanceInfo != null ? instanceInfo.get("model_id") : null;
             if (modelId != null) {
                 state.getSpan().setAttribute(SemConv.OJ_MODEL_ID, String.valueOf(modelId));
