@@ -167,6 +167,51 @@ OtelTracerConfig config = OtelTracerConfig.builder()
 
 ---
 
+## LLM span 命名策略
+
+LLM Span 的名字默认拼接模型名（`llm.<class_name>`）。模型名属于高基数值——换一个模型就产生一个新的 span 名，监控后端无法按 span 名跨模型聚合。为此提供系统属性开关，可在「按模型区分」与「固定名聚合」两种策略间切换。
+
+### 配置项
+
+| JVM 系统属性 | 取值 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `openjiuwen.otel.llm-span-name` | `model` / `fixed`（忽略大小写） | `model` | LLM Span 命名策略。`model`：span 名为 `llm.<class_name>`（历史行为）；`fixed`：span 名固定为 `llm.chat`，跨模型可聚合 |
+
+两种策略下模型标识都不丢失——`gen_ai.request.model` 属性始终写入实际模型名，按属性聚合即可区分模型。
+
+| 策略 | span 名 | `gen_ai.request.model` | 适用场景 |
+| --- | --- | --- | --- |
+| `model`（默认） | `llm.qwen-plus` / `llm.glm-5.1` / ... | 实际模型名 | 需要在监控后端按 span 名直接区分模型 |
+| `fixed` | 统一为 `llm.chat` | 实际模型名 | 需要 LLM 调用量、耗时等指标按 span 名聚合，模型维度用属性过滤 |
+
+### 启用方式
+
+JVM 启动参数：
+
+```bash
+java -Dopenjiuwen.otel.llm-span-name=fixed -jar my-agent-service.jar
+```
+
+单元测试中：
+
+```java
+System.setProperty("openjiuwen.otel.llm-span-name", "fixed");
+```
+
+### 注意事项
+
+1. **切换前通知下游**：若仪表盘/告警按 span 名精确匹配（如 `llm.qwen-plus`），切换到 `fixed` 后这些规则会失效，需改用 `gen_ai.request.model` 属性过滤。建议在变更单注明切换时间点，避免时间线割裂。
+2. **运行时读取**：系统属性在每次创建 LLM Span 时读取，可运行时动态修改（`System.setProperty`），无需重启；但同一条 span 的名字在创建时就已确定，中途修改只影响后续 span。
+3. **`class_name` 取自 Agent 静态配置**：两种策略下 `gen_ai.request.model` 的值均来自 Agent 配置中的模型名（见 `OtelRail.getModelName()`），不反映单次调用的动态模型选择——动态模型上报属于后续需求（R2）。
+
+### 相关测试
+
+- `OtelAgentHandlerTest.TestLlmEvents.testLlmSpanNameDefaultIsModelBased`（默认策略保持 `llm.<model>`）
+- `OtelAgentHandlerTest.TestLlmEvents.testLlmSpanNameFixedMode`（`fixed` 策略不同模型均为 `llm.chat`，属性保留各自模型名）
+- `OtelAgentHandlerTest.TestLlmEvents.testLlmSpanNameFixedModeEmptyClassName`（`fixed` 策略忽略大小写，`instanceInfo` 为 `null` 时兜底）
+
+---
+
 ## OtelTracerSetup 初始化工具类
 
 ```java
@@ -539,7 +584,7 @@ public class OtelAgentHandler extends TraceExtAgentHandler
 
 | 事件类型 | SpanKind | 属性命名空间 | span 名前缀 |
 | --- | --- | --- | --- |
-| LLM | `CLIENT` | `gen_ai.*` + `openjiuwen.agent.*` | `llm.<class_name>` |
+| LLM | `CLIENT` | `gen_ai.*` + `openjiuwen.agent.*` | `llm.<class_name>`（默认；可通过系统属性切换为固定 `llm.chat`，见 [LLM span 命名策略](#llm-span-命名策略)） |
 | Plugin (Tool) | `INTERNAL` | `openjiuwen.agent.*` + `gen_ai.tool.name` | `tool.<class_name>` |
 | Chain | `INTERNAL` | `openjiuwen.agent.*` | `chain.<class_name>` |
 | Retriever | `INTERNAL` | `openjiuwen.agent.*` | `retriever.<class_name>` |
@@ -626,13 +671,14 @@ recordResponseAttrs
 
 ### 相关测试
 
-- `OtelAgentHandlerTest`（19 个测试，分 6 组）
-  - `TestLlmEvents`（4）：CLIENT Span 创建 / completion 设置 / ERROR 标记 / 通用 Throwable
+- `OtelAgentHandlerTest`（32 个测试，分 7 组）
+  - `TestLlmEvents`（7）：CLIENT Span 创建 / completion 设置 / ERROR 标记 / 通用 Throwable / span 命名策略（默认、fixed、fixed 兜底）
   - `TestRedaction`（4）：prompt 脱敏开关 / 细粒度覆盖 / 非 LLM 输入脱敏
   - `TestNonLlmEvents`（4）：Chain INTERNAL Span / Plugin tool.name / Chain ERROR
   - `TestParentChild`（1）：父子 Span 上下文传递
   - `TestNormalization`（3）：payload 规范化
   - `TestRobustness`（2）：异常容错
+  - `TestResponseAttributes`（11）：响应属性回读（token / 成本 / 延迟 / finish_reason / response.model）
 
 ---
 
@@ -841,7 +887,7 @@ Model.stream(request)
 | 测试类 | 测试数 | 覆盖范围 |
 | --- | --- | --- |
 | `OtelTracerSetupTest` | 21 | 初始化 / 采样率验证 / 采样率集成 |
-| `OtelAgentHandlerTest` | 29 | LLM 事件 / 脱敏 / 非 LLM 事件 / 父子关系 / 规范化 / 容错 |
+| `OtelAgentHandlerTest` | 32 | LLM 事件（含 span 命名策略）/ 脱敏 / 非 LLM 事件 / 父子关系 / 规范化 / 容错 / 响应属性 |
 | `OtelWorkflowHandlerTest` | 22 | 生命周期 / 组件类型 / 异常处理 / 数据缓冲 / 子 Workflow / 容错 |
 | `RedactionUtilsTest` | 25 | 截断 / 哈希 / 脱敏判定 / 脱敏应用 |
 | `OtelSpanManagerTest` | 13 | push / pop / get / 缓冲行为 |

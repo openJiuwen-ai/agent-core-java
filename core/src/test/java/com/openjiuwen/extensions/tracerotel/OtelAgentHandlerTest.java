@@ -157,6 +157,78 @@ class OtelAgentHandlerTest {
             String ojError = s.getAttributes().get(AttributeKey.stringKey(SemConv.OJ_ERROR));
             assertThat(ojError).contains(String.valueOf(StatusCode.WORKFLOW_EXECUTION_ERROR.getCode()));
         }
+
+        @Test
+        @DisplayName("default naming strategy keeps legacy llm.<model> span name")
+        void testLlmSpanNameDefaultIsModelBased() {
+            String previous = System.setProperty("openjiuwen.otel.llm-span-name", "model");
+            try {
+                OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+                TraceAgentSpan span = newSpan();
+                handler.onLlmStart(span, Map.of("prompt", "hi"), instanceInfo("MyModel"));
+                handler.onLlmEnd(span, Map.of("content", "reply"));
+
+                SpanData s = firstSpan();
+                assertThat(s.getName()).isEqualTo("llm.MyModel");
+                assertThat(s.getAttributes().get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL)))
+                        .isEqualTo("MyModel");
+            } finally {
+                restoreProperty("openjiuwen.otel.llm-span-name", previous);
+            }
+        }
+
+        @Test
+        @DisplayName("fixed naming strategy renders llm.chat regardless of model")
+        void testLlmSpanNameFixedMode() {
+            String previous = System.setProperty("openjiuwen.otel.llm-span-name", "fixed");
+            try {
+                OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+                TraceAgentSpan spanA = newSpan();
+                handler.onLlmStart(spanA, Map.of("prompt", "hi"), instanceInfo("ModelA"));
+                handler.onLlmEnd(spanA, Map.of("content", "reply"));
+
+                TraceAgentSpan spanB = newSpan();
+                handler.onLlmStart(spanB, Map.of("prompt", "hi"), instanceInfo("ModelB"));
+                handler.onLlmEnd(spanB, Map.of("content", "reply"));
+
+                List<SpanData> spans = ConftestOtel.EXPORTER.getFinishedSpanItems();
+                assertThat(spans).hasSize(2);
+                assertThat(spans.get(0).getName()).isEqualTo("llm.chat");
+                assertThat(spans.get(1).getName()).isEqualTo("llm.chat");
+                // Model identity must remain on the attribute, not the span name.
+                assertThat(spans.get(0).getAttributes()
+                        .get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL))).isEqualTo("ModelA");
+                assertThat(spans.get(1).getAttributes()
+                        .get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL))).isEqualTo("ModelB");
+            } finally {
+                restoreProperty("openjiuwen.otel.llm-span-name", previous);
+            }
+        }
+
+        @Test
+        @DisplayName("fixed naming with empty class_name still renders llm.chat")
+        void testLlmSpanNameFixedModeEmptyClassName() {
+            String previous = System.setProperty("openjiuwen.otel.llm-span-name", "FIXED");
+            try {
+                OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+                TraceAgentSpan span = newSpan();
+                handler.onLlmStart(span, Map.of("prompt", "hi"), null);
+                handler.onLlmEnd(span, Map.of("content", "reply"));
+
+                SpanData s = firstSpan();
+                assertThat(s.getName()).isEqualTo("llm.chat");
+            } finally {
+                restoreProperty("openjiuwen.otel.llm-span-name", previous);
+            }
+        }
+
+        private void restoreProperty(String key, String previous) {
+            if (previous == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, previous);
+            }
+        }
     }
 
     // ================================================================
