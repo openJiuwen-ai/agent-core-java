@@ -3885,13 +3885,19 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     private static void bindSteeringQueue(AgentCallbackContext ctx, Queue<String> steeringQueue) {
+        // Precedence: the explicit per-call `_steering_queue` binding wins over the generic
+        // `loop_queues` extra. DeepAgent rounds and resume paths pass a session-scoped view
+        // (own bucket plus broadcast messages) there, so a concurrent session's named steer
+        // neither leaks into this agent's context nor changes its iteration flow. Plain
+        // map-invoke callers that only provide `loop_queues` keep the raw shared binding
+        // (rail pushes land in the caller-visible steering queue).
+        if (steeringQueue != null) {
+            ctx.bindSteeringQueue(steeringQueue);
+            return;
+        }
         Object queues = ctx.getExtra().get("loop_queues");
         if (queues instanceof LoopQueues loopQueues) {
             ctx.bindSteeringQueue(loopQueues.steering());
-            return;
-        }
-        if (steeringQueue != null) {
-            ctx.bindSteeringQueue(steeringQueue);
             return;
         }
         LoopQueues autoQueue = new LoopQueues();

@@ -311,7 +311,11 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
         }
         if (queues != null) {
             // Live queue reference so steer during a blocked invoke is visible to the next round.
-            effective.put("_steering_queue", queues.steering());
+            // Session-scoped view: the round's own bucket plus broadcast messages only, so
+            // another session's steer neither leaks into this round's model context nor
+            // changes its round count.
+            effective.put("_steering_queue", queues.steeringView(
+                    session != null ? session.getSessionId() : null));
         }
         return effective;
     }
