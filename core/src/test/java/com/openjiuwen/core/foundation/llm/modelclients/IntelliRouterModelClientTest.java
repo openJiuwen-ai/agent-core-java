@@ -550,7 +550,7 @@ class IntelliRouterModelClientTest {
     }
 
     @Test
-    void buildRequestParamsOmitsNoneValuesExceptModelDefaults() {
+    void buildRequestParamsOmitsUnsetOptionalValues() {
         IntelliRouterModelClient client = new IntelliRouterModelClient(
                 ModelRequestConfig.builder().modelName("test-model").build(),
                 intelliRouterConfig(),
@@ -567,8 +567,8 @@ class IntelliRouterModelClientTest {
                 null,
                 null);
 
-        assertThat(params).containsKeys("temperature", "top_p");
-        assertThat(params).doesNotContainKeys("max_tokens", "stop");
+        assertThat(params).containsKey("temperature");
+        assertThat(params).doesNotContainKeys("top_p", "max_tokens", "stop");
     }
 
     @Test

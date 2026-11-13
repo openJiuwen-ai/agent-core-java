@@ -1398,7 +1398,8 @@ public class OpenAIModelClient extends BaseModelClient
         Map<String, Object> message = asObjectMap(rawMessage);
 
         List<ToolCall> toolCalls = parseToolCalls(message.get("tool_calls"), true);
-        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), true);
+        String responseModel = asString(response.get("model"));
+        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), responseModel);
         Object content = requireStringOrNullContent(message.get("content"), "choices[0].message.content");
         Object parserContent = parseContent(parser, content);
 
@@ -1406,6 +1407,7 @@ public class OpenAIModelClient extends BaseModelClient
                 .content(content)
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
+                .responseModel(responseModel)
                 .finishReason(pythonTruthy(choice.get("finish_reason"))
                         ? String.valueOf(choice.get("finish_reason"))
                         : (toolCalls.isEmpty() ? "stop" : "tool_calls"))
@@ -1424,15 +1426,17 @@ public class OpenAIModelClient extends BaseModelClient
     private AssistantMessageChunk parseStreamChunk(
             Map<String, Object> chunk,
             Map<Integer, ToolCallState> toolCallStates) {
-        UsageMetadata usageMetadata = parseUsageMetadata(chunk.get("usage"), false);
+        String responseModel = asString(chunk.get("model"));
+        UsageMetadata usageMetadata = parseUsageMetadata(chunk.get("usage"), responseModel);
         List<Integer> promptTokenIds = integerList(chunk.get("prompt_token_ids"));
         List<Map<String, Object>> choices = asListOfObjectMaps(chunk.get("choices"));
 
         if (choices.isEmpty()) {
-            if (usageMetadata != null || promptTokenIds != null) {
+            if (usageMetadata != null || promptTokenIds != null || responseModel != null) {
                 return AssistantMessageChunk.builder()
                         .content("")
                         .usageMetadata(usageMetadata)
+                        .responseModel(responseModel)
                         .finishReason("null")
                         .promptTokenIds(promptTokenIds)
                         .build();
@@ -1455,6 +1459,7 @@ public class OpenAIModelClient extends BaseModelClient
                 .reasoningContent(reasoningContentFrom(delta))
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
+                .responseModel(responseModel)
                 .finishReason(pythonTruthy(choice.get("finish_reason"))
                         ? String.valueOf(choice.get("finish_reason"))
                         : "null")
@@ -2390,6 +2395,7 @@ public class OpenAIModelClient extends BaseModelClient
                     .reasoningContent(chunk.getReasoningContent())
                     .toolCalls(chunk.getToolCalls())
                     .usageMetadata(chunk.getUsageMetadata())
+                    .responseModel(chunk.getResponseModel())
                     .finishReason(chunk.getFinishReason())
                     .parserContent(parserContent)
                     .promptTokenIds(chunk.getPromptTokenIds())
@@ -2488,21 +2494,21 @@ public class OpenAIModelClient extends BaseModelClient
         private final StringBuilder arguments = new StringBuilder();
     }
 
-    private UsageMetadata parseUsageMetadata(Object usageValue, boolean includeCacheTokens) {
+    private UsageMetadata parseUsageMetadata(Object usageValue, String responseModel) {
         if (!(usageValue instanceof Map<?, ?> usageMap)) {
             return null;
         }
         Map<String, Object> usage = toObjectMap(usageMap);
-        int cacheTokens = 0;
-        if (includeCacheTokens && usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
-            cacheTokens = intValue(toObjectMap(promptDetails).get("cached_tokens"));
+        Integer cacheTokens = null;
+        if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
+            cacheTokens = nullableIntValue(toObjectMap(promptDetails).get("cached_tokens"));
         }
         CostInfo costInfo = extractCostInfo(usage);
         return UsageMetadata.builder()
-                .modelName(modelConfig.getModelName())
-                .inputTokens(intValue(usage.get("prompt_tokens")))
-                .outputTokens(intValue(usage.get("completion_tokens")))
-                .totalTokens(intValue(usage.get("total_tokens")))
+                .modelName(responseModel)
+                .inputTokens(nullableIntValue(usage.get("prompt_tokens")))
+                .outputTokens(nullableIntValue(usage.get("completion_tokens")))
+                .totalTokens(nullableIntValue(usage.get("total_tokens")))
                 .cacheTokens(cacheTokens)
                 .inputCost(costInfo.inputCost())
                 .outputCost(costInfo.outputCost())
@@ -2800,6 +2806,10 @@ public class OpenAIModelClient extends BaseModelClient
     private static String reasoningContentFrom(Map<String, Object> message) {
         Object reasoningContent = firstNonNull(message.get("reasoning_content"), message.get("reasoning"));
         return asString(reasoningContent);
+    }
+
+    private static Integer nullableIntValue(Object value) {
+        return value == null ? null : intValue(value);
     }
 
     private static int intValue(Object value) {

@@ -129,7 +129,7 @@ class TCPRF03RealLlmPerformanceTest {
                 ModelRequestConfig.builder()
                         .modelName(modelName)
                         .temperature(0.0F)
-                        .topP(0.1F)
+                        .topP(0.1D)
                         .build();
         modelClient = new OpenAiCompatibleModelClient(requestConfig, clientConfig);
     }

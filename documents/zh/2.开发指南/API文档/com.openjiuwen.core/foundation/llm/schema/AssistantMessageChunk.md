@@ -12,7 +12,7 @@ public class AssistantMessageChunk extends AssistantMessage
 
 | 签名 | 说明 |
 | --- | --- |
-| `public AssistantMessageChunk merge(AssistantMessageChunk other) {` | 执行 `merge` 公开能力。 |
+| `public AssistantMessageChunk merge(AssistantMessageChunk other) {` | 合并流式片段；保留最新非空 responseModel 和 usageMetadata。 |
 
 ## 说明
 

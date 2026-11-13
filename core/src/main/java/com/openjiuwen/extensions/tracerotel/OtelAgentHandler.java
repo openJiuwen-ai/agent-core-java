@@ -931,7 +931,7 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     /**
      * Resolve the input (prompt) token count from a usage object.
      *
-     * <p>Checks {@link UsageMetadata#getInputTokens()} first, then falls back
+     * <p>Checks {@link UsageMetadata#getInputTokensOrNull()} first, then falls back
      * to map keys ({@code input_tokens}, {@code prompt_tokens}).</p>
      *
      * @param usage the usage object (may be {@code null})
@@ -940,7 +940,8 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
      */
     private OptionalLong resolveInputTokens(Object usage) {
         if (usage instanceof UsageMetadata um) {
-            return OptionalLong.of(um.getInputTokens());
+            Integer inputTokens = um.getInputTokensOrNull();
+            return inputTokens == null ? OptionalLong.empty() : OptionalLong.of(inputTokens);
         }
         if (usage instanceof Map<?, ?> uMap) {
             OptionalLong val = coerceLong(uMap.get("input_tokens"));
@@ -955,7 +956,7 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     /**
      * Resolve the output (completion) token count from a usage object.
      *
-     * <p>Checks {@link UsageMetadata#getOutputTokens()} first, then falls back
+     * <p>Checks {@link UsageMetadata#getOutputTokensOrNull()} first, then falls back
      * to map keys ({@code output_tokens}, {@code completion_tokens}).</p>
      *
      * @param usage the usage object (may be {@code null})
@@ -964,7 +965,8 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
      */
     private OptionalLong resolveOutputTokens(Object usage) {
         if (usage instanceof UsageMetadata um) {
-            return OptionalLong.of(um.getOutputTokens());
+            Integer outputTokens = um.getOutputTokensOrNull();
+            return outputTokens == null ? OptionalLong.empty() : OptionalLong.of(outputTokens);
         }
         if (usage instanceof Map<?, ?> uMap) {
             OptionalLong val = coerceLong(uMap.get("output_tokens"));
@@ -979,7 +981,7 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     /**
      * Resolve the total token count from a usage object.
      *
-     * <p>Checks {@link UsageMetadata#getTotalTokens()} first, then falls back
+     * <p>Checks {@link UsageMetadata#getTotalTokensOrNull()} first, then falls back
      * to the map key {@code total_tokens}. When the total is missing but both
      * input and output counts exist, the total is computed as
      * {@code input + output}.</p>
@@ -991,11 +993,8 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
      * @since 0.1.7
      */
     private OptionalLong resolveTotalTokens(Object usage, OptionalLong inputTokens, OptionalLong outputTokens) {
-        if (usage instanceof UsageMetadata um) {
-            int total = um.getTotalTokens();
-            if (total > 0) {
-                return OptionalLong.of(total);
-            }
+        if (usage instanceof UsageMetadata um && um.getTotalTokensOrNull() != null) {
+            return OptionalLong.of(um.getTotalTokensOrNull());
         }
         if (usage instanceof Map<?, ?> uMap) {
             OptionalLong total = coerceLong(uMap.get("total_tokens"));
@@ -1162,18 +1161,22 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     }
 
     /**
-     * Set the {@code gen_ai.response.model} attribute on the span as a fallback
-     * read directly from the response object.
+     * Set the {@code gen_ai.response.model} attribute from the actual response.
      *
-     * <p>Only checks map-style responses for a {@code model} key, since
-     * {@link AssistantMessage} does not expose a top-level model field — the
-     * model name is already handled by {@link #setUsageModelName}.</p>
+     * <p>The top-level response model is independent of whether usage was returned.
+     * Map-style responses use the {@code model} key; usage metadata remains a
+     * compatibility fallback handled by {@link #setUsageModelName}.</p>
      *
      * @param span        the OTel span to attach the attribute to
      * @param rawResponse the raw response object (may be {@code null})
      * @since 0.1.7
      */
     private void setResponseModel(Span span, Object rawResponse) {
+        if (rawResponse instanceof AssistantMessage message
+                && message.getResponseModel() != null && !message.getResponseModel().isEmpty()) {
+            span.setAttribute(SemConv.GEN_AI_RESPONSE_MODEL, message.getResponseModel());
+            return;
+        }
         if (rawResponse instanceof Map<?, ?> respMap) {
             Object model = respMap.get("model");
             if (model != null) {

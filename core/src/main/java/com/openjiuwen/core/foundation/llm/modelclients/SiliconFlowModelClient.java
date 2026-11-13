@@ -361,13 +361,15 @@ public class SiliconFlowModelClient extends BaseModelClient {
         String content = message.get("content") == null ? "" : String.valueOf(message.get("content"));
         String reasoningContent = asString(message.get("reasoning_content"));
         List<ToolCall> toolCalls = parseToolCalls(message.get("tool_calls"));
-        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), true);
+        String responseModel = asString(response.get("model"));
+        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), responseModel);
         Object parserContent = parseContent(parser, content);
 
         return AssistantMessage.builder()
                 .content(content)
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
+                .responseModel(responseModel)
                 .finishReason(isPythonTruthy(choice.get("finish_reason"))
                         ? String.valueOf(choice.get("finish_reason"))
                         : (toolCalls.isEmpty() ? "stop" : "tool_calls"))
@@ -405,8 +407,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
             String content = delta.get("content") == null ? "" : String.valueOf(delta.get("content"));
             String reasoningContent = asString(delta.get("reasoning_content"));
             List<ToolCall> toolCalls = parseToolCalls(delta.get("tool_calls"));
-            UsageMetadata usageMetadata = parseUsageMetadata(chunkData.get("usage"), false);
-            if (!isPythonTruthy(content) && !isPythonTruthy(reasoningContent) && toolCalls.isEmpty()) {
+            String responseModel = asString(chunkData.get("model"));
+            UsageMetadata usageMetadata = parseUsageMetadata(chunkData.get("usage"), responseModel);
+            if (!isPythonTruthy(content) && !isPythonTruthy(reasoningContent) && toolCalls.isEmpty()
+                    && usageMetadata == null && responseModel == null) {
                 return null;
             }
 
@@ -415,6 +419,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     .reasoningContent(reasoningContent)
                     .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                     .usageMetadata(usageMetadata)
+                    .responseModel(responseModel)
                     .finishReason(isPythonTruthy(choice.get("finish_reason"))
                             ? String.valueOf(choice.get("finish_reason"))
                             : "null")
@@ -665,21 +670,21 @@ public class SiliconFlowModelClient extends BaseModelClient {
         return toolCalls;
     }
 
-    private UsageMetadata parseUsageMetadata(Object usageValue, boolean includeCacheTokens) {
+    private UsageMetadata parseUsageMetadata(Object usageValue, String responseModel) {
         if (!(usageValue instanceof Map<?, ?> usageMap)) {
             return null;
         }
         Map<String, Object> usage = toObjectMap(usageMap);
-        int cacheTokens = 0;
-        if (includeCacheTokens && usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
-            cacheTokens = intValue(toObjectMap(promptDetails).get("cached_tokens"));
+        Integer cacheTokens = null;
+        if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
+            cacheTokens = nullableIntValue(toObjectMap(promptDetails).get("cached_tokens"));
         }
         CostInfo costInfo = extractCostInfo(usage);
         return UsageMetadata.builder()
-                .modelName(modelConfig.getModelName())
-                .inputTokens(intValue(usage.get("prompt_tokens")))
-                .outputTokens(intValue(usage.get("completion_tokens")))
-                .totalTokens(intValue(usage.get("total_tokens")))
+                .modelName(responseModel)
+                .inputTokens(nullableIntValue(usage.get("prompt_tokens")))
+                .outputTokens(nullableIntValue(usage.get("completion_tokens")))
+                .totalTokens(nullableIntValue(usage.get("total_tokens")))
                 .cacheTokens(cacheTokens)
                 .inputCost(costInfo.inputCost())
                 .outputCost(costInfo.outputCost())
@@ -786,6 +791,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
 
     private static String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static Integer nullableIntValue(Object value) {
+        return value == null ? null : intValue(value);
     }
 
     private static int intValue(Object value) {
@@ -1063,6 +1072,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     .reasoningContent(chunkItem.getReasoningContent())
                     .toolCalls(chunkItem.getToolCalls())
                     .usageMetadata(chunkItem.getUsageMetadata())
+                    .responseModel(chunkItem.getResponseModel())
                     .finishReason(chunkItem.getFinishReason())
                     .parserContent(parserContent)
                     .build();
