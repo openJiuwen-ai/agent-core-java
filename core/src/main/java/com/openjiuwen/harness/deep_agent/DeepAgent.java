@@ -2469,7 +2469,13 @@ public class DeepAgent implements AutoCloseable {
                 loopState = loadState(session);
                 loopState.addPendingFollowUps(loopController.drainFollowUp(sessionId));
                 saveState(session, loopState);
-                if (loopController.hasFollowUp() || loopState.hasPendingFollowUps()) {
+                // A steer message can land after the inner ReAct agent's answer-branch
+                // steering check but before this exit decision (e.g. rail
+                // afterTaskIteration callbacks fire in that window). Without this
+                // check the message strands in the shared queue until a later invoke;
+                // keep looping so the next round's iteration head drains it.
+                if (loopController.hasFollowUp() || loopState.hasPendingFollowUps()
+                        || loopController.hasSteering()) {
                     continue;
                 }
                 if (hasRemainingTasks(session)) {

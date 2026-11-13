@@ -185,6 +185,16 @@ public class TaskLoopController extends Controller {
         return interactionQueues.hasFollowUp();
     }
 
+    /**
+     * Reports whether any steering message is pending on the interaction queues.
+     *
+     * @return true if a steering message is queued for a later round
+     * @since 0.1.17
+     */
+    public boolean hasSteering() {
+        return interactionQueues.hasSteering();
+    }
+
     private void trackSession(String sessionId) {
         if (sessionId == null || sessionId.isBlank() || DEFAULT_SESSION_ID.equals(sessionId)) {
             return;
