@@ -1620,8 +1620,10 @@ public class DeepAgent implements AutoCloseable {
                 : card.getName() + "_session");
         // Resume rounds bypass the task loop, so bind the loop steering queue explicitly:
         // steer() enqueues there, and without this binding the resumed round would drain a
-        // fresh empty queue and silently drop steered messages.
-        effective.putIfAbsent("_steering_queue", loopController().getInteractionQueues().steering());
+        // fresh empty queue and silently drop steered messages. The session-scoped view
+        // keeps other sessions' named steering messages out of this resumed round.
+        effective.putIfAbsent("_steering_queue", loopController().getSteeringQueue(
+                session != null ? session.getSessionId() : null));
         Map<String, Object> raw = unwrapInvokeResult(invokeResumeRound(effective, session));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("type", "deep_agent_result");
@@ -1941,8 +1943,10 @@ public class DeepAgent implements AutoCloseable {
                 ? session.getSessionId()
                 : card.getName() + "_session");
         // Resume bypasses the task loop, so bind the loop steering queue explicitly: steer()
-        // enqueues there and the resumed round must drain the same queue.
-        effective.putIfAbsent("_steering_queue", loopController().getInteractionQueues().steering());
+        // enqueues there and the resumed round must drain the same queue. The session-scoped
+        // view keeps other sessions' named steering messages out of this resumed round.
+        effective.putIfAbsent("_steering_queue", loopController().getSteeringQueue(
+                session != null ? session.getSessionId() : null));
         Map<String, Object> raw = unwrapInvokeResult(invokeInnerRoundStreaming(effective, effectiveSession));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("type", "deep_agent_result");
@@ -2472,10 +2476,13 @@ public class DeepAgent implements AutoCloseable {
                 // A steer message can land after the inner ReAct agent's answer-branch
                 // steering check but before this exit decision (e.g. rail
                 // afterTaskIteration callbacks fire in that window). Without this
-                // check the message strands in the shared queue until a later invoke;
+                // check the message strands in the queue until a later invoke;
                 // keep looping so the next round's iteration head drains it.
+                // Session-scoped check: only steering visible to THIS session (its own
+                // bucket plus broadcast messages) may extend its loop, so another
+                // session's steer neither runs extra rounds here nor leaks in.
                 if (loopController.hasFollowUp() || loopState.hasPendingFollowUps()
-                        || loopController.hasSteering()) {
+                        || loopController.hasSteering(sessionId)) {
                     continue;
                 }
                 if (hasRemainingTasks(session)) {

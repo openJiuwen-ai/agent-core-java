@@ -312,10 +312,23 @@ class DeepAgentSteeringSpikeTest {
                 sessionBRequests.add(request);
             }
         }
-        assertThat(sessionBRequests).as("session b must issue its own model requests").isNotEmpty();
+        // Timing-insensitive isolation: whichever order B's exit decision takes relative
+        // to A's steer enqueue, B must converge on exactly one model call with no
+        // steering leak (A's steer lives in A's bucket, invisible to B's exit check
+        // and B's inner steering drain).
+        assertThat(sessionBRequests).as("session b must issue its own model requests").hasSize(1);
         for (List<BaseMessage> request : sessionBRequests) {
             assertNoSteering(request);
         }
+        List<List<BaseMessage>> sessionARequests = new ArrayList<>();
+        for (List<BaseMessage> request : List.copyOf(captured)) {
+            if (requestBelongsTo(request, "session-a-query")) {
+                sessionARequests.add(request);
+            }
+        }
+        assertThat(sessionARequests).as("session a must continue after its own steering")
+                .hasSizeGreaterThanOrEqualTo(2);
+        assertSingleSteeringMessage(sessionARequests.get(1), "guidance only for session a");
     }
 
     @Test
@@ -398,6 +411,84 @@ class DeepAgentSteeringSpikeTest {
                 ctx.getAgent().steer("late constraint", session);
             }
         }
+    }
+
+    @Test
+    void crossSessionSteerInExitWindowIsolatedAndPreserved() throws Exception {
+        List<List<BaseMessage>> captured = Collections.synchronizedList(new ArrayList<>());
+        DeepAgent agent = newSpikeAgent(4, List.of());
+        // Model answers per session marker, so requests are attributable without a
+        // shared call counter (sessions run sequentially here).
+        installModel(agent, captured, (callIndex, request) -> AssistantMessage.builder()
+                .content(requestBelongsTo(request, "t11-b-query") ? "session b answer" : "session a answer")
+                .build());
+        AgentSessionApi sessionA = new DeepAgentSession("t11-session-a", null, agent.getCard());
+        AgentSessionApi sessionB = new DeepAgentSession("t11-session-b", null, agent.getCard());
+        // The rail steers for session A (which is NOT running) from inside session B's
+        // afterTaskIteration hook: exactly the exit-decision race window the review
+        // flagged, where a global steering check used to extend B's loop and let B's
+        // next round drain — and leak — A's message.
+        agent.addRail(new CrossSessionSteerRail(sessionA, "cross session guidance"));
+        InvokeRun runB = new InvokeRun(agent,
+                Map.of("query", "resolve t11-b-query", "conversation_id", "t11-session-b"),
+                sessionB, "t11-invoke-b");
+        runB.start();
+        Map<String, Object> resultB = runB.joinAndCollect();
+
+        // B: one model call, no steering leak, no extra outer round from A's steer.
+        assertThat(requestsFor(captured, "t11-b-query"))
+                .as("session b must converge on exactly one model call despite a cross-session steer")
+                .hasSize(1);
+        assertNoSteering(requestsFor(captured, "t11-b-query").get(0));
+        assertThat(String.valueOf(resultB.get("output")))
+                .as("session b must return its own converged answer")
+                .isEqualTo("session b answer");
+
+        // A: the steered message is preserved in A's own bucket and feeds A's next run
+        // instead of being lost (drained by B) or stranded.
+        Map<String, Object> resultA = agent.invoke(
+                Map.of("query", "resolve t11-a-query", "conversation_id", "t11-session-a"), sessionA);
+        List<List<BaseMessage>> aRequests = requestsFor(captured, "t11-a-query");
+        assertThat(aRequests).as("session a must issue its own model request").isNotEmpty();
+        assertSingleSteeringMessage(aRequests.get(0), "cross session guidance");
+        assertThat(String.valueOf(resultA.get("output")))
+                .as("session a must converge on its own answer after consuming its steering")
+                .isEqualTo("session a answer");
+    }
+
+    /**
+     * Steers for a fixed target session (not the firing session) exactly once, from
+     * the afterTaskIteration hook of whichever round fires first.
+     */
+    private static final class CrossSessionSteerRail extends DeepAgentRail {
+        private final AtomicBoolean steered = new AtomicBoolean(false);
+        private final AgentSessionApi targetSession;
+        private final String message;
+
+        CrossSessionSteerRail(AgentSessionApi targetSession, String message) {
+            this.targetSession = targetSession;
+            this.message = message;
+        }
+
+        @Override
+        public void afterTaskIteration(CallbackContext ctx) {
+            if (ctx.getAgent() == null) {
+                return;
+            }
+            if (steered.compareAndSet(false, true)) {
+                ctx.getAgent().steer(message, targetSession);
+            }
+        }
+    }
+
+    private static List<List<BaseMessage>> requestsFor(List<List<BaseMessage>> captured, String marker) {
+        List<List<BaseMessage>> matches = new ArrayList<>();
+        for (List<BaseMessage> request : List.copyOf(captured)) {
+            if (requestBelongsTo(request, marker)) {
+                matches.add(request);
+            }
+        }
+        return matches;
     }
 
     private static DeepAgent newSpikeAgent(int maxIterations, List<Object> tools) {

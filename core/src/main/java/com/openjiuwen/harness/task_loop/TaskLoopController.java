@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -85,12 +86,15 @@ public class TaskLoopController extends Controller {
     /**
      * Drain steering messages for a given session.
      *
-     * @param sessionId the session id (ignored in this implementation)
-     * @return list of steering messages
+     * <p>Drains the session's own bucket first, then broadcast messages; other
+     * sessions' buckets are left untouched.</p>
+     *
+     * @param sessionId the session id
+     * @return list of steering messages visible to the session
      */
     public List<String> drainSteering(String sessionId) {
         trackSession(sessionId);
-        return drainSteering();
+        return interactionQueues.drainSteering(sessionId);
     }
 
     /**
@@ -171,13 +175,16 @@ public class TaskLoopController extends Controller {
     /**
      * Enqueue a steering message.
      *
-     * @param sessionId the session id (ignored in this implementation)
+     * <p>Named sessions get a session-scoped bucket (invisible to other sessions);
+     * a null/blank/default session id falls back to the shared broadcast queue.</p>
+     *
+     * @param sessionId the session id the message belongs to
      * @param message   the steering message
      */
     public void enqueueSteering(String sessionId, String message) {
         trackSession(sessionId);
         if (message != null && !message.isBlank()) {
-            interactionQueues.pushSteer(message);
+            interactionQueues.pushSteer(sessionId, message);
         }
     }
 
@@ -193,6 +200,30 @@ public class TaskLoopController extends Controller {
      */
     public boolean hasSteering() {
         return interactionQueues.hasSteering();
+    }
+
+    /**
+     * Reports whether the given session has steering messages visible to it
+     * (its own bucket plus broadcast messages).
+     *
+     * @param sessionId the session id
+     * @return true if the session can drain at least one steering message
+     * @since 0.1.17
+     */
+    public boolean hasSteering(String sessionId) {
+        return interactionQueues.hasSteering(sessionId);
+    }
+
+    /**
+     * Get a live steering queue view scoped to the given session for the inner
+     * ReAct agent binding: named messages of other sessions stay invisible.
+     *
+     * @param sessionId the session id the view is scoped to
+     * @return the session-filtered steering queue view
+     * @since 0.1.17
+     */
+    public Queue<String> getSteeringQueue(String sessionId) {
+        return interactionQueues.steeringView(sessionId);
     }
 
     private void trackSession(String sessionId) {
