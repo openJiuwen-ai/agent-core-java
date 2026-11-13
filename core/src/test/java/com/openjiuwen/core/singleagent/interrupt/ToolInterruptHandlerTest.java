@@ -4,20 +4,36 @@
 
 package com.openjiuwen.core.singleagent.interrupt;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 /**
  * Focused parity tests for {@link ToolInterruptHandler}.
@@ -26,6 +42,81 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * {@code openjiuwen/core/single_agent/interrupt/handler.py}.</p>
  */
 class ToolInterruptHandlerTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("resume validates before tools and appends the message only after tools settle")
+    void testResumeMessageLifecycle(boolean isInterruptedAgain) {
+        List<String> events = new ArrayList<>();
+        ResumeContext resumeContext = new ResumeContext();
+        resumeContext.setState(newInterruptedState());
+        resumeContext.setUserInput("answer");
+        UserMessage message = new UserMessage("image answer");
+        ModelContext modelContext = mock(ModelContext.class);
+        when(modelContext.addMessages(message)).thenAnswer(invocation -> {
+            events.add("message");
+            return CompletableFuture.completedFuture(List.of(message));
+        });
+        resumeContext.setContext(modelContext);
+        resumeContext.setResumeMessageBuilder(input -> {
+            assertEquals("answer", input);
+            events.add("validate");
+            return Optional.of(message);
+        });
+        resumeContext.setExecuteToolCall((ctx, calls, session, context) -> {
+            events.add("tools");
+            assertSame(modelContext, context);
+            assertEquals("call-1", calls.get(0).getId());
+            return isInterruptedAgain ? List.of(new ToolInterruptException(new InterruptRequest())) : List.of("done");
+        });
+
+        Map<String, Object> result = new ToolInterruptHandler(null).handleResume(resumeContext);
+
+        if (isInterruptedAgain) {
+            assertEquals("interrupt", result.get("result_type"));
+            assertEquals(List.of("validate", "tools"), events);
+            verifyNoInteractions(modelContext);
+        } else {
+            assertNull(result);
+            assertEquals(List.of("validate", "tools", "message"), events);
+            verify(modelContext).addMessages(message);
+        }
+    }
+
+    @Test
+    @DisplayName("invalid resume message preserves the interruption without executing tools")
+    void testResumeMessageFailurePreservesInterruption() {
+        ResumeContext resumeContext = new ResumeContext();
+        ToolInterruptionState state = newInterruptedState();
+        resumeContext.setState(state);
+        AgentSessionApi session = mock(AgentSessionApi.class);
+        resumeContext.setSession(session);
+        BaseError error = new BaseError(StatusCode.ERROR);
+        resumeContext.setResumeMessageBuilder(input -> {
+            throw error;
+        });
+        List<String> executions = new ArrayList<>();
+        resumeContext.setExecuteToolCall((ctx, calls, activeSession, context) -> {
+            executions.add("tools");
+            return List.of("done");
+        });
+
+        BaseError actual = assertThrows(BaseError.class,
+                () -> new ToolInterruptHandler(null).handleResume(resumeContext));
+
+        assertSame(error, actual);
+        assertTrue(executions.isEmpty());
+        verify(session).updateState(Map.of(InterruptConstants.INTERRUPTION_KEY, state));
+        assertEquals(1, state.getInterruptedTools().size());
+    }
+
+    private ToolInterruptionState newInterruptedState() {
+        ToolInterruptEntry entry = new ToolInterruptEntry();
+        entry.setToolCall(ToolCall.builder().id("call-1").name("shell").arguments("{}").build());
+        ToolInterruptionState state = new ToolInterruptionState();
+        state.setInterruptedTools(Map.of("call-1", entry));
+        return state;
+    }
+
     @Test
     @DisplayName("collectInterrupts handles ToolInterruptException with fallback tool call")
     void testCollectInterruptsHandlesToolInterruptException() {

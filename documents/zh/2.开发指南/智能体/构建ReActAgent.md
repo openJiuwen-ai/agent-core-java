@@ -321,4 +321,6 @@ reactAgent.configure(new ReActAgentConfig().configureMaterialAccess(materialAcce
 
 图片素材解析是注入能力而非静态工具类：契约在 `com.openjiuwen.core.foundation.llm.multimodal`，默认实现 `LocalImageMaterialProvider` 在图片功能域，`agent.setMaterialProvider(provider)` 可替换。失败通过统一 `BaseError` 机制返回，`details.reason` 取 `CONTENT_INVALID`、`SOURCE_UNRESOLVED`、`FILE_PROCESSING_REQUIRED`、`IMAGE_LOAD_FAILED`、`IMAGE_PROCESS_FAILED`、`VERSION_CONFLICT`，details 同时携带块 ID、字段名、`sourceId`、`stage` 与原输入下标。
 
-限制说明：多轮会话、恢复与 offload 场景的上下文图文保全由既有需求承载，本入口当前只保证单轮调用；模型图文能力校验（发送前拦截）不在本版范围，发给不支持图片的模型将由下游报错。
+`ask_user` 挂起后，同一会话可通过 `query` 提交图文内容块列表、结构化消息或 `BaseMessage` 补充答复。文字沿用原有工具答复格式；仅图片答复也可恢复执行。工具恢复完成后，框架在工具结果之后追加一条包含本轮图文的 `user` 消息，保留历史截图，并沿用上述素材解析与访问控制。纯文本答复保持原有工具结果消息，不额外追加用户消息。
+
+限制说明：offload 等其他上下文图文保全场景由既有需求承载；模型图文能力校验（发送前拦截）不在本版范围，发给不支持图片的模型将由下游报错。

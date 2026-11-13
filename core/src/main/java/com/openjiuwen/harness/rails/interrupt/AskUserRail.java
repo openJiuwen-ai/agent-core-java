@@ -6,6 +6,9 @@ package com.openjiuwen.harness.rails.interrupt;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.llm.multimodal.ContentBlock;
+import com.openjiuwen.core.foundation.llm.multimodal.DefaultMultimodalContentNormalizer;
+import com.openjiuwen.core.foundation.llm.multimodal.MultimodalContentNormalizer;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -30,6 +33,7 @@ import java.util.Map;
 public class AskUserRail extends BaseInterruptRail {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final MultimodalContentNormalizer CONTENT_NORMALIZER = new DefaultMultimodalContentNormalizer();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -83,6 +87,8 @@ public class AskUserRail extends BaseInterruptRail {
         try {
             if (userInput instanceof AskUserPayload askUserPayload) {
                 payload = askUserPayload;
+            } else if (MultimodalContentNormalizer.isMultimodalContent(userInput)) {
+                payload = parseMultimodalInput(userInput, toolCall);
             } else if (userInput instanceof Map<?, ?> inputMap) {
                 payload = parseUserInputMap(inputMap, toolCall);
             } else if (userInput instanceof String text) {
@@ -105,6 +111,32 @@ public class AskUserRail extends BaseInterruptRail {
             return interrupt(buildAskRequest(toolCall));
         }
         return reject(formatToolResult(toolCall, payload));
+    }
+
+    private AskUserPayload parseMultimodalInput(Object userInput, ToolCall toolCall) {
+        List<Map<String, Object>> questionList = questions(toolCall);
+        if (questionList.isEmpty()) {
+            return new AskUserPayload();
+        }
+        List<String> textParts = new ArrayList<>();
+        boolean hasImage = false;
+        for (ContentBlock block : CONTENT_NORMALIZER.normalize(userInput)) {
+            if (block instanceof ContentBlock.Text textBlock) {
+                textParts.add(textBlock.text());
+            } else if (block instanceof ContentBlock.Image || block instanceof ContentBlock.FileRef) {
+                hasImage = true;
+            } else {
+                return new AskUserPayload();
+            }
+        }
+        String answer = String.join("\n", textParts);
+        if (answer.isEmpty() && !hasImage) {
+            return new AskUserPayload();
+        }
+
+        // The image itself is appended as a user message by ReActAgent after the tool results.
+        return new AskUserPayload(Map.of(questionText(questionList.get(0)),
+                answer.isEmpty() ? "See the attached image." : answer));
     }
 
     private AskUserPayload parseUserInputMap(Map<?, ?> userInput, ToolCall toolCall) {

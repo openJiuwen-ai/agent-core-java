@@ -6,9 +6,11 @@ package com.openjiuwen.core.singleagent.interrupt;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -20,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Handler for tool interruption collection, persistence, and resume.
@@ -158,6 +161,26 @@ public class ToolInterruptHandler {
     }
 
     public Map<String, Object> handleResume(ResumeContext resumeContext) {
+        Optional<UserMessage> resumeMessage = buildResumeMessage(resumeContext);
+        Optional<Map<String, Object>> result = resumeTools(resumeContext);
+        if (result.isEmpty()) {
+            // Append only after tool results to keep assistant/tool pairs contiguous.
+            resumeMessage.ifPresent(message -> resumeContext.getContext().addMessages(message)
+                    .toCompletableFuture().join());
+        }
+        return result.orElse(null);
+    }
+
+    private Optional<UserMessage> buildResumeMessage(ResumeContext resumeContext) {
+        try {
+            return resumeContext.getResumeMessageBuilder().apply(resumeContext.getUserInput());
+        } catch (BaseError error) {
+            save(resumeContext.getState(), resumeContext.getSession());
+            throw error;
+        }
+    }
+
+    private Optional<Map<String, Object>> resumeTools(ResumeContext resumeContext) {
         ToolInterruptionState state = resumeContext.getState();
         Object userInput = resumeContext.getUserInput();
         AgentCallbackContext ctx = resumeContext.getCtx();
@@ -197,13 +220,13 @@ public class ToolInterruptHandler {
         state.setInterruptedTools(collectResult.getInterruptedTools());
         state.setAutoConfirmMapping(collectResult.getAutoConfirmMapping());
         if (!collectResult.getInterruptedTools().isEmpty()) {
-            return commitInterrupt(state, resumeContext.getSession(), resumeContext.getInvokeInputs(),
-                    collectResult.getPayloads());
+            return Optional.of(commitInterrupt(state, resumeContext.getSession(), resumeContext.getInvokeInputs(),
+                    collectResult.getPayloads()));
         }
         if (ctx != null) {
             ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, state.getIteration() + 1);
         }
-        return null;
+        return Optional.empty();
     }
 
     public Object getAgent() {
