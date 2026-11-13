@@ -461,6 +461,19 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         // railed body from the post-rail prompt, while Java keeps rail-edited
         // inputs as the request snapshot).
         prepareModelRequest(ctx);
+        // Resolve once before BEFORE_MODEL_CALL so rails can report the model that is
+        // actually used instead of the static configuration. Resolution failure must
+        // not break the rail lifecycle: rails may force-finish the invocation before
+        // any model is needed, so reporting falls back to the configured name.
+        Model activeModel;
+        try {
+            activeModel = getLlm(ctx);
+        } catch (IllegalStateException | IllegalArgumentException | CompletionException e) {
+            activeModel = null;
+        }
+        ModelCallInputs modelCallInputs = ModelCallInputs.class.cast(ctx.getInputs());
+        modelCallInputs.setModelName(resolveModelName(activeModel));
+        modelCallInputs.setModelId(ctx.getDynamicModelId());
         boolean isModelCallSuccessful = false;
         try {
             Object result = Rails.run(

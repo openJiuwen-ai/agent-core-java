@@ -102,6 +102,36 @@ class OtelAgentHandlerTest {
         }
 
         @Test
+        @DisplayName("onLlmStart writes openjiuwen.model.id when instance info carries model_id")
+        void testLlmStartWritesModelId() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            TraceAgentSpan span = newSpan();
+            Map<String, Object> info = instanceInfo("model-b");
+            info.put("model_id", "pkg-b");
+
+            handler.onLlmStart(span, Map.of("prompt", "hi"), info);
+            handler.onLlmEnd(span, Map.of());
+
+            SpanData s = firstSpan();
+            assertThat(s.getAttributes().get(AttributeKey.stringKey("openjiuwen.model.id"))).isEqualTo("pkg-b");
+            assertThat(s.getAttributes().get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL)))
+                    .isEqualTo("model-b");
+        }
+
+        @Test
+        @DisplayName("onLlmStart omits openjiuwen.model.id when instance info carries no model_id")
+        void testLlmStartOmitsModelIdWhenAbsent() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            TraceAgentSpan span = newSpan();
+
+            handler.onLlmStart(span, Map.of("prompt", "hi"), instanceInfo("model-a"));
+            handler.onLlmEnd(span, Map.of());
+
+            SpanData s = firstSpan();
+            assertThat(s.getAttributes().get(AttributeKey.stringKey("openjiuwen.model.id"))).isNull();
+        }
+
+        @Test
         @DisplayName("onLlmEnd sets completion and closes span")
         void testLlmEndSetsCompletion() {
             OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);

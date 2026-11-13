@@ -33,6 +33,22 @@ public class ModelCallInputs implements EventInputs {
 
     private Object response;
 
+    /**
+     * Name of the model actually used for this call, derived from the resolved
+     * {@code Model}; may be {@code null} when the caller does not fill it in.
+     *
+     * @since 0.1.16
+     */
+    private String modelName;
+
+    /**
+     * Framework model-pool key ({@code ctx.dynamicModelId}) of the actual model,
+     * kept verbatim; may be {@code null} when the default model is used.
+     *
+     * @since 0.1.16
+     */
+    private String modelId;
+
     public static Builder builder() {
         return new Builder();
     }
@@ -69,6 +85,46 @@ public class ModelCallInputs implements EventInputs {
         this.response = response;
     }
 
+    /**
+     * Return the name of the model actually used for this call.
+     *
+     * @return the model name, or {@code null} when not filled in
+     * @since 0.1.16
+     */
+    public String getModelName() {
+        return modelName;
+    }
+
+    /**
+     * Set the name of the model actually used for this call.
+     *
+     * @param modelName the model name to report
+     * @since 0.1.16
+     */
+    public void setModelName(String modelName) {
+        this.modelName = modelName;
+    }
+
+    /**
+     * Return the framework model-pool key of the actual model.
+     *
+     * @return the pool key, or {@code null} when the default model is used
+     * @since 0.1.16
+     */
+    public String getModelId() {
+        return modelId;
+    }
+
+    /**
+     * Set the framework model-pool key of the actual model.
+     *
+     * @param modelId the pool key, kept verbatim
+     * @since 0.1.16
+     */
+    public void setModelId(String modelId) {
+        this.modelId = modelId;
+    }
+
     @JsonIgnore
     public Map<String, String> getRequestHeaders() {
         return new LinkedHashMap<>(requestHeaders);
@@ -103,10 +159,14 @@ public class ModelCallInputs implements EventInputs {
     }
 
     /**
-     * Fluent builder matching the 930 Lombok {@code ModelCallInputs.builder()} surface.
+     * Fluent builder for {@link ModelCallInputs}.
      */
     public static final class Builder {
         private List<Object> messages;
+
+        private String modelName;
+
+        private String modelId;
 
         /**
          * Sets the model-call messages.
@@ -120,6 +180,30 @@ public class ModelCallInputs implements EventInputs {
         }
 
         /**
+         * Sets the name of the model actually used for this call.
+         *
+         * @param modelName the model name to report
+         * @return this builder
+         * @since 0.1.16
+         */
+        public Builder modelName(String modelName) {
+            this.modelName = modelName;
+            return this;
+        }
+
+        /**
+         * Sets the framework model-pool key of the actual model.
+         *
+         * @param modelId the pool key, kept verbatim
+         * @return this builder
+         * @since 0.1.16
+         */
+        public Builder modelId(String modelId) {
+            this.modelId = modelId;
+            return this;
+        }
+
+        /**
          * Builds model-call inputs from the collected fields.
          *
          * @return a new inputs object
@@ -128,6 +212,12 @@ public class ModelCallInputs implements EventInputs {
             ModelCallInputs inputs = new ModelCallInputs();
             if (messages != null) {
                 inputs.setMessages(messages);
+            }
+            if (modelName != null) {
+                inputs.setModelName(modelName);
+            }
+            if (modelId != null) {
+                inputs.setModelId(modelId);
             }
             return inputs;
         }
