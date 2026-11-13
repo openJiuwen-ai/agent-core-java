@@ -677,14 +677,14 @@ public class SiliconFlowModelClient extends BaseModelClient {
         Map<String, Object> usage = toObjectMap(usageMap);
         Integer cacheTokens = null;
         if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
-            cacheTokens = nullableIntValue(toObjectMap(promptDetails).get("cached_tokens"));
+            cacheTokens = optionalIntValue(toObjectMap(promptDetails).get("cached_tokens")).orElse(null);
         }
         CostInfo costInfo = extractCostInfo(usage);
         return UsageMetadata.builder()
                 .modelName(responseModel)
-                .inputTokens(nullableIntValue(usage.get("prompt_tokens")))
-                .outputTokens(nullableIntValue(usage.get("completion_tokens")))
-                .totalTokens(nullableIntValue(usage.get("total_tokens")))
+                .inputTokens(optionalIntValue(usage.get("prompt_tokens")).orElse(null))
+                .outputTokens(optionalIntValue(usage.get("completion_tokens")).orElse(null))
+                .totalTokens(optionalIntValue(usage.get("total_tokens")).orElse(null))
                 .cacheTokens(cacheTokens)
                 .inputCost(costInfo.inputCost())
                 .outputCost(costInfo.outputCost())
@@ -793,8 +793,8 @@ public class SiliconFlowModelClient extends BaseModelClient {
         return value == null ? null : String.valueOf(value);
     }
 
-    private static Integer nullableIntValue(Object value) {
-        return value == null ? null : intValue(value);
+    private static Optional<Integer> optionalIntValue(Object value) {
+        return value == null ? Optional.empty() : Optional.of(intValue(value));
     }
 
     private static int intValue(Object value) {
