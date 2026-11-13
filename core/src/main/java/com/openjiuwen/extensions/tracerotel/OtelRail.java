@@ -33,6 +33,8 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * Rail that manages agent root span and LLM child span lifecycles.
@@ -489,15 +491,19 @@ public class OtelRail extends AgentRail {
             // Pool lookup is read-only reporting and must never break the model call
             // itself. Suppliers execute synchronously (AbstractManager.getResource)
             // and raise unchecked exceptions as-is instead of wrapping them in
-            // CompletionException, so the guard below is intentionally wide.
-            Object pooled = Runner.resourceMgr().getModel(modelId.get()).toCompletableFuture().join();
+            // CompletionException, so the lookup is routed through a completed
+            // future: every supplier failure surfaces as CompletionException and
+            // the guard stays a single specific type.
+            Object pooled = CompletableFuture.completedFuture(modelId.get())
+                    .thenApply(id -> Runner.resourceMgr().getModel(id).toCompletableFuture().join())
+                    .join();
             if (pooled instanceof Model model && model.getModelConfig() != null) {
                 String name = model.getModelConfig().getModelName();
                 if (name != null && !name.isBlank()) {
                     return Optional.of(name);
                 }
             }
-        } catch (RuntimeException e) {
+        } catch (CompletionException e) {
             LOG.debug("otel rail: failed to resolve model '{}' from the framework pool", modelId.get(), e);
         }
         return Optional.empty();

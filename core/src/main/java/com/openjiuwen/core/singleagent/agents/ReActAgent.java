@@ -130,6 +130,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -467,12 +468,16 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         // any model is needed, so reporting falls back to the configured name.
         Model activeModel;
         try {
-            activeModel = getLlm(ctx);
-        } catch (RuntimeException e) {
             // Reporting only: pool suppliers run synchronously and may raise any
-            // unchecked exception. A resolution failure here falls back to the
-            // configured name and never bypasses the ON_MODEL_EXCEPTION channel
-            // that the real resolution inside the railed operation still uses.
+            // unchecked exception, so the snapshot resolution is routed through a
+            // completed future and failures surface as CompletionException. A
+            // failure falls back to the configured name and never bypasses the
+            // ON_MODEL_EXCEPTION channel that the real resolution inside the
+            // railed operation still uses.
+            activeModel = CompletableFuture.completedFuture(ctx)
+                    .thenApply(this::getLlm)
+                    .join();
+        } catch (CompletionException e) {
             LOGGER.fine(() -> "react agent: model snapshot resolution failed, model_id="
                     + ctx.getDynamicModelId() + ", reason=" + e);
             activeModel = null;
