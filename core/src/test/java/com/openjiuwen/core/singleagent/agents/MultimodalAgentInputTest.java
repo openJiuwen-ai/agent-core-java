@@ -17,9 +17,13 @@ import com.openjiuwen.core.foundation.llm.multimodal.MultimodalErrorReasons;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.rails.interrupt.AskUserRail;
 import com.openjiuwen.harness.tools.multimodal.FileSystemImageAssetStore;
 
 import org.junit.jupiter.api.Test;
@@ -59,6 +63,152 @@ class MultimodalAgentInputTest {
 
     @TempDir
     Path outsideDir;
+
+    @Test
+    void resumeWithNewScreenshotPreservesBothImagesAfterToolResult() {
+        CapturingModelClient client = new CapturingModelClient();
+        client.shouldAsk = true;
+        ReActAgent agent = newAgent(client);
+        agent.registerRail(new AskUserRail()).toCompletableFuture().join();
+        MemorySession session = new MemorySession();
+        Object first = agent.invoke(List.of(imageBlock("old", rawSource(PNG_BYTES), Map.of())), session);
+        assertThat(first).isInstanceOfSatisfying(Map.class,
+                result -> assertThat(result.get("result_type")).isEqualTo("interrupt"));
+
+        Object resumed = agent.invoke(Map.of("query", List.of(
+                Map.of("type", "text", "text", "see new screenshot"),
+                imageBlock("new", rawSource(JPEG_BYTES), Map.of()))), session);
+
+        assertThat(resumed).isInstanceOfSatisfying(Map.class,
+                result -> assertThat(result.get("result_type")).isEqualTo("answer"));
+        assertThat(client.calls).hasSize(2);
+        List<BaseMessage> messages = client.calls.get(1);
+        assertThat(messages).extracting(BaseMessage::getRole)
+                .containsSubsequence("user", "assistant", "tool", "user");
+        assertThat(messages.stream().filter(message -> "user".equals(message.getRole()))
+                .map(BaseMessage::getContent).map(String::valueOf).toList())
+                .filteredOn(content -> content.contains(PNG_DATA_URL)).hasSize(1);
+        assertThat(imageUrlOf(lastUserParts(client).get(1))).containsEntry("url", JPEG_DATA_URL);
+        assertThat(messages.stream().filter(message -> "user".equals(message.getRole()))
+                .map(BaseMessage::getContent).map(String::valueOf).toList())
+                .filteredOn(content -> content.contains(JPEG_DATA_URL)).hasSize(1);
+        assertThat(messages.stream().filter(message -> "tool".equals(message.getRole()))
+                .map(BaseMessage::getContent).toList()).singleElement().asString().contains("see new screenshot");
+    }
+
+    @Test
+    void textResumeKeepsExistingToolOnlyAnswer() {
+        CapturingModelClient client = new CapturingModelClient();
+        client.shouldAsk = true;
+        ReActAgent agent = newAgent(client);
+        agent.registerRail(new AskUserRail()).toCompletableFuture().join();
+        MemorySession session = new MemorySession();
+        agent.invoke("start", session);
+        agent.invoke("text answer", session);
+        assertThat(client.calls).hasSize(2);
+        assertThat(client.calls.get(1).stream().filter(message -> "user".equals(message.getRole())).toList())
+                .hasSize(1);
+        assertThat(lastUserMessage(client).getContent()).isEqualTo("start");
+    }
+
+    @Test
+    void streamResumeWithImageOnlyCompletesAndKeepsImageInHistory() {
+        CapturingModelClient client = new CapturingModelClient();
+        client.shouldAsk = true;
+        ReActAgent agent = newAgent(client);
+        agent.registerRail(new AskUserRail()).toCompletableFuture().join();
+        MemorySession session = new MemorySession();
+        List<Object> chunks = new ArrayList<>();
+        agent.stream(Map.of("query", "start"), session, List.of()).forEachRemaining(chunks::add);
+        assertThat(client.calls).hasSize(1);
+
+        agent.stream(Map.of("query", List.of(imageBlock("new", rawSource(JPEG_BYTES), Map.of()))),
+                session, List.of()).forEachRemaining(chunks::add);
+
+        assertThat(client.calls).hasSize(2);
+        assertThat(imageUrlOf(lastUserParts(client).get(0))).containsEntry("url", JPEG_DATA_URL);
+        agent.invoke("continue", session);
+        assertThat(client.calls.get(2).stream().filter(message -> "user".equals(message.getRole()))
+                .map(BaseMessage::getContent).map(String::valueOf).toList())
+                .filteredOn(content -> content.contains(JPEG_DATA_URL)).hasSize(1);
+    }
+
+    @Test
+    void structuredTextResumeDoesNotAppendDuplicateUserMessage() {
+        CapturingModelClient client = new CapturingModelClient();
+        client.shouldAsk = true;
+        ReActAgent agent = newAgent(client);
+        agent.registerRail(new AskUserRail()).toCompletableFuture().join();
+        MemorySession session = new MemorySession();
+        agent.invoke("start", session);
+        agent.invoke(Map.of("query", List.of(Map.of("type", "text", "text", "text answer"))), session);
+        assertThat(client.calls).hasSize(2);
+        assertThat(client.calls.get(1).stream().filter(message -> "user".equals(message.getRole())).toList())
+                .hasSize(1);
+    }
+
+    @Test
+    void invalidResumeKeepsInterruptionForRetry() {
+        for (Object input : invalidResumeInputs()) {
+            assertInvalidResumeKeepsInterruption(input, false);
+        }
+    }
+
+    @Test
+    void streamInvalidResumeKeepsInterruptionForRetry() {
+        for (Object input : invalidResumeInputs()) {
+            assertInvalidResumeKeepsInterruption(input, true);
+        }
+    }
+
+    private List<Object> invalidResumeInputs() {
+        return List.of(List.of(Map.of("type", "image")), Map.of("content", 123),
+                List.of(imageBlock("invalid", Map.of("kind", "raw", "bytes", "not-base64"), Map.of())),
+                List.of(imageBlock("missing", Map.of("kind", "path",
+                        "path", tempDir.resolve("missing.png").toString()), Map.of())),
+                List.of(fileBlock("document", rawSource(PNG_BYTES), Map.of("mediaType", "application/pdf"))),
+                List.of(Map.of("type", "text", "text", "answer"),
+                        Map.of("type", "video", "source", rawSource(PNG_BYTES))));
+    }
+
+    private void assertInvalidResumeKeepsInterruption(Object input, boolean isStreaming) {
+        CapturingModelClient client = new CapturingModelClient();
+        client.shouldAsk = true;
+        ReActAgent agent = newAgent(client);
+        agent.registerRail(new AskUserRail()).toCompletableFuture().join();
+        MemorySession session = new MemorySession();
+        if (isStreaming) {
+            List<Object> chunks = new ArrayList<>();
+            agent.stream(Map.of("query", "start"), session, List.of()).forEachRemaining(chunks::add);
+        } else {
+            agent.invoke("start", session);
+        }
+        Object interruption = session.getState(InterruptConstants.INTERRUPTION_KEY);
+        assertThat(interruption).isNotNull();
+
+        assertInvalidResumeFails(agent, session, input, isStreaming);
+
+        assertThat(session.getState(InterruptConstants.INTERRUPTION_KEY)).isSameAs(interruption);
+        assertThat(client.calls).hasSize(1);
+        agent.invoke(Map.of("query", List.of(imageBlock("retry", rawSource(JPEG_BYTES), Map.of()))), session);
+        assertThat(session.getState(InterruptConstants.INTERRUPTION_KEY)).isNull();
+        assertThat(client.calls).hasSize(2);
+        assertThat(client.calls.get(1)).extracting(BaseMessage::getRole)
+                .containsSubsequence("user", "assistant", "tool", "user");
+        assertThat(imageUrlOf(lastUserParts(client).get(0))).containsEntry("url", JPEG_DATA_URL);
+    }
+
+    private void assertInvalidResumeFails(ReActAgent agent, MemorySession session, Object input, boolean isStreaming) {
+        if (isStreaming) {
+            List<Object> chunks = new ArrayList<>();
+            agent.stream(Map.of("query", input), session, List.of()).forEachRemaining(chunks::add);
+            assertThat(chunks).anySatisfy(chunk -> assertThat(chunk).isInstanceOfSatisfying(OutputSchema.class,
+                    schema -> assertThat(schema.getPayload()).isInstanceOfSatisfying(Map.class,
+                            payload -> assertThat(payload.get("result_type")).isEqualTo("error"))));
+        } else {
+            assertThatThrownBy(() -> agent.invoke(Map.of("query", input), session)).isInstanceOf(BaseError.class);
+        }
+    }
 
     @Test
     void invoke_stringInput_modelReceivesUnchangedStringContent() {
@@ -454,16 +604,29 @@ class MultimodalAgentInputTest {
 
     private static final class CapturingModelClient implements Model.ModelClient {
         private final List<List<BaseMessage>> calls = new ArrayList<>();
+        private boolean shouldAsk;
 
         @Override
         public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
             calls.add(List.copyOf(messages));
+            if (shouldAsk && calls.size() == 1) {
+                return CompletableFuture.completedFuture(AssistantMessage.builder().content("")
+                        .toolCalls(List.of(ToolCall.builder().id("ask-image").name("ask_user").type("function")
+                                .arguments("{\"questions\":[{\"question\":\"What is the error?\"}]}")
+                                .build())).build());
+            }
             return CompletableFuture.completedFuture(new AssistantMessage("ok"));
         }
 
         @Override
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             calls.add(List.copyOf(messages));
+            if (shouldAsk && calls.size() == 1) {
+                return List.of(AssistantMessageChunk.builder().content("").finishReason("tool_calls")
+                        .toolCalls(List.of(ToolCall.builder().id("ask-image").name("ask_user").type("function")
+                                .arguments("{\"questions\":[{\"question\":\"What is the error?\"}]}").build()))
+                        .build()).iterator();
+            }
             return new Iterator<>() {
                 private boolean isDone;
 
