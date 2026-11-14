@@ -385,15 +385,27 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 retrier.openStream(retryContext, streamAttempt, null), retrier, null);
     }
 
+    /**
+     * Removes the SSE {@code data:} field name from one frame line. The space after the
+     * colon is optional in the SSE specification, so {@code data: {...}} and
+     * {@code data:{...}} must yield the same payload.
+     *
+     * @param line one SSE frame line, never null
+     * @return the frame payload with surrounding whitespace removed
+     */
+    private static String stripSseDataPrefix(String line) {
+        if (!line.startsWith("data:")) {
+            return line.strip();
+        }
+        return line.substring("data:".length()).strip();
+    }
+
     protected AssistantMessageChunk parseStreamChunk(String line) {
         if (line == null) {
             return null;
         }
-        String dataString = line;
-        if (dataString.startsWith("data: ")) {
-            dataString = dataString.substring("data: ".length());
-        }
-        if ("[DONE]".equals(dataString.strip())) {
+        String dataString = stripSseDataPrefix(line);
+        if ("[DONE]".equals(dataString)) {
             return null;
         }
 
@@ -895,7 +907,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         continue;
                     }
                     isFirstSegmentReceived = true;
-                    String data = line.substring("data:".length()).strip();
+                    String data = stripSseDataPrefix(line);
                     if (!data.contains("choices") && ErrorBodyParser.hasErrorObject(data)) {
                         throw errorFrameException(data);
                     }

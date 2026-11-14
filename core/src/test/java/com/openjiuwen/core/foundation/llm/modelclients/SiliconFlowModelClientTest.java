@@ -270,6 +270,41 @@ class SiliconFlowModelClientTest {
     }
 
     @Test
+    void streamParsesSseFramesWithoutSpaceAfterDataPrefix() throws Exception {
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        client.nextStreamLines = List.of(
+                "data:{\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}",
+                "data:{\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}],"
+                        + "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}",
+                "data:[DONE]"
+        );
+        RecordingTracer tracer = new RecordingTracer();
+
+        Iterator<AssistantMessageChunk> iterator = client.stream(
+                "hello",
+                null,
+                null,
+                null,
+                "override-model",
+                32,
+                null,
+                null,
+                null,
+                Map.of("tracer_record_data", tracer)
+        );
+        List<AssistantMessageChunk> chunks = iteratorToList(iterator);
+
+        assertThat(chunks).hasSize(2);
+        assertThat(chunks.get(0).getContent()).isEqualTo("Hello");
+        assertThat(chunks.get(1).getContent()).isEqualTo(" world");
+        assertThat(chunks.get(1).getFinishReason()).isEqualTo("stop");
+        assertThat(chunks.get(1).getUsageMetadata().getTotalTokens()).isEqualTo(3);
+        assertThat(tracer.records).hasSize(2);
+        AssistantMessageChunk finalMessage = (AssistantMessageChunk) tracer.records.get(1).get("llm_response");
+        assertThat(finalMessage.getContent()).isEqualTo("Hello world");
+    }
+
+    @Test
     void generationMethodsMirrorPythonPassByReturningNull() {
         RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
 
