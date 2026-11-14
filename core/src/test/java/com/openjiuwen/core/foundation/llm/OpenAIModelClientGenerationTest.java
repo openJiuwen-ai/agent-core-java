@@ -150,6 +150,38 @@ class OpenAIModelClientGenerationTest {
     }
 
     @Test
+    void generateImageReadsConfiguredBase64Path() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/image_generation", exchange -> {
+            requestBody.set(readBody(exchange));
+            writeJson(exchange, "{\"data\":{\"image_base64\":\"aGVsbG8=\"}}");
+        });
+        server.start();
+        try {
+            Model model = createModel(server.getAddress().getPort(), "");
+
+            ImageGenerationResponse response = model.generateImage(
+                    List.of(new UserMessage("a corgi on snow mountain")),
+                    "image-01", null, null, 1, true, false, 0,
+                    Map.of("image_create_path", "/v1/image_generation",
+                            "image_base64_path", "data.image_base64",
+                            "response_format", "base64",
+                            "n", 1,
+                            "aspect_ratio", "1:1"))
+                    .toCompletableFuture().get(60, TimeUnit.SECONDS);
+
+            assertEquals(List.of("aGVsbG8="), response.getImagesBase64());
+            String body = requestBody.get();
+            assertTrue(body.contains("\"image-01\""), body);
+            assertTrue(body.contains("\"response_format\":\"base64\""), body);
+            assertTrue(body.contains("\"aspect_ratio\":\"1:1\""), body);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void generateVideoTaskFlowWithUrlResult() throws Exception {
         AtomicInteger pollCount = new AtomicInteger();
         AtomicReference<String> createBody = new AtomicReference<>();
@@ -187,6 +219,90 @@ class OpenAIModelClientGenerationTest {
             assertTrue(body.contains("\"model\":\"seedance\""), body);
             assertTrue(body.contains("\"type\":\"text\""), body);
             assertTrue(body.contains("\"duration\":5"), body);
+            assertTrue(pollCount.get() >= 2, "poll should run at least twice");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void generateVideoFallsBackToTopLevelTaskIdAndStatusWhenConfiguredPathsMiss() throws Exception {
+        AtomicInteger pollCount = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v2/video_generation", exchange -> {
+            readBody(exchange);
+            writeJson(exchange, "{\"task_id\":\"legacy-1\",\"base_resp\":{\"status_code\":0}}");
+        });
+        server.createContext("/v1/query/video_generation", exchange -> {
+            int call = pollCount.incrementAndGet();
+            if (call == 1) {
+                writeJson(exchange, "{\"task_id\":\"legacy-1\",\"status\":\"Processing\"}");
+            } else {
+                writeJson(exchange, "{\"task_id\":\"legacy-1\",\"status\":\"Success\","
+                        + "\"url\":\"http://example.com/legacy.mp4\"}");
+            }
+        });
+        server.start();
+        try {
+            Model model = createModel(server.getAddress().getPort(), "");
+
+            VideoGenerationResponse response = model.generateVideo(
+                    List.of(new UserMessage("a cat")), null, null, "MiniMax-H3", null, "768P",
+                    5, true, false, null, null,
+                    Map.of("video_body", "reference",
+                            "video_create_path", "/v2/video_generation",
+                            "video_poll_path", "/v1/query/video_generation?task_id={taskId}",
+                            "video_task_id_path", "task.id",
+                            "video_status_path", "task.status",
+                            "poll_interval_seconds", 1))
+                    .toCompletableFuture().get(60, TimeUnit.SECONDS);
+
+            assertEquals("http://example.com/legacy.mp4", response.getVideoUrl());
+            assertTrue(pollCount.get() >= 2, "poll should run at least twice");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void generateVideoReadsNestedTaskIdStatusAndUrlPaths() throws Exception {
+        AtomicInteger pollCount = new AtomicInteger();
+        AtomicReference<String> createBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v2/video_generation", exchange -> {
+            createBody.set(readBody(exchange));
+            writeJson(exchange, "{\"task\":{\"id\":\"mm-1\"}}");
+        });
+        server.createContext("/v2/query/video_generation", exchange -> {
+            int call = pollCount.incrementAndGet();
+            if (call == 1) {
+                writeJson(exchange, "{\"task\":{\"id\":\"mm-1\",\"status\":\"running\"}}");
+            } else {
+                writeJson(exchange, "{\"task\":{\"id\":\"mm-1\",\"status\":\"succeeded\","
+                        + "\"content\":{\"url\":\"http://example.com/mm.mp4\"}}}");
+            }
+        });
+        server.start();
+        try {
+            Model model = createModel(server.getAddress().getPort(), "");
+
+            VideoGenerationResponse response = model.generateVideo(
+                    List.of(new UserMessage("a cat")), null, null, "MiniMax-H3", null, "768P",
+                    5, true, false, null, null,
+                    Map.of("video_body", "reference",
+                            "video_create_path", "/v2/video_generation",
+                            "video_poll_path", "/v2/query/video_generation/{taskId}",
+                            "video_task_id_path", "task.id",
+                            "video_status_path", "task.status",
+                            "video_result_url_path", "task.content.url",
+                            "poll_interval_seconds", 1))
+                    .toCompletableFuture().get(60, TimeUnit.SECONDS);
+
+            assertEquals("http://example.com/mm.mp4", response.getVideoUrl());
+            assertEquals("MiniMax-H3", response.getModel());
+            String body = createBody.get();
+            assertTrue(body.contains("\"model\":\"MiniMax-H3\""), body);
+            assertTrue(body.contains("\"resolution\":\"768P\""), body);
             assertTrue(pollCount.get() >= 2, "poll should run at least twice");
         } finally {
             server.stop(0);
