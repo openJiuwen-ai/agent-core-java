@@ -1453,7 +1453,19 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 writeToolResultOutputs(callbackContext, activeSession, calls, executionResults);
                 return executionResults.stream().map(AbilityManager.ExecutionResult::result).toList();
             });
-            return hitlHandler.handleResume(resumeContext);
+            Optional<UserMessage> resumeMessage;
+            try {
+                resumeMessage = buildMultimodalResumeMessage(userInput);
+            } catch (BaseError error) {
+                hitlHandler.save(toolState, session);
+                throw error;
+            }
+            Object result = hitlHandler.handleResume(resumeContext);
+            if (result == null) {
+                // Keep assistant/tool pairs contiguous and retain this turn's images in conversation history.
+                resumeMessage.ifPresent(message -> context.addMessages(message).toCompletableFuture().join());
+            }
+            return result;
         }
         if (interruptionState instanceof InterruptionState workflowState) {
             WorkflowInterruptEntry entry = workflowState.getInterruptedWorkflows().get(workflowState.getPendingWorkflowId());
@@ -1495,6 +1507,17 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, workflowState.getIteration() + 1);
         }
         return null;
+    }
+
+    private Optional<UserMessage> buildMultimodalResumeMessage(Object userInput) {
+        if (!MultimodalContentNormalizer.isMultimodalContent(userInput)) {
+            return Optional.empty();
+        }
+        List<ContentBlock> blocks = MULTIMODAL_NORMALIZER.normalize(userInput);
+        if (blocks.stream().allMatch(ContentBlock.Text.class::isInstance)) {
+            return Optional.empty();
+        }
+        return Optional.of(buildEntryUserMessage(userInput, userInput));
     }
 
     private boolean isExternalToolResumeInput(Object inputs) {

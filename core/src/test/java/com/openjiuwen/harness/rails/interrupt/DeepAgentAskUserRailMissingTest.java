@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.harness.rails.CallbackContext;
 
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,47 @@ class DeepAgentAskUserRailMissingTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final CallbackContext ABSENT_CONTEXT = null;
+
+    @Test
+    void multimodalAnswerResolvesWithoutStringifyingImages() throws Exception {
+        List<Object> content = List.of(Map.of("type", "text", "text", "see new screenshot"),
+                Map.of("type", "image", "source", Map.of("kind", "raw", "bytes", "aGk=")));
+        RejectResult result = assertInstanceOf(RejectResult.class,
+                new AskUserRail().resolveInterrupt(ABSENT_CONTEXT, askUserToolCall(), content));
+        assertThat(result.toolResult()).asString().contains("see new screenshot").doesNotContain("aGk=");
+    }
+
+    @Test
+    void imageOnlyAnswerResolves() throws Exception {
+        RejectResult result = assertInstanceOf(RejectResult.class,
+                new AskUserRail().resolveInterrupt(ABSENT_CONTEXT, askUserToolCall(), List.of(
+                        Map.of("type", "image", "source", Map.of("kind", "raw", "bytes", "aGk=")))));
+        assertThat(result.toolResult()).asString().contains("User has answered").doesNotContain("aGk=");
+    }
+
+    @Test
+    void structuredMessagesResolveMultimodalAnswers() throws Exception {
+        List<Object> content = List.of(Map.of("type", "text", "text", "new answer"),
+                Map.of("type", "image", "source", Map.of("kind", "raw", "bytes", "aGk=")));
+        UserMessage message = new UserMessage();
+        message.setContent(content);
+        for (Object input : List.of(message, Map.of("content", content))) {
+            RejectResult result = assertInstanceOf(RejectResult.class,
+                    new AskUserRail().resolveInterrupt(ABSENT_CONTEXT, askUserToolCall(), input));
+            assertThat(result.toolResult()).asString().contains("new answer").doesNotContain("aGk=");
+        }
+    }
+
+    @Test
+    void emptyOrInvalidContentKeepsInterruption() throws Exception {
+        for (Object input : List.of(List.of(), List.of(Map.of("type", "text", "text", "")),
+                List.of(Map.of("type", "unknown")), List.of(Map.of("type", "image")),
+                List.of(Map.of("type", "text", "text", "answer"),
+                        Map.of("type", "video", "source", Map.of("kind", "raw", "bytes", "aGk="))))) {
+            assertInstanceOf(InterruptResult.class,
+                    new AskUserRail().resolveInterrupt(ABSENT_CONTEXT, askUserToolCall(), input));
+        }
+    }
 
     @Test
     void testHitlAskUserRail() throws Exception {
