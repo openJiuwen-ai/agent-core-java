@@ -7,6 +7,9 @@ package com.openjiuwen.harness.cli;
 import com.openjiuwen.harness.cli.ui.CliRepl;
 import com.openjiuwen.harness.cli.ui.CliRunner;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -24,14 +27,36 @@ public final class HarnessCliMain {
 
     public static final String PYTHON_MODULE = "openjiuwen/harness/cli/__main__.py";
 
+    private static final Logger LOG = LoggerFactory.getLogger(HarnessCliMain.class);
+
     private HarnessCliMain() {
     }
 
     public static void main(String[] args) {
-        int exitCode = run(args, System.console() != null, HarnessCliMain::readStdin, new CliRunner());
+        int exitCode = runSafely(args);
         if (exitCode != 0) {
             System.exit(exitCode);
         }
+    }
+
+    /**
+     * Run the CLI, reporting a usage error the way Click does instead of letting it escape as an
+     * unhandled exception. Usage errors exit with 2 (Click's {@code UsageError.exit_code}).
+     *
+     * @param args command-line arguments
+     * @return process exit code
+     */
+    static int runSafely(String[] args) {
+        try {
+            return run(args, System.console() != null, HarnessCliMain::readStdin, new CliRunner());
+        } catch (IllegalArgumentException error) {
+            LOG.error("{}", usageErrorMessage(error));
+            return 2;
+        }
+    }
+
+    static String usageErrorMessage(IllegalArgumentException error) {
+        return "Error: " + error.getMessage();
     }
 
     static int run(String[] args, boolean stdinIsTty, Supplier<String> stdinReader, CliRunner runner) {
@@ -70,8 +95,19 @@ public final class HarnessCliMain {
         List<String> safeArgs = args == null ? List.of() : args;
         for (int index = 0; index < safeArgs.size(); index++) {
             String arg = safeArgs.get(index);
-            if (("--output-format".equals(arg) || "-f".equals(arg)) && index + 1 < safeArgs.size()) {
-                outputFormat = safeArgs.get(++index);
+            if ("--output-format".equals(arg) || "-f".equals(arg)) {
+                if (index + 1 >= safeArgs.size()) {
+                    throw new IllegalArgumentException("Option '--output-format' requires a value");
+                }
+                String value = safeArgs.get(++index);
+                if (!CliRunner.OUTPUT_TEXT.equals(value)
+                        && !CliRunner.OUTPUT_JSON.equals(value)
+                        && !CliRunner.OUTPUT_STREAM_JSON.equals(value)) {
+                    throw new IllegalArgumentException(
+                            "Invalid value for '--output-format': '" + value
+                                    + "' is not one of 'text', 'json', 'stream-json'");
+                }
+                outputFormat = value;
             } else if (prompt == null) {
                 prompt = arg;
             } else {
