@@ -692,6 +692,15 @@ class ModelHttpClientsTest {
     }
 
     @Test
+    void sweepIdleSharedClients_thresholdBoundary_retainsThroughExactThreshold() {
+        long thresholdNanos = TimeUnit.SECONDS.toNanos(1);
+
+        assertIdleEntryRetention(thresholdNanos - 1L, true);
+        assertIdleEntryRetention(thresholdNanos, true);
+        assertIdleEntryRetention(thresholdNanos + 1L, false);
+    }
+
+    @Test
     void warnCacheFullOnce_keyAdmittedLater_clearsLedgerEntry() {
         System.setProperty("openjiuwen.llm.http.max-shared-clients", "1");
         ModelHttpClients.clearSharedClientsForTesting();
@@ -1037,6 +1046,37 @@ class ModelHttpClientsTest {
             assertThat(ModelHttpClients.retireLogAllowed()).isTrue();
         } finally {
             ModelHttpClients.setNanoClockForTesting(System::nanoTime);
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    private static void assertIdleEntryRetention(long ageNanos, boolean shouldRetain) {
+        System.setProperty("openjiuwen.llm.http.max-shared-clients", "1");
+        System.setProperty("openjiuwen.llm.http.shared-client-idle-seconds", "1");
+        ModelHttpClients.clearSharedClientsForTesting();
+        AtomicLong clock = new AtomicLong(TimeUnit.SECONDS.toNanos(10));
+        ModelHttpClients.setNanoClockForTesting(clock::get);
+        try {
+            HttpClient original = ModelHttpClients
+                    .builder(clientConfig(ModelHttpVersion.HTTP_1_1), "https://idle.example.test/v1")
+                    .build();
+            clock.addAndGet(ageNanos);
+            ModelHttpClients
+                    .builder(clientConfig(ModelHttpVersion.HTTP_1_1), "https://sweep.example.test/v1")
+                    .build();
+
+            HttpClient reloaded = ModelHttpClients
+                    .builder(clientConfig(ModelHttpVersion.HTTP_1_1), "https://idle.example.test/v1")
+                    .build();
+
+            if (shouldRetain) {
+                assertThat(reloaded).isSameAs(original);
+            } else {
+                assertThat(reloaded).isNotSameAs(original);
+            }
+        } finally {
+            System.clearProperty("openjiuwen.llm.http.max-shared-clients");
+            System.clearProperty("openjiuwen.llm.http.shared-client-idle-seconds");
             ModelHttpClients.clearSharedClientsForTesting();
         }
     }

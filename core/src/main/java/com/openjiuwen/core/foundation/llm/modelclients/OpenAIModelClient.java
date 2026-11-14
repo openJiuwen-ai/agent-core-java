@@ -74,6 +74,7 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -128,7 +129,7 @@ public class OpenAIModelClient extends BaseModelClient
     private static final String RETRY_LISTENER_KWARG = "__openjiuwen_retry_listener";
     private static final String REQUEST_HEADERS_KWARG = "__openjiuwen_request_headers";
 
-    private volatile HttpClient httpClient;
+    private final AtomicReference<HttpClient> httpClient;
     private final ModelCallRetrier retrier;
     private final Map<String, String> baseHeaders;
 
@@ -171,7 +172,7 @@ public class OpenAIModelClient extends BaseModelClient
     OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
             ModelCallRetrier retrier, ModelCircuitBreaker circuitBreaker) {
         super(modelConfig, modelClientConfig);
-        this.httpClient = createHttpClient(modelClientConfig);
+        this.httpClient = new AtomicReference<>(createHttpClient(modelClientConfig));
         this.retrier = retrier;
         this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
         this.circuitBreaker = circuitBreaker;
@@ -1494,19 +1495,14 @@ public class OpenAIModelClient extends BaseModelClient
     private <T> HttpResponse<T> sendGenerationRequest(String path, Float timeout, String authorization,
             Map<String, String> requestHeaders, HttpResponse.BodyHandler<T> bodyHandler)
             throws IOException, InterruptedException {
-        HttpClient sender = httpClient;
+        HttpClient sender = httpClient.get();
         try {
             HttpResponse<T> response = sender.send(buildGetRequest(modelClientConfig.getApiBase(), path,
                     timeout, authorization, requestHeaders), bodyHandler);
             ModelHttpClients.noteSendSuccess(sender);
             return response;
         } catch (IOException exception) {
-            // Guarded rebuild: only swap when this thread's sender still is the field's
-            // instance. This narrows (not eliminates) the orphan window to the build call
-            // itself — a losing racer still builds a client it then drops, which GC reclaims.
-            if (ModelHttpClients.evictIfDead(sender, exception).isDead() && httpClient == sender) {
-                httpClient = createHttpClient(modelClientConfig);
-            }
+            recoverDeadClient(sender, exception);
             throw exception;
         }
     }
@@ -1526,7 +1522,8 @@ public class OpenAIModelClient extends BaseModelClient
         Map<String, Object> message = asObjectMap(rawMessage);
 
         List<ToolCall> toolCalls = parseToolCalls(message.get("tool_calls"), true);
-        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), true);
+        String responseModel = asString(response.get("model"));
+        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), responseModel);
         Object content = requireStringOrNullContent(message.get("content"), "choices[0].message.content");
         Object parserContent = parseContent(parser, content);
 
@@ -1534,6 +1531,7 @@ public class OpenAIModelClient extends BaseModelClient
                 .content(content)
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
+                .responseModel(responseModel)
                 .finishReason(pythonTruthy(choice.get("finish_reason"))
                         ? String.valueOf(choice.get("finish_reason"))
                         : (toolCalls.isEmpty() ? "stop" : "tool_calls"))
@@ -1552,15 +1550,17 @@ public class OpenAIModelClient extends BaseModelClient
     private AssistantMessageChunk parseStreamChunk(
             Map<String, Object> chunk,
             Map<Integer, ToolCallState> toolCallStates) {
-        UsageMetadata usageMetadata = parseUsageMetadata(chunk.get("usage"), false);
+        String responseModel = asString(chunk.get("model"));
+        UsageMetadata usageMetadata = parseUsageMetadata(chunk.get("usage"), responseModel);
         List<Integer> promptTokenIds = integerList(chunk.get("prompt_token_ids"));
         List<Map<String, Object>> choices = asListOfObjectMaps(chunk.get("choices"));
 
         if (choices.isEmpty()) {
-            if (usageMetadata != null || promptTokenIds != null) {
+            if (usageMetadata != null || promptTokenIds != null || responseModel != null) {
                 return AssistantMessageChunk.builder()
                         .content("")
                         .usageMetadata(usageMetadata)
+                        .responseModel(responseModel)
                         .finishReason("null")
                         .promptTokenIds(promptTokenIds)
                         .build();
@@ -1583,6 +1583,7 @@ public class OpenAIModelClient extends BaseModelClient
                 .reasoningContent(reasoningContentFrom(delta))
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
+                .responseModel(responseModel)
                 .finishReason(pythonTruthy(choice.get("finish_reason"))
                         ? String.valueOf(choice.get("finish_reason"))
                         : "null")
@@ -1822,7 +1823,7 @@ public class OpenAIModelClient extends BaseModelClient
             PreparedRequest preparedRequest,
             int retryCount,
             double idleSeconds) throws IOException, InterruptedException {
-        HttpClient sender = httpClient;
+        HttpClient sender = httpClient.get();
         try {
             HttpResponse<InputStream> response = sender.send(
                     buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
@@ -1830,12 +1831,7 @@ public class OpenAIModelClient extends BaseModelClient
             ModelHttpClients.noteSendSuccess(sender);
             return response;
         } catch (IOException exception) {
-            // Guarded rebuild: only swap when this thread's sender still is the field's
-            // instance. This narrows (not eliminates) the orphan window to the build call
-            // itself — a losing racer still builds a client it then drops, which GC reclaims.
-            if (ModelHttpClients.evictIfDead(sender, exception).isDead() && httpClient == sender) {
-                httpClient = createHttpClient(modelClientConfig);
-            }
+            recoverDeadClient(sender, exception);
             throw exception;
         }
     }
@@ -2523,6 +2519,7 @@ public class OpenAIModelClient extends BaseModelClient
                     .reasoningContent(chunk.getReasoningContent())
                     .toolCalls(chunk.getToolCalls())
                     .usageMetadata(chunk.getUsageMetadata())
+                    .responseModel(chunk.getResponseModel())
                     .finishReason(chunk.getFinishReason())
                     .parserContent(parserContent)
                     .promptTokenIds(chunk.getPromptTokenIds())
@@ -2621,21 +2618,21 @@ public class OpenAIModelClient extends BaseModelClient
         private final StringBuilder arguments = new StringBuilder();
     }
 
-    private UsageMetadata parseUsageMetadata(Object usageValue, boolean includeCacheTokens) {
+    private UsageMetadata parseUsageMetadata(Object usageValue, String responseModel) {
         if (!(usageValue instanceof Map<?, ?> usageMap)) {
             return null;
         }
         Map<String, Object> usage = toObjectMap(usageMap);
-        int cacheTokens = 0;
-        if (includeCacheTokens && usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
-            cacheTokens = intValue(toObjectMap(promptDetails).get("cached_tokens"));
+        Integer cacheTokens = null;
+        if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
+            cacheTokens = optionalIntValue(toObjectMap(promptDetails).get("cached_tokens")).orElse(null);
         }
         CostInfo costInfo = extractCostInfo(usage);
         return UsageMetadata.builder()
-                .modelName(modelConfig.getModelName())
-                .inputTokens(intValue(usage.get("prompt_tokens")))
-                .outputTokens(intValue(usage.get("completion_tokens")))
-                .totalTokens(intValue(usage.get("total_tokens")))
+                .modelName(responseModel)
+                .inputTokens(optionalIntValue(usage.get("prompt_tokens")).orElse(null))
+                .outputTokens(optionalIntValue(usage.get("completion_tokens")).orElse(null))
+                .totalTokens(optionalIntValue(usage.get("total_tokens")).orElse(null))
                 .cacheTokens(cacheTokens)
                 .inputCost(costInfo.inputCost())
                 .outputCost(costInfo.outputCost())
@@ -2784,13 +2781,23 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     HttpClient httpClientForTesting() {
-        return httpClient;
+        return httpClient.get();
     }
 
     // Test seam (L2 §4.3): injects a failing stub into the instance field so hook tests can
     // drive the eviction/rebuild path without reflection.
     void replaceHttpClientForTesting(HttpClient replacement) {
-        this.httpClient = Objects.requireNonNull(replacement);
+        this.httpClient.set(Objects.requireNonNull(replacement));
+    }
+
+    private void recoverDeadClient(HttpClient sender, IOException exception) {
+        if (!ModelHttpClients.evictIfDead(sender, exception).isDead() || httpClient.get() != sender) {
+            return;
+        }
+        HttpClient replacement = createHttpClient(modelClientConfig);
+        // A newer sender may be installed while the replacement is being built. Install this
+        // replacement only if the field still holds the same failed sender.
+        httpClient.compareAndSet(sender, replacement);
     }
 
     private HttpClient createHttpClient(ModelClientConfig clientConfig) {
@@ -2923,6 +2930,10 @@ public class OpenAIModelClient extends BaseModelClient
     private static String reasoningContentFrom(Map<String, Object> message) {
         Object reasoningContent = firstNonNull(message.get("reasoning_content"), message.get("reasoning"));
         return asString(reasoningContent);
+    }
+
+    private static Optional<Integer> optionalIntValue(Object value) {
+        return value == null ? Optional.empty() : Optional.of(intValue(value));
     }
 
     private static int intValue(Object value) {

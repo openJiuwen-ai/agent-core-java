@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * {@code openjiuwen/core/foundation/llm/schema/message_chunk.py}.
  */
 class MessageChunkTest {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
     void mergeParserContentHandlesNullsStringsListsAndDicts() {
@@ -62,6 +64,31 @@ class MessageChunkTest {
         assertEquals("func", merged.getName());
         assertEquals("{\"x\": 1}", merged.getArguments());
         assertEquals(0, merged.getIndex());
+    }
+
+    @Test
+    void assistantChunkMergeRetainsResponseModelAndLatestUsage() throws Exception {
+        AssistantMessageChunk content = MAPPER.readValue(
+                "{\"content\":\"answer\",\"response_model\":\"routed-model\"}", AssistantMessageChunk.class);
+        AssistantMessageChunk usage = AssistantMessageChunk.builder()
+                .usageMetadata(UsageMetadata.builder().inputTokens(0).outputTokens(1).build())
+                .build();
+
+        AssistantMessageChunk merged = content.merge(usage);
+
+        assertEquals("routed-model", merged.modelDump().get("response_model"));
+        assertEquals(0, merged.getUsageMetadata().getInputTokens());
+        assertEquals(1, merged.getUsageMetadata().getOutputTokens());
+    }
+
+    @Test
+    void assistantChunkMergePrefersLatestNonNullResponseModel() {
+        AssistantMessageChunk earlier = AssistantMessageChunk.builder().responseModel("earlier-model").build();
+        AssistantMessageChunk latest = AssistantMessageChunk.builder().responseModel("latest-model").build();
+
+        AssistantMessageChunk merged = earlier.merge(latest).merge(AssistantMessageChunk.builder().build());
+
+        assertEquals("latest-model", merged.getResponseModel());
     }
 
     @Test

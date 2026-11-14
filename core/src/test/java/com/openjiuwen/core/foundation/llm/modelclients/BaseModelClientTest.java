@@ -179,7 +179,7 @@ class BaseModelClientTest {
         assertEquals("configured-model", params.get("model"));
         assertEquals(true, params.get("stream"));
         assertEquals(0.95D, params.get("temperature"));
-        assertEquals(0.1D, params.get("top_p"));
+        assertFalse(params.containsKey("top_p"));
         assertEquals(128, params.get("max_tokens"));
         assertEquals("DONE", params.get("stop"));
         assertEquals("auto", params.get("tool_choice"));

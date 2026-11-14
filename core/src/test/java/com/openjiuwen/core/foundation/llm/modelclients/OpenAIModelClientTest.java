@@ -727,8 +727,8 @@ class OpenAIModelClientTest {
 
     @Test
     void buildRequestParamsDropsTopPOnlyForOpenAiApiBase() {
-        OpenAIModelClient openAiClient = client("https://api.openai.com/v1");
-        OpenAIModelClient compatibleClient = client("https://compatible.example.test/v1");
+        OpenAIModelClient openAiClient = client("https://api.openai.com/v1", 0.8D);
+        OpenAIModelClient compatibleClient = client("https://compatible.example.test/v1", 0.8D);
 
         Map<String, Object> openAiParams = openAiClient.buildPreparedParams(
                 "hello",
@@ -754,12 +754,13 @@ class OpenAIModelClientTest {
         assertThat(openAiParams).containsEntry("temperature", 0.95D);
         assertThat(openAiParams).doesNotContainKey("top_p");
         assertThat(compatibleParams).containsEntry("temperature", 0.95D)
-                .containsEntry("top_p", 0.1D);
+                .containsEntry("top_p", 0.8D);
     }
 
     @Test
     void invokeMergesHeadersMovesReturnTokenIdsAndParsesResponse() throws Exception {
         Map<String, Object> response = new LinkedHashMap<>();
+        response.put("model", "routed-actual-model");
         response.put("prompt_token_ids", List.of(10, 11));
         response.put("usage", Map.of(
                 "prompt_tokens", 3,
@@ -811,6 +812,8 @@ class OpenAIModelClientTest {
             assertThat(message.getCompletionTokenIds()).containsExactly(20, 21);
             assertThat(message.getLogprobs()).isEqualTo(Map.of("content", List.of("lp")));
             assertThat(message.getUsageMetadata().getCacheTokens()).isEqualTo(2);
+            assertThat(message.getUsageMetadata().getModelName()).isEqualTo("routed-actual-model");
+            assertThat(message.modelDump()).containsEntry("response_model", "routed-actual-model");
             assertThat(message.getUsageMetadata().getTotalCost()).isEqualTo(0.3D);
             ToolCall toolCall = message.getToolCalls().get(0);
             assertThat(toolCall.getId()).isEqualTo("call-1");
@@ -832,6 +835,24 @@ class OpenAIModelClientTest {
 
             assertThat(message.getContent()).isEqualTo("answer");
             assertThat(message.getReasoningContent()).isEqualTo("provider reasoning");
+        }
+    }
+
+    @Test
+    void invokePreservesMissingAndExplicitZeroUsageFields() throws Exception {
+        String response = json(Map.of(
+                "model", "routed-actual-model",
+                "usage", Map.of("completion_tokens", 0),
+                "choices", List.of(Map.of("message", Map.of("content", "answer")))));
+
+        try (MockOpenAiServer server = new MockOpenAiServer(response)) {
+            AssistantMessage message = client(server.baseUrl()).invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(message.getUsageMetadata().modelDump())
+                    .containsEntry("output_tokens", 0)
+                    .doesNotContainKeys("input_tokens", "total_tokens", "cache_tokens");
+            assertThat(message.getUsageMetadata().getOutputTokens()).isZero();
         }
     }
 
@@ -1099,6 +1120,7 @@ class OpenAIModelClientTest {
     void streamAddsIncludeUsageAndKeepsUsageOnlyTokenIdChunk() throws Exception {
         String streamBody = String.join("\n",
                 "data: " + json(Map.of(
+                        "model", "routed-actual-model",
                         "prompt_token_ids", List.of(1, 2),
                         "choices", List.of(Map.of(
                                 "delta", Map.of(
@@ -1113,7 +1135,11 @@ class OpenAIModelClientTest {
                                 "token_ids", List.of(31),
                                 "finish_reason", "stop")))),
                 "data: " + json(Map.of(
-                        "usage", Map.of("prompt_tokens", 2, "completion_tokens", 2, "total_tokens", 4),
+                        "usage", Map.of(
+                                "prompt_tokens", 2,
+                                "completion_tokens", 2,
+                                "total_tokens", 4,
+                                "prompt_tokens_details", Map.of("cached_tokens", 1)),
                         "choices", List.of())),
                 "data: [DONE]");
 
@@ -1143,6 +1169,34 @@ class OpenAIModelClientTest {
             assertThat(chunks.get(1).getContent()).isEqualTo("lo");
             assertThat(chunks.get(2).getContent()).isEqualTo("");
             assertThat(chunks.get(2).getUsageMetadata().getTotalTokens()).isEqualTo(4);
+            assertThat(chunks.get(2).getUsageMetadata().getCacheTokens()).isEqualTo(1);
+            assertThat(chunks.get(2).getUsageMetadata().getModelName()).isNull();
+            AssistantMessageChunk merged = chunks.get(0).merge(chunks.get(1)).merge(chunks.get(2));
+            assertThat(merged.modelDump()).containsEntry("response_model", "routed-actual-model");
+        }
+    }
+
+    @Test
+    void streamHonorsUsageOptOutWithoutInventingUsage() throws Exception {
+        String streamBody = String.join("\n",
+                "data: " + json(Map.of(
+                        "model", "routed-actual-model",
+                        "choices", List.of(Map.of(
+                                "delta", Map.of("content", "hello"),
+                                "finish_reason", "stop")))),
+                "data: [DONE]");
+        try (MockOpenAiServer server = new MockOpenAiServer(streamBody)) {
+            Map<String, Object> kwargs = new LinkedHashMap<>();
+            kwargs.put("stream_options", Map.of("include_usage", false, "custom_option", "kept"));
+            List<AssistantMessageChunk> chunks = iteratorToList(client(server.baseUrl()).stream(
+                    "hello", null, null, null, null, null, null, null, null, kwargs));
+
+            assertThat(server.lastBody.get("stream_options"))
+                    .isEqualTo(Map.of("include_usage", false, "custom_option", "kept"));
+            assertThat(chunks).singleElement().satisfies(chunk -> {
+                assertThat(chunk.getUsageMetadata()).isNull();
+                assertThat(chunk.modelDump()).containsEntry("response_model", "routed-actual-model");
+            });
         }
     }
 
@@ -1485,6 +1539,17 @@ class OpenAIModelClientTest {
 
     private static OpenAIModelClient client(String apiBase) {
         return client(apiBase, 3, Map.of("X-Base", "base"));
+    }
+
+    private static OpenAIModelClient client(String apiBase, Double topP) {
+        return new OpenAIModelClient(
+                ModelRequestConfig.builder().modelName("gpt-test").topP(topP).build(),
+                ModelClientConfig.builder()
+                        .clientProvider(ProviderType.OPEN_AI)
+                        .apiKey("sk-test")
+                        .apiBase(apiBase)
+                        .verifySsl(false)
+                        .build());
     }
 
     private static OpenAIModelClient client(String apiBase, int maxRetries, Map<String, Object> customHeaders) {
