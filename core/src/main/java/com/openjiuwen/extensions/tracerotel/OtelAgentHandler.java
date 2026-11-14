@@ -322,6 +322,10 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
                     SpanKind.CLIENT, parentCtx, span);
             state.getSpan().setAttribute(SemConv.GEN_AI_REQUEST_MODEL,
                     instanceInfo != null ? String.valueOf(instanceInfo.getOrDefault("class_name", "")) : "");
+            Object modelId = instanceInfo != null ? instanceInfo.get("model_id") : null;
+            if (modelId != null) {
+                state.getSpan().setAttribute(SemConv.OJ_MODEL_ID, String.valueOf(modelId));
+            }
             state.getSpan().setAttribute(SemConv.GEN_AI_OPERATION_NAME, "chat");
             String invokeTypeVal = span.getInvokeType() != null ? span.getInvokeType() : InvokeType.LLM.getValue();
             String nameVal = span.getName() != null ? span.getName()
