@@ -335,11 +335,21 @@ public class TaskLoopEventHandler extends EventHandler {
             message = frameText(interactionEvent.getInteraction().get(0));
         }
         if (!message.isBlank() && interactionQueues != null) {
-            interactionQueues.pushSteer(message);
+            // Session-scoped push: a named session's steer stays in its own bucket so
+            // it can neither extend another session's outer loop nor leak into its
+            // model context; session-less events keep broadcast semantics.
+            interactionQueues.pushSteer(sessionIdOf(inputs), message);
         }
         Map<String, Object> result = resultMap("status", "steer_injected");
         result.put("msg", message);
         return result;
+    }
+
+    private static String sessionIdOf(EventHandlerInput inputs) {
+        if (inputs == null || inputs.getSession() == null) {
+            return null;
+        }
+        return inputs.getSession().getSessionId();
     }
 
     private static Map<String, Object> taskInteractionResult(TaskInteractionEvent event) {
