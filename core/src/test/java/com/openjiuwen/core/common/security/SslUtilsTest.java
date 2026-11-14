@@ -13,9 +13,11 @@ import java.net.http.HttpClient;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's behavior around
@@ -58,5 +60,27 @@ class SslUtilsTest {
                 SSLContext.class,
                 SslUtils.createStrictSslContext("target/missing-cert.pem").getClass()
         );
+    }
+
+    @Test
+    void strictSslContextKeepsTls13() {
+        List<String> protocols = List.of(
+                SslUtils.createStrictSslContext(null).getDefaultSSLParameters().getProtocols()
+        );
+
+        assertTrue(protocols.contains("TLSv1.3"));
+        assertFalse(protocols.contains("TLSv1"));
+        assertFalse(protocols.contains("TLSv1.1"));
+    }
+
+    @Test
+    void insecureSslContextKeepsTls13() {
+        List<String> protocols = List.of(
+                SslUtils.createInsecureSslContext().getDefaultSSLParameters().getProtocols()
+        );
+
+        assertTrue(protocols.contains("TLSv1.3"));
+        assertFalse(protocols.contains("TLSv1"));
+        assertFalse(protocols.contains("TLSv1.1"));
     }
 }
