@@ -109,6 +109,18 @@ class TenantWorkspacePolicyTest {
     }
 
     @Test
+    void testAllowList_keepsDefaultLayoutWorking() {
+        TenantWorkspacePolicy policy = TenantWorkspacePolicy.builder()
+            .baseWorkspacePath(baseDir.toString())
+            .allowedTenantRoots(List.of(mountDir.toString()))
+            .build();
+        TenantContext ctx = TenantContext.builder().tenantId("u_default").build();
+
+        Path expected = baseDir.resolve("tenants").resolve("u_default").toAbsolutePath().normalize();
+        assertThat(policy.resolveTenantRoot(ctx)).isEqualTo(expected);
+    }
+
+    @Test
     void testResolveNamespace_shardedLayout_usesForwardSlashes() {
         TenantWorkspacePolicy policy = TenantWorkspacePolicy.builder()
             .baseWorkspacePath(baseDir.toString())
@@ -143,6 +155,20 @@ class TenantWorkspacePolicyTest {
             .build();
 
         assertThatThrownBy(() -> policy.resolveNamespace(ctx)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void testTryResolveNamespace_outsideBase_isEmpty() {
+        TenantWorkspacePolicy policy = TenantWorkspacePolicy.builder()
+            .baseWorkspacePath(baseDir.toString())
+            .allowedTenantRoots(List.of(mountDir.toString()))
+            .build();
+        TenantContext ctx = TenantContext.builder()
+            .tenantId("tenant_b")
+            .workspaceRoot(mountDir.resolve("tenant_b").toString())
+            .build();
+
+        assertThat(policy.tryResolveNamespace(ctx)).isEmpty();
     }
 
     @Test

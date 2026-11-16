@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Manages tiered workspace resolution across a primary local store and remote stores.
@@ -51,6 +52,11 @@ public class TieredWorkspaceManager {
 
     /**
      * Create a manager whose tenant namespace is resolved by an explicit workspace policy.
+     * <p>
+     * Tenants resolved outside the policy's base workspace (for example through
+     * {@code allowedTenantRoots}) have no base-relative namespace. For those tenants this manager
+     * leaves directory creation to {@code TenantWorkspaceResolver}, reports the tenant root as the
+     * local path and exposes no remote tier paths instead of failing the request.
      *
      * @param primaryStore the primary local store
      * @param secondaryStores the remote stores
@@ -89,6 +95,9 @@ public class TieredWorkspaceManager {
 
     /**
      * Resolves the workspace paths for a tenant context.
+     * <p>
+     * When the policy resolves the tenant outside its base workspace, the local path is the tenant
+     * root plus the workspace type subdirectory and no remote tier is used.
      *
      * @param ctx the tenant context
      * @param type the workspace type
@@ -99,12 +108,15 @@ public class TieredWorkspaceManager {
         if (!ctx.isTenantAware()) {
             return resolveDefault(type);
         }
-        String ns = tenantNamespace(ctx);
         String subDir = type.subDirectory();
-        Path localPath = primaryStore.resolvePath(ns, subDir);
+        Optional<String> ns = tenantNamespace(ctx);
+        if (ns.isEmpty()) {
+            return new WorkspaceResolution(policy.resolveTenantRoot(ctx).resolve(subDir), Map.of(), type);
+        }
+        Path localPath = primaryStore.resolvePath(ns.get(), subDir);
         Map<String, String> remotePaths = new LinkedHashMap<>();
         for (WorkspaceStore store : secondaryStores) {
-            remotePaths.put(store.tierName(), store.resolvePath(ns, subDir).toString());
+            remotePaths.put(store.tierName(), store.resolvePath(ns.get(), subDir).toString());
         }
         return new WorkspaceResolution(localPath, remotePaths, type);
     }
@@ -127,6 +139,9 @@ public class TieredWorkspaceManager {
 
     /**
      * Initializes the tenant workspace directories across all configured stores.
+     * <p>
+     * Tenants resolved outside the policy's base workspace are skipped here because
+     * {@code TenantWorkspaceResolver} already created their directories.
      *
      * @param ctx the tenant context
      * @since 0.1.7
@@ -135,17 +150,20 @@ public class TieredWorkspaceManager {
         if (!ctx.isTenantAware()) {
             return;
         }
-        String ns = tenantNamespace(ctx);
-        primaryStore.createDirectories(ns);
+        Optional<String> ns = tenantNamespace(ctx);
+        if (ns.isEmpty()) {
+            return;
+        }
+        primaryStore.createDirectories(ns.get());
         for (WorkspaceStore store : secondaryStores) {
-            store.createDirectories(ns);
+            store.createDirectories(ns.get());
         }
     }
 
-    private String tenantNamespace(TenantContext ctx) {
+    private Optional<String> tenantNamespace(TenantContext ctx) {
         if (policy != null) {
-            return policy.resolveNamespace(ctx);
+            return policy.tryResolveNamespace(ctx);
         }
-        return namespaceFactory.namespace(ctx, "tenants");
+        return Optional.of(namespaceFactory.namespace(ctx, "tenants"));
     }
 }

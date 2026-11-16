@@ -23,6 +23,7 @@ public class TenantContext {
 
     private final String tenantId;
     private final Map<String, String> extensions;
+
     /**
      * Tenant workspace root explicitly supplied by the caller; may be null. When set, it takes
      * precedence over the configured locator and the default namespace layout.

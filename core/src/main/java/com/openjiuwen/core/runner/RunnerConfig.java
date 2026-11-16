@@ -133,27 +133,27 @@ public class RunnerConfig {
     /**
      * Keeps the former 13-argument constructor usable for callers compiled against the previous field layout.
      *
-     * @param distributedMode        whether distributed mode is enabled
-     * @param distributedConfig      distributed configuration
-     * @param envPrefix              environment prefix for topic names
-     * @param instanceId             runner instance identifier
-     * @param checkpointerConfig     checkpointer configuration
-     * @param mcpServers             MCP server configurations
-     * @param kvStoreConfig          KV store configuration
-     * @param vectorStoreConfig      vector store configuration
-     * @param objectStorageConfig    object storage configuration
-     * @param enableSessionController whether the session controller is enabled
-     * @param enableA2a              whether A2A is enabled
-     * @param enableTenantIsolation  whether tenant isolation is enabled
-     * @param tenantDataRoot         tenant data root directory
+     * @param isDistributedMode           whether distributed mode is enabled
+     * @param distributedConfig           distributed configuration
+     * @param envPrefix                   environment prefix for topic names
+     * @param instanceId                  runner instance identifier
+     * @param checkpointerConfig          checkpointer configuration
+     * @param mcpServers                  MCP server configurations
+     * @param kvStoreConfig               KV store configuration
+     * @param vectorStoreConfig           vector store configuration
+     * @param objectStorageConfig         object storage configuration
+     * @param isSessionControllerEnabled  whether the session controller is enabled
+     * @param isA2aEnabled                whether A2A is enabled
+     * @param isTenantIsolationEnabled    whether tenant isolation is enabled
+     * @param tenantDataRoot              tenant data root directory
      * @since 0.1.17
      */
-    public RunnerConfig(boolean distributedMode, DistributedConfig distributedConfig, String envPrefix,
+    public RunnerConfig(boolean isDistributedMode, DistributedConfig distributedConfig, String envPrefix,
             String instanceId, CheckpointerConfig checkpointerConfig, List<McpServerConfig> mcpServers,
             Map<String, Object> kvStoreConfig, Map<String, Object> vectorStoreConfig,
-            Map<String, Object> objectStorageConfig, boolean enableSessionController, boolean enableA2a,
-            boolean enableTenantIsolation, String tenantDataRoot) {
-        this.distributedMode = distributedMode;
+            Map<String, Object> objectStorageConfig, boolean isSessionControllerEnabled, boolean isA2aEnabled,
+            boolean isTenantIsolationEnabled, String tenantDataRoot) {
+        this.distributedMode = isDistributedMode;
         this.distributedConfig = distributedConfig;
         this.envPrefix = envPrefix;
         this.instanceId = instanceId;
@@ -162,9 +162,9 @@ public class RunnerConfig {
         this.kvStoreConfig = kvStoreConfig;
         this.vectorStoreConfig = vectorStoreConfig;
         this.objectStorageConfig = objectStorageConfig;
-        this.enableSessionController = enableSessionController;
-        this.enableA2a = enableA2a;
-        this.enableTenantIsolation = enableTenantIsolation;
+        this.enableSessionController = isSessionControllerEnabled;
+        this.enableA2a = isA2aEnabled;
+        this.enableTenantIsolation = isTenantIsolationEnabled;
         this.tenantDataRoot = tenantDataRoot;
     }
 

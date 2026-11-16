@@ -504,7 +504,7 @@ public class SkillUseRail extends DeepAgentRail {
 
     private void refreshSkillsIncrementally() {
         Set<Path> discovered = new LinkedHashSet<>();
-        for (Path root : skillDirs) {
+        for (Path root : skillRoots()) {
             if (!Files.isDirectory(root)) {
                 continue;
             }
@@ -681,9 +681,14 @@ public class SkillUseRail extends DeepAgentRail {
         if (!skillDirs.isEmpty()) {
             return skillDirs.get(0);
         }
-        Path targetRoot = defaultRemoteTargetRoot(deepAgent);
-        skillDirs.add(targetRoot);
-        return targetRoot;
+        return defaultRemoteTargetRoot(deepAgent);
+    }
+
+    private List<Path> skillRoots() {
+        if (!skillDirs.isEmpty() || remoteSkillSources.isEmpty()) {
+            return skillDirs;
+        }
+        return List.of(defaultRemoteTargetRoot(ownerAgent));
     }
 
     private static Path defaultRemoteTargetRoot(DeepAgent deepAgent) {

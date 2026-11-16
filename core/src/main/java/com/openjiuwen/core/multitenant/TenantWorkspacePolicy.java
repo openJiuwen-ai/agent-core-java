@@ -18,8 +18,8 @@ import java.util.Optional;
  * <p>
  * Resolution priority is: an explicit {@link TenantContext#getWorkspaceRoot()}, then a
  * {@link TenantWorkspaceLocator} lookup, then the namespace factory relative to the base workspace.
- * Non-default paths must stay inside {@code allowedTenantRoots} when it is configured, otherwise they
- * must stay inside the base workspace.
+ * Resolved paths must stay inside the base workspace or one of {@code allowedTenantRoots}; the base
+ * workspace is always allowed, so configuring extra roots never disables the default layout.
  *
  * @since 0.1.17
  */
@@ -89,23 +89,36 @@ public final class TenantWorkspacePolicy {
      * @since 0.1.17
      */
     public String resolveNamespace(TenantContext ctx) {
-        if (ctx == null || !ctx.isTenantAware()) {
-            return "";
-        }
-        Path tenantRoot = resolveTenantRoot(ctx);
-        Path relative = relativeTo(tenantRoot, basePath);
-        if (relative == null) {
-            relative = relativeTo(resolveRealPath(tenantRoot), baseRealPath);
-        }
-        if (relative == null) {
-            throw new IllegalArgumentException(
-                "Tiered workspace requires the tenant directory to be under the base workspace: " + tenantRoot);
-        }
-        return relative.toString().replace('\\', '/');
+        return tryResolveNamespace(ctx).orElseThrow(() -> new IllegalArgumentException(
+            "Tiered workspace requires the tenant directory to be under the base workspace: "
+                + resolveTenantRoot(ctx)));
     }
 
-    private static Path relativeTo(Path path, Path root) {
-        return path.startsWith(root) ? root.relativize(path) : null;
+    /**
+     * Resolve the tenant namespace relative to the base workspace when it can be expressed as one.
+     * <p>
+     * Tenants resolved through {@code allowedTenantRoots} may live outside the base workspace; such
+     * tenants have no base-relative namespace and are reported as empty instead of failing.
+     *
+     * @param ctx the tenant context
+     * @return the relative namespace using {@code /} separators; empty when no tenant is bound or
+     *     the tenant root is outside the base workspace
+     * @since 0.1.17
+     */
+    public Optional<String> tryResolveNamespace(TenantContext ctx) {
+        if (ctx == null || !ctx.isTenantAware()) {
+            return Optional.of("");
+        }
+        Path tenantRoot = resolveTenantRoot(ctx);
+        Optional<Path> relative = relativeTo(tenantRoot, basePath);
+        if (relative.isEmpty()) {
+            relative = relativeTo(resolveRealPath(tenantRoot), baseRealPath);
+        }
+        return relative.map(path -> path.toString().replace('\\', '/'));
+    }
+
+    private static Optional<Path> relativeTo(Path path, Path root) {
+        return path.startsWith(root) ? Optional.of(root.relativize(path)) : Optional.empty();
     }
 
     /**
@@ -129,10 +142,8 @@ public final class TenantWorkspacePolicy {
     }
 
     private List<Path> buildAllowedRoots() {
-        if (allowedTenantRoots.isEmpty()) {
-            return List.of(basePath);
-        }
-        List<Path> roots = new ArrayList<>(allowedTenantRoots.size());
+        List<Path> roots = new ArrayList<>(allowedTenantRoots.size() + 1);
+        roots.add(basePath);
         for (String root : allowedTenantRoots) {
             roots.add(Path.of(root).toAbsolutePath().normalize());
         }

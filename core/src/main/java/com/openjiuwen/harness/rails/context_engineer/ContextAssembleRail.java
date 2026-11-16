@@ -61,7 +61,7 @@ public class ContextAssembleRail extends DeepAgentRail {
         }
         systemPromptBuilder = null;
         abilityManager = null;
-        agent = null;
+        this.agent = null;
     }
 
     @Override
