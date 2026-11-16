@@ -19,12 +19,16 @@ import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.sun.net.httpserver.Headers;
+import com.sun.net.httpserver.HttpServer;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.InputStream;
+import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
@@ -33,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -42,6 +47,41 @@ import java.util.function.Consumer;
  * {@code openjiuwen/core/foundation/llm/model_clients/siliconflow_model_client.py}.</p>
  */
 class SiliconFlowModelClientTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void configuredHeadersReachBlockingAndStreamingRequests(boolean streaming) throws Exception {
+        AtomicReference<Headers> received = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            try (exchange) {
+                exchange.getRequestBody().readAllBytes();
+                received.set(exchange.getRequestHeaders());
+                byte[] body = new byte[] {'{', '}'};
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        server.start();
+        try {
+            ModelClientConfig config = clientConfig("http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
+            config.setCustomHeaders(Map.of("X-Tenant", "tenant-a", "authorization", "Bearer configured-key"));
+            SiliconFlowModelClient client = new SiliconFlowModelClient(requestConfig(), config);
+            if (streaming) {
+                try (InputStream body = client.postStream(Map.of("stream", true), 5).body()) {
+                    assertThat(body.readAllBytes()).containsExactly((byte) '{', (byte) '}');
+                }
+            } else {
+                assertThat(client.postJson(Map.of("stream", false), 5F).statusCode()).isEqualTo(200);
+            }
+
+            assertThat(received.get().getFirst("X-Tenant")).isEqualTo("tenant-a");
+            assertThat(received.get().get("Authorization")).containsExactly("Bearer sk-test");
+            assertThat(received.get().getFirst("Content-Type")).isEqualTo("application/json");
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @ParameterizedTest
     @CsvSource(textBlock = """
             length, false, length
