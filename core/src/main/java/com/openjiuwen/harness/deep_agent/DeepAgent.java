@@ -2403,36 +2403,85 @@ public class DeepAgent implements AutoCloseable {
      *
      * @param callerSession    session passed by the caller, may be null
      * @param effectiveSession session the task loop actually runs under
-     * @return the steering queue key for this run
+     * @return the steering queue key for this run, never null
      */
     private static String steeringSessionIdOf(AgentSessionApi callerSession, AgentSessionApi effectiveSession) {
-        if (callerSession != null && callerSession.getSessionId() != null
-                && !callerSession.getSessionId().isBlank()) {
+        if (hasSessionId(callerSession)) {
             return callerSession.getSessionId();
         }
-        return effectiveSession != null ? effectiveSession.getSessionId() : null;
+        if (hasSessionId(effectiveSession)) {
+            return effectiveSession.getSessionId();
+        }
+        // No session identity at all: share the broadcast bucket, matching session-less steer.
+        return TaskLoopController.DEFAULT_SESSION_ID;
+    }
+
+    private static boolean hasSessionId(AgentSessionApi session) {
+        return session != null && session.getSessionId() != null && !session.getSessionId().isBlank();
     }
 
     /**
-     * Tell whether a steering message arrived while a round was running.
+     * One outer task-loop round: its result plus the steering pending when the round started.
      *
-     * <p>Compares the round's start/end snapshots by value: an element present at the
-     * end but not at the start is a message the round could not have handled yet and
-     * therefore needs another round. Messages the round drained simply drop out of the
-     * end snapshot and must not extend the loop.</p>
-     *
-     * @param before steering pending when the round started
-     * @param after  steering pending when the round ended
-     * @return true if at least one message arrived during the round
+     * @param result                 the round result map
+     * @param pendingSteeringAtStart steering visible to the run's session when the round started
      */
-    private static boolean steeringArrived(List<String> before, List<String> after) {
-        List<String> unconsumed = new ArrayList<>(before);
-        for (String message : after) {
-            if (!unconsumed.remove(message)) {
-                return true;
+    private record CoreLoopRound(Map<String, Object> result, List<String> pendingSteeringAtStart) {
+
+        /**
+         * Tell whether a steering message arrived while this round was running.
+         *
+         * <p>Compares the round's start/end snapshots by value: an element present at the
+         * end but not at the start is a message the round could not have handled yet and
+         * therefore needs another round. Messages the round drained simply drop out of the
+         * end snapshot and must not extend the loop.</p>
+         *
+         * @param pendingSteeringAfter steering pending when the round ended
+         * @return true if at least one message arrived during the round
+         */
+        boolean steeringArrived(List<String> pendingSteeringAfter) {
+            List<String> unconsumed = new ArrayList<>(pendingSteeringAtStart);
+            for (String message : pendingSteeringAfter) {
+                if (!unconsumed.remove(message)) {
+                    return true;
+                }
             }
+            return false;
         }
-        return false;
+    }
+
+    /**
+     * Plan of one outer round: the query the loop carries forward and the query the round
+     * actually runs (possibly wrapped by the task instruction).
+     *
+     * @param query      the loop's current query after follow-up resolution
+     * @param roundQuery the query sent to the round
+     * @param isFollowUp whether this round runs a follow-up
+     */
+    private record RoundPlan(Object query, Object roundQuery, boolean isFollowUp) {
+    }
+
+    /** How the outer task loop continues after a round. */
+    private enum TaskLoopStep {
+        /** Run the next round with the current query. */
+        CONTINUE,
+        /** Run the next round from the original invoke query because tasks remain. */
+        RESTART,
+        /** End the task loop. */
+        BREAK
+    }
+
+    /**
+     * Per-run task-loop context shared by the round helpers.
+     *
+     * @param session           session the loop runs under
+     * @param sessionId         session id used for follow-up draining
+     * @param steeringSessionId session id {@code steer()} keys steering by
+     * @param coordinator       loop coordinator of this run
+     * @param rounds            recorded rounds of this run
+     */
+    private record TaskLoopRun(AgentSessionApi session, String sessionId, String steeringSessionId,
+                               LoopCoordinator coordinator, List<Map<String, Object>> rounds) {
     }
 
     private Map<String, Object> runTaskLoop(
@@ -2450,111 +2499,138 @@ public class DeepAgent implements AutoCloseable {
         Object baseQuery = normalized.getOrDefault("query", "");
         Object currentQuery = baseQuery;
         boolean isFollowUp = false;
-        List<Map<String, Object>> rounds = new ArrayList<>();
         int maxRounds = Math.max(1, config.getMaxIterations());
+        TaskLoopRun run = new TaskLoopRun(session, sessionId, steeringSessionId, coordinator, new ArrayList<>());
 
         startTaskLoopRuntime(session);
         bindStepCheckpointTrigger(session);
         try {
-            while (coordinator.shouldContinue() && rounds.size() < maxRounds) {
-                DeepAgentState loopState = loadState(session);
-                loopState.addPendingFollowUps(loopController.drainFollowUp(sessionId));
-                // First outer round always runs the invoke query; follow-ups apply from round 2+.
-                if (!rounds.isEmpty() && loopState.hasPendingFollowUps()) {
-                    currentQuery = loopState.pollPendingFollowUp();
-                    isFollowUp = true;
-                }
-                saveState(session, loopState);
-
-                Object roundQuery = currentQuery;
-                if (taskCompletionRail != null && currentQuery instanceof String currentQueryText) {
-                    roundQuery = taskCompletionRail.applyTaskInstruction(currentQueryText, isFollowUp);
-                }
-                // Snapshot the steering pending for this round: the exit decision below
-                // only extends the loop when a NEW message arrived while the round ran,
-                // so a message the round could not consume cannot pin the loop open.
-                List<String> pendingSteeringBefore = loopController.steeringMessages(steeringSessionId);
-                Map<String, Object> roundResult = new LinkedHashMap<>(executeCoreLoopRound(
-                        roundQuery,
-                        isFollowUp,
-                        session,
-                        Boolean.TRUE.equals(normalized.get("_collect_inner_stream")),
-                        normalized,
-                        steeringSessionId
-                ));
-                roundResult.put("query", currentQuery);
-                if (!Objects.equals(roundQuery, currentQuery)) {
-                    roundResult.put("task_instruction_query", roundQuery);
-                }
-                roundResult.put("mode", currentMode.name().toLowerCase(Locale.ROOT));
-                rounds.add(roundResult);
-
-                coordinator.incrementIteration();
-                coordinator.addTokenUsage(resolveTokenUsage(roundResult));
-                coordinator.setLastResult(roundResult);
-                recordTaskLoopStepBoundary(session, roundResult, "round-" + (rounds.size()));
-                Map<String, Object> pauseInfo = consumePauseIfRequested(session);
-                if (pauseInfo != null) {
-                    if (pauseTaskLoopAtBoundary(session, roundResult, pauseInfo)) {
-                        break;
-                    }
-                    // The pause evidence could not be persisted: the consumed
-                    // request is discarded and the loop continues with the
-                    // next round instead of ending with a paused shape that no
-                    // resume can continue.
-                }
-                // The inner ReAct agent may have consumed the pause intent at
-                // its own iteration head (both loops share the registry key);
-                // its paused round result must end the task loop, otherwise
-                // later rounds keep running after the user asked to pause.
-                if (isInnerPausedRound(roundResult)) {
-                    pauseTaskLoopAtInnerBoundary(session, roundResult);
+            while (coordinator.shouldContinue() && run.rounds().size() < maxRounds) {
+                RoundPlan plan = prepareTaskLoopRound(run, currentQuery, isFollowUp);
+                CoreLoopRound round = executeCoreLoopRound(plan.roundQuery(), plan.isFollowUp(), session,
+                        normalized, steeringSessionId);
+                currentQuery = plan.query();
+                isFollowUp = plan.isFollowUp();
+                Map<String, Object> roundResult = recordTaskLoopRound(run, plan, round);
+                TaskLoopStep step = nextTaskLoopStep(run, roundResult, round);
+                if (step == TaskLoopStep.BREAK) {
                     break;
                 }
-                if (isExplicitCompletionPolicy) {
-                    updateCompletionPromise(coordinator, roundResult);
-                    if (!coordinator.shouldContinue()) {
-                        break;
-                    }
-                }
-                if (coordinator.isAborted()) {
-                    break;
-                }
-                if ("interrupt".equals(String.valueOf(roundResult.get("result_type")))) {
-                    break;
-                }
-
-                loopState = loadState(session);
-                loopState.addPendingFollowUps(loopController.drainFollowUp(sessionId));
-                saveState(session, loopState);
-                // A steer message can land after the inner ReAct agent's answer-branch
-                // steering check but before this exit decision (e.g. rail
-                // afterTaskIteration callbacks fire in that window). Without this
-                // check the message strands in the queue until a later invoke;
-                // keep looping so the next round's iteration head drains it.
-                // Session-scoped check: only steering visible to THIS session (its own
-                // bucket plus broadcast messages) may extend its loop, so another
-                // session's steer neither runs extra rounds here nor leaks in. Compared
-                // against the round-start snapshot so only a message that arrived during
-                // the round adds a round; drained messages and messages the round could
-                // not consume (e.g. a stubbed inner agent) do not.
-                List<String> pendingSteering = loopController.steeringMessages(steeringSessionId);
-                if (loopController.hasFollowUp() || loopState.hasPendingFollowUps()
-                        || steeringArrived(pendingSteeringBefore, pendingSteering)) {
-                    continue;
-                }
-                if (hasRemainingTasks(session)) {
+                if (step == TaskLoopStep.RESTART) {
                     currentQuery = baseQuery;
                     isFollowUp = false;
-                    continue;
                 }
-                break;
             }
         } finally {
             stopTaskLoopRuntime(session);
             // Keep loopCoordinator/loopController instances for abort/followUp between rounds.
         }
+        return taskLoopResult(normalized, run);
+    }
 
+    /**
+     * Prepare one outer round: drain follow-ups, pick the query and apply the task instruction.
+     *
+     * @param run          the run context
+     * @param currentQuery the query carried into this round
+     * @param isFollowUp   whether the previous round ran a follow-up
+     * @return the round plan
+     */
+    private RoundPlan prepareTaskLoopRound(TaskLoopRun run, Object currentQuery, boolean isFollowUp) {
+        DeepAgentState loopState = loadState(run.session());
+        loopState.addPendingFollowUps(loopController.drainFollowUp(run.sessionId()));
+        Object query = currentQuery;
+        boolean followUp = isFollowUp;
+        // First outer round always runs the invoke query; follow-ups apply from round 2+.
+        if (!run.rounds().isEmpty() && loopState.hasPendingFollowUps()) {
+            query = loopState.pollPendingFollowUp();
+            followUp = true;
+        }
+        saveState(run.session(), loopState);
+        Object roundQuery = query;
+        if (taskCompletionRail != null && query instanceof String queryText) {
+            roundQuery = taskCompletionRail.applyTaskInstruction(queryText, followUp);
+        }
+        return new RoundPlan(query, roundQuery, followUp);
+    }
+
+    /**
+     * Record one finished round on the run coordinator and return its result map.
+     *
+     * @param run   the run context
+     * @param plan  the round plan
+     * @param round the round execution
+     * @return the recorded round result
+     */
+    private Map<String, Object> recordTaskLoopRound(TaskLoopRun run, RoundPlan plan, CoreLoopRound round) {
+        Map<String, Object> roundResult = new LinkedHashMap<>(round.result());
+        roundResult.put("query", plan.query());
+        if (!Objects.equals(plan.roundQuery(), plan.query())) {
+            roundResult.put("task_instruction_query", plan.roundQuery());
+        }
+        roundResult.put("mode", currentMode.name().toLowerCase(Locale.ROOT));
+        run.rounds().add(roundResult);
+        run.coordinator().incrementIteration();
+        run.coordinator().addTokenUsage(resolveTokenUsage(roundResult));
+        run.coordinator().setLastResult(roundResult);
+        recordTaskLoopStepBoundary(run.session(), roundResult, "round-" + run.rounds().size());
+        return roundResult;
+    }
+
+    /**
+     * Decide how the outer task loop continues after a round.
+     *
+     * @param run         the run context
+     * @param roundResult the recorded round result
+     * @param round       the round execution
+     * @return the continuation step
+     */
+    private TaskLoopStep nextTaskLoopStep(TaskLoopRun run, Map<String, Object> roundResult, CoreLoopRound round) {
+        Map<String, Object> pauseInfo = consumePauseIfRequested(run.session());
+        // A pause whose evidence cannot be persisted is discarded: ending with a paused shape
+        // that no resume can continue would be worse than running the next round.
+        if (pauseInfo != null && pauseTaskLoopAtBoundary(run.session(), roundResult, pauseInfo)) {
+            return TaskLoopStep.BREAK;
+        }
+        // The inner ReAct agent may have consumed the pause intent at its own iteration head
+        // (both loops share the registry key); its paused round must end the task loop.
+        if (isInnerPausedRound(roundResult)) {
+            pauseTaskLoopAtInnerBoundary(run.session(), roundResult);
+            return TaskLoopStep.BREAK;
+        }
+        if (isExplicitCompletionPolicy) {
+            updateCompletionPromise(run.coordinator(), roundResult);
+            if (!run.coordinator().shouldContinue()) {
+                return TaskLoopStep.BREAK;
+            }
+        }
+        if (run.coordinator().isAborted()
+                || "interrupt".equals(String.valueOf(roundResult.get("result_type")))) {
+            return TaskLoopStep.BREAK;
+        }
+        DeepAgentState loopState = loadState(run.session());
+        loopState.addPendingFollowUps(loopController.drainFollowUp(run.sessionId()));
+        saveState(run.session(), loopState);
+        // A steer message can land after the inner ReAct agent's answer-branch steering check
+        // but before this exit decision (e.g. rail afterTaskIteration callbacks fire in that
+        // window). Session-scoped: only steering visible to THIS session may extend its loop,
+        // and only a message that arrived during the round adds one, so another session's
+        // steer never runs extra rounds here and an unconsumed message cannot pin the loop.
+        if (loopController.hasFollowUp() || loopState.hasPendingFollowUps()
+                || round.steeringArrived(loopController.steeringMessages(run.steeringSessionId()))) {
+            return TaskLoopStep.CONTINUE;
+        }
+        return hasRemainingTasks(run.session()) ? TaskLoopStep.RESTART : TaskLoopStep.BREAK;
+    }
+
+    /**
+     * Build the result map returned to the task-loop caller.
+     *
+     * @param normalized the invoke inputs
+     * @param run        the run context
+     * @return the task-loop result
+     */
+    private Map<String, Object> taskLoopResult(Map<String, Object> normalized, TaskLoopRun run) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("type", "deep_agent_result");
         result.put("agent_name", card.getName());
@@ -2563,10 +2639,10 @@ public class DeepAgent implements AutoCloseable {
         result.put("workspace", workspaceRootString());
         result.put("inputs", normalized);
         result.put("input", normalized);
-        result.put("rounds", rounds);
-        result.put("loop_state", coordinator.getState());
-        if (!rounds.isEmpty()) {
-            Map<String, Object> finalRound = rounds.get(rounds.size() - 1);
+        result.put("rounds", run.rounds());
+        result.put("loop_state", run.coordinator().getState());
+        if (!run.rounds().isEmpty()) {
+            Map<String, Object> finalRound = run.rounds().get(run.rounds().size() - 1);
             result.put("final_result", finalRound);
             copyIfPresent(finalRound, result, "output");
             copyIfPresent(finalRound, result, "result_type");
@@ -2674,12 +2750,11 @@ public class DeepAgent implements AutoCloseable {
         }
     }
 
-    private Map<String, Object> executeCoreLoopRound(Object query,
-                                                     boolean isFollowUp,
-                                                     AgentSessionApi session,
-                                                     boolean isCollectInnerStream,
-                                                     Map<String, Object> outerInputs,
-                                                     String steeringSessionId) {
+    private CoreLoopRound executeCoreLoopRound(Object query,
+                                               boolean isFollowUp,
+                                               AgentSessionApi session,
+                                               Map<String, Object> outerInputs,
+                                               String steeringSessionId) {
         InputEvent event = query instanceof String || query instanceof InputEvent
                 ? InputEvent.fromUserInput(query)
                 : InputEvent.fromUserInput(Map.of(
@@ -2695,10 +2770,8 @@ public class DeepAgent implements AutoCloseable {
         metadata.put("loop_queues", loopController.getInteractionQueues(session.getSessionId()));
         // Keep the round's steering view keyed by the id steer() actually stores under,
         // so a caller session that differs from the effective run session still drains it.
-        if (steeringSessionId != null) {
-            metadata.put("_steering_session_id", steeringSessionId);
-        }
-        if (isCollectInnerStream) {
+        metadata.put("_steering_session_id", steeringSessionId);
+        if (collectInnerStream(outerInputs)) {
             metadata.put("collect_inner_stream", true);
         }
         copyModelSelectionKeys(outerInputs, metadata);
@@ -2717,8 +2790,19 @@ public class DeepAgent implements AutoCloseable {
             metadata.put("_invoke_extras", invokeExtras);
         }
         event.setMetadata(metadata);
+        List<String> pendingSteeringAtStart = loopController.steeringMessages(steeringSessionId);
         eventQueue.publishEvent(card.getId(), session, event);
-        return awaitRoundCompletion("round_" + handlerRound, session);
+        return new CoreLoopRound(awaitRoundCompletion("round_" + handlerRound, session), pendingSteeringAtStart);
+    }
+
+    /**
+     * Tell whether the inner round must stream its chunks.
+     *
+     * @param inputs outer invoke inputs, may be null
+     * @return true when inner streaming was requested
+     */
+    private static boolean collectInnerStream(Map<String, Object> inputs) {
+        return inputs != null && Boolean.TRUE.equals(inputs.get("_collect_inner_stream"));
     }
 
     /**
