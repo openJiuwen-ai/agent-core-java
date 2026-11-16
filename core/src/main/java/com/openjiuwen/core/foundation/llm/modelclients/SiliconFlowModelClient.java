@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -677,14 +678,14 @@ public class SiliconFlowModelClient extends BaseModelClient {
         Map<String, Object> usage = toObjectMap(usageMap);
         Integer cacheTokens = null;
         if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
-            cacheTokens = optionalIntValue(toObjectMap(promptDetails).get("cached_tokens")).orElse(null);
+            cacheTokens = nullableInt(optionalIntValue(toObjectMap(promptDetails).get("cached_tokens")));
         }
         CostInfo costInfo = extractCostInfo(usage);
         return UsageMetadata.builder()
                 .modelName(responseModel)
-                .inputTokens(optionalIntValue(usage.get("prompt_tokens")).orElse(null))
-                .outputTokens(optionalIntValue(usage.get("completion_tokens")).orElse(null))
-                .totalTokens(optionalIntValue(usage.get("total_tokens")).orElse(null))
+                .inputTokens(nullableInt(optionalIntValue(usage.get("prompt_tokens"))))
+                .outputTokens(nullableInt(optionalIntValue(usage.get("completion_tokens"))))
+                .totalTokens(nullableInt(optionalIntValue(usage.get("total_tokens"))))
                 .cacheTokens(cacheTokens)
                 .inputCost(costInfo.inputCost())
                 .outputCost(costInfo.outputCost())
@@ -793,8 +794,12 @@ public class SiliconFlowModelClient extends BaseModelClient {
         return value == null ? null : String.valueOf(value);
     }
 
-    private static Optional<Integer> optionalIntValue(Object value) {
-        return value == null ? Optional.empty() : Optional.of(intValue(value));
+    private static OptionalInt optionalIntValue(Object value) {
+        return value == null ? OptionalInt.empty() : OptionalInt.of(intValue(value));
+    }
+
+    private static Integer nullableInt(OptionalInt value) {
+        return value.isPresent() ? value.getAsInt() : null;
     }
 
     private static int intValue(Object value) {
