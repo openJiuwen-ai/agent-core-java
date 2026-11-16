@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -18,7 +19,7 @@ import java.util.stream.Stream;
  * @since 0.1.7
  */
 public class FilesystemTool {
-    private final Path root;
+    private final Supplier<Path> rootSupplier;
 
     /**
      * FilesystemTool.
@@ -27,7 +28,17 @@ public class FilesystemTool {
      * @since 0.1.7
      */
     public FilesystemTool(String rootPath) {
-        this.root = Path.of(rootPath).toAbsolutePath().normalize();
+        this(() -> Path.of(rootPath).toAbsolutePath().normalize());
+    }
+
+    /**
+     * Create a tool that resolves its workspace root on every operation.
+     *
+     * @param rootSupplier supplier of the absolute workspace root, evaluated per operation
+     * @since 0.1.17
+     */
+    public FilesystemTool(Supplier<Path> rootSupplier) {
+        this.rootSupplier = rootSupplier;
     }
 
     /**
@@ -73,6 +84,7 @@ public class FilesystemTool {
      * @since 0.1.7
      */
     public ToolOutput listFiles(String relativeDir) {
+        Path root = rootSupplier.get();
         try (Stream<Path> stream = Files.list(resolve(relativeDir))) {
             List<String> files = stream.sorted(Comparator.comparing(Path::toString))
                     .map(path -> root.relativize(path).toString()).toList();
@@ -91,6 +103,7 @@ public class FilesystemTool {
      * @since 0.1.7
      */
     public ToolOutput searchText(String relativeDir, String needle) {
+        Path root = rootSupplier.get();
         try (Stream<Path> stream = Files.walk(resolve(relativeDir))) {
             List<String> matches = stream.filter(Files::isRegularFile).filter(path -> contains(path, needle))
                     .sorted(Comparator.comparing(Path::toString)).map(path -> root.relativize(path).toString())
@@ -125,6 +138,6 @@ public class FilesystemTool {
      * @since 0.1.7
      */
     private Path resolve(String relativePath) {
-        return root.resolve(relativePath).normalize();
+        return rootSupplier.get().resolve(relativePath).normalize();
     }
 }

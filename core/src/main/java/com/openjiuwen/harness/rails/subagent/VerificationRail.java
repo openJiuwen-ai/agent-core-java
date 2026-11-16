@@ -5,6 +5,8 @@
 package com.openjiuwen.harness.rails.subagent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -173,6 +175,12 @@ public class VerificationRail extends DeepAgentRail {
     }
 
     private Path workspaceRoot() {
+        if (agent != null) {
+            TenantContext tenant = TenantContextHolder.getCurrentTenant();
+            if (tenant != null && tenant.isTenantAware() && agent.getWorkspaceResolver() != null) {
+                return agent.resolveWorkspaceRootForTenant(tenant);
+            }
+        }
         Object workspace = getWorkspace();
         if (workspace == null) {
             return null;

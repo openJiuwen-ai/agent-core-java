@@ -7,7 +7,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -293,6 +295,30 @@ class TmpFileCleanerTest {
         assertThat(terminated).isTrue();
 
         assertThatCode(() -> cleaner.stop()).doesNotThrowAnyException();
+    }
+
+    @Test
+    void testCleanTenantTmp_customLayout_isCleaned() throws Exception {
+        resolver = new TenantWorkspaceResolver(TenantWorkspacePolicy.builder()
+            .baseWorkspacePath(baseDir.toString())
+            .build());
+        cleaner = new TmpFileCleaner(Duration.ofSeconds(1), Duration.ofMillis(100),
+            baseDir.toString(), resolver);
+
+        Path tenantRoot = baseDir.resolve("branch_01").resolve("dept_07").resolve("tenant_c");
+        TenantContext ctx = TenantContext.builder()
+            .tenantId("tenant_c")
+            .workspaceRoot(tenantRoot.toString())
+            .build();
+        resolver.initializeTenantSpace(ctx);
+        Path expiredFile = resolver.resolveTempDir(ctx).resolve("custom_old.txt");
+        Files.writeString(expiredFile, "expired custom data");
+        Files.setLastModifiedTime(expiredFile, FileTime.from(Instant.now().minusSeconds(3600)));
+
+        cleaner.cleanTenantTmp(ctx);
+
+        assertThat(expiredFile).doesNotExist();
+        assertThat(baseDir.resolve("tenants")).doesNotExist();
     }
 
     @Test

@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.rails.context_engineer;
 
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -36,6 +38,7 @@ public class ContextAssembleRail extends DeepAgentRail {
 
     private SystemPromptBuilder systemPromptBuilder;
     private AbilityManager abilityManager;
+    private DeepAgent agent;
 
     public ContextAssembleRail() {
         setPriority(PRIORITY);
@@ -44,6 +47,7 @@ public class ContextAssembleRail extends DeepAgentRail {
     @Override
     public void init(DeepAgent agent) {
         super.init(agent);
+        this.agent = agent;
         Object reactAgent = agent == null ? null : agent.reactAgent();
         systemPromptBuilder = resolveSystemPromptBuilder(agent, reactAgent);
         abilityManager = resolveAbilityManager(agent, reactAgent);
@@ -57,6 +61,7 @@ public class ContextAssembleRail extends DeepAgentRail {
         }
         systemPromptBuilder = null;
         abilityManager = null;
+        agent = null;
     }
 
     @Override
@@ -71,7 +76,7 @@ public class ContextAssembleRail extends DeepAgentRail {
             systemPromptBuilder.removeSection(SectionName.CONTEXT);
             return;
         }
-        Workspace workspace = normalizeWorkspace(rawWorkspace, language());
+        Workspace workspace = tenantAwareWorkspace(normalizeWorkspace(rawWorkspace, language()));
         if (workspace == null) {
             systemPromptBuilder.removeSection(SectionName.WORKSPACE);
             systemPromptBuilder.removeSection(SectionName.CONTEXT);
@@ -143,6 +148,18 @@ public class ContextAssembleRail extends DeepAgentRail {
         }
         String value = Objects.toString(runKind, "");
         return RunKind.HEARTBEAT.getValue().equals(value) || RunKind.HEARTBEAT.name().equalsIgnoreCase(value);
+    }
+
+    private Workspace tenantAwareWorkspace(Workspace workspace) {
+        if (workspace == null || agent == null) {
+            return workspace;
+        }
+        TenantContext tenant = TenantContextHolder.getCurrentTenant();
+        if (tenant == null || !tenant.isTenantAware() || agent.getWorkspaceResolver() == null) {
+            return workspace;
+        }
+        Path root = agent.resolveWorkspaceRootForTenant(tenant);
+        return new Workspace(root.toString(), workspace.getDirectories(), workspace.getLanguage());
     }
 
     private static Workspace normalizeWorkspace(Object workspace, String language) {

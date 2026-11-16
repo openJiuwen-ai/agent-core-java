@@ -5,6 +5,8 @@
 package com.openjiuwen.harness.schema.config;
 
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
+import com.openjiuwen.core.multitenant.TenantWorkspaceLocator;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.harness.kvcache.KVCacheSubagentLifecycle;
@@ -139,6 +141,28 @@ public class DeepAgentConfig {
     @Builder.Default
     private List<String> stableSubSessionTypes = KVCacheSubagentLifecycle.DEFAULT_STABLE_SUB_SESSION_TYPES;
     private String tenantDataRoot;
+
+    /**
+     * Custom tenant namespace factory used by the default {@code tenants/{tenantId}} layout.
+     *
+     * @since 0.1.17
+     */
+    private TenantNamespaceFactory tenantNamespaceFactory;
+
+    /**
+     * Caller-supplied locator that resolves a tenant workspace root at runtime.
+     *
+     * @since 0.1.17
+     */
+    private TenantWorkspaceLocator tenantWorkspaceLocator;
+
+    /**
+     * Whitelist of roots tenant workspaces may live under; empty means only the base root.
+     *
+     * @since 0.1.17
+     */
+    private List<String> allowedTenantRoots;
+
     private List<String> workspaceSecondaryTiers;
     private Map<String, Map<String, Object>> workspaceTierConfigs;
 

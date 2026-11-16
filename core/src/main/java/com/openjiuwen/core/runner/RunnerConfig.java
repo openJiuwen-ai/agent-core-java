@@ -7,6 +7,8 @@ package com.openjiuwen.core.runner;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
+import com.openjiuwen.core.multitenant.TenantWorkspaceLocator;
 import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -104,6 +106,68 @@ public class RunnerConfig {
     @JsonProperty("tenant_data_root")
     private String tenantDataRoot;
 
+    /**
+     * Custom tenant namespace factory used by the default {@code tenants/{tenantId}} layout.
+     *
+     * @since 0.1.17
+     */
+    @JsonProperty("tenant_namespace_factory")
+    private TenantNamespaceFactory tenantNamespaceFactory;
+
+    /**
+     * Caller-supplied locator that resolves a tenant workspace root at runtime.
+     *
+     * @since 0.1.17
+     */
+    @JsonProperty("tenant_workspace_locator")
+    private TenantWorkspaceLocator tenantWorkspaceLocator;
+
+    /**
+     * Whitelist of roots tenant workspaces may live under; empty means only the base root.
+     *
+     * @since 0.1.17
+     */
+    @JsonProperty("allowed_tenant_roots")
+    private List<String> allowedTenantRoots;
+
+    /**
+     * Keeps the former 13-argument constructor usable for callers compiled against the previous field layout.
+     *
+     * @param distributedMode        whether distributed mode is enabled
+     * @param distributedConfig      distributed configuration
+     * @param envPrefix              environment prefix for topic names
+     * @param instanceId             runner instance identifier
+     * @param checkpointerConfig     checkpointer configuration
+     * @param mcpServers             MCP server configurations
+     * @param kvStoreConfig          KV store configuration
+     * @param vectorStoreConfig      vector store configuration
+     * @param objectStorageConfig    object storage configuration
+     * @param enableSessionController whether the session controller is enabled
+     * @param enableA2a              whether A2A is enabled
+     * @param enableTenantIsolation  whether tenant isolation is enabled
+     * @param tenantDataRoot         tenant data root directory
+     * @since 0.1.17
+     */
+    public RunnerConfig(boolean distributedMode, DistributedConfig distributedConfig, String envPrefix,
+            String instanceId, CheckpointerConfig checkpointerConfig, List<McpServerConfig> mcpServers,
+            Map<String, Object> kvStoreConfig, Map<String, Object> vectorStoreConfig,
+            Map<String, Object> objectStorageConfig, boolean enableSessionController, boolean enableA2a,
+            boolean enableTenantIsolation, String tenantDataRoot) {
+        this.distributedMode = distributedMode;
+        this.distributedConfig = distributedConfig;
+        this.envPrefix = envPrefix;
+        this.instanceId = instanceId;
+        this.checkpointerConfig = checkpointerConfig;
+        this.mcpServers = mcpServers;
+        this.kvStoreConfig = kvStoreConfig;
+        this.vectorStoreConfig = vectorStoreConfig;
+        this.objectStorageConfig = objectStorageConfig;
+        this.enableSessionController = enableSessionController;
+        this.enableA2a = enableA2a;
+        this.enableTenantIsolation = enableTenantIsolation;
+        this.tenantDataRoot = tenantDataRoot;
+    }
+
     public String agentTopicTemplate() {
         if (distributedConfig == null) {
             return "";
@@ -133,6 +197,9 @@ public class RunnerConfig {
                 .enableA2a(enableA2a)
                 .enableTenantIsolation(enableTenantIsolation)
                 .tenantDataRoot(tenantDataRoot)
+                .tenantNamespaceFactory(tenantNamespaceFactory)
+                .tenantWorkspaceLocator(tenantWorkspaceLocator)
+                .allowedTenantRoots(allowedTenantRoots == null ? null : new ArrayList<>(allowedTenantRoots))
                 .build();
     }
 

@@ -5,6 +5,8 @@
 package com.openjiuwen.harness.rails;
 
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -22,6 +24,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 
 /**
  * Initializes LSP subsystem and registers LspTool on DeepAgent.
@@ -43,6 +46,7 @@ public class LspRail extends DeepAgentRail {
     private final int maxTotal;
     private Tool lspTool;
     private boolean initialized;
+    private DeepAgent agent;
 
     public LspRail() {
         this(null, false, DEFAULT_MAX_PER_FILE, DEFAULT_MAX_TOTAL);
@@ -83,6 +87,7 @@ public class LspRail extends DeepAgentRail {
         }
 
         super.init(deepAgent);
+        this.agent = deepAgent;
         InitializeOptions effectiveOptions = buildEffectiveOptions();
         try {
             if (LSPServerManager.getInstance() == null) {
@@ -92,9 +97,9 @@ public class LspRail extends DeepAgentRail {
             // Python logs and continues when LSP initialization fails.
         }
 
-        String workspaceRoot = resolveWorkspaceRoot(getWorkspace());
+        String workspaceRoot = currentWorkspaceRoot();
         LspTool tool = new LspTool(
-                managerGateway(workspaceRoot),
+                managerGateway(this::currentWorkspaceRoot),
                 deepAgent.getSysOperation(),
                 deepAgent.deepConfig().getLanguage(),
                 workspaceRoot,
@@ -222,7 +227,7 @@ public class LspRail extends DeepAgentRail {
     }
 
     private InitializeOptions buildEffectiveOptions() {
-        String effectiveCwd = resolveWorkspaceRoot(getWorkspace());
+        String effectiveCwd = currentWorkspaceRoot();
         if (options == null) {
             InitializeOptions created = new InitializeOptions();
             created.setCwd(effectiveCwd);
@@ -242,7 +247,7 @@ public class LspRail extends DeepAgentRail {
         if (path.isAbsolute()) {
             return path.toAbsolutePath().normalize().toString();
         }
-        String root = resolveWorkspaceRoot(getWorkspace());
+        String root = currentWorkspaceRoot();
         Path base = root == null || root.isBlank() ? Path.of(System.getProperty("user.dir")) : Path.of(root);
         return base.resolve(path).toAbsolutePath().normalize().toString();
     }
@@ -273,7 +278,7 @@ public class LspRail extends DeepAgentRail {
         return result;
     }
 
-    private static LspTool.LspGateway managerGateway(String workspaceRoot) {
+    private static LspTool.LspGateway managerGateway(Supplier<String> workspaceRootSupplier) {
         return (operation, params, kwargs) -> {
             LSPServerManager manager = LSPServerManager.getInstance();
             if (manager == null) {
@@ -282,6 +287,7 @@ public class LspRail extends DeepAgentRail {
                 failed.put("error", "LSP server manager not initialized and auto-init failed.");
                 return failed;
             }
+            String workspaceRoot = workspaceRootSupplier.get();
             ToolOutput output = new com.openjiuwen.harness.tools.LspTool(workspaceRoot, manager).invoke(params);
             Map<String, Object> payload = new LinkedHashMap<>();
             if (output.getData() instanceof Map<?, ?> data) {
@@ -307,6 +313,16 @@ public class LspRail extends DeepAgentRail {
             }
         }
         return null;
+    }
+
+    private String currentWorkspaceRoot() {
+        if (agent != null) {
+            TenantContext tenant = TenantContextHolder.getCurrentTenant();
+            if (tenant != null && tenant.isTenantAware() && agent.getWorkspaceResolver() != null) {
+                return agent.resolveWorkspaceRootForTenant(tenant).toString();
+            }
+        }
+        return resolveWorkspaceRoot(getWorkspace());
     }
 
     private static String resolveWorkspaceRoot(Object workspace) {

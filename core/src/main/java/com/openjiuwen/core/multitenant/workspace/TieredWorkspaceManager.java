@@ -7,11 +7,12 @@ package com.openjiuwen.core.multitenant.workspace;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
+import com.openjiuwen.core.multitenant.TenantWorkspacePolicy;
 
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages tiered workspace resolution across a primary local store and remote stores.
@@ -34,7 +35,7 @@ public class TieredWorkspaceManager {
     private final WorkspaceStore primaryStore;
     private final List<WorkspaceStore> secondaryStores;
     private final TenantNamespaceFactory namespaceFactory;
-    private final ConcurrentHashMap<String, WorkspaceResolution> resolvedPaths = new ConcurrentHashMap<>();
+    private final TenantWorkspacePolicy policy;
 
     public TieredWorkspaceManager(WorkspaceStore primaryStore, List<WorkspaceStore> secondaryStores) {
         this(primaryStore, secondaryStores, TenantNamespaceFactories.PATH_DEFAULT);
@@ -45,6 +46,23 @@ public class TieredWorkspaceManager {
         this.primaryStore = primaryStore;
         this.secondaryStores = secondaryStores != null ? secondaryStores : List.of();
         this.namespaceFactory = namespaceFactory != null ? namespaceFactory : TenantNamespaceFactories.PATH_DEFAULT;
+        this.policy = null;
+    }
+
+    /**
+     * Create a manager whose tenant namespace is resolved by an explicit workspace policy.
+     *
+     * @param primaryStore the primary local store
+     * @param secondaryStores the remote stores
+     * @param policy the workspace policy
+     * @since 0.1.17
+     */
+    public TieredWorkspaceManager(WorkspaceStore primaryStore, List<WorkspaceStore> secondaryStores,
+                                  TenantWorkspacePolicy policy) {
+        this.primaryStore = primaryStore;
+        this.secondaryStores = secondaryStores != null ? secondaryStores : List.of();
+        this.policy = policy;
+        this.namespaceFactory = policy != null ? policy.getNamespaceFactory() : TenantNamespaceFactories.PATH_DEFAULT;
     }
 
     public WorkspaceStore getPrimaryStore() {
@@ -60,7 +78,17 @@ public class TieredWorkspaceManager {
     }
 
     /**
-     * Resolves the workspace paths for a tenant context, caching the result.
+     * Return the workspace policy used for tenant namespaces.
+     *
+     * @return the workspace policy, or null when the manager uses a plain namespace factory
+     * @since 0.1.17
+     */
+    public TenantWorkspacePolicy getPolicy() {
+        return policy;
+    }
+
+    /**
+     * Resolves the workspace paths for a tenant context.
      *
      * @param ctx the tenant context
      * @param type the workspace type
@@ -71,16 +99,14 @@ public class TieredWorkspaceManager {
         if (!ctx.isTenantAware()) {
             return resolveDefault(type);
         }
-        return resolvedPaths.computeIfAbsent(buildCacheKey(ctx, type), key -> {
-            String ns = namespaceFactory.namespace(ctx, "tenants");
-            String subDir = type.subDirectory();
-            Path localPath = primaryStore.resolvePath(ns, subDir);
-            Map<String, String> remotePaths = new java.util.LinkedHashMap<>();
-            for (WorkspaceStore store : secondaryStores) {
-                remotePaths.put(store.tierName(), store.resolvePath(ns, subDir).toString());
-            }
-            return new WorkspaceResolution(localPath, remotePaths, type);
-        });
+        String ns = tenantNamespace(ctx);
+        String subDir = type.subDirectory();
+        Path localPath = primaryStore.resolvePath(ns, subDir);
+        Map<String, String> remotePaths = new LinkedHashMap<>();
+        for (WorkspaceStore store : secondaryStores) {
+            remotePaths.put(store.tierName(), store.resolvePath(ns, subDir).toString());
+        }
+        return new WorkspaceResolution(localPath, remotePaths, type);
     }
 
     /**
@@ -92,7 +118,7 @@ public class TieredWorkspaceManager {
      */
     public WorkspaceResolution resolveDefault(WorkspaceType type) {
         Path localPath = primaryStore.resolveDefaultPath(type.subDirectory());
-        Map<String, String> remotePaths = new java.util.LinkedHashMap<>();
+        Map<String, String> remotePaths = new LinkedHashMap<>();
         for (WorkspaceStore store : secondaryStores) {
             remotePaths.put(store.tierName(), store.resolveDefaultPath(type.subDirectory()).toString());
         }
@@ -109,14 +135,17 @@ public class TieredWorkspaceManager {
         if (!ctx.isTenantAware()) {
             return;
         }
-        String ns = namespaceFactory.namespace(ctx, "tenants");
+        String ns = tenantNamespace(ctx);
         primaryStore.createDirectories(ns);
         for (WorkspaceStore store : secondaryStores) {
             store.createDirectories(ns);
         }
     }
 
-    private String buildCacheKey(TenantContext ctx, WorkspaceType type) {
-        return ctx.safeTenantId() + ":" + type.name();
+    private String tenantNamespace(TenantContext ctx) {
+        if (policy != null) {
+            return policy.resolveNamespace(ctx);
+        }
+        return namespaceFactory.namespace(ctx, "tenants");
     }
 }

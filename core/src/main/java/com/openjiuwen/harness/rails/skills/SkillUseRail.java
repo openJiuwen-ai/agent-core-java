@@ -5,6 +5,8 @@
 package com.openjiuwen.harness.rails.skills;
 
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
@@ -402,7 +404,7 @@ public class SkillUseRail extends DeepAgentRail {
         if (!shouldRegisterFallbackTools(agent)) {
             return;
         }
-        registerOwnedTool(agent, new FilesystemTools.ReadFileTool(resolveWorkspaceRoot(agent)));
+        registerOwnedTool(agent, new FilesystemTools.ReadFileTool(() -> resolveWorkspaceRoot(agent)));
         registerOwnedTool(agent, new CodeTool(null));
         Object operation = getSysOperation();
         registerOwnedTool(agent, new BashTool(operation instanceof SysOperation sysOperation ? sysOperation : null,
@@ -450,8 +452,12 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     private static String resolveWorkspaceRoot(DeepAgent agent) {
-        if (agent.getWorkspace() == null || agent.getWorkspace().root() == null) {
+        if (agent == null || agent.getWorkspace() == null || agent.getWorkspace().root() == null) {
             return "./";
+        }
+        TenantContext tenant = TenantContextHolder.getCurrentTenant();
+        if (tenant != null && tenant.isTenantAware() && agent.getWorkspaceResolver() != null) {
+            return agent.resolveWorkspaceRootForTenant(tenant).toString();
         }
         return agent.getWorkspace().root().toString();
     }
@@ -684,6 +690,10 @@ public class SkillUseRail extends DeepAgentRail {
         if (deepAgent != null
                 && deepAgent.getWorkspace() != null
                 && deepAgent.getWorkspace().root() != null) {
+            TenantContext tenant = TenantContextHolder.getCurrentTenant();
+            if (tenant != null && tenant.isTenantAware() && deepAgent.getWorkspaceResolver() != null) {
+                return deepAgent.resolveWorkspaceRootForTenant(tenant).resolve("skills");
+            }
             return deepAgent.getWorkspace().root().resolve("skills");
         }
         return Path.of("skills").toAbsolutePath().normalize();

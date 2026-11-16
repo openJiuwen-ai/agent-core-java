@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Public class LspTool used by the Java parity implementation.
@@ -18,7 +19,7 @@ import java.util.Map;
  * @since 1.0
  */
 public class LspTool {
-  private final Path workspace;
+  private final Supplier<Path> workspaceSupplier;
   private final LSPServerManager manager;
 
   /** Auto-generated for codecheck compliance. */
@@ -28,7 +29,18 @@ public class LspTool {
 
   /** Auto-generated for codecheck compliance. */
   public LspTool(String workspace, LSPServerManager manager) {
-    this.workspace = workspace != null ? Path.of(workspace).toAbsolutePath().normalize() : null;
+    this(() -> workspace != null ? Path.of(workspace).toAbsolutePath().normalize() : null, manager);
+  }
+
+  /**
+   * Create a tool that resolves its workspace root on every invocation.
+   *
+   * @param workspaceSupplier supplier of the workspace root, evaluated per invocation
+   * @param manager LSP server manager, may be null
+   * @since 0.1.17
+   */
+  public LspTool(Supplier<Path> workspaceSupplier, LSPServerManager manager) {
+    this.workspaceSupplier = workspaceSupplier;
     this.manager = manager;
   }
 
@@ -37,6 +49,7 @@ public class LspTool {
     try {
       String rawOperation = String.valueOf(inputs.get("operation"));
       LspOperation operation = LspOperation.fromValue(rawOperation);
+      Path workspace = workspaceSupplier.get();
       String filePath =
           inputs.get("file_path") != null
               ? LspToolSupport.resolvePath(String.valueOf(inputs.get("file_path")), workspace)

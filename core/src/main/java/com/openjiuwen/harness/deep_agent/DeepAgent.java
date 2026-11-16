@@ -30,13 +30,12 @@ import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspacePolicy;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 import com.openjiuwen.core.multitenant.TmpFileCleaner;
 import com.openjiuwen.core.multitenant.workspace.TieredWorkspaceManager;
-import com.openjiuwen.core.multitenant.workspace.WorkspaceResolution;
 import com.openjiuwen.core.multitenant.workspace.WorkspaceStore;
 import com.openjiuwen.core.multitenant.workspace.WorkspaceStoreFactory;
-import com.openjiuwen.core.multitenant.workspace.WorkspaceType;
 import com.openjiuwen.core.multitenant.workspace.store.LocalWorkspaceStore;
 import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
@@ -232,6 +231,7 @@ public class DeepAgent implements AutoCloseable {
     @Getter(AccessLevel.NONE)
     private final Condition initDone = lifecycleLock.newCondition();
     private SessionToolkit sessionToolkit;
+    private TenantWorkspacePolicy tenantWorkspacePolicy;
     private TenantWorkspaceResolver workspaceResolver;
     private TieredWorkspaceManager tieredWorkspaceManager;
     private TmpFileCleaner tmpFileCleaner;
@@ -319,13 +319,41 @@ public class DeepAgent implements AutoCloseable {
             this.agent.setLlm(configuredModel);
         }
         if (this.config.isEnableTenantIsolation()) {
-            String basePath = this.config.getTenantDataRoot() != null
-                    ? this.config.getTenantDataRoot() : this.config.getWorkspacePath();
-            this.workspaceResolver = new TenantWorkspaceResolver(basePath);
+            this.tenantWorkspacePolicy = buildTenantWorkspacePolicy();
+            String basePath = this.tenantWorkspacePolicy.getBaseWorkspacePath();
+            this.workspaceResolver = new TenantWorkspaceResolver(this.tenantWorkspacePolicy);
             this.tmpFileCleaner = new TmpFileCleaner(
                     this.config.getTmpTtl(), this.config.getTmpTtlScanInterval(), basePath, this.workspaceResolver);
             this.tmpFileCleaner.start();
         }
+    }
+
+    /**
+     * Resolve the workspace root for the given tenant context.
+     *
+     * <p>When tenant isolation is enabled and the context carries a tenant, the tenant-aware
+     * workspace resolver decides the root. Otherwise the static workspace root is returned
+     * unchanged, preserving the non-tenant layout.</p>
+     *
+     * @param ctx the tenant context, may be null
+     * @return the tenant workspace root, or the static workspace root
+     * @since 0.1.17
+     */
+    public Path resolveWorkspaceRootForTenant(TenantContext ctx) {
+        if (workspaceResolver != null && ctx != null && ctx.isTenantAware()) {
+            return workspaceResolver.resolveWorkspaceRoot(ctx);
+        }
+        return workspace.root();
+    }
+
+    /**
+     * Resolve the workspace root for the tenant bound to the current thread.
+     *
+     * @return the tenant workspace root, or the static workspace root when no tenant is bound
+     * @since 0.1.17
+     */
+    public Path resolveWorkspaceRootForCurrentTenant() {
+        return resolveWorkspaceRootForTenant(TenantContextHolder.getCurrentTenant());
     }
 
     /**
@@ -3095,32 +3123,44 @@ public class DeepAgent implements AutoCloseable {
             return;
         }
         if (ctx != null && ctx.isTenantAware()) {
+            workspaceResolver.initializeTenantSpace(ctx);
+            Path tenantWorkspace = workspaceResolver.resolveWorkspaceRoot(ctx);
+            Path tenantRoot = workspaceResolver.resolveTenantRoot(ctx);
+            applyTenantCwd(tenantWorkspace.toString(), tenantRoot.toString());
             if (tieredWorkspaceManager != null) {
                 tieredWorkspaceManager.initializeTenantSpace(ctx);
-                WorkspaceResolution workspaceRes = tieredWorkspaceManager.resolve(ctx, WorkspaceType.WORKSPACE);
-                Path tenantWorkspace = workspaceRes.getLocalPath();
-                applyTenantCwd(tenantWorkspace.toString());
-                workspaceResolver = new TenantWorkspaceResolver(
-                        config.getTenantDataRoot() != null ? config.getTenantDataRoot() : config.getWorkspacePath(),
-                        tieredWorkspaceManager.getNamespaceFactory());
-            } else {
-                String baseWorkspace = config.getTenantDataRoot() != null
-                        ? config.getTenantDataRoot() : config.getWorkspacePath();
-                workspaceResolver = new TenantWorkspaceResolver(baseWorkspace);
-                Path tenantWorkspace = workspaceResolver.resolveWorkspaceRoot(ctx);
-                workspaceResolver.initializeTenantSpace(ctx);
-                applyTenantCwd(tenantWorkspace.toString());
+            }
+            if (tmpFileCleaner != null) {
+                tmpFileCleaner.cleanTenantTmp(ctx);
             }
         }
     }
 
-    private void applyTenantCwd(String tenantWorkspace) {
+    private void applyTenantCwd(String tenantWorkspace, String tenantRoot) {
         Cwd.setWorkspace(tenantWorkspace);
         Cwd.setOriginalCwd(tenantWorkspace);
-        Cwd.setTenantRoot(tenantWorkspace);
+        Cwd.setTenantRoot(tenantRoot);
         CwdContext.setWorkspace(tenantWorkspace);
         CwdContext.setOriginalCwd(tenantWorkspace);
-        CwdContext.setTenantRoot(tenantWorkspace);
+        CwdContext.setTenantRoot(tenantRoot);
+    }
+
+    private TenantWorkspacePolicy buildTenantWorkspacePolicy() {
+        String basePath = config.getTenantDataRoot() != null
+                ? config.getTenantDataRoot() : config.getWorkspacePath();
+        return TenantWorkspacePolicy.builder()
+                .baseWorkspacePath(basePath)
+                .namespaceFactory(config.getTenantNamespaceFactory())
+                .locator(config.getTenantWorkspaceLocator())
+                .allowedTenantRoots(config.getAllowedTenantRoots())
+                .build();
+    }
+
+    private synchronized TenantWorkspacePolicy workspacePolicy() {
+        if (tenantWorkspacePolicy == null) {
+            tenantWorkspacePolicy = buildTenantWorkspacePolicy();
+        }
+        return tenantWorkspacePolicy;
     }
 
     private void unbindTenantWorkspace() {
@@ -4464,7 +4504,7 @@ public class DeepAgent implements AutoCloseable {
                 }
             }
         }
-        this.tieredWorkspaceManager = new TieredWorkspaceManager(primaryStore, secondaryStores);
+        this.tieredWorkspaceManager = new TieredWorkspaceManager(primaryStore, secondaryStores, workspacePolicy());
     }
 
     /**

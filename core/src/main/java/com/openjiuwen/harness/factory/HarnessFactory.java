@@ -300,6 +300,10 @@ public final class HarnessFactory {
                 .permissionHost(source.getPermissionHost())
                 .enableTenantIsolation(source.isEnableTenantIsolation())
                 .tenantDataRoot(source.getTenantDataRoot())
+                .tenantNamespaceFactory(source.getTenantNamespaceFactory())
+                .tenantWorkspaceLocator(source.getTenantWorkspaceLocator())
+                .allowedTenantRoots(source.getAllowedTenantRoots() == null ? null
+                        : new ArrayList<>(source.getAllowedTenantRoots()))
                 .workspaceSecondaryTiers(source.getWorkspaceSecondaryTiers())
                 .workspaceTierConfigs(source.getWorkspaceTierConfigs())
                 .todoStorageType(source.isTodoStorageTypeExplicit() ? source.getTodoStorageType() : null)
