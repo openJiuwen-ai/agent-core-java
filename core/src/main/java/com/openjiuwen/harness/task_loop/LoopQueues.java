@@ -136,6 +136,21 @@ public final class LoopQueues {
         return new SessionSteeringView(sessionId);
     }
 
+    /**
+     * Snapshot the steering messages visible to the given session without draining them.
+     *
+     * <p>Callers compare snapshots around a round to tell "a message arrived while the
+     * round was running" (needs another round to consume it) from "a message the round
+     * could not consume" (another round would not help).</p>
+     *
+     * @param sessionId the session id
+     * @return the currently pending messages in poll order
+     * @since 0.1.17
+     */
+    public List<String> steeringMessages(String sessionId) {
+        return new ArrayList<>(steeringView(sessionId));
+    }
+
     public List<String> drainSteering() {
         List<String> messages = new ArrayList<>();
         drainInto(steering, messages);

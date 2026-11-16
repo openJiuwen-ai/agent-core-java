@@ -1584,7 +1584,8 @@ public class DeepAgent implements AutoCloseable {
         if (session != null) {
             mergeSessionState(session, effectiveSession);
         }
-        Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
+        Map<String, Object> result = runTaskLoop(normalized, effectiveSession,
+                steeringSessionIdOf(session, effectiveSession));
         effectiveSession.postRun();
         if (session != null) {
             replaceSessionState(effectiveSession, session);
@@ -1845,7 +1846,8 @@ public class DeepAgent implements AutoCloseable {
         try {
             Map<String, Object> result = withDeepAgentInvokeLifecycle(
                     normalized,
-                    () -> runTaskLoop(normalized, effectiveSession)
+                    () -> runTaskLoop(normalized, effectiveSession,
+                            steeringSessionIdOf(session, effectiveSession))
             );
             writeTopLevelStreamResult(effectiveSession, 0, result, true);
         } catch (Error error) {
@@ -2390,7 +2392,54 @@ public class DeepAgent implements AutoCloseable {
         return evaluators;
     }
 
-    private Map<String, Object> runTaskLoop(Map<String, Object> normalized, AgentSessionApi session) {
+    /**
+     * Resolve the steering key for one task-loop run.
+     *
+     * <p>{@code steer(message, session)} keys steering by the caller-provided session id,
+     * while the run itself may execute under a different effective session id (for example
+     * {@code <card_name>_session} when the caller passed a session but no
+     * {@code conversation_id}). Keying the run's steering view by the caller id keeps the
+     * message visible to the run that owns it.</p>
+     *
+     * @param callerSession    session passed by the caller, may be null
+     * @param effectiveSession session the task loop actually runs under
+     * @return the steering queue key for this run
+     */
+    private static String steeringSessionIdOf(AgentSessionApi callerSession, AgentSessionApi effectiveSession) {
+        if (callerSession != null && callerSession.getSessionId() != null
+                && !callerSession.getSessionId().isBlank()) {
+            return callerSession.getSessionId();
+        }
+        return effectiveSession != null ? effectiveSession.getSessionId() : null;
+    }
+
+    /**
+     * Tell whether a steering message arrived while a round was running.
+     *
+     * <p>Compares the round's start/end snapshots by value: an element present at the
+     * end but not at the start is a message the round could not have handled yet and
+     * therefore needs another round. Messages the round drained simply drop out of the
+     * end snapshot and must not extend the loop.</p>
+     *
+     * @param before steering pending when the round started
+     * @param after  steering pending when the round ended
+     * @return true if at least one message arrived during the round
+     */
+    private static boolean steeringArrived(List<String> before, List<String> after) {
+        List<String> unconsumed = new ArrayList<>(before);
+        for (String message : after) {
+            if (!unconsumed.remove(message)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Map<String, Object> runTaskLoop(
+            Map<String, Object> normalized,
+            AgentSessionApi session,
+            String steeringSessionId
+    ) {
         ensureTaskLoopRuntime();
         LoopCoordinator coordinator = coordinatorForSession(session);
         coordinator.reset();
@@ -2421,12 +2470,17 @@ public class DeepAgent implements AutoCloseable {
                 if (taskCompletionRail != null && currentQuery instanceof String currentQueryText) {
                     roundQuery = taskCompletionRail.applyTaskInstruction(currentQueryText, isFollowUp);
                 }
+                // Snapshot the steering pending for this round: the exit decision below
+                // only extends the loop when a NEW message arrived while the round ran,
+                // so a message the round could not consume cannot pin the loop open.
+                List<String> pendingSteeringBefore = loopController.steeringMessages(steeringSessionId);
                 Map<String, Object> roundResult = new LinkedHashMap<>(executeCoreLoopRound(
                         roundQuery,
                         isFollowUp,
                         session,
                         Boolean.TRUE.equals(normalized.get("_collect_inner_stream")),
-                        normalized
+                        normalized,
+                        steeringSessionId
                 ));
                 roundResult.put("query", currentQuery);
                 if (!Objects.equals(roundQuery, currentQuery)) {
@@ -2480,9 +2534,13 @@ public class DeepAgent implements AutoCloseable {
                 // keep looping so the next round's iteration head drains it.
                 // Session-scoped check: only steering visible to THIS session (its own
                 // bucket plus broadcast messages) may extend its loop, so another
-                // session's steer neither runs extra rounds here nor leaks in.
+                // session's steer neither runs extra rounds here nor leaks in. Compared
+                // against the round-start snapshot so only a message that arrived during
+                // the round adds a round; drained messages and messages the round could
+                // not consume (e.g. a stubbed inner agent) do not.
+                List<String> pendingSteering = loopController.steeringMessages(steeringSessionId);
                 if (loopController.hasFollowUp() || loopState.hasPendingFollowUps()
-                        || loopController.hasSteering(sessionId)) {
+                        || steeringArrived(pendingSteeringBefore, pendingSteering)) {
                     continue;
                 }
                 if (hasRemainingTasks(session)) {
@@ -2620,7 +2678,8 @@ public class DeepAgent implements AutoCloseable {
                                                      boolean isFollowUp,
                                                      AgentSessionApi session,
                                                      boolean isCollectInnerStream,
-                                                     Map<String, Object> outerInputs) {
+                                                     Map<String, Object> outerInputs,
+                                                     String steeringSessionId) {
         InputEvent event = query instanceof String || query instanceof InputEvent
                 ? InputEvent.fromUserInput(query)
                 : InputEvent.fromUserInput(Map.of(
@@ -2634,6 +2693,11 @@ public class DeepAgent implements AutoCloseable {
         metadata.put("run_kind", isFollowUp ? "follow_up" : "outer_loop");
         metadata.put("is_follow_up", isFollowUp);
         metadata.put("loop_queues", loopController.getInteractionQueues(session.getSessionId()));
+        // Keep the round's steering view keyed by the id steer() actually stores under,
+        // so a caller session that differs from the effective run session still drains it.
+        if (steeringSessionId != null) {
+            metadata.put("_steering_session_id", steeringSessionId);
+        }
         if (isCollectInnerStream) {
             metadata.put("collect_inner_stream", true);
         }

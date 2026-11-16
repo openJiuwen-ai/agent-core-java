@@ -313,9 +313,13 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
             // Live queue reference so steer during a blocked invoke is visible to the next round.
             // Session-scoped view: the round's own bucket plus broadcast messages only, so
             // another session's steer neither leaks into this round's model context nor
-            // changes its round count.
+            // changes its round count. The round metadata carries the id steer() keys by
+            // (the caller session id), which can differ from the effective run session id.
+            Object steeringSessionId = metadata.get("_steering_session_id");
             effective.put("_steering_queue", queues.steeringView(
-                    session != null ? session.getSessionId() : null));
+                    steeringSessionId instanceof String key
+                            ? key
+                            : (session != null ? session.getSessionId() : null)));
         }
         return effective;
     }
