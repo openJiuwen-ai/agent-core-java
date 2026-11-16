@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
+import java.util.function.Supplier;
 
 /**
  * Agent-dimension OTel handler.
@@ -60,6 +61,14 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
 
     /** Span name used by the {@code fixed} naming strategy. */
     private static final String FIXED_LLM_SPAN_NAME = "llm.chat";
+
+    /**
+     * Read access point for the naming-strategy property. Package-visible and
+     * replaceable so tests can simulate {@link SecurityException} without
+     * installing a real {@code SecurityManager}.
+     */
+    static volatile Supplier<String> spanNamePropertySupplier =
+            () -> System.getProperty(LLM_SPAN_NAME_PROPERTY);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -323,12 +332,23 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
      * any other value (default) keeps the legacy {@code "llm.<modelName>"} naming.
      * The model identity always stays available via {@code gen_ai.request.model}.</p>
      *
+     * <p>Reading the property may throw {@link SecurityException} under a
+     * {@code SecurityManager} that denies {@code PropertyPermission}. That case
+     * degrades to the legacy naming instead of propagating, keeping the span
+     * alive and observability failures out of the business flow.</p>
+     *
      * @param className the model name from instance info (may be empty)
      * @return the resolved span name
      * @since 0.1.17
      */
     private static String llmSpanName(String className) {
-        if ("fixed".equalsIgnoreCase(System.getProperty(LLM_SPAN_NAME_PROPERTY))) {
+        String strategy;
+        try {
+            strategy = spanNamePropertySupplier.get();
+        } catch (SecurityException exc) {
+            strategy = null;
+        }
+        if ("fixed".equalsIgnoreCase(strategy)) {
             return FIXED_LLM_SPAN_NAME;
         }
         return "llm." + (className != null && !className.isEmpty() ? className : "unknown");
