@@ -184,12 +184,14 @@ System.setProperty("openjiuwen.otel.llm-span-name", "fixed");
 1. **切换前通知下游**：若仪表盘/告警按 span 名精确匹配（如 `llm.qwen-plus`），切换到 `fixed` 后这些规则会失效，需改用 `gen_ai.request.model` 属性过滤。建议在变更单注明切换时间点，避免时间线割裂。
 2. **运行时读取**：系统属性在每次创建 LLM Span 时读取，可运行时动态修改（`System.setProperty`），无需重启；但同一条 span 的名字在创建时就已确定，中途修改只影响后续 span。
 3. **`class_name` 取自 Agent 静态配置**：两种策略下 `gen_ai.request.model` 的值均来自 Agent 配置中的模型名（见 `OtelRail.getModelName()`），不反映单次调用的动态模型选择——动态模型上报属于后续需求（R2）。
+4. **沙箱环境降级**：在 `SecurityManager` 拒绝 `PropertyPermission` 的受限 JVM 中，读取该属性抛出的 `SecurityException` 会被捕获并降级为 legacy 命名（`llm.<class_name>`），LLM Span 仍正常创建，观测失败不冒泡到业务流。
 
 ### 相关测试
 
 - `OtelAgentHandlerTest.TestLlmEvents.testLlmSpanNameDefaultIsModelBased`（默认策略保持 `llm.<model>`）
 - `OtelAgentHandlerTest.TestLlmEvents.testLlmSpanNameFixedMode`（`fixed` 策略不同模型均为 `llm.chat`，属性保留各自模型名）
 - `OtelAgentHandlerTest.TestLlmEvents.testLlmSpanNameFixedModeEmptyClassName`（`fixed` 策略忽略大小写，`instanceInfo` 为 `null` 时兜底）
+- `OtelAgentHandlerTest.TestLlmEvents.testLlmSpanNameSecurityExceptionFallsBackToLegacy`（读取属性抛 `SecurityException` 时降级为 legacy 命名，span 仍正常创建）
 
 ---
 
@@ -552,8 +554,8 @@ public class OtelAgentHandler extends TraceExtAgentHandler
 
 ### 相关测试
 
-- `OtelAgentHandlerTest`（32 个测试，分 7 组）
-  - `TestLlmEvents`（7）：CLIENT Span 创建 / completion 设置 / ERROR 标记 / 通用 Throwable / span 命名策略（默认、fixed、fixed 兜底）
+- `OtelAgentHandlerTest`（33 个测试，分 7 组）
+  - `TestLlmEvents`（8）：CLIENT Span 创建 / completion 设置 / ERROR 标记 / 通用 Throwable / span 命名策略（默认、fixed、fixed 兜底、SecurityException 降级）
   - `TestRedaction`（4）：prompt 脱敏开关 / 细粒度覆盖 / 非 LLM 输入脱敏
   - `TestNonLlmEvents`（4）：Chain INTERNAL Span / Plugin tool.name / Chain ERROR
   - `TestParentChild`（1）：父子 Span 上下文传递
@@ -690,7 +692,7 @@ Agent agent = Agent.builder()
 | 测试类 | 测试数 | 覆盖范围 |
 | --- | --- | --- |
 | `OtelTracerSetupTest` | 21 | 初始化 / 采样率验证 / 采样率集成 |
-| `OtelAgentHandlerTest` | 32 | LLM 事件（含 span 命名策略）/ 脱敏 / 非 LLM 事件 / 父子关系 / 规范化 / 容错 / 响应属性 |
+| `OtelAgentHandlerTest` | 33 | LLM 事件（含 span 命名策略）/ 脱敏 / 非 LLM 事件 / 父子关系 / 规范化 / 容错 / 响应属性 |
 | `OtelWorkflowHandlerTest` | 22 | 生命周期 / 组件类型 / 异常处理 / 数据缓冲 / 子 Workflow / 容错 |
 | `RedactionUtilsTest` | 25 | 截断 / 哈希 / 脱敏判定 / 脱敏应用 |
 | `OtelSpanManagerTest` | 13 | push / pop / get / 缓冲行为 |

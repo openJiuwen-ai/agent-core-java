@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -246,6 +247,32 @@ class OtelAgentHandlerTest {
                 assertThat(s.getName()).isEqualTo("llm.chat");
             } finally {
                 restoreProperty("openjiuwen.otel.llm-span-name", previous);
+            }
+        }
+
+        @Test
+        @DisplayName("SecurityException while reading the property degrades to legacy naming")
+        void testLlmSpanNameSecurityExceptionFallsBackToLegacy() {
+            String previousProperty = System.setProperty("openjiuwen.otel.llm-span-name", "fixed");
+            Supplier<String> previousSupplier = OtelAgentHandler.spanNamePropertySupplier;
+            OtelAgentHandler.spanNamePropertySupplier = () -> {
+                throw new SecurityException("property read denied");
+            };
+            try {
+                OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+                TraceAgentSpan span = newSpan();
+                handler.onLlmStart(span, Map.of("prompt", "hi"), instanceInfo("MyModel"));
+                handler.onLlmEnd(span, Map.of("content", "reply"));
+
+                // The span must still be created (failure swallowed, not propagated)
+                // and fall back to the legacy model-based naming.
+                SpanData s = firstSpan();
+                assertThat(s.getName()).isEqualTo("llm.MyModel");
+                assertThat(s.getAttributes().get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL)))
+                        .isEqualTo("MyModel");
+            } finally {
+                OtelAgentHandler.spanNamePropertySupplier = previousSupplier;
+                restoreProperty("openjiuwen.otel.llm-span-name", previousProperty);
             }
         }
 
