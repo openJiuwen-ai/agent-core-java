@@ -103,6 +103,9 @@ public class AssistantMessageChunk extends AssistantMessage {
         String mergedFinishReason = (otherFinishReason != null && !"null".equals(otherFinishReason))
                 ? otherFinishReason
                 : getFinishReason();
+        String mergedResponseModel = otherChunk.getResponseModel() != null
+                ? otherChunk.getResponseModel()
+                : getResponseModel();
 
         return AssistantMessageChunk.builder()
                 .role(getRole())
@@ -110,6 +113,7 @@ public class AssistantMessageChunk extends AssistantMessage {
                 .toolCalls(mergedToolCalls.isEmpty() ? null : mergedToolCalls)
                 .usageMetadata(otherChunk.getUsageMetadata() != null
                         ? otherChunk.getUsageMetadata() : getUsageMetadata())
+                .responseModel(mergedResponseModel)
                 .finishReason(mergedFinishReason)
                 .parserContent(MessageChunkMerge.mergeParserContent(getParserContent(), otherChunk.getParserContent()))
                 .reasoningContent(orEmpty(getReasoningContent()) + orEmpty(otherChunk.getReasoningContent()))

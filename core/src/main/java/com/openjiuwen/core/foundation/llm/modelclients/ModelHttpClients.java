@@ -570,7 +570,7 @@ final class ModelHttpClients {
         Iterator<Map.Entry<String, SharedClient>> idleIterator = SHARED_CLIENTS.entrySet().iterator();
         while (idleIterator.hasNext()) {
             Map.Entry<String, SharedClient> entry = idleIterator.next();
-            if (now - entry.getValue().lastAccessNanos >= idleNanos) {
+            if (now - entry.getValue().lastAccessNanos > idleNanos) {
                 idleIterator.remove();
                 // Same pending-counter conservation as eviction: retired entries must not
                 // leak their residual failure counts, and the retired flag declines any

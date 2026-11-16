@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.clients.ClientRegistry;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -13,7 +14,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code tests/unit_tests/core/foundation/llm/test_model_client_config.py}.</p>
  */
 class LlmSchemaConfigTest {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
     void preservesProviderTypeValues() {
@@ -74,12 +78,16 @@ class LlmSchemaConfigTest {
     }
 
     @Test
-    void preservesRequestConfigDefaultsAndAliases() {
+    void preservesRequestConfigDefaultsAndAliases() throws Exception {
         ModelRequestConfig config = new ModelRequestConfig();
 
         assertEquals("", config.getModelName());
         assertEquals(0.95, config.getTemperature());
-        assertEquals(0.1, config.getTopP());
+        assertNull(config.getTopP());
+        assertNull(ModelRequestConfig.builder().build().getTopP());
+        assertFalse(OBJECT_MAPPER.writeValueAsString(config).contains("top_p"));
+        assertTrue(OBJECT_MAPPER.writeValueAsString(ModelRequestConfig.builder().topP(0.0D).build())
+                .contains("\"top_p\":0.0"));
     }
 
     @Test

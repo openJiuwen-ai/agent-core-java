@@ -36,9 +36,11 @@ public class ModelRequestConfig {
     @Builder.Default
     private double temperature = 0.95;
 
-    @Builder.Default
+    /**
+     * Nucleus sampling threshold. A null value leaves {@code top_p} out of the provider request.
+     */
     @JsonProperty("top_p")
-    private double topP = 0.1;
+    private Double topP;
 
     @JsonProperty("max_tokens")
     private Integer maxTokens;

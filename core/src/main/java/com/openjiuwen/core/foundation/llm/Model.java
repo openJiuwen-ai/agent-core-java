@@ -292,7 +292,7 @@ public class Model {
         ModelRequestConfig requestConfig = ModelRequestConfig.builder()
                 .modelName(modelName)
                 .temperature(temperature)
-                .topP(topP)
+                .topP((double) topP)
                 .maxTokens(maxTokens)
                 .build();
         return new Model(clientConfig, requestConfig);

@@ -337,7 +337,7 @@ public class IntelliRouterModelClient extends BaseModelClient {
                 ? temperature.doubleValue()
                 : modelConfig == null ? null : modelConfig.getTemperature();
         Double finalTopP = topP != null
-                ? topP.doubleValue()
+                ? Double.valueOf(topP.doubleValue())
                 : modelConfig == null ? null : modelConfig.getTopP();
         Integer finalMaxTokens = maxTokens != null
                 ? maxTokens
