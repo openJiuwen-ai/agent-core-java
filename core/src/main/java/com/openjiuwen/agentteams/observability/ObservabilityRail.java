@@ -695,7 +695,9 @@ public class ObservabilityRail extends AgentRail {
             return;
         }
         llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_REQUEST_TEMPERATURE, mrc.getTemperature());
-        llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_REQUEST_TOP_P, mrc.getTopP());
+        if (mrc.getTopP() != null) {
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_REQUEST_TOP_P, mrc.getTopP());
+        }
         if (mrc.getMaxTokens() != null && mrc.getMaxTokens() > 0) {
             llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_REQUEST_MAX_TOKENS, mrc.getMaxTokens());
         }
@@ -1027,7 +1029,8 @@ public class ObservabilityRail extends AgentRail {
      */
     private static OptionalLong resolveInputTokens(Object usage) {
         if (usage instanceof UsageMetadata um) {
-            return OptionalLong.of(um.getInputTokens());
+            return um.getInputTokensOrNull() == null
+                    ? OptionalLong.empty() : OptionalLong.of(um.getInputTokensOrNull());
         }
         if (usage instanceof Map<?, ?> uMap) {
             OptionalLong valOpt = coerceLong(uMap.get("input_tokens"));
@@ -1047,7 +1050,8 @@ public class ObservabilityRail extends AgentRail {
      */
     private static OptionalLong resolveOutputTokens(Object usage) {
         if (usage instanceof UsageMetadata um) {
-            return OptionalLong.of(um.getOutputTokens());
+            return um.getOutputTokensOrNull() == null
+                    ? OptionalLong.empty() : OptionalLong.of(um.getOutputTokensOrNull());
         }
         if (usage instanceof Map<?, ?> uMap) {
             OptionalLong valOpt = coerceLong(uMap.get("output_tokens"));
@@ -1069,11 +1073,8 @@ public class ObservabilityRail extends AgentRail {
      */
     private static OptionalLong resolveTotalTokens(Object usage, OptionalLong inputTokens,
                                                    OptionalLong outputTokens) {
-        if (usage instanceof UsageMetadata um) {
-            int total = um.getTotalTokens();
-            if (total > 0) {
-                return OptionalLong.of(total);
-            }
+        if (usage instanceof UsageMetadata um && um.getTotalTokensOrNull() != null) {
+            return OptionalLong.of(um.getTotalTokensOrNull());
         }
         if (usage instanceof Map<?, ?> uMap) {
             OptionalLong valOpt = coerceLong(uMap.get("total_tokens"));
@@ -1138,6 +1139,11 @@ public class ObservabilityRail extends AgentRail {
      * @param rawResponse the raw response
      */
     private static void extractAndSetResponseModel(Span llmSpan, Object rawResponse) {
+        if (rawResponse instanceof AssistantMessage assistantMessage
+                && assistantMessage.getResponseModel() != null && !assistantMessage.getResponseModel().isEmpty()) {
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_RESPONSE_MODEL, assistantMessage.getResponseModel());
+            return;
+        }
         if (rawResponse instanceof Map<?, ?> respMap) {
             Object model = respMap.get("model");
             if (model != null) {

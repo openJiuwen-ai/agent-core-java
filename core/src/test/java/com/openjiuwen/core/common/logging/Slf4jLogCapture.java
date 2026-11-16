@@ -5,6 +5,7 @@
 package com.openjiuwen.core.common.logging;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Test-only log capture utility for raw SLF4J loggers.
@@ -27,7 +28,16 @@ public final class Slf4jLogCapture implements AutoCloseable {
      * @param clazz the class whose logger to capture
      */
     public Slf4jLogCapture(Class<?> clazz) {
-        logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(clazz);
+        this(clazz.getName());
+    }
+
+    /**
+     * Attaches a capturing appender to the SLF4J logger with the given name.
+     *
+     * @param loggerName name of the logger to capture
+     */
+    public Slf4jLogCapture(String loggerName) {
+        logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(loggerName);
         appender = new ch.qos.logback.core.read.ListAppender<>();
         appender.start();
         logger.addAppender(appender);
@@ -43,6 +53,18 @@ public final class Slf4jLogCapture implements AutoCloseable {
     public List<String> formattedMessages() {
         return appender.list.stream()
                 .map(event -> event.getFormattedMessage())
+                .toList();
+    }
+
+    /**
+     * Returns the MDC property maps of all captured log events, in the same
+     * order as {@link #formattedMessages()}.
+     *
+     * @return MDC maps in capture order
+     */
+    public List<Map<String, String>> mdcMaps() {
+        return appender.list.stream()
+                .map(event -> Map.copyOf(event.getMDCPropertyMap()))
                 .toList();
     }
 

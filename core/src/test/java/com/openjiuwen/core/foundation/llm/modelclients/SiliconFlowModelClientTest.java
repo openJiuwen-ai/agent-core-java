@@ -154,6 +154,7 @@ class SiliconFlowModelClientTest {
         RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
         client.nextJson = """
                 {
+                  "model": "routed-actual-model",
                   "choices": [
                     {
                       "message": {
@@ -214,6 +215,8 @@ class SiliconFlowModelClientTest {
         assertThat(result.getParserContent()).isEqualTo("parsed:answer");
         assertThat(result.getUsageMetadata().getInputTokens()).isEqualTo(11);
         assertThat(result.getUsageMetadata().getCacheTokens()).isEqualTo(5);
+        assertThat(result.getUsageMetadata().getModelName()).isEqualTo("routed-actual-model");
+        assertThat(result.modelDump()).containsEntry("response_model", "routed-actual-model");
         assertThat(result.getUsageMetadata().getInputCost()).isEqualTo(0.1D);
         assertThat(result.getUsageMetadata().getOutputCost()).isEqualTo(0.2D);
         assertThat(result.getUsageMetadata().getTotalCost()).isEqualTo(0.30000000000000004D);
@@ -233,9 +236,10 @@ class SiliconFlowModelClientTest {
     void streamParsesSseChunksAppliesParserAndRecordsFinalMessage() throws Exception {
         RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
         client.nextStreamLines = List.of(
-                "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}",
-                "data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}],"
-                        + "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}",
+                "data: {\"model\":\"routed-actual-model\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}",
+                "data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}",
+                "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,"
+                        + "\"total_tokens\":3,\"prompt_tokens_details\":{\"cached_tokens\":1}}}",
                 "data: [DONE]"
         );
         RecordingTracer tracer = new RecordingTracer();
@@ -258,15 +262,17 @@ class SiliconFlowModelClientTest {
                 .containsEntry("model", "override-model")
                 .containsEntry("max_tokens", 32)
                 .containsEntry("stream", true);
-        assertThat(chunks).hasSize(2);
+        assertThat(chunks).hasSize(3);
         assertThat(chunks.get(0).getContent()).isEqualTo("Hello");
         assertThat(chunks.get(0).getParserContent()).isEqualTo("parsed:Hello");
         assertThat(chunks.get(1).getContent()).isEqualTo(" world");
         assertThat(chunks.get(1).getFinishReason()).isEqualTo("stop");
-        assertThat(chunks.get(1).getUsageMetadata().getTotalTokens()).isEqualTo(3);
+        assertThat(chunks.get(2).getUsageMetadata().getTotalTokens()).isEqualTo(3);
+        assertThat(chunks.get(2).getUsageMetadata().getCacheTokens()).isEqualTo(1);
         assertThat(tracer.records).hasSize(2);
         AssistantMessageChunk finalMessage = (AssistantMessageChunk) tracer.records.get(1).get("llm_response");
         assertThat(finalMessage.getContent()).isEqualTo("Hello world");
+        assertThat(finalMessage.modelDump()).containsEntry("response_model", "routed-actual-model");
     }
 
     @Test

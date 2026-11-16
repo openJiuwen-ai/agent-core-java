@@ -3437,6 +3437,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     .toolCalls(accumulatedChunk.getToolCalls() == null ? List.of() : accumulatedChunk.getToolCalls())
                     .finishReason(accumulatedChunk.getFinishReason())
                     .usageMetadata(accumulatedChunk.getUsageMetadata())
+                    .responseModel(accumulatedChunk.getResponseModel())
                     .reasoningContent(accumulatedChunk.getReasoningContent())
                     .promptTokenIds(accumulatedChunk.getPromptTokenIds())
                     .completionTokenIds(accumulatedChunk.getCompletionTokenIds())
@@ -3954,6 +3955,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .toolCalls(aiMessage.getToolCalls())
                 .reasoningContent(aiMessage.getReasoningContent())
                 .usageMetadata(aiMessage.getUsageMetadata())
+                .responseModel(aiMessage.getResponseModel())
                 .build();
     }
 

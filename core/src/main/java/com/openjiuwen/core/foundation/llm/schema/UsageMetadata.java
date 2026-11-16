@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -59,21 +60,17 @@ public class UsageMetadata implements Serializable {
     @JsonProperty("request_start_time")
     private String requestStartTime = "";
 
-    @Builder.Default
     @JsonProperty("input_tokens")
-    private int inputTokens = 0;
+    private Integer inputTokens;
 
-    @Builder.Default
     @JsonProperty("output_tokens")
-    private int outputTokens = 0;
+    private Integer outputTokens;
 
-    @Builder.Default
     @JsonProperty("total_tokens")
-    private int totalTokens = 0;
+    private Integer totalTokens;
 
-    @Builder.Default
     @JsonProperty("cache_tokens")
-    private int cacheTokens = 0;
+    private Integer cacheTokens;
 
     @Builder.Default
     @JsonProperty("input_cost")
@@ -147,6 +144,91 @@ public class UsageMetadata implements Serializable {
     @JsonProperty("retry_count")
     private Integer retryCount;
 
+    /**
+     * Return the input token count, using zero for backward compatibility when it is absent.
+     *
+     * @return input token count, or zero when absent
+     */
+    @JsonIgnore
+    public int getInputTokens() {
+        return inputTokens == null ? 0 : inputTokens;
+    }
+
+    /**
+     * Return the output token count, using zero for backward compatibility when it is absent.
+     *
+     * @return output token count, or zero when absent
+     */
+    @JsonIgnore
+    public int getOutputTokens() {
+        return outputTokens == null ? 0 : outputTokens;
+    }
+
+    /**
+     * Return the total token count, using zero for backward compatibility when it is absent.
+     *
+     * @return total token count, or zero when absent
+     */
+    @JsonIgnore
+    public int getTotalTokens() {
+        return totalTokens == null ? 0 : totalTokens;
+    }
+
+    /**
+     * Return the cached input token count, using zero for backward compatibility when it is absent.
+     *
+     * @return cached input token count, or zero when absent
+     */
+    @JsonIgnore
+    public int getCacheTokens() {
+        return cacheTokens == null ? 0 : cacheTokens;
+    }
+
+    /**
+     * Return the input token count without hiding an absent value.
+     *
+     * @return input token count, or {@code null} when absent
+     */
+    @JsonProperty("input_tokens")
+    public Integer getInputTokensOrNull() {
+        return inputTokens;
+    }
+
+    /**
+     * Return the output token count without hiding an absent value.
+     *
+     * @return output token count, or {@code null} when absent
+     */
+    @JsonProperty("output_tokens")
+    public Integer getOutputTokensOrNull() {
+        return outputTokens;
+    }
+
+    /**
+     * Return the total token count without hiding an absent value.
+     *
+     * @return total token count, or {@code null} when absent
+     */
+    @JsonProperty("total_tokens")
+    public Integer getTotalTokensOrNull() {
+        return totalTokens;
+    }
+
+    /**
+     * Return the cached input token count without hiding an absent value.
+     *
+     * @return cached input token count, or {@code null} when absent
+     */
+    @JsonProperty("cache_tokens")
+    public Integer getCacheTokensOrNull() {
+        return cacheTokens;
+    }
+
+    /**
+     * Convert usage metadata to its wire-shaped map, retaining token field presence.
+     *
+     * @return wire-shaped usage metadata
+     */
     public Map<String, Object> modelDump() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("code", code);
@@ -157,10 +239,18 @@ public class UsageMetadata implements Serializable {
         result.put("total_latency", totalLatency);
         result.put("first_token_time", firstTokenTime);
         result.put("request_start_time", requestStartTime);
-        result.put("input_tokens", inputTokens);
-        result.put("output_tokens", outputTokens);
-        result.put("total_tokens", totalTokens);
-        result.put("cache_tokens", cacheTokens);
+        if (inputTokens != null) {
+            result.put("input_tokens", inputTokens);
+        }
+        if (outputTokens != null) {
+            result.put("output_tokens", outputTokens);
+        }
+        if (totalTokens != null) {
+            result.put("total_tokens", totalTokens);
+        }
+        if (cacheTokens != null) {
+            result.put("cache_tokens", cacheTokens);
+        }
         result.put("input_cost", inputCost);
         result.put("output_cost", outputCost);
         result.put("total_cost", totalCost);

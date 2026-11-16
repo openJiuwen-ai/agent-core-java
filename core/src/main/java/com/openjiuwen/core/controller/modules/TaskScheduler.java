@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggingUtils;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
@@ -166,6 +167,8 @@ public class TaskScheduler {
 
     @SuppressWarnings("resource")
     private void executeTaskWrapper(String taskId, AgentSessionApi session) {
+        String previousTraceId = LoggingUtils.getSessionId();
+        LoggingUtils.setSessionId(session.getSessionId());
         try {
             if (config.getTaskTimeout() != null) {
                 // Execute with timeout: run on current virtual thread, use a watchdog to interrupt
@@ -204,6 +207,7 @@ public class TaskScheduler {
                 lock.unlock();
             }
             ensureSessionCompletionSignal(session.getSessionId());
+            LoggingUtils.setSessionId(previousTraceId);
         }
     }
 

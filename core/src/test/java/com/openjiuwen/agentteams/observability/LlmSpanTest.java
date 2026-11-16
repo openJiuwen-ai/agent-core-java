@@ -5,8 +5,10 @@
 package com.openjiuwen.agentteams.observability;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 
@@ -353,11 +355,10 @@ class LlmSpanTest extends ObservabilityTestBase {
         ctx.setInputs(modelCallInputs(messages, null));
         rail.beforeModelCall(ctx);
 
-        // UsageMetadata with total_tokens=0 (should compute from input+output).
+        // UsageMetadata without total_tokens should compute from input+output.
         UsageMetadata usage = new UsageMetadata();
         usage.setInputTokens(30);
         usage.setOutputTokens(20);
-        usage.setTotalTokens(0);
         usage.setModelName("compute-model");
 
         AssistantMessage response = AssistantMessage.builder()
@@ -685,5 +686,40 @@ class LlmSpanTest extends ObservabilityTestBase {
         // Model from response "model" field.
         assertThat(attr(llmSpan, ObservabilitySemConv.GEN_AI_RESPONSE_MODEL))
                 .isEqualTo("gpt-4o");
+    }
+
+    @Test
+    void llmSpanOmitsUnsetTopPWithoutAbortingInstrumentation() {
+        ObservabilitySetup.startTeamTrace("test_team", "test_session");
+        ReActAgentConfig config = ReActAgentConfig.builder()
+                .modelConfigObj(ModelRequestConfig.builder().build())
+                .build();
+        StubAgent agent = new StubAgent("test_team", "leader") {
+            @Override
+            public Object getConfig() {
+                return config;
+            }
+        };
+        AgentCallbackContext ctx = invokeContext(agent, "hello");
+        ObservabilityRail rail = new ObservabilityRail();
+        rail.beforeInvoke(ctx);
+        List<Object> messages = List.of(Map.of("role", "user", "content", "hello"));
+        ctx.setInputs(modelCallInputs(messages, null));
+        rail.beforeModelCall(ctx);
+        ctx.setInputs(modelCallInputs(messages, AssistantMessage.builder()
+                .content("done")
+                .responseModel("routed-actual-model")
+                .build()));
+        rail.afterModelCall(ctx);
+        ctx.setInputs(invokeInputsWithResult("hello", simpleResult("done")));
+        rail.afterInvoke(ctx);
+        ObservabilitySetup.finalizeTeamTrace("test_team");
+
+        SpanData span = spansByName("llm.call").get(0);
+        assertThat(span.getAttributes().get(AttributeKey.doubleKey(ObservabilitySemConv.GEN_AI_REQUEST_TOP_P)))
+                .isNull();
+        assertThat(span.getAttributes().get(AttributeKey.doubleKey(ObservabilitySemConv.GEN_AI_REQUEST_TEMPERATURE)))
+                .isEqualTo(0.95);
+        assertThat(attr(span, ObservabilitySemConv.GEN_AI_RESPONSE_MODEL)).isEqualTo("routed-actual-model");
     }
 }

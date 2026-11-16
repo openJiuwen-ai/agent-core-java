@@ -10,6 +10,7 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.sysop.result.ReadFileData;
 import com.openjiuwen.core.sysop.result.ReadFileResult;
+import com.openjiuwen.harness.tools.ToolOutput;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -189,6 +190,55 @@ class ToolLifecycleOutputFactoryTest {
                 .containsEntry("tool_name", "lookupEnv")
                 .containsEntry("status", "completed")
                 .containsEntry("result", "");
+    }
+
+    @Test
+    void buildToolResultOutputReadsFailedToolOutputBooleanGetter() {
+        ToolOutput failure = ToolOutput.builder().success(false).error("boom").build();
+
+        OutputSchema output = toolResultOutput(failure, "fallback");
+
+        assertThat(payload(output))
+                .containsEntry("status", "error")
+                .containsEntry("error", "boom");
+    }
+
+    @Test
+    void buildToolResultOutputHandlesFailedToolOutputWithoutError() {
+        ToolOutput failure = ToolOutput.builder().success(false).build();
+
+        OutputSchema output = toolResultOutput(failure, "fallback");
+
+        assertThat(payload(output))
+                .containsEntry("status", "error")
+                .containsEntry("error", "fallback");
+    }
+
+    @Test
+    void buildToolResultOutputHandlesFailedToolOutputWithBlankError() {
+        ToolOutput failure = ToolOutput.builder().success(false).error("").build();
+
+        OutputSchema output = toolResultOutput(failure, "fallback");
+
+        assertThat(payload(output))
+                .containsEntry("status", "error")
+                .containsEntry("error", "fallback");
+    }
+
+    @Test
+    void buildToolResultOutputKeepsSuccessfulToolOutputCompleted() {
+        ToolOutput success = ToolOutput.builder().success(true).data(Map.of("ok", true)).build();
+
+        OutputSchema output = toolResultOutput(success, "fallback");
+
+        assertThat(payload(output)).containsEntry("status", "completed");
+    }
+
+    private static OutputSchema toolResultOutput(ToolOutput result, String message) {
+        ToolCall toolCall = ToolCall.builder().id("call-tool-output").name("workflow_run").build();
+        AbilityManager.ExecutionResult executionResult = new AbilityManager.ExecutionResult(
+                result, new ToolMessage(message, toolCall.getId(), toolCall.getName()));
+        return ToolLifecycleOutputFactory.buildToolResultOutput(toolCall, executionResult, 10);
     }
 
     @SuppressWarnings("unchecked")

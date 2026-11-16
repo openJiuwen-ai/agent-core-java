@@ -46,7 +46,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -278,6 +282,50 @@ class ModelCallRetryFlowTest {
     }
 
     @Test
+    void invoke_concurrentRecovery_keepsNewerClientAndUsesIt() throws Exception {
+        ModelHttpClients.clearSharedClientsForTesting();
+        try (StubServer server = new StubServer()
+            .enqueue(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"losing\"}}]}")) {
+            OpenAIModelClient noRetry = client(server, 0, new ModelCircuitBreaker());
+            ModelHttpClients.clearSharedClientsForTesting();
+            FailingHttpClient failed = new FailingHttpClient("selector manager closed");
+            FailingHttpClient newer = new FailingHttpClient("newer sender");
+            noRetry.replaceHttpClientForTesting(failed);
+            CountDownLatch replacementStarted = new CountDownLatch(1);
+            CountDownLatch finishReplacement = new CountDownLatch(1);
+            AtomicBoolean shouldPause = new AtomicBoolean(true);
+            long now = System.nanoTime();
+            ModelHttpClients.setNanoClockForTesting(() -> {
+                if (shouldPause.compareAndSet(true, false)) {
+                    replacementStarted.countDown();
+                    awaitBuildRelease(finishReplacement);
+                }
+                return now;
+            });
+            CompletableFuture<Void> failedCall = CompletableFuture.runAsync(() -> assertThatThrownBy(() ->
+                noRetry.invoke("hello", null, null, null, null, null, null, null, null,
+                    new LinkedHashMap<>())).isInstanceOf(BaseError.class));
+            try {
+                assertThat(replacementStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                noRetry.replaceHttpClientForTesting(newer);
+            } finally {
+                finishReplacement.countDown();
+            }
+            failedCall.get(5, TimeUnit.SECONDS);
+
+            assertThatThrownBy(() -> noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThat(noRetry.httpClientForTesting()).isSameAs(newer);
+            assertThat(failed.sendCount).hasValue(1);
+            assertThat(newer.sendCount).hasValue(1);
+            assertThat(server.requests).isEmpty();
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
     void invoke_unrecognizedFailure_keepsFieldClientWithoutResend() throws Exception {
         // Given a field client failing with an unrecognized wording (ALIVE verdict), When
         // invoking twice, Then the field client stays in place (no rebuild) and failures
@@ -299,6 +347,16 @@ class ModelCallRetryFlowTest {
             assertThat(server.requests).isEmpty();
         } finally {
             ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    private static void awaitBuildRelease(CountDownLatch release) {
+        try {
+            if (!release.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to finish the replacement build");
+            }
+        } catch (InterruptedException exception) {
+            throw new IllegalStateException("Interrupted while waiting to finish the replacement build", exception);
         }
     }
 
@@ -351,6 +409,7 @@ class ModelCallRetryFlowTest {
     // path, any other wording exercises the ALIVE verdict (no rebuild).
     private static final class FailingHttpClient extends HttpClient {
         private final String failureMessage;
+        private final AtomicInteger sendCount = new AtomicInteger();
 
         private FailingHttpClient(String failureMessage) {
             this.failureMessage = failureMessage;
@@ -404,6 +463,7 @@ class ModelCallRetryFlowTest {
         @Override
         public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
                 throws IOException {
+            sendCount.incrementAndGet();
             throw new IOException(failureMessage);
         }
 
