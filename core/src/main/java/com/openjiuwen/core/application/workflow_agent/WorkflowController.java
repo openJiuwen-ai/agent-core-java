@@ -90,7 +90,7 @@ public class WorkflowController {
     private List<Object> workflows = new ArrayList<>();
     private Object sourceAgent;
 
-    private volatile boolean propagateIntentErrors;
+    private volatile boolean shouldPropagateIntentErrors;
     private final ConcurrentMap<InvocationKey, Invocation> invocations = new ConcurrentHashMap<>();
 
     public WorkflowController() {
@@ -588,10 +588,10 @@ public class WorkflowController {
      * Enable this before accepting requests when callers need to distinguish model outages
      * from workflow execution failures.</p>
      *
-     * @param propagate whether to propagate the original detector exception
+     * @param shouldPropagate whether to propagate the original detector exception
      */
-    public void setPropagateIntentErrors(boolean propagate) {
-        this.propagateIntentErrors = propagate;
+    public void setPropagateIntentErrors(boolean shouldPropagate) {
+        this.shouldPropagateIntentErrors = shouldPropagate;
     }
 
     public AgentConfig getAgentConfig() {
@@ -753,7 +753,7 @@ public class WorkflowController {
                 activeSession.cancellation().checkCancelled();
             }
 
-            if (propagateIntentErrors) {
+            if (shouldPropagateIntentErrors) {
                 throw e;
             }
             LOGGER.warning("Intent detection failed; using first workflow");
