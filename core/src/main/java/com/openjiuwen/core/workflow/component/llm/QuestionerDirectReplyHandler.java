@@ -199,7 +199,8 @@ public class QuestionerDirectReplyHandler {
         List<String> paramsList = new ArrayList<>();
         List<String> requiredNameList = new ArrayList<>();
         for (FieldInfo param : config.getFieldNames()) {
-            paramsList.add(param.getFieldName() + ": " + param.getDescription());
+            paramsList.add(param.getFieldName() + ": " + param.getDescription()
+                    + " (type: " + param.getType() + ")");
             if (param.isRequired()) {
                 String name = (param.getCnFieldName() != null && !param.getCnFieldName().isEmpty())
                         ? param.getCnFieldName() : param.getDescription();

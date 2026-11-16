@@ -4,19 +4,28 @@
 
 package com.openjiuwen.core.application.workflow_agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.constants.TaskType;
 import com.openjiuwen.core.controller.legacy.task.Task;
 import com.openjiuwen.core.controller.legacy.task.TaskInput;
 import com.openjiuwen.core.controller.legacy.task.TaskStatus;
+import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
+import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -28,6 +37,45 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code openjiuwen/core/application/workflow_agent/workflow_controller.py}.
  */
 class WorkflowControllerTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    @Test
+    void intentRequestDescribesPartialInputsAndUsesTheReturnedCategory() throws IOException {
+        AtomicReference<JsonNode> request = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            try (exchange) {
+                request.set(JSON.readTree(exchange.getRequestBody()));
+                byte[] body = JSON.writeValueAsBytes(Map.of("choices", List.of(Map.of("message",
+                        Map.of("role", "assistant", "content", "{\"result\":2}")))));
+                exchange.getResponseHeaders().set("Content-Type", "application/json; charset="
+                        + StandardCharsets.UTF_8.name());
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        server.start();
+        try {
+            WorkflowSchema weather = workflow("weather", "Weather", "1", Map.of());
+            WorkflowSchema bank = workflow("bank", "Bank", "1", Map.of());
+            WorkflowController controller = controller(List.of(weather, bank), null);
+            controller.getAgentConfig().setModel(new ModelConfig("OpenAI", BaseModelInfo.builder()
+                    .apiBase("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
+                    .apiKey("fixture").modelName("routing-contract").timeout(5).build()));
+            controller.setPropagateIntentErrors(true);
+
+            WorkflowController.Intent intent = controller.intentDetection(event("partial", "Bank A"),
+                    new MemorySession("routing-session"));
+
+            assertThat(intent.getWorkflow()).isSameAs(bank);
+            assertThat(request.get().path("messages").path(0).path("content").asText())
+                    .contains("不要求用户一次提供完整请求或全部参数", "分类1: Weather", "分类2: Bank");
+            assertThat(request.get().path("messages").path(1).path("content").asText()).contains("Bank A");
+        } finally {
+            server.stop(0);
+        }
+    }
 
     @Test
     void intentDetectionRejectsMissingWorkflows() {
@@ -89,6 +137,34 @@ class WorkflowControllerTest {
 
         assertThat(intent.getIntentType()).isEqualTo(WorkflowController.IntentType.DEFAULT_RESPONSE);
         assertThat(intent.getMetadata()).containsEntry("default_response_text", "fallback");
+    }
+
+    @Test
+    void intentDetectionFailureDoesNotExecuteAnUnrelatedWorkflow() {
+        WorkflowController controller = controller(
+                List.of(workflow("a", "A", "1", Map.of()), workflow("b", "B", "1", Map.of())), null);
+        controller.setPropagateIntentErrors(true);
+        IllegalStateException failure = new IllegalStateException("model endpoint unavailable");
+        controller.setWorkflowDetector(event -> {
+            throw failure;
+        });
+
+        assertThatThrownBy(() -> controller.intentDetection(event("E1", "B"), new MemorySession("s1")))
+                .isSameAs(failure);
+    }
+
+    @Test
+    void intentDetectionFailureRetainsLegacyFallbackByDefault() {
+        WorkflowSchema first = workflow("a", "A", "1", Map.of());
+        WorkflowController controller = controller(List.of(first, workflow("b", "B", "1", Map.of())), null);
+        controller.setWorkflowDetector(event -> {
+            throw new IllegalStateException("invalid provider");
+        });
+
+        WorkflowController.Intent intent = controller.intentDetection(event("E1", "B"), new MemorySession("s1"));
+
+        assertThat(intent.getWorkflow()).isSameAs(first);
+        assertThat(intent.getIntentType()).isEqualTo(WorkflowController.IntentType.EXEC_NEW_TASK);
     }
 
     @Test

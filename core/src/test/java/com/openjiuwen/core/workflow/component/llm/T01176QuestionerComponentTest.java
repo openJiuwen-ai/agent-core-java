@@ -18,6 +18,8 @@ import com.openjiuwen.core.session.state.AgentStateCollection;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -42,6 +44,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code tests/unit_tests/agent/react_agent/test_react_agent_questioner_extract_context.py}.</p>
  */
 class T01176QuestionerComponentTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"zh", "en"})
+    void modelRequestIncludesTypesAndResumeRetainsPreviouslyExtractedFields(String language) {
+        QuestionerConfig config = new QuestionerConfig();
+        config.setAcceptLanguage(language);
+        config.setWithChatHistory(false);
+        config.setFieldNames(List.of(field("bank", "Bank", "string", true, ""),
+                field("amount", "Amount", "integer", true, "")));
+        QuestionerDirectReplyHandler initial = handler(config, "{\"bank\":\"Bank A\",\"amount\":null}");
+        initial.handle(Map.of("query", "Bank A"), new TestSession(), null);
+        QuestionerState restored = QuestionerState.deserialize(initial.getState().serialize());
+        List<BaseMessage> requests = new ArrayList<>();
+        Model model = new Model((messages, requestConfig, clientConfig, options) -> {
+            requests.addAll(messages);
+            return CompletableFuture.completedFuture(new AssistantMessage("{\"bank\":null,\"amount\":5000}"));
+        });
+        QuestionerDirectReplyHandler resumed = handler(config, "{}").state(restored).model(model);
+
+        Map<String, Object> output = resumed.handle(Map.of(), new TestSession("5000 yuan"), null);
+
+        assertTrue(requests.get(0).getContentAsString().contains("bank: Bank (type: string)"));
+        assertTrue(requests.get(0).getContentAsString().contains("amount: Amount (type: integer)"));
+        assertEquals("Bank A", output.get("bank"));
+        assertEquals(5000, output.get("amount"));
+        assertEquals(ExecutionStatus.END, resumed.getState().getStatus());
+    }
 
     @Test
     void formatTemplateUsesPythonNoneForMissingFields() {

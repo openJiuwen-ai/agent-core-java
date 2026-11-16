@@ -11,6 +11,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.common.security.UserConfig;
+import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
 import com.openjiuwen.core.foundation.llm.classification.ErrorBodyParser;
 import com.openjiuwen.core.foundation.llm.classification.FirstSegmentRetryIterator;
@@ -556,7 +557,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
 
     private HttpRequest.Builder requestBuilder(String apiUrl, Map<String, Object> payload)
             throws JsonProcessingException {
-        return HttpRequest.newBuilder()
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(apiUrl))
                 .timeout(ModelTimeoutResolver.toDuration(
                         ModelTimeoutResolver.resolveHeaderWaitSeconds(modelClientConfig)))
@@ -564,6 +565,11 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
                 .POST(HttpRequest.BodyPublishers.ofString(OBJECT_MAPPER.writeValueAsString(payload),
                         StandardCharsets.UTF_8));
+        for (Map.Entry<String, String> header : HeadersHelper.buildBaseHeaders(
+                modelClientConfig.getCustomHeaders()).entrySet()) {
+            builder.setHeader(header.getKey(), header.getValue());
+        }
+        return builder;
     }
 
     HttpClient createHttpClient(String apiUrl) {

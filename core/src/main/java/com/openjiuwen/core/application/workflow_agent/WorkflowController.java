@@ -89,6 +89,8 @@ public class WorkflowController {
     private WorkflowDetector workflowDetector;
     private List<Object> workflows = new ArrayList<>();
     private Object sourceAgent;
+
+    private volatile boolean propagateIntentErrors;
     private final ConcurrentMap<InvocationKey, Invocation> invocations = new ConcurrentHashMap<>();
 
     public WorkflowController() {
@@ -579,6 +581,19 @@ public class WorkflowController {
         this.workflowDetector = workflowDetector;
     }
 
+    /**
+     * Controls whether a failed intent detector aborts the request without starting a workflow.
+     *
+     * <p>The default is {@code false}, retaining the legacy fallback to the first workflow.
+     * Enable this before accepting requests when callers need to distinguish model outages
+     * from workflow execution failures.</p>
+     *
+     * @param propagate whether to propagate the original detector exception
+     */
+    public void setPropagateIntentErrors(boolean propagate) {
+        this.propagateIntentErrors = propagate;
+    }
+
     public AgentConfig getAgentConfig() {
         return agentConfig;
     }
@@ -737,7 +752,11 @@ public class WorkflowController {
             if (activeSession != null && activeSession.cancellation() != null) {
                 activeSession.cancellation().checkCancelled();
             }
-            LOGGER.warning("Intent detection failed: " + e.getMessage() + ", using first workflow");
+
+            if (propagateIntentErrors) {
+                throw e;
+            }
+            LOGGER.warning("Intent detection failed; using first workflow");
             return workflows.get(0);
         }
     }
@@ -843,7 +862,10 @@ public class WorkflowController {
         }
         String query = event == null || event.getContent() == null ? "" : event.getContent().getQuery();
         String systemPrompt = "你是一个意图分类助手，擅长判断用户的输入属于哪个分类。\n"
-                + "当用户输入没有明确意图或者你无法判断用户输入意图时请选择 分类0。\n"
+                + "分类表示工作流的业务领域，不要求用户一次提供完整请求或全部参数。\n"
+                + "用户可能在多个未完成的工作流之间切换；结合当前输入和对话历史识别其所属领域。\n"
+                + "即使当前输入仅提供实体、属性或确认信息，只要与某个分类相关，仍应选择该分类。\n"
+                + "只有当前输入和对话历史均无法关联到任何分类时，才选择分类0；不要仅因缺少操作或参数而选择未知。\n"
                 + "以下是给定的意图分类列表：\n"
                 + categoryText + "\n"
                 + "请根据上述要求判断用户输入意图分类，输出要求如下：\n"
