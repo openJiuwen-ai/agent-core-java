@@ -53,22 +53,15 @@ import java.util.function.Supplier;
  */
 public class OtelAgentHandler extends TraceExtAgentHandler {
     /**
-     * System property selecting the LLM span naming strategy: {@code fixed} renders
-     * {@code "llm.chat"} so spans aggregate across models; any other value (default)
-     * keeps the legacy {@code "llm.<modelName>"} naming.
-     */
-    private static final String LLM_SPAN_NAME_PROPERTY = "openjiuwen.otel.llm-span-name";
-
-    /** Span name used by the {@code fixed} naming strategy. */
-    private static final String FIXED_LLM_SPAN_NAME = "llm.chat";
-
-    /**
      * Read access point for the naming-strategy property. Package-visible and
      * replaceable so tests can simulate {@link SecurityException} without
      * installing a real {@code SecurityManager}.
      */
     static volatile Supplier<String> spanNamePropertySupplier =
-            () -> System.getProperty(LLM_SPAN_NAME_PROPERTY);
+            () -> System.getProperty("openjiuwen.otel.llm-span-name");
+
+    /** Span name used by the {@code fixed} naming strategy. */
+    private static final String FIXED_LLM_SPAN_NAME = "llm.chat";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
