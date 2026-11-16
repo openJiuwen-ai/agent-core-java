@@ -215,6 +215,21 @@ public class TaskLoopController extends Controller {
     }
 
     /**
+     * Snapshot the steering messages visible to the given session without draining.
+     *
+     * <p>Task-loop callers compare a round's start/end snapshots to decide whether a
+     * new steering message arrived while the round ran; a message the round could not
+     * consume would otherwise pin the outer loop open.</p>
+     *
+     * @param sessionId the session id
+     * @return the currently pending messages in poll order
+     * @since 0.1.17
+     */
+    public List<String> steeringMessages(String sessionId) {
+        return interactionQueues.steeringMessages(sessionId);
+    }
+
+    /**
      * Get a live steering queue view scoped to the given session for the inner
      * ReAct agent binding: named messages of other sessions stay invisible.
      *

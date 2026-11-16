@@ -281,6 +281,12 @@ public class TaskLoopEventHandler extends EventHandler {
         if (metadata.containsKey("_invoke_extras")) {
             taskMetadata.put("_invoke_extras", metadata.get("_invoke_extras"));
         }
+        // Keep the steering queue key chosen by DeepAgent (caller session id) so the round
+        // binds the same bucket that steer() writes to, even when the effective run session
+        // id differs (for example <card_name>_session).
+        if (metadata.containsKey("_steering_session_id")) {
+            taskMetadata.put("_steering_session_id", metadata.get("_steering_session_id"));
+        }
         copyModelSelectionKeys(metadata, taskMetadata);
 
         try {
