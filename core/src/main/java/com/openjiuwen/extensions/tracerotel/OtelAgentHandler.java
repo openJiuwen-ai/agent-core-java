@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
+import java.util.function.Supplier;
 
 /**
  * Agent-dimension OTel handler.
@@ -51,6 +52,17 @@ import java.util.OptionalLong;
  * @since 0.1.7
  */
 public class OtelAgentHandler extends TraceExtAgentHandler {
+    /**
+     * Read access point for the naming-strategy property. Package-visible and
+     * replaceable so tests can simulate {@link SecurityException} without
+     * installing a real {@code SecurityManager}.
+     */
+    static volatile Supplier<String> spanNamePropertySupplier =
+            () -> System.getProperty("openjiuwen.otel.llm-span-name");
+
+    /** Span name used by the {@code fixed} naming strategy. */
+    private static final String FIXED_LLM_SPAN_NAME = "llm.chat";
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Tracer otelTracer;
@@ -306,6 +318,36 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     // ================================================================
 
     /**
+     * Resolve the LLM span name based on the configured naming strategy.
+     *
+     * <p>System property {@code openjiuwen.otel.llm-span-name} selects the mode:
+     * {@code fixed} renders {@code "llm.chat"} so spans aggregate across models;
+     * any other value (default) keeps the legacy {@code "llm.<modelName>"} naming.
+     * The model identity always stays available via {@code gen_ai.request.model}.</p>
+     *
+     * <p>Reading the property may throw {@link SecurityException} under a
+     * {@code SecurityManager} that denies {@code PropertyPermission}. That case
+     * degrades to the legacy naming instead of propagating, keeping the span
+     * alive and observability failures out of the business flow.</p>
+     *
+     * @param className the model name from instance info (may be empty)
+     * @return the resolved span name
+     * @since 0.1.17
+     */
+    private static String llmSpanName(String className) {
+        String strategy;
+        try {
+            strategy = spanNamePropertySupplier.get();
+        } catch (SecurityException exc) {
+            strategy = null;
+        }
+        if ("fixed".equalsIgnoreCase(strategy)) {
+            return FIXED_LLM_SPAN_NAME;
+        }
+        return "llm." + (className != null && !className.isEmpty() ? className : "unknown");
+    }
+
+    /**
      * Handle the start of an LLM invocation.
      *
      * @param span         the originating {@link TraceAgentSpan}
@@ -317,11 +359,12 @@ public class OtelAgentHandler extends TraceExtAgentHandler {
     public void onLlmStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         try {
             Context parentCtx = resolveParentContext(span).orElse(null);
+            String className = instanceInfo != null
+                    ? String.valueOf(instanceInfo.getOrDefault("class_name", ""))
+                    : "";
             OtelSpanState state = startAndPush(
-                    "llm." + (instanceInfo != null ? instanceInfo.getOrDefault("class_name", "unknown") : "unknown"),
-                    SpanKind.CLIENT, parentCtx, span);
-            state.getSpan().setAttribute(SemConv.GEN_AI_REQUEST_MODEL,
-                    instanceInfo != null ? String.valueOf(instanceInfo.getOrDefault("class_name", "")) : "");
+                    llmSpanName(className), SpanKind.CLIENT, parentCtx, span);
+            state.getSpan().setAttribute(SemConv.GEN_AI_REQUEST_MODEL, className);
             state.getSpan().setAttribute(SemConv.GEN_AI_OPERATION_NAME, "chat");
             String invokeTypeVal = span.getInvokeType() != null ? span.getInvokeType() : InvokeType.LLM.getValue();
             String nameVal = span.getName() != null ? span.getName()
