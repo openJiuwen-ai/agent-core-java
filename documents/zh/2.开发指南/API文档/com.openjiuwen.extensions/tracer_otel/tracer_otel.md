@@ -554,14 +554,13 @@ public class OtelAgentHandler extends TraceExtAgentHandler
 
 ### 相关测试
 
-- `OtelAgentHandlerTest`（33 个测试，分 7 组）
-  - `TestLlmEvents`（8）：CLIENT Span 创建 / completion 设置 / ERROR 标记 / 通用 Throwable / span 命名策略（默认、fixed、fixed 兜底、SecurityException 降级）
+- `OtelAgentHandlerTest`（24 个测试，分 6 组）
+  - `TestLlmEvents`（8）：CLIENT Span 创建 / completion 设置 / ERROR 标记 / 通用 Throwable / span 命名策略（默认、fixed、fixed 兜底、SecurityException 降级）/ model_id 属性写入
   - `TestRedaction`（4）：prompt 脱敏开关 / 细粒度覆盖 / 非 LLM 输入脱敏
   - `TestNonLlmEvents`（4）：Chain INTERNAL Span / Plugin tool.name / Chain ERROR
   - `TestParentChild`（1）：父子 Span 上下文传递
   - `TestNormalization`（3）：payload 规范化
   - `TestRobustness`（2）：异常容错
-  - `TestResponseAttributes`（11）：响应属性回读（token / 成本 / 延迟 / finish_reason / response.model）
 
 ---
 
@@ -692,7 +691,7 @@ Agent agent = Agent.builder()
 | 测试类 | 测试数 | 覆盖范围 |
 | --- | --- | --- |
 | `OtelTracerSetupTest` | 21 | 初始化 / 采样率验证 / 采样率集成 |
-| `OtelAgentHandlerTest` | 33 | LLM 事件（含 span 命名策略）/ 脱敏 / 非 LLM 事件 / 父子关系 / 规范化 / 容错 / 响应属性 |
+| `OtelAgentHandlerTest` | 24 | LLM 事件（含 span 命名策略）/ 脱敏 / 非 LLM 事件 / 父子关系 / 规范化 / 容错 |
 | `OtelWorkflowHandlerTest` | 22 | 生命周期 / 组件类型 / 异常处理 / 数据缓冲 / 子 Workflow / 容错 |
 | `RedactionUtilsTest` | 25 | 截断 / 哈希 / 脱敏判定 / 脱敏应用 |
 | `OtelSpanManagerTest` | 13 | push / pop / get / 缓冲行为 |
