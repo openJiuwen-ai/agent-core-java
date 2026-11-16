@@ -2499,21 +2499,19 @@ public class OpenAIModelClient extends BaseModelClient
             return null;
         }
         Map<String, Object> usage = toObjectMap(usageMap);
-        Integer cacheTokens = null;
-        if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
-            cacheTokens = nullableInt(optionalIntValue(toObjectMap(promptDetails).get("cached_tokens")));
-        }
         CostInfo costInfo = extractCostInfo(usage);
-        return UsageMetadata.builder()
+        var metadata = UsageMetadata.builder()
                 .modelName(responseModel)
-                .inputTokens(nullableInt(optionalIntValue(usage.get("prompt_tokens"))))
-                .outputTokens(nullableInt(optionalIntValue(usage.get("completion_tokens"))))
-                .totalTokens(nullableInt(optionalIntValue(usage.get("total_tokens"))))
-                .cacheTokens(cacheTokens)
                 .inputCost(costInfo.inputCost())
                 .outputCost(costInfo.outputCost())
-                .totalCost(costInfo.totalCost())
-                .build();
+                .totalCost(costInfo.totalCost());
+        if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
+            optionalIntValue(toObjectMap(promptDetails).get("cached_tokens")).ifPresent(metadata::cacheTokens);
+        }
+        optionalIntValue(usage.get("prompt_tokens")).ifPresent(metadata::inputTokens);
+        optionalIntValue(usage.get("completion_tokens")).ifPresent(metadata::outputTokens);
+        optionalIntValue(usage.get("total_tokens")).ifPresent(metadata::totalTokens);
+        return metadata.build();
     }
 
     private AssistantMessageChunk mergeChunks(List<AssistantMessageChunk> chunks) {
@@ -2810,10 +2808,6 @@ public class OpenAIModelClient extends BaseModelClient
 
     private static OptionalInt optionalIntValue(Object value) {
         return value == null ? OptionalInt.empty() : OptionalInt.of(intValue(value));
-    }
-
-    private static Integer nullableInt(OptionalInt value) {
-        return value.isPresent() ? value.getAsInt() : null;
     }
 
     private static int intValue(Object value) {
