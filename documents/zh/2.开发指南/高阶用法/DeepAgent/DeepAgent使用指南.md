@@ -75,6 +75,14 @@ Runner.stop();
 | `invoke()` | 仅元数据包装 | 外层多轮任务循环 |
 | `Runner.runAgentStreaming(inner, …)` | 流式 token | — |
 
+### Task Loop 中断与 steering
+
+开启 Task Loop 后，内层执行返回 `result_type=interrupt` 时，本次调用返回中断结果，任务保留为 `INPUT_REQUIRED`；同步返回和流式交互都遵循此行为。已有中断结果中的 `state`、`interrupt_ids` 等字段继续保留。
+
+任务执行器通过 `TASK_INTERACTION` 请求用户输入时，即使交互内容只有文本，也会结束本轮等待。返回结果包含 `result_type=interrupt`、`task_id`、首帧内容 `message` 和完整交互帧 `interaction`；文本交互不会额外生成工具中断的 `state` 或 `interrupt_ids`。
+
+调用 `DeepAgent.steer()` 注入执行指令时，当前轮次继续运行，直到产生执行结果或中断。任务向用户提出的问题不会作为 steering 指令重新注入。
+
 ---
 
 ## 高阶用法

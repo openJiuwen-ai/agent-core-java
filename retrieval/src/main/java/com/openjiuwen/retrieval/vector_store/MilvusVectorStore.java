@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.retrieval.vector_store;
@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -18,12 +19,14 @@ import com.openjiuwen.core.foundation.store.vector_fields.MilvusVectorField;
 import com.openjiuwen.core.foundation.store.vector_fields.VectorField;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
-import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore.DeleteFilter;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore.VectorStoreFilter;
+import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.retrieval.utils.CommonUtils;
 import com.openjiuwen.retrieval.utils.FusionUtils;
 
+import io.milvus.exception.MilvusException;
+import io.milvus.param.R;
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
@@ -49,12 +52,15 @@ import io.milvus.v2.service.vector.request.ranker.RRFRanker;
 import io.milvus.v2.service.vector.response.DeleteResp;
 import io.milvus.v2.service.vector.response.SearchResp;
 
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -97,7 +103,8 @@ public class MilvusVectorStore implements VectorStore {
     private final Map<String, Object> searchConfig;
     private final String milvusAlias;
     private final MilvusClientFacade client;
-    private boolean collectionLoaded;
+    private final Object collectionLoadLock = new Object();
+    private final Set<String> loadedCollections = new HashSet<>();
 
     public MilvusVectorStore(VectorStoreConfig config, String milvusUri) {
         this(config, milvusUri, null);
@@ -285,19 +292,55 @@ public class MilvusVectorStore implements VectorStore {
         if (!"default".equals(dbName)) {
             builder.dbName(dbName);
         }
-        MilvusClientV2 createdClient = new MilvusClientV2(builder.build());
-        if (!"default".equals(dbName)) {
-            if (!createdClient.listDatabases().getDatabaseNames().contains(dbName)) {
-                createdClient.createDatabase(CreateDatabaseReq.builder().databaseName(dbName).build());
-            }
-            try {
+        try (ClientAttempt attempt = new ClientAttempt(openClient(builder.build(), pathOrUri))) {
+            MilvusClientV2 createdClient = attempt.client;
+            if (!"default".equals(dbName)) {
+                if (!createdClient.listDatabases().getDatabaseNames().contains(dbName)) {
+                    createdClient.createDatabase(CreateDatabaseReq.builder().databaseName(dbName).build());
+                }
                 createdClient.useDatabase(dbName);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Interrupted while switching Milvus database", error);
+            }
+            return attempt.release();
+        } catch (InterruptedException error) {
+            InterruptSignals.restoreCurrentThread();
+            throw new IllegalStateException("Interrupted while switching Milvus database", error);
+        }
+    }
+
+    private static MilvusClientV2 openClient(ConnectConfig config, String uri) {
+        try {
+            return new MilvusClientV2(config);
+        } catch (MilvusException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            URI endpoint = URI.create(uri);
+            String address = endpoint.getHost() + (endpoint.getPort() < 0 ? "" : ":" + endpoint.getPort());
+            MilvusException failure = new MilvusException("Fail connecting to server on " + address,
+                    R.Status.ConnectFailed.getCode());
+            failure.initCause(error);
+            throw failure;
+        }
+    }
+
+    private static final class ClientAttempt implements AutoCloseable {
+        private final MilvusClientV2 client;
+        private boolean hasTransferredOwnership;
+
+        private ClientAttempt(MilvusClientV2 client) {
+            this.client = client;
+        }
+
+        private MilvusClientV2 release() {
+            hasTransferredOwnership = true;
+            return client;
+        }
+
+        @Override
+        public void close() {
+            if (!hasTransferredOwnership) {
+                client.close();
             }
         }
-        return createdClient;
     }
 
     public MilvusClientFacade getClient() {
@@ -444,13 +487,14 @@ public class MilvusVectorStore implements VectorStore {
             VectorStoreFilter filters,
             Map<String, Object> kwargs
     ) {
+        String collection = targetCollection(kwargs);
         return CompletableFuture.supplyAsync(() -> {
             if (queryVector == null || queryVector.isEmpty() || topK <= 0) {
                 return List.of();
             }
-            ensureLoaded();
+            ensureLoaded(collection);
             List<SearchHit> hits = client.search(
-                    getCollectionName(),
+                    collection,
                     SearchRequest.vector(getVectorField(), queryVector),
                     milvusMetricType,
                     topK,
@@ -469,14 +513,15 @@ public class MilvusVectorStore implements VectorStore {
             VectorStoreFilter filters,
             Map<String, Object> kwargs
     ) {
+        String collection = targetCollection(kwargs);
         return CompletableFuture.supplyAsync(() -> {
             if (queryText == null || queryText.isBlank() || topK <= 0) {
                 return List.of();
             }
-            ensureLoaded();
+            ensureLoaded(collection);
             try {
                 List<SearchHit> hits = client.search(
-                        getCollectionName(),
+                        collection,
                         SearchRequest.text(sparseVectorField, queryText),
                         "BM25",
                         topK,
@@ -501,11 +546,12 @@ public class MilvusVectorStore implements VectorStore {
             VectorStoreFilter filters,
             Map<String, Object> kwargs
     ) {
+        String collection = targetCollection(kwargs);
         return CompletableFuture.supplyAsync(() -> {
             if (queryText == null || queryText.isBlank() || topK <= 0) {
                 return List.of();
             }
-            ensureLoaded();
+            ensureLoaded(collection);
             String filterExpression = toFilterExpression(filters);
             List<SearchRequest> requests = new ArrayList<>();
             if (queryVector != null && !queryVector.isEmpty()) {
@@ -520,7 +566,7 @@ public class MilvusVectorStore implements VectorStore {
                     .withFilter(filterExpression));
             try {
                 List<SearchHit> hits = client.hybridSearch(
-                        getCollectionName(),
+                        collection,
                         requests,
                         topK,
                         List.of(textField, metadataField, docIdField)
@@ -530,7 +576,7 @@ public class MilvusVectorStore implements VectorStore {
                 LOGGER.log(Level.WARNING,
                         "Hybrid search failed, falling back to separate searches: " + error.getMessage(),
                         error);
-                return hybridFallback(queryText, queryVector, topK);
+                return hybridFallback(queryText, queryVector, topK, kwargs);
             }
         }, IO_EXECUTOR);
     }
@@ -561,7 +607,12 @@ public class MilvusVectorStore implements VectorStore {
 
     @Override
     public CompletableFuture<Void> deleteTable(String tableName) {
-        return CompletableFuture.runAsync(() -> client.dropCollection(tableName), IO_EXECUTOR);
+        return CompletableFuture.runAsync(() -> {
+            synchronized (collectionLoadLock) {
+                client.dropCollection(tableName);
+                loadedCollections.remove(tableName);
+            }
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -573,11 +624,12 @@ public class MilvusVectorStore implements VectorStore {
         }
     }
 
-    private List<RetrievalResult> hybridFallback(String queryText, List<Double> queryVector, int topK) {
+    private List<RetrievalResult> hybridFallback(String queryText, List<Double> queryVector, int topK,
+            Map<String, Object> options) {
         List<RetrievalResult> vectorResults = queryVector == null || queryVector.isEmpty()
                 ? List.of()
-                : search(queryVector, topK, VectorStoreFilter.none(), Map.of()).join();
-        List<RetrievalResult> sparseResults = sparseSearch(queryText, topK, VectorStoreFilter.none(), Map.of()).join();
+                : search(queryVector, topK, VectorStoreFilter.none(), options).join();
+        List<RetrievalResult> sparseResults = sparseSearch(queryText, topK, VectorStoreFilter.none(), options).join();
         List<RetrievalResult> fused = FusionUtils.rrfFusionRetrieval(List.of(vectorResults, sparseResults), RRF_K);
         return trim(fused, topK);
     }
@@ -674,16 +726,22 @@ public class MilvusVectorStore implements VectorStore {
         return filterExpr.expression();
     }
 
+    private String targetCollection(Map<String, Object> options) {
+        Object requested = options == null ? null : options.get("collection_name");
+        return requested == null ? getCollectionName() : String.valueOf(requested);
+    }
+
     private void ensureLoaded() {
-        if (collectionLoaded) {
-            return;
-        }
-        String collectionName = getCollectionName();
-        if (client.hasCollection(collectionName)) {
-            LOGGER.info("Retrieval Milvus Store: loading collection " + collectionName);
-            client.loadCollection(collectionName);
-            LOGGER.info("Retrieval Milvus Store: " + collectionName + " collection loaded");
-            collectionLoaded = true;
+        ensureLoaded(getCollectionName());
+    }
+
+    private void ensureLoaded(String collectionName) {
+        synchronized (collectionLoadLock) {
+            if (!loadedCollections.contains(collectionName) && client.hasCollection(collectionName)) {
+                LOGGER.info("Retrieval Milvus Store: loading collection " + collectionName);
+                client.loadCollection(collectionName);
+                loadedCollections.add(collectionName);
+            }
         }
     }
 

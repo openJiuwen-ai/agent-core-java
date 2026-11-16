@@ -439,6 +439,9 @@ public class TagManager {
         }
 
         List<String> remainingTags = new ArrayList<>(currentTags);
+        if (currentTags.isEmpty()) {
+            resourceTags.remove(resourceId);
+        }
         return remainingTags;
     }
 
@@ -476,6 +479,9 @@ public class TagManager {
             Set<String> tags = resourceTags.get(resourceId);
             if (tags != null) {
                 tags.remove(tag);
+                if (tags.isEmpty()) {
+                    resourceTags.remove(resourceId);
+                }
             }
         }
 

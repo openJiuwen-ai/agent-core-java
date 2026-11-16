@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent.rail;
 
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -27,7 +28,21 @@ public class ModelBackupRail extends AgentRail {
 
     @Override
     public void onModelException(AgentCallbackContext context) {
-        if (context != null && index < backupModels.size() && setLlm(context.getAgent(), backupModels.get(index))) {
+        if (context == null) {
+            return;
+        }
+        if (ModelCallRetrier.isAfterFirstSegment(context.getException())) {
+            // FEAT-064 L1 §1.2.7 MUST: the first streamed segment is already
+            // downstream; switching models here would replay it as a whole-call retry.
+            return;
+        }
+        // ContextProcessorRail (higher priority) may have already compressed and
+        // requested retry for a context-overflow error; do not burn a backup slot.
+        if (Boolean.TRUE.equals(context.getExtra().get(
+                AgentCallbackContext.EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY))) {
+            return;
+        }
+        if (index < backupModels.size() && setLlm(context.getAgent(), backupModels.get(index))) {
             index++;
             context.requestRetry(0);
         }

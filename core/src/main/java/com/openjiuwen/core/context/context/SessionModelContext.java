@@ -24,6 +24,7 @@ import com.openjiuwen.core.context.offload.api.OffloadService;
 import com.openjiuwen.core.context.offload.compat.OffloadMessageBufferAdapter;
 import com.openjiuwen.core.context.offload.model.OffloadNamespace;
 import com.openjiuwen.core.context.offload.model.OffloadPayload;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
 import java.time.Instant;
@@ -224,6 +225,25 @@ public class SessionModelContext implements ModelContext {
         if (newProcessors != null) {
             processors.addAll(newProcessors);
         }
+        rebindOffloadProcessors();
+    }
+
+    /**
+     * Propagates the already-bound {@link OffloadService} to {@link MessageOffloader}
+     * instances after the processor list is replaced.
+     *
+     * <p>No-op when the v2 pipeline has not been bound yet (legacy mode or before
+     * {@link #bindOffloadService}).</p>
+     */
+    public void rebindOffloadProcessors() {
+        if (offloadService == null) {
+            return;
+        }
+        for (ContextProcessorPort processor : processors) {
+            if (processor instanceof MessageOffloader offloader) {
+                offloader.setOffloadService(offloadService, offloadNamespaceSupplier);
+            }
+        }
     }
 
     /**
@@ -353,6 +373,11 @@ public class SessionModelContext implements ModelContext {
     }
 
     @Override
+    public BaseMessage peekLastMessage() {
+        return messageBuffer.peekLast();
+    }
+
+    @Override
     public void setMessages(List<BaseMessage> messages, boolean withHistory) {
         validateMessages(messages);
         messageBuffer.setMessages(ensureContextMessageIds(messages), withHistory);
@@ -360,7 +385,7 @@ public class SessionModelContext implements ModelContext {
 
     @Override
     public CompletionStage<Void> clearMessages(boolean withHistory) {
-        popMessages(length(), withHistory);
+        messageBuffer.clear(withHistory);
         offloadMessageBuffer = new OffloadMessageBuffer();
         bindOffloadBuffer();
         return CompletableFuture.completedFuture(null);
@@ -734,7 +759,7 @@ public class SessionModelContext implements ModelContext {
         List<BaseMessage> contextMessages = messageBuffer.getBack(null, true);
         Integer effectiveRound = dialogueRound == null ? defaultDialogueRound : dialogueRound;
         if (effectiveRound != null) {
-            int roundIndex = findLastNDialogueRound(contextMessages, effectiveRound);
+            int roundIndex = ContextUtils.findLastNDialogueRound(contextMessages, effectiveRound);
             if (roundIndex >= 0 && roundIndex < contextMessages.size()) {
                 contextMessages = new ArrayList<>(contextMessages.subList(roundIndex, contextMessages.size()));
             }
@@ -757,7 +782,7 @@ public class SessionModelContext implements ModelContext {
         ContextStats stat = new ContextStats();
         statMessages(stat, messages);
         statTools(stat, tools);
-        stat.setTotalDialogues(findAllDialogueRound(messages).size());
+        stat.setTotalDialogues(ContextUtils.findAllDialogueRound(messages).size());
         return stat;
     }
 
@@ -817,7 +842,7 @@ public class SessionModelContext implements ModelContext {
 
     private void statMessages(ContextStats stat, List<BaseMessage> messages) {
         stat.setTotalMessages(messages.size());
-        stat.setTotalDialogues(findAllDialogueRound(messages).size());
+        stat.setTotalDialogues(ContextUtils.findAllDialogueRound(messages).size());
         for (BaseMessage message : messages) {
             switch (stringValue(message.getRole(), "")) {
                 case "assistant" -> stat.setAssistantMessages(stat.getAssistantMessages() + 1);
@@ -943,8 +968,9 @@ public class SessionModelContext implements ModelContext {
     }
 
     private BaseMessage lastContextMessage() {
-        List<BaseMessage> existing = messageBuffer.getBack(1, true);
-        return existing.isEmpty() ? null : existing.get(existing.size() - 1);
+        // Physical tail for dedupe / control flow — sized getBack(1) is tool-group
+        // aligned and would hide a trailing ToolMessage.
+        return peekLastMessage();
     }
 
     private static void validateAndFixContextWindow(ContextWindow contextWindow) {
@@ -981,70 +1007,6 @@ public class SessionModelContext implements ModelContext {
             }
         }
         return DEFAULT_CONTEXT_MAX_TOKENS;
-    }
-
-    private static List<List<Integer>> findAllDialogueRound(List<BaseMessage> messages) {
-        List<List<Integer>> rounds = new ArrayList<>();
-        int i = messages.size() - 1;
-        while (i >= 0) {
-            Integer assistantIndex = null;
-            int roundEnd = i;
-            while (i >= 0 && !"assistant".equals(messages.get(i).getRole())) {
-                i--;
-            }
-            if (i >= 0) {
-                BaseMessage message = messages.get(i);
-                if (!hasToolCalls(message)) {
-                    assistantIndex = i;
-                }
-                i--;
-            } else {
-                i = roundEnd;
-            }
-
-            while (i >= 0 && !"user".equals(messages.get(i).getRole())) {
-                i--;
-            }
-            if (i < 0) {
-                break;
-            }
-            int foundUserIndex = i;
-            int userIndex = findContiguousUserGroupStart(messages, foundUserIndex);
-
-            if (rounds.isEmpty()) {
-                for (int lastRoundIndex = messages.size() - 1; lastRoundIndex > foundUserIndex; lastRoundIndex--) {
-                    if ("user".equals(messages.get(lastRoundIndex).getRole())) {
-                        rounds.add(List.of(findContiguousUserGroupStart(messages, lastRoundIndex), -1));
-                        break;
-                    }
-                }
-            }
-            rounds.add(List.of(userIndex, assistantIndex == null ? -1 : assistantIndex));
-            i = userIndex - 1;
-        }
-        return rounds;
-    }
-
-    private static int findLastNDialogueRound(List<BaseMessage> messages, int n) {
-        List<List<Integer>> rounds = findAllDialogueRound(messages);
-        if (rounds.isEmpty()) {
-            return -1;
-        }
-        return rounds.get(Math.min(n, rounds.size()) - 1).get(0);
-    }
-
-    private static int findContiguousUserGroupStart(List<BaseMessage> messages, int userIndex) {
-        int index = userIndex;
-        while (index - 1 >= 0 && "user".equals(messages.get(index - 1).getRole())) {
-            index--;
-        }
-        return index;
-    }
-
-    private static boolean hasToolCalls(BaseMessage message) {
-        return message instanceof AssistantMessage assistant
-                && assistant.getToolCalls() != null
-                && !assistant.getToolCalls().isEmpty();
     }
 
     private static List<BaseMessage> concatenate(List<BaseMessage> first, List<BaseMessage> second) {

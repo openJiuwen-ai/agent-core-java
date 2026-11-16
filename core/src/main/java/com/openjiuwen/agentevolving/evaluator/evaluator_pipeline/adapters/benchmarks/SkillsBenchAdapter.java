@@ -138,15 +138,15 @@ public class SkillsBenchAdapter extends BaseBenchAdapter {
     @Override
     public CompletableFuture<Void> prepareEnvironment(Task task, DockerEnvironment env) {
         return CompletableFuture.runAsync(() -> {
-            awaitResult(env.exec("mkdir -p " + workspaceDir, 10, null, null));
-            awaitResult(env.exec("ln -sf " + workspaceDir + "/tests /tests 2>/dev/null || true", 10, null, null));
-            awaitResult(env.exec("ln -sf " + workspaceDir + "/logs /logs 2>/dev/null || true", 10, null, null));
+            awaitResult(env.exec(List.of("mkdir", "-p", "--", workspaceDir), 10, null, null));
+            awaitResult(env.exec(List.of("ln", "-sf", "--", workspaceDir + "/tests", "/tests"), 10, null, null));
+            awaitResult(env.exec(List.of("ln", "-sf", "--", workspaceDir + "/logs", "/logs"), 10, null, null));
 
             Map<String, Object> envSpec = task.getEnvironmentSpec();
             Path taskDir = pathValue(envSpec.get("task_dir"));
             Path testsDir = pathValue(envSpec.get("tests_dir"));
             if (Files.isDirectory(testsDir)) {
-                awaitResult(env.exec("mkdir -p " + workspaceDir + "/tests", 10, null, null));
+                awaitResult(env.exec(List.of("mkdir", "-p", "--", workspaceDir + "/tests"), 10, null, null));
                 copyFlatDirectoryWithOneLevelSubdirs(env, testsDir, workspaceDir + "/tests");
                 LOGGER.info("    Tests copied to {}/tests", workspaceDir);
             }
@@ -314,7 +314,7 @@ public class SkillsBenchAdapter extends BaseBenchAdapter {
                     continue;
                 }
                 String childTarget = targetDir + "/" + child.getFileName();
-                awaitResult(env.exec("mkdir -p " + childTarget, 10, null, null));
+                awaitResult(env.exec(List.of("mkdir", "-p", "--", childTarget), 10, null, null));
                 try (var grandChildren = Files.list(child)) {
                     for (Path grandChild : grandChildren.filter(Files::isRegularFile).sorted().toList()) {
                         copyFile(env, grandChild, childTarget + "/" + grandChild.getFileName());

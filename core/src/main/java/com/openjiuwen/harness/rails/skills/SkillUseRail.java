@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.rails.skills;
 
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
@@ -21,6 +22,7 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.tools.CodeTool;
 import com.openjiuwen.harness.tools.FilesystemTools;
 import com.openjiuwen.harness.tools.shell.bash.BashTool;
+import com.openjiuwen.harness.tools.shell.bash.PermissionMode;
 import com.openjiuwen.harness.tools.skills.ListSkillTool;
 import com.openjiuwen.harness.tools.skills.SkillDescriptor;
 import com.openjiuwen.harness.tools.skills.SkillTool;
@@ -38,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Rail that manages skill prompt injection, local skill discovery and remote skill sync.
@@ -197,8 +200,10 @@ public class SkillUseRail extends DeepAgentRail {
     @Override
     public void uninit(DeepAgent agent) {
         if (agent != null) {
-            for (String name : ownedToolNames) {
-                agent.unregisterTool(name);
+            for (Object registered : agent.getRegisteredTools()) {
+                if (registered instanceof Tool tool && ownedToolIds.contains(tool.getCard().getId())) {
+                    agent.unregisterHarnessTool(tool);
+                }
             }
         }
         ownedToolNames.clear();
@@ -313,12 +318,14 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     /**
-     * Returns snake_case ids of tools this rail registered.
+     * Returns model-visible names of tools this rail registered.
+     * Internal resource IDs are available through {@link #getOwnedToolIds()}.
      *
-     * @return registered tool names
+     * @return registered tool names in registration order
+     * @since 0.1.17
      */
     public List<String> registeredToolNames() {
-        return new ArrayList<>(ownedToolIds);
+        return new ArrayList<>(ownedToolNames);
     }
 
     /**
@@ -375,16 +382,20 @@ public class SkillUseRail extends DeepAgentRail {
             return;
         }
         SkillTool skillTool = new SkillTool(this::getSkillsMeta);
-        agent.registerTool(skillTool);
-        ownedToolNames.add(skillTool.getCard().getName());
-        ownedToolIds.add(skillTool.getCard().getId());
+        registerSkillToolInstance(agent, skillTool);
         if (!SKILL_MODE_AUTO_LIST.equals(skillMode)) {
             return;
         }
         ListSkillTool listSkillTool = new ListSkillTool(this::getSkillsMeta);
-        agent.registerTool(listSkillTool);
-        ownedToolNames.add(listSkillTool.getCard().getName());
-        ownedToolIds.add(listSkillTool.getCard().getId());
+        registerSkillToolInstance(agent, listSkillTool);
+    }
+
+    private void registerSkillToolInstance(DeepAgent agent, Tool tool) {
+        // Skill suppliers belong to this rail; equal schemas do not imply shared instances.
+        tool.getCard().setId(tool.getCard().getName() + "-" + UUID.randomUUID());
+        agent.registerTool(tool);
+        ownedToolNames.add(tool.getCard().getName());
+        ownedToolIds.add(tool.getCard().getId());
     }
 
     private void registerFallbackTools(DeepAgent agent) {
@@ -393,7 +404,9 @@ public class SkillUseRail extends DeepAgentRail {
         }
         registerOwnedTool(agent, new FilesystemTools.ReadFileTool(resolveWorkspaceRoot(agent)));
         registerOwnedTool(agent, new CodeTool(null));
-        registerOwnedTool(agent, new BashTool());
+        Object operation = getSysOperation();
+        registerOwnedTool(agent, new BashTool(operation instanceof SysOperation sysOperation ? sysOperation : null,
+                PermissionMode.AUTO));
     }
 
     private boolean shouldRegisterFallbackTools(DeepAgent agent) {

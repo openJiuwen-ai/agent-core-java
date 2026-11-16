@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
@@ -30,7 +31,6 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -47,14 +47,6 @@ public class MessageSummaryOffloader extends MessageOffloader {
     public static final String TRUNCATED_MARKER = "...[TRUNCATED]...";
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    private static final List<String> CONTEXT_OVERFLOW_KEYWORDS = List.of(
-            "context length",
-            "token limit",
-            "too long",
-            "exceeds",
-            "maximum context",
-            "context window"
-    );
 
     private static final String ADAPTIVE_OFFLOAD_PROMPT_TEMPLATE = """
             # Adaptive Information Compression Expert
@@ -413,7 +405,7 @@ public class MessageSummaryOffloader extends MessageOffloader {
         }
         int joinerOverhead = 4;
         if (maxChars <= TRUNCATED_MARKER.length() * 2 + joinerOverhead + 3) {
-            return content.substring(0, maxChars);
+            return TextTruncate.safePrefix(content, maxChars);
         }
         int availableChars = maxChars - TRUNCATED_MARKER.length() * 2 - joinerOverhead;
         int headChars = Math.max(availableChars / 3, 1);
@@ -425,9 +417,9 @@ public class MessageSummaryOffloader extends MessageOffloader {
         int middleEnd = Math.min(middleStart + middleChars, content.length() - tailChars);
         middleStart = Math.max(headChars, middleEnd - middleChars);
 
-        String head = content.substring(0, headChars);
-        String middle = content.substring(middleStart, middleEnd);
-        String tail = content.substring(content.length() - tailChars);
+        String head = TextTruncate.safePrefix(content, headChars);
+        String middle = TextTruncate.safeSubstring(content, middleStart, middleEnd);
+        String tail = TextTruncate.safeSuffix(content, tailChars);
         return head + "\n" + TRUNCATED_MARKER + "\n" + middle + "\n" + TRUNCATED_MARKER + "\n" + tail;
     }
 
@@ -465,13 +457,7 @@ public class MessageSummaryOffloader extends MessageOffloader {
     }
 
     boolean isContextOverflowError(Throwable exc) {
-        String errorMessage = String.valueOf(exc).toLowerCase(Locale.ROOT);
-        for (String keyword : CONTEXT_OVERFLOW_KEYWORDS) {
-            if (errorMessage.contains(keyword)) {
-                return true;
-            }
-        }
-        return false;
+        return ContextEngine.isContextOverflowError(exc);
     }
 
     private AssistantMessage invokeModel(List<BaseMessage> messages) {
@@ -530,7 +516,7 @@ public class MessageSummaryOffloader extends MessageOffloader {
         List<String> lines = new ArrayList<>();
         for (BaseMessage message : messagesToUse) {
             String content = contentToText(message.getContent());
-            lines.add("[" + message.getRole() + "] " + content.substring(0, Math.min(2000, content.length())));
+            lines.add("[" + message.getRole() + "] " + TextTruncate.safePrefix(content, 2000));
         }
         return String.join("\n\n", lines);
     }
@@ -663,6 +649,6 @@ public class MessageSummaryOffloader extends MessageOffloader {
         if (text == null) {
             return "";
         }
-        return text.substring(0, Math.min(200, text.length()));
+        return TextTruncate.safePrefix(text, 200);
     }
 }

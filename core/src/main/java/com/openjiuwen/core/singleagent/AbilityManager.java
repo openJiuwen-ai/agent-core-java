@@ -565,7 +565,7 @@ public class AbilityManager {
         List<ExecutionResult> results = new ArrayList<>(Collections.nCopies(toolCalls.size(), null));
         List<Integer> batchIndices = new ArrayList<>();
         for (int index = 0; index < toolCalls.size(); index++) {
-            if (isParallelSafeToolCall(toolCalls.get(index))) {
+            if (isParallelSafeToolCall(toolCalls.get(index), session, tag)) {
                 batchIndices.add(index);
                 continue;
             }
@@ -1101,13 +1101,35 @@ public class AbilityManager {
         } catch (ToolInterruptException interrupt) {
             throw interrupt;
         } catch (TimeoutException exception) {
+            Optional<Object> partial = extractPartialResult(tool);
             String errorMsg = "Tool '" + toolCall.getName() + "' timed out after " + callTimeout + "s";
-            Loggers.AGENT.warning(errorMsg);
+            if (partial.isPresent()) {
+                errorMsg += "; partial result before timeout: " + buildToolMessageContent(partial.get());
+                Loggers.AGENT.warning("Tool '" + toolCall.getName()
+                        + "' timed out after " + callTimeout + "s; partial progress preserved");
+            } else {
+                Loggers.AGENT.warning(errorMsg);
+            }
             throw AbilityExecutionError.of(toolCall, errorMsg, exception);
         } catch (CancellationException exception) {
             throw exception;
         } catch (RuntimeException exception) {
             throw AbilityExecutionError.of(toolCall, "Tool execution error: " + exception.getMessage(), exception);
+        }
+    }
+
+    /**
+     * Best-effort extraction of progress a tool captured before the timeout; tools that do
+     * not implement the partial-result hook simply yield an empty optional.
+     */
+    private static Optional<Object> extractPartialResult(Tool tool) {
+        if (!(tool instanceof ExecutionResult.PartialResultProvider provider)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(provider.partialResult());
+        } catch (RuntimeException ignored) {
+            return Optional.empty();
         }
     }
 
@@ -1244,12 +1266,24 @@ public class AbilityManager {
         }
     }
 
-    private boolean isParallelSafeToolCall(ToolCall toolCall) {
+    boolean isParallelSafeToolCall(ToolCall toolCall) {
+        return isParallelSafeToolCall(toolCall, null, null);
+    }
+
+    private boolean isParallelSafeToolCall(ToolCall toolCall, Object session, Object tag) {
         if (toolCall == null) {
             return true;
         }
         ToolCard card = tools.get(toolCall.getName());
-        return card == null || card.isParallelSafe();
+        if (card == null) {
+            // Resume/parallel-worker paths may hold the tool only in the resource
+            // manager; resolve its card before treating the name as unknown.
+            Tool resolved = lookupTool(toolCall.getName(), session, tag);
+            card = resolved == null ? null : resolved.getCard();
+        }
+        // Unknown cards are conservatively serial: a tool that never declared
+        // parallel safety must not be dispatched concurrently by default.
+        return card != null && card.isParallelSafe();
     }
 
     static Double resolveCallTimeout(ToolCard toolCard) {
@@ -1363,6 +1397,9 @@ public class AbilityManager {
      * @since 0.1.17
      */
     public static String buildToolMessageContent(Object result) {
+        if (result instanceof com.openjiuwen.core.foundation.tool.ModelTextResult textResult) {
+            return textResult.modelText();
+        }
         Object data = attribute(result, "data");
         Object error = attribute(result, "error");
         Object success = attribute(result, "success");
@@ -2034,8 +2071,20 @@ public class AbilityManager {
      * One ability execution result and its LLM tool message.
      *
      * <p>Mirrors Python's tuple return in
-     * {@code openjiuwen/core/single_agent/ability_manager.py}.</p>
+     * {@code openjiuwen/core/single_agent/ability_manager.py}. {@code partialResult} carries
+     * progress captured before a timeout when the tool supports cancellation callbacks;
+     * it is {@code null} for successful calls.</p>
      */
     public record ExecutionResult(Object result, ToolMessage toolMessage) {
+
+        /** Hook a tool may use to expose progress produced before a timeout cut it off. */
+        public interface PartialResultProvider {
+            /**
+             * Returns the progress captured by the tool before a timeout cut it off.
+             *
+             * @return the partial result, or {@code null} when no progress was captured
+             */
+            Object partialResult();
+        }
     }
 }

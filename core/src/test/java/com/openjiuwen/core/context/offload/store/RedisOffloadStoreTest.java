@@ -6,6 +6,8 @@ package com.openjiuwen.core.context.offload.store;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -233,6 +235,30 @@ class RedisOffloadStoreTest {
         assertTrue(store.exists(NS, HANDLE));
         verify(jedis).exists(EXPECTED_KEY);
         store.close();
+    }
+
+    @Test
+    void attackNamespaceSegmentsSanitizeInRedisKeys() {
+        // TC_241 (Redis leg): the storage key derives from the sanitized
+        // namespace — traversal and injection segments collapse to safe
+        // charset tokens, keys never grow extra delimiter-free hazards, and
+        // every attacked key stays within the offload: prefix scheme.
+        List<String> attacks = List.of("..", ".", "", " ../../etc ", "a:b", "a\\b", "s<>|:*?");
+        for (int i = 0; i < attacks.size(); i++) {
+            String attack = attacks.get(i);
+            OffloadNamespace evil = OffloadNamespace.of(attack, attack, attack);
+            String key = evil.toRedisKey("h" + i);
+            assertTrue(key.startsWith("offload:"), "key must keep the scheme prefix: " + key);
+            for (String segment : key.split(":")) {
+                assertTrue(segment.matches("[A-Za-z0-9._\\-]+"),
+                        "key segment must be sanitized: " + segment + " for " + attack);
+                assertFalse(".".equals(segment) || "..".equals(segment),
+                        "traversal segment must not survive in keys: " + key);
+            }
+        }
+        // Delimiter neutrality: different attacked tenants must not melt into
+        // the same key as an unrelated clean namespace.
+        assertNotEquals(NS.toRedisKey("h"), OffloadNamespace.of("..", "s1", "c1").toRedisKey("h"));
     }
 
     @Test

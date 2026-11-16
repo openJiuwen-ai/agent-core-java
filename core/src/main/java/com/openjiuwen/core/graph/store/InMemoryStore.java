@@ -35,27 +35,25 @@ public class InMemoryStore implements Store {
 
     @Override
     public CompletionStage<Void> save(String sessionId, String ns, GraphStoreState state) {
-        storeCk.computeIfAbsent(sessionId, ignored -> new ConcurrentHashMap<>())
-                .put(ns, deepCopy(state));
+        GraphStoreState snapshot = deepCopy(state);
+        storeCk.compute(sessionId, (ignored, existing) -> {
+            Map<String, GraphStoreState> sessionMap = existing != null ? existing : new ConcurrentHashMap<>();
+            sessionMap.put(ns, snapshot);
+            return sessionMap;
+        });
         return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public CompletionStage<Void> delete(String sessionId, String ns) {
-        Map<String, GraphStoreState> sessionMap = storeCk.get(sessionId);
-        if (sessionMap == null) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        if (ns == null) {
-            storeCk.remove(sessionId);
-            return CompletableFuture.completedFuture(null);
-        }
-
-        deleteNsByPrefix(sessionMap, ns);
-        if (sessionMap.isEmpty()) {
-            storeCk.remove(sessionId);
-        }
+        // Saving a sibling checkpoint must not race removal of the last namespace.
+        storeCk.computeIfPresent(sessionId, (ignored, sessionMap) -> {
+            if (ns == null) {
+                return null;
+            }
+            deleteNsByPrefix(sessionMap, ns);
+            return sessionMap.isEmpty() ? null : sessionMap;
+        });
         return CompletableFuture.completedFuture(null);
     }
 

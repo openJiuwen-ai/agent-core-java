@@ -24,6 +24,7 @@ import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,6 +46,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 class BaseAgentToolGroupTest {
     @TempDir
     private Path tempDir;
+
+    @AfterEach
+    void releaseGlobalResources() {
+        Runner.resourceMgr().release();
+    }
 
     @Test
     void listEffectiveToolInfo_withoutGroups_returnsUnfilteredResult() {
@@ -85,7 +91,8 @@ class BaseAgentToolGroupTest {
     }
 
     @Test
-    void sessionStateResidue_ignoresUnknownGroupNames() {
+    @Tag("TC-SEC-01")
+    void unregisteredGroupResidue_doesNotRestoreVisibilityOrExecution() {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "clock");
@@ -103,7 +110,120 @@ class BaseAgentToolGroupTest {
 
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
+                .containsExactly("clock");
+        ToolCall residueCall =
+                ToolCall.builder().id("call-residue").name("search").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> residueResults =
+                agent.getAbilityManager().execute(null, residueCall, session, false);
+        assertThat(residueResults.get(0).result()).isNull();
+        assertThat(residueResults.get(0).toolMessage().getContentAsString())
+                .contains("search")
+                .contains("not active");
+
+        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
                 .containsExactlyInAnyOrder("clock", "search");
+        ToolCall restoredCall =
+                ToolCall.builder().id("call-restored").name("search").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> restoredResults =
+                agent.getAbilityManager().execute(null, restoredCall, session, false);
+        assertThat(restoredResults.get(0).toolMessage().getContentAsString())
+                .doesNotContain("not active");
+    }
+
+    @Test
+    @Tag("TC-TG-04")
+    @Tag("TC-SEC-01")
+    void sessionStateSnapshots_restoreActivationBoundaries() {
+        TestAgent agent = new TestAgent();
+        registerGlobalTool(agent, "clock");
+        registerGlobalTool(agent, "search");
+        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
+
+        MemorySession activatedSession = new MemorySession("session-activated");
+        agent.activateToolGroup("research", activatedSession);
+        Object activatedState =
+                activatedSession.getState(BaseAgent.ACTIVE_TOOL_GROUP_NAMES_STATE_KEY);
+        MemorySession restoredActiveSession = new MemorySession("session-restored-active");
+        restoredActiveSession.updateState(
+                Map.of(BaseAgent.ACTIVE_TOOL_GROUP_NAMES_STATE_KEY, activatedState));
+        assertThat(agent.listEffectiveToolInfo(restoredActiveSession))
+                .extracting(ToolInfo::getName)
+                .containsExactlyInAnyOrder("clock", "search");
+
+        MemorySession deactivatedSession = new MemorySession("session-deactivated");
+        agent.activateToolGroup("research", deactivatedSession);
+        agent.deactivateToolGroup("research", deactivatedSession);
+        Object deactivatedState =
+                deactivatedSession.getState(BaseAgent.ACTIVE_TOOL_GROUP_NAMES_STATE_KEY);
+        MemorySession restoredInactiveSession = new MemorySession("session-restored-inactive");
+        restoredInactiveSession.updateState(
+                Map.of(BaseAgent.ACTIVE_TOOL_GROUP_NAMES_STATE_KEY, deactivatedState));
+        assertThat(agent.listEffectiveToolInfo(restoredInactiveSession))
+                .extracting(ToolInfo::getName)
+                .containsExactly("clock");
+        ToolCall inactiveCall =
+                ToolCall.builder().id("call-inactive").name("search").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> inactiveResults =
+                agent.getAbilityManager().execute(null, inactiveCall, restoredInactiveSession, false);
+        assertThat(inactiveResults.get(0).result()).isNull();
+        assertThat(inactiveResults.get(0).toolMessage().getContentAsString())
+                .contains("search")
+                .contains("not active");
+    }
+
+    @Test
+    @Tag("TC-LNK-01")
+    @Tag("TC-PRF-01")
+    void dualOwnershipTools_preserveExplicitGroupPriorityAcrossSessions() {
+        TestAgent agent = new TestAgent();
+        Tool search = skillTool("search");
+        registerSkill(agent, "SearchSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("SearchSkill")
+                                .tools(List.of(search))
+                                .build())
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(new ToolGroup("search_tools", "Search tools", List.of("search")));
+
+        MemorySession blockedSession = new MemorySession("session-blocked");
+        MemorySession allowedSession = new MemorySession("session-allowed");
+        agent.activateSkill("SearchSkill", blockedSession);
+        agent.deactivateToolGroup("search_tools", blockedSession);
+        agent.activateSkill("SearchSkill", allowedSession);
+        agent.activateToolGroup("search_tools", allowedSession);
+
+        assertThat(agent.listEffectiveToolInfo(blockedSession))
+                .extracting(ToolInfo::getName)
+                .doesNotContain("search")
+                .contains("skill_tool");
+        assertThat(agent.listEffectiveToolInfo(allowedSession))
+                .extracting(ToolInfo::getName)
+                .contains("search", "skill_tool");
+        ToolCall blockedCall =
+                ToolCall.builder().id("call-blocked").name("search").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> blockedResults =
+                agent.getAbilityManager().execute(null, blockedCall, blockedSession, false);
+        assertThat(blockedResults.get(0).result()).isNull();
+        assertThat(blockedResults.get(0).toolMessage().getContentAsString()).contains("not active");
+        ToolCall allowedCall =
+                ToolCall.builder().id("call-allowed").name("search").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> allowedResults =
+                agent.getAbilityManager().execute(null, allowedCall, allowedSession, false);
+        assertThat(allowedResults.get(0).toolMessage().getContentAsString())
+                .doesNotContain("not active");
+
+        agent.activateToolGroup("search_tools", blockedSession);
+        assertThat(agent.listEffectiveToolInfo(blockedSession))
+                .extracting(ToolInfo::getName)
+                .contains("search");
+        assertThat(agent.listEffectiveToolInfo(allowedSession))
+                .extracting(ToolInfo::getName)
+                .contains("search", "skill_tool");
     }
 
     @Test

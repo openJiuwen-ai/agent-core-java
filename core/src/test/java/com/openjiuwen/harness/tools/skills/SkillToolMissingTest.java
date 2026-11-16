@@ -174,6 +174,66 @@ class SkillToolMissingTest {
         assertDataContains(result, "Explicit skill body");
     }
 
+    @Test
+    void skillToolConflictingExplicitIdDoesNotFallbackToName() throws Exception {
+        SkillDescriptor skill =
+                new SkillDescriptor(
+                        "known_skill", "Known skill.", tempDir.toString(), Map.of("id", "known_id"));
+        SkillTool skillTool = new SkillTool(() -> List.of(skill));
+
+        ToolOutput result =
+                invokeSkillTool(
+                        skillTool, Map.of("skill_name", "known_skill", "skill_id", "other_id"));
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getError()).isEqualTo("Skill not found: known_skill");
+    }
+
+    @Test
+    void skillToolExplicitClasspathPathSupportsPrefixAndSlashVariants() throws Exception {
+        SkillDescriptor skill =
+                new SkillDescriptor(
+                        "builtin_demo",
+                        "Classpath skill.",
+                        "issue196/skills/builtin_demo",
+                        Map.of("source", "classpath", "id", "classpath/builtin_demo"));
+        SkillTool skillTool = new SkillTool(() -> List.of(skill));
+
+        ToolOutput prefixed =
+                invokeSkillTool(
+                        skillTool,
+                        Map.of(
+                                "skill_id",
+                                "classpath/builtin_demo",
+                                "skill_path",
+                                "classpath:issue196/skills/builtin_demo"));
+        ToolOutput trailingSlash =
+                invokeSkillTool(
+                        skillTool,
+                        Map.of(
+                                "skill_id",
+                                "classpath/builtin_demo",
+                                "skill_path",
+                                "issue196/skills/builtin_demo/"));
+
+        assertThat(prefixed.isSuccess()).isTrue();
+        assertThat(trailingSlash.isSuccess()).isTrue();
+        assertDataContains(prefixed, "This classpath fixture is used to verify three-level Skill loading.");
+    }
+
+    @Test
+    void skillToolBlankReferenceWithOnlyRelativePathReturnsNotFound() throws Exception {
+        SkillDescriptor skill =
+                new SkillDescriptor(
+                        "known_skill", "Known skill.", tempDir.toString(), Map.of("id", "known_id"));
+        SkillTool skillTool = new SkillTool(() -> List.of(skill));
+
+        ToolOutput result = invokeSkillTool(skillTool, Map.of("relative_path", ""));
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getError()).isEqualTo("Skill not found: ");
+    }
+
     private static ToolOutput invokeSkillTool(
             SkillTool skillTool, Map<String, Object> inputs) throws Exception {
         if (!(skillTool.invoke(inputs, Map.of()) instanceof ToolOutput result)) {

@@ -219,6 +219,29 @@ public class ToolCard extends BaseCard {
             return this;
         }
 
+        /**
+         * Explicitly declares the tool parallel-safe (same as {@code parallelSafe(true)}).
+         *
+         * @return this builder
+         */
+        public Builder parallelSafe() {
+            this.isParallelSafe = true;
+            return this;
+        }
+
+        /**
+         * Explicitly declares the tool must not run concurrently with sibling calls.
+         *
+         * <p>Use for tools that write shared state, session directories, or external
+         * side effects. Unknown tools are also treated as serial by the dispatcher.</p>
+         *
+         * @return this builder
+         */
+        public Builder notParallelSafe() {
+            this.isParallelSafe = false;
+            return this;
+        }
+
         public Builder parallelSafe(boolean isParallelSafe) {
             this.isParallelSafe = isParallelSafe;
             return this;

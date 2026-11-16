@@ -9,6 +9,7 @@ import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient;
 import com.openjiuwen.extensions.tracerotel.SemConv;
 
+import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 
@@ -87,8 +88,10 @@ public class SandboxGatewayClientMixin {
         }
 
         Context finalCtx = ctx;
+        Span invocationSpan = Span.fromContext(finalCtx);
         try (Scope scope = finalCtx.makeCurrent()) {
             return client.invoke(opType, method, params).exceptionally(error -> {
+                recordSandboxErrorMessage(invocationSpan, error);
                 Context errorCtx = finalCtx.with(SemConv.CTX_SANDBOX_ERROR_MESSAGE, error.getMessage());
                 try (Scope errorScope = errorCtx.makeCurrent()) {
                     // Propagate the exception
@@ -120,8 +123,10 @@ public class SandboxGatewayClientMixin {
         }
 
         Context finalCtx = ctx;
+        Span invocationSpan = Span.fromContext(finalCtx);
         try (Scope scope = finalCtx.makeCurrent()) {
             return client.invokeStream(opType, method, params).exceptionally(error -> {
+                recordSandboxErrorMessage(invocationSpan, error);
                 Context errorCtx = finalCtx.with(SemConv.CTX_SANDBOX_ERROR_MESSAGE, error.getMessage());
                 try (Scope errorScope = errorCtx.makeCurrent()) {
                     // Propagate the exception
@@ -131,6 +136,20 @@ public class SandboxGatewayClientMixin {
                     throw new CompletionException("Sandbox invokeStream failed", error);
                 }
             });
+        }
+    }
+
+    private static void recordSandboxErrorMessage(Span span, Throwable error) {
+        String errorMessage = error.getMessage();
+        if (errorMessage == null || errorMessage.isBlank()) {
+            errorMessage = error.getClass().getSimpleName();
+        }
+        try {
+            span.setAttribute(SemConv.OJ_SANDBOX_ERROR_MESSAGE, errorMessage);
+        } catch (IllegalArgumentException | IllegalStateException | NullPointerException
+                | ClassCastException | UnsupportedOperationException e) {
+            LOGGER.warn("Failed to record sandbox error message on the active span: {}",
+                    e.getClass().getSimpleName());
         }
     }
 

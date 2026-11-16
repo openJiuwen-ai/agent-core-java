@@ -4,6 +4,10 @@
 
 package com.openjiuwen.harness.tools.shell.powershell;
 
+import com.openjiuwen.core.common.utils.TextTruncate;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.harness.tools.shell.ShellOutputDirectory;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -41,11 +45,13 @@ public final class PowerShellOutput {
 
         int headBudget = (int) (maxChars * headRatio);
         int tailBudget = maxChars - headBudget;
-        String head = text.substring(0, headBudget);
-        String tail = tailBudget > 0 ? text.substring(text.length() - tailBudget) : "";
+        String head = TextTruncate.safePrefix(text, headBudget);
+        String tail = tailBudget > 0 ? TextTruncate.safeSuffix(text, tailBudget) : "";
+        int headEnd = head.length();
+        int tailStart = text.length() - tail.length();
         String omitted = tailBudget > 0
-                ? text.substring(headBudget, text.length() - tailBudget)
-                : text.substring(headBudget);
+                ? TextTruncate.safeSubstring(text, headEnd, Math.max(headEnd, tailStart))
+                : TextTruncate.safeSubstring(text, headEnd, text.length());
         int omittedLines = countLines(omitted);
 
         return head + "\n\n... [" + omittedLines + " lines omitted] ...\n\n" + tail;
@@ -56,6 +62,10 @@ public final class PowerShellOutput {
     }
 
     public static PersistResult persistLargeOutput(String stdout, String stderr) {
+        return persistLargeOutput(stdout, stderr, OUTPUT_DIR);
+    }
+
+    private static PersistResult persistLargeOutput(String stdout, String stderr, Path outputDir) {
         String combined = stdout == null ? "" : stdout;
         if (stderr != null && !stderr.isEmpty()) {
             combined += "\n--- stderr ---\n" + stderr;
@@ -65,12 +75,12 @@ public final class PowerShellOutput {
         String digest = sha256Digest(contentBytes).substring(0, 12);
 
         try {
-            Files.createDirectories(OUTPUT_DIR);
+            Files.createDirectories(outputDir);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to create output directory: " + OUTPUT_DIR, e);
+            throw new UncheckedIOException("Failed to create output directory: " + outputDir, e);
         }
 
-        Path filePath = OUTPUT_DIR.resolve("powershell_" + digest + ".txt");
+        Path filePath = outputDir.resolve("powershell_" + digest + ".txt");
         if (!Files.exists(filePath)) {
             try {
                 Files.write(filePath, contentBytes);
@@ -82,6 +92,18 @@ public final class PowerShellOutput {
     }
 
     public static RenderedContent renderToolContent(CommandOutput output, boolean isError) {
+        return renderToolContent(output, isError, null);
+    }
+
+    /**
+     * Render output using an allowed artifact directory for a restricted local operation.
+     *
+     * @param output command output and rendering limit
+     * @param isError whether the command failed
+     * @param operation operation whose filesystem will read the persisted output, or null for legacy storage
+     * @return model-facing output
+     */
+    public static RenderedContent renderToolContent(CommandOutput output, boolean isError, SysOperation operation) {
         if (isError) {
             String merged = merge(output.stderr(), output.stdout());
             StringBuilder content = new StringBuilder("Exit code " + output.exitCode());
@@ -96,9 +118,15 @@ public final class PowerShellOutput {
                 ? merged
                 : stripTrailingWhitespace(LEADING_BLANK_LINES.matcher(merged).replaceFirst(""));
         if (output.maxOutputChars() > 0 && merged.length() > output.maxOutputChars()) {
-            PersistResult persisted = persistLargeOutput(output.stdout(), output.stderr());
-            Preview preview = generatePreview(processed, PREVIEW_SIZE_BYTES);
-            processed = buildPersistedMessage(persisted.path(), persisted.byteCount(), preview.content(), preview.hasMore());
+            try {
+                PersistResult persisted = persistLargeOutput(output.stdout(), output.stderr(),
+                        ShellOutputDirectory.resolve(operation, OUTPUT_DIR));
+                Preview preview = generatePreview(processed, PREVIEW_SIZE_BYTES);
+                processed = buildPersistedMessage(
+                        persisted.path(), persisted.byteCount(), preview.content(), preview.hasMore());
+            } catch (UncheckedIOException | IllegalStateException exception) {
+                processed = truncateOutput(processed, output.maxOutputChars());
+            }
         }
         return new RenderedContent(prependWarning(processed, output.warning()), false);
     }
@@ -164,10 +192,10 @@ public final class PowerShellOutput {
         if (content.length() <= maxBytes) {
             return new Preview(content, false);
         }
-        String truncated = content.substring(0, maxBytes);
+        String truncated = TextTruncate.safePrefix(content, maxBytes);
         int lastNewline = truncated.lastIndexOf('\n');
-        int cut = lastNewline > maxBytes * 0.5 ? lastNewline : maxBytes;
-        return new Preview(content.substring(0, cut), true);
+        int cut = lastNewline > maxBytes * 0.5 ? lastNewline : truncated.length();
+        return new Preview(TextTruncate.safePrefix(content, cut), true);
     }
 
     private static String formatFileSize(double sizeInBytes) {

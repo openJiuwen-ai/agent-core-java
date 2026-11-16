@@ -119,7 +119,8 @@ class ReActAgentStreamingMissingTest {
         @Override
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             streamCalls++;
-            return List.of(AssistantMessageChunk.builder().content(streamText).build()).iterator();
+            AssistantMessageChunk chunk = AssistantMessageChunk.builder().content(streamText).build();
+            return List.of(chunk).iterator();
         }
     }
 

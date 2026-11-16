@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.common.logging.Slf4jLogCapture;
 import com.openjiuwen.core.context.offload.cleanup.SessionOffloadGate;
 import com.openjiuwen.core.context.offload.model.OffloadBackend;
 import com.openjiuwen.core.context.offload.model.OffloadConfig;
@@ -33,6 +34,7 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@link OffloadServiceImpl} unit tests: write-ahead publish protocol,
@@ -137,6 +139,15 @@ class OffloadServiceImplTest {
         OffloadException ex = assertThrows(OffloadException.class,
                 () -> service.load(NS, handle, "in_memory"));
         assertEquals(OffloadErrorCode.OFFLOAD_MISSING, ex.code());
+
+        // TC_043b: a PENDING reservation is "delete-rejected" (find hides it,
+        // so the service reports false instead of reaping a write-ahead entry).
+        assertFalse(service.delete(NS, handle));
+        // TC_043b: a foreign namespace must see the unpublished handle as
+        // FORBIDDEN (ownership gate wins over the PENDING MISSING mapping).
+        OffloadException foreignEx = assertThrows(OffloadException.class,
+                () -> service.load(FOREIGN_NS, handle, "in_memory"));
+        assertEquals(OffloadErrorCode.OFFLOAD_FORBIDDEN, foreignEx.code());
     }
 
     @Test
@@ -170,6 +181,12 @@ class OffloadServiceImplTest {
         assertEquals(OffloadErrorCode.OFFLOAD_CORRUPT, ex.code());
         assertEquals(OffloadStatus.CORRUPT,
                 catalog.findByHandle(ref.get().handle()).orElseThrow().status());
+
+        // TC_047: the CORRUPT state is sticky — a second load attempt hits the
+        // status gate again (the tampered payload is never "healed").
+        OffloadException second = assertThrows(OffloadException.class,
+                () -> service.load(NS, ref.get().handle(), "in_memory"));
+        assertEquals(OffloadErrorCode.OFFLOAD_CORRUPT, second.code());
     }
 
     @Test
@@ -480,6 +497,198 @@ class OffloadServiceImplTest {
     }
 
     @Test
+    void concurrentLoadsOfSameHandleEachReturnVerbatimPayload() throws Exception {
+        // TC_222: ≥4 threads concurrently load the same committed handle — every
+        // reader gets the verbatim full payload (no torn read), no spurious
+        // CORRUPT, no MISSING caused by an earlier reader (loads never delete).
+        List<BaseMessage> original = messages("concurrent reload payload one", "concurrent reload payload two");
+        Optional<OffloadRef> ref = service.save(request(original));
+        assertTrue(ref.isPresent());
+        String handle = ref.get().handle();
+
+        int readers = 4;
+        int rounds = 20;
+        AtomicInteger verbatimLoads = new AtomicInteger();
+        List<Throwable> failures = java.util.Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch ready = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(readers);
+        for (int i = 0; i < readers; i++) {
+            Thread reader = new Thread(() -> {
+                try {
+                    ready.await();
+                    for (int r = 0; r < rounds; r++) {
+                        OffloadPayload loaded = service.load(NS, handle, ALGORITHM_ID);
+                        if (loaded.messages().size() == original.size()
+                                && loaded.sha256Matches()) {
+                            verbatimLoads.incrementAndGet();
+                        }
+                    }
+                } catch (InterruptedException ex) {
+                    failures.add(ex);
+                } catch (RuntimeException ex) {
+                    failures.add(ex);
+                } finally {
+                    done.countDown();
+                }
+            });
+            reader.setUncaughtExceptionHandler((t, ex) -> failures.add(ex));
+            reader.start();
+        }
+        ready.countDown();
+        assertTrue(done.await(30, TimeUnit.SECONDS), "readers must finish in time");
+
+        assertEquals(0, failures.size(), () -> "reader failures: " + failures);
+        assertEquals(readers * rounds, verbatimLoads.get(),
+                "every concurrent load must return the verbatim payload");
+        // The entry stays READY: concurrent reads neither delete it nor flag CORRUPT.
+        assertEquals(OffloadStatus.READY,
+                catalog.findByHandle(handle).orElseThrow().status());
+    }
+
+    @Test
+    void concurrentCrossSessionWorkStaysIsolatedAndUnblocked() throws Exception {
+        // TC_225: two threads drive different sessions concurrently — messages
+        // never cross sessions, handles stay globally distinct, and the two
+        // sessions do not block each other (gate lock key is the session id).
+        SessionOffloadGate scopedGate = new SessionOffloadGate();
+        OffloadServiceImpl scopedService = new OffloadServiceImpl(catalog, store, scopedGate, new OffloadConfig());
+        OffloadNamespace nsA = OffloadNamespace.of("t1", "sA", "c1");
+        OffloadNamespace nsB = OffloadNamespace.of("t1", "sB", "c1");
+        int rounds = 20;
+        AtomicInteger successes = new AtomicInteger();
+        List<String> handlesA = java.util.Collections.synchronizedList(new ArrayList<>());
+        List<String> handlesB = java.util.Collections.synchronizedList(new ArrayList<>());
+        List<Throwable> failures = java.util.Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch ready = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(2);
+        Runnable sessionWorkA = () -> runCrossSessionRounds(scopedService, nsA, "payload A", rounds,
+                successes, handlesA, failures, ready, done);
+        Runnable sessionWorkB = () -> runCrossSessionRounds(scopedService, nsB, "payload B", rounds,
+                successes, handlesB, failures, ready, done);
+        Thread threadA = new Thread(sessionWorkA);
+        Thread threadB = new Thread(sessionWorkB);
+        threadA.setUncaughtExceptionHandler((t, ex) -> failures.add(ex));
+        threadB.setUncaughtExceptionHandler((t, ex) -> failures.add(ex));
+        threadA.start();
+        threadB.start();
+        ready.countDown();
+        assertTrue(done.await(30, TimeUnit.SECONDS), "session workers must finish in time");
+
+        assertEquals(0, failures.size(), () -> "session worker failures: " + failures);
+        assertEquals(rounds * 2, successes.get());
+        // Handles are globally distinct across the two sessions.
+        java.util.Set<String> allHandles = new java.util.HashSet<>();
+        allHandles.addAll(handlesA);
+        allHandles.addAll(handlesB);
+        assertEquals(rounds * 2, allHandles.size(), "handles must never collide across sessions");
+        // Per-session directory isolation: A's entries live only under nsA and vice versa.
+        assertEquals(rounds, catalog.listByNamespace(nsA).size());
+        assertEquals(rounds, catalog.listByNamespace(nsB).size());
+        // Both sessions progressed in parallel on distinct locks (lockKey = sessionId only).
+        assertEquals(2, scopedGate.lockCount(), "different sessions must hold different gate locks");
+        for (String handle : handlesA) {
+            OffloadPayload loaded = scopedService.load(nsA, handle, ALGORITHM_ID);
+            assertTrue(loaded.messages().get(0).get("content").toString().startsWith("payload A"),
+                    "session A must only see its own payloads");
+        }
+        for (String handle : handlesB) {
+            OffloadPayload loaded = scopedService.load(nsB, handle, ALGORITHM_ID);
+            assertTrue(loaded.messages().get(0).get("content").toString().startsWith("payload B"),
+                    "session B must only see its own payloads");
+        }
+    }
+
+    private void runCrossSessionRounds(OffloadServiceImpl scopedService, OffloadNamespace ns, String prefix,
+            int rounds, AtomicInteger successes, List<String> handles, List<Throwable> failures,
+            CountDownLatch ready, CountDownLatch done) {
+        try {
+            ready.await();
+            for (int r = 0; r < rounds; r++) {
+                Optional<OffloadRef> ref = scopedService.save(OffloadRequest.builder()
+                        .namespace(ns)
+                        .algorithmId(ALGORITHM_ID)
+                        .source("cross-session")
+                        .messages(messages(prefix + " round " + r))
+                        .build());
+                if (ref.isPresent()) {
+                    handles.add(ref.get().handle());
+                    successes.incrementAndGet();
+                }
+            }
+        } catch (InterruptedException ex) {
+            failures.add(ex);
+        } catch (RuntimeException ex) {
+            failures.add(ex);
+        } finally {
+            done.countDown();
+        }
+    }
+
+    @Test
+    void tenantLevelNamespaceMismatchThrowsForbiddenNotMissing() {
+        // TC_231: tenant-level variant of the ownership matrix — an entry owned
+        // by t1 loaded under a t2 namespace must be FORBIDDEN (explicit denial,
+        // not a MISSING misreport) while the owning namespace loads verbatim.
+        Optional<OffloadRef> ref = service.save(request(messages("tenant matrix payload")));
+        assertTrue(ref.isPresent());
+        String handle = ref.get().handle();
+
+        OffloadNamespace foreignTenant = OffloadNamespace.of("t2", "s1", "c1");
+        OffloadException ex = assertThrows(OffloadException.class,
+                () -> service.load(foreignTenant, handle, ALGORITHM_ID));
+        assertEquals(OffloadErrorCode.OFFLOAD_FORBIDDEN, ex.code());
+        // The denial message carries no payload content.
+        assertFalse(ex.getMessage().contains("tenant matrix payload"));
+
+        OffloadPayload owned = service.load(NS, handle, ALGORITHM_ID);
+        assertEquals(1, owned.messages().size());
+        assertTrue(owned.sha256Matches());
+    }
+
+    @Test
+    void deleteNamespaceStaysScopedWithinSameTenantAndAcrossTenants() {
+        // TC_233: two-level cleanup boundary — same tenant different session and
+        // different tenant siblings must all survive a purge of one namespace.
+        OffloadNamespace nsA = OffloadNamespace.of("t1", "sA", "c1");
+        OffloadNamespace nsB = OffloadNamespace.of("t1", "sB", "c1");
+        OffloadNamespace nsD = OffloadNamespace.of("t2", "sA", "c1");
+        Optional<OffloadRef> refA = service.save(requestFor(nsA, "purge me"));
+        Optional<OffloadRef> refB = service.save(requestFor(nsB, "same tenant sibling"));
+        Optional<OffloadRef> refD = service.save(requestFor(nsD, "other tenant"));
+        assertTrue(refA.isPresent() && refB.isPresent() && refD.isPresent());
+
+        service.deleteNamespace(nsA);
+
+        assertTrue(catalog.findByHandle(refA.get().handle()).isEmpty(),
+                "purged namespace entries must vanish from the catalog");
+        assertFalse(memory.exists(nsA, refA.get().handle()));
+        assertTrue(catalog.findByHandle(refB.get().handle()).isPresent(),
+                "same-tenant different-session sibling must survive");
+        assertTrue(memory.exists(nsB, refB.get().handle()));
+        assertTrue(catalog.findByHandle(refD.get().handle()).isPresent(),
+                "different-tenant namespace must survive");
+        assertTrue(memory.exists(nsD, refD.get().handle()));
+        // Post-purge access to A's handle is a structured MISSING.
+        OffloadException ex = assertThrows(OffloadException.class,
+                () -> service.load(nsA, refA.get().handle(), ALGORITHM_ID));
+        assertEquals(OffloadErrorCode.OFFLOAD_MISSING, ex.code());
+        // Survivors still round-trip their original content.
+        assertEquals("same tenant sibling",
+                service.load(nsB, refB.get().handle(), ALGORITHM_ID).messages().get(0).get("content"));
+        assertEquals("other tenant",
+                service.load(nsD, refD.get().handle(), ALGORITHM_ID).messages().get(0).get("content"));
+    }
+
+    private static OffloadRequest requestFor(OffloadNamespace ns, String content) {
+        return OffloadRequest.builder()
+                .namespace(ns)
+                .algorithmId(ALGORITHM_ID)
+                .source("purge-boundary")
+                .messages(messages(content))
+                .build();
+    }
+
+    @Test
     void metricLogLineCarriesAttributionFields() {
         String line = new OffloadMetric(ALGORITHM_ID, "h1", false, OffloadFailureReason.REDIS_DOWN.name(),
                 10L, 0L, 5L, OffloadBackend.REDIS).toLogLine("save");
@@ -498,6 +707,139 @@ class OffloadServiceImplTest {
         assertTrue(line.contains("event=load"));
         assertTrue(line.contains("algorithmId=-"));
         assertTrue(line.contains("backend=-"));
+    }
+
+    @Test
+    void saveMetricLineCarriesAllContractFieldsForRealFlow() {
+        // TC_056: a real save through the service emits the full [Offload]
+        // contract line — every attribution field present in one log record.
+        List<String> lines = captureLogger(() ->
+                service.save(request(messages("metric contract payload"))));
+        Optional<String> metricLine = lines.stream()
+                .filter(line -> line.contains("event=save"))
+                .findFirst();
+        assertTrue(metricLine.isPresent(), "save must emit an [Offload] metric line");
+        String line = metricLine.get();
+        assertTrue(line.contains("algorithmId=MessageOffloader"));
+        assertTrue(line.contains("handle="));
+        assertTrue(line.contains("backend=MEMORY"));
+        assertTrue(line.contains("success=true"));
+        assertTrue(line.contains("failureReason=-"));
+        assertTrue(line.contains("preTokens=42"));
+        assertTrue(line.contains("postTokens=0"));
+        assertTrue(line.contains("durationMs="));
+    }
+
+    @Test
+    void failedSaveAttributesIoErrorAndRedisDownReasons() {
+        // TC_057: real failure flows collect the enum attribution —
+        // OFFLOAD_STORE_IO → IO_ERROR on save, OFFLOAD_REDIS_DOWN → REDIS_DOWN on load (D8).
+        List<String> ioLines = captureLogger(() -> {
+            OffloadServiceImpl ioService = failingChainService(OffloadErrorCode.OFFLOAD_STORE_IO);
+            assertTrue(ioService.save(request(messages("io doomed"))).isEmpty());
+        });
+        assertTrue(ioLines.stream().anyMatch(line -> line.contains("event=save")
+                && line.contains("success=false") && line.contains("failureReason=IO_ERROR")),
+                () -> "IO_ERROR attribution missing in: " + ioLines);
+
+        // saveWithFallback wraps total chain failure as STORE_IO, so the REDIS_DOWN
+        // attribution is collected on the directed load path instead.
+        String redisHandle = "0123456789abcdef0123456789abcdef";
+        OffloadCatalogImpl redisCatalog = new OffloadCatalogImpl();
+        LinkedHashMap<OffloadBackend, OffloadStore> redisChain = new LinkedHashMap<>();
+        redisChain.put(OffloadBackend.REDIS, new FailingStore(OffloadErrorCode.OFFLOAD_REDIS_DOWN));
+        OffloadServiceImpl redisService = new OffloadServiceImpl(redisCatalog,
+                new CompositeOffloadStore(redisChain), new SessionOffloadGate(), new OffloadConfig());
+        redisCatalog.reserve(new OffloadRecord(redisHandle, NS, null, null, null, 10L,
+                System.currentTimeMillis(), null, System.currentTimeMillis(), false,
+                OffloadStatus.PENDING, "src"));
+        redisCatalog.commit(redisHandle, OffloadBackend.REDIS, NS.toRedisKey(redisHandle),
+                10L, System.currentTimeMillis() + Duration.ofHours(24).toMillis());
+
+        AtomicReference<OffloadErrorCode> redisCode = new AtomicReference<>();
+        List<String> redisLines = captureLogger(() -> {
+            try {
+                redisService.load(NS, redisHandle, ALGORITHM_ID);
+            } catch (OffloadException ex) {
+                redisCode.set(ex.code());
+            }
+        });
+        assertEquals(OffloadErrorCode.OFFLOAD_REDIS_DOWN, redisCode.get(),
+                "directed REDIS load failure must surface the backend error");
+        assertTrue(redisLines.stream().anyMatch(line -> line.contains("event=load")
+                && line.contains("success=false") && line.contains("failureReason=REDIS_DOWN")),
+                () -> "REDIS_DOWN attribution missing in: " + redisLines);
+    }
+
+    @Test
+    void loadMetricEmittedWithPostTokensAndSaveLoadPairing() {
+        // TC_058: the load side of the pair fires its own metric; postTokens
+        // is the reloaded payload estimate (>0) and save+load both carry the
+        // same handle (成对闭环).
+        AtomicReference<String> saveHandle = new AtomicReference<>();
+        List<String> lines = captureLogger(() -> {
+            Optional<OffloadRef> ref = service.save(request(messages("pair metric payload")));
+            assertTrue(ref.isPresent());
+            saveHandle.set(ref.get().handle());
+            service.load(NS, ref.get().handle(), "MessageOffloader");
+        });
+        String handle = saveHandle.get();
+        Optional<String> saveLine = lines.stream()
+                .filter(line -> line.contains("event=save") && line.contains("handle=" + handle))
+                .findFirst();
+        Optional<String> loadLine = lines.stream()
+                .filter(line -> line.contains("event=load") && line.contains("handle=" + handle))
+                .findFirst();
+        assertTrue(saveLine.isPresent() && loadLine.isPresent(),
+                () -> "save+load pair must both log: " + lines);
+        String load = loadLine.get();
+        assertTrue(load.contains("success=true"));
+        assertTrue(load.contains("postTokens="));
+        assertFalse(load.contains("postTokens=0"), () -> "reloaded payload must estimate >0 tokens: " + load);
+    }
+
+    @Test
+    void saveRefCarriesSchemaV2AndFullPayloadContract() {
+        // TC_082: handle is exactly 32 hex chars; TC_083: schema_version=2;
+        // TC_084: the payload contract fields survive a service round trip.
+        Optional<OffloadRef> ref = service.save(request(messages("contract payload")));
+        assertTrue(ref.isPresent());
+        String handle = ref.get().handle();
+        assertTrue(handle.matches("[0-9a-fA-F]{32}"), () -> "handle must be 32 hex: " + handle);
+
+        OffloadPayload loaded = service.load(NS, handle, "in_memory");
+        assertEquals("2", loaded.schemaVersion(), "payload schema_version must be the v2 literal");
+        assertEquals(handle, loaded.offloadHandle());
+        assertTrue(loaded.sha256Matches());
+        assertEquals(NS, loaded.namespace());
+
+        // TC_082: MEMORY pathOrKey is the redis-style key embedding the handle.
+        assertEquals(NS.toRedisKey(handle), ref.get().pathOrKey());
+    }
+
+    /**
+     * Captures the {@code [Offload]} logger lines produced by the action.
+     *
+     * @param action the save/load flow to run
+     * @return the formatted log lines captured while the action ran
+     */
+    private static List<String> captureLogger(Runnable action) {
+        return Slf4jLogCapture.capture(OffloadServiceImpl.class, action);
+    }
+
+    /**
+     * Builds a service whose single-backend chain always fails with the given
+     * structured error code (TC_057 attribution source).
+     *
+     * @param code the error code the failing store raises
+     * @return the wired failing service
+     */
+    private static OffloadServiceImpl failingChainService(OffloadErrorCode code) {
+        LinkedHashMap<OffloadBackend, OffloadStore> chain = new LinkedHashMap<>();
+        chain.put(code == OffloadErrorCode.OFFLOAD_STORE_IO
+                ? OffloadBackend.FILESYSTEM : OffloadBackend.REDIS, new FailingStore(code));
+        return new OffloadServiceImpl(new OffloadCatalogImpl(), new CompositeOffloadStore(chain),
+                new SessionOffloadGate(), new OffloadConfig());
     }
 
     /** Stub store failing on every save with a fixed error code. */
@@ -522,7 +864,7 @@ class OffloadServiceImplTest {
 
         @Override
         public OffloadPayload load(OffloadNamespace ns, String handle) {
-            throw new OffloadException(OffloadErrorCode.OFFLOAD_MISSING, "nothing stored");
+            throw new OffloadException(code, "failing store boom: " + code);
         }
 
         @Override

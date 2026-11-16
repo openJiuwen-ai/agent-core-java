@@ -408,6 +408,11 @@ public class GraphMemory {
                               Map<String, Object> kwargs) {
         String[] collections = {ENTITY_COLLECTION, RELATION_COLLECTION, EPISODE_COLLECTION};
         SearchConfig configForCollection = copySearchConfig(searchStrategies.get(searchStrategy).get(collectionIndex));
+        if (kwargs.get("user_ids") instanceof List<?> users) {
+            QueryExpr userFilter = QueryExpressions.filterUser(users.stream().map(String::valueOf).toList());
+            QueryExpr configuredFilter = configForCollection.getFilterExpr();
+            configForCollection.setFilterExpr(configuredFilter == null ? userFilter : configuredFilter.and(userFilter));
+        }
         if (configForCollection.isRerank() && reranker == null) {
             throw error("Search strategy [" + searchStrategy + "] for " + collections[collectionIndex]
                     + " has rerank=True but reranker is not set");
@@ -1055,7 +1060,7 @@ public class GraphMemory {
                 null,
                 0,
                 0,
-                null,
+                QueryExpressions.filterUser(userId),
                 null,
                 null,
                 Map.of("user_id", userId)
@@ -1095,7 +1100,7 @@ public class GraphMemory {
                 null,
                 0,
                 0,
-                null,
+                QueryExpressions.filterUser(userId),
                 null,
                 embedding,
                 Map.of("user_id", userId)
@@ -1300,11 +1305,7 @@ public class GraphMemory {
     }
 
     private static GraphStore createBackend(GraphConfig config) {
-        try {
-            return GraphStoreFactory.fromConfig(config);
-        } catch (RuntimeException exception) {
-            return new InMemoryGraphStore(config);
-        }
+        return GraphStoreFactory.fromConfig(config);
     }
 
     /**

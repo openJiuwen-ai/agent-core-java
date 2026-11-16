@@ -148,7 +148,8 @@ public class PowerShellTool extends AbstractHarnessTool {
                         warning,
                         parsed.maxOutputChars()
                 ),
-                meaning.isError()
+                meaning.isError(),
+                operation
         );
         return ToolOutput.of(!rendered.isError(), Map.of("content", rendered.content()),
                 rendered.isError() ? rendered.content() : null);

@@ -29,6 +29,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -155,6 +156,32 @@ class AioProvidersTest {
         assertEquals(StatusCode.SUCCESS.getCode(), searchResult.getCode());
         assertEquals(1, searchResult.getData().getTotalMatches());
         assertEquals("main.py", searchResult.getData().getMatchingFiles().get(0).getName());
+    }
+
+    @Test
+    void shellProviderDoesNotAttemptHttp2UpgradeOverPlainHttp() throws Exception {
+        AtomicBoolean upgradeHeaderSeen = new AtomicBoolean(false);
+        server = startServer(exchange -> {
+            if (exchange.getRequestHeaders().containsKey("Upgrade")) {
+                upgradeHeaderSeen.set(true);
+            }
+            if ("/v1/shell/exec".equals(exchange.getRequestURI().getPath())) {
+                writeJson(exchange, 200, Map.of("exit_code", 0, "output", "plain-http\n"));
+                return;
+            }
+            writeJson(exchange, 404, Map.of("error", "not found"));
+        });
+
+        AioShellProvider provider = new AioShellProvider(endpoint(), gatewayConfig());
+        ExecuteCmdResult result = provider.executeCmd(
+                "echo plain-http",
+                "/workspace/demo",
+                9,
+                null,
+                null).join();
+
+        assertEquals(StatusCode.SUCCESS.getCode(), result.getCode());
+        assertFalse(upgradeHeaderSeen.get(), "plain-HTTP sandbox must not receive an h2c upgrade attempt");
     }
 
     private SandboxEndpoint endpoint() {

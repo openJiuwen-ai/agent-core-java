@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.rail;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
 import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
@@ -71,6 +72,11 @@ public class ClassifiedModelFailureRail extends AgentRail {
         if (context == null || context.getException() == null) {
             return;
         }
+        if (ModelCallRetrier.isAfterFirstSegment(context.getException())) {
+            // FEAT-064 L1 §1.2.7 MUST: no whole-call retry once the first streamed
+            // segment has been delivered downstream.
+            return;
+        }
         if (yieldsToBackupRail(context)) {
             return;
         }
@@ -86,8 +92,13 @@ public class ClassifiedModelFailureRail extends AgentRail {
         if (attempts >= maxGuardrailRetries) {
             return;
         }
-        context.getExtra().put(ATTEMPTS_KEY, attempts + 1);
-        context.requestRetry(resolveDelaySeconds(classification));
+        int retryCount = attempts + 1;
+        double delaySeconds = resolveDelaySeconds(classification);
+        context.getExtra().put(ATTEMPTS_KEY, retryCount);
+        context.requestRetry(delaySeconds);
+        if (context.getAgent() instanceof ReActAgent reactAgent) {
+            reactAgent.publishGuardrailRetry(context, retryCount, maxGuardrailRetries, delaySeconds);
+        }
     }
 
     private boolean yieldsToBackupRail(AgentCallbackContext context) {

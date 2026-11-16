@@ -32,6 +32,28 @@ import java.util.Map;
 class RoundLevelCompressorTest {
 
     @Test
+    void buildHeadTailTruncatedTextDoesNotSplitEmoji() {
+        RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
+        RoundLevelCompressor compressor = new RoundLevelCompressor(config, null);
+        // 🔴 spans two UTF-16 units; place it across a head-budget boundary.
+        String text = "a".repeat(19) + "🔴" + "b".repeat(80);
+        String truncated = compressor.buildHeadTailTruncatedText(text, 50);
+        for (int i = 0; i < truncated.length(); i++) {
+            char current = truncated.charAt(i);
+            if (Character.isHighSurrogate(current)) {
+                assertThat(i + 1 < truncated.length() && Character.isLowSurrogate(truncated.charAt(i + 1)))
+                        .as("high surrogate must be paired at index %s", i)
+                        .isTrue();
+            }
+            if (Character.isLowSurrogate(current)) {
+                assertThat(i > 0 && Character.isHighSurrogate(truncated.charAt(i - 1)))
+                        .as("low surrogate must be paired at index %s", i)
+                        .isTrue();
+            }
+        }
+    }
+
+    @Test
     void triggerGetContextWindowUsesTriggerTotalTokens() {
         RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
         config.setTriggerTotalTokens(100);

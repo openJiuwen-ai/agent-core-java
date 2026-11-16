@@ -149,6 +149,7 @@ class TaskExecutorPoolTest {
                 new CountDownLatch(1).await();
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
+                throw new CancellationException("Node interrupted");
             }
             return "cancelled";
         }, List.of());
@@ -279,6 +280,7 @@ class TaskExecutorPoolTest {
             Thread.sleep(millis);
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
+            throw new CancellationException("Node interrupted");
         }
     }
 }

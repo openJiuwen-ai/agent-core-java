@@ -41,6 +41,29 @@ public class WorkflowCommitState extends WorkflowStateCollection {
         workflowState.commit(null);
     }
 
+    /**
+     * Consumes a shared workflow value once across concurrent node states.
+     *
+     * @param key workflow state key
+     * @return the value before clearing, or {@code null} when already consumed
+     */
+    public Object popWorkflowState(String key) {
+        if (workflowState == null || key == null) {
+            return null;
+        }
+
+        // The commit state's transformer holds the same lock as reads and commits.
+        return workflowState.getByTransformer(ignored -> {
+            Object value = workflowState.get(key);
+            if (value != null) {
+                Map<String, Object> cleared = new HashMap<>();
+                cleared.put(key, null);
+                updateAndCommitWorkflowState(cleared);
+            }
+            return value;
+        });
+    }
+
     public void setOutputs(Map<String, Object> data) {
         if (ioState == null || data == null) {
             return;

@@ -1280,7 +1280,9 @@ public class ResourceMgr {
         List<BaseCard> resources = new ArrayList<>();
         for (String resourceId : resourceIds) {
             BaseCard card = idToCard.get(resourceId);
-            resources.add(card);
+            if (card != null) {
+                resources.add(card);
+            }
         }
         return resources;
     }
@@ -1396,9 +1398,14 @@ public class ResourceMgr {
     }
 
     private Result<?, ?> addOneMcpServer(McpServerConfig config, Collection<String> tag, Double expiryTime) {
+        if (config == null) {
+            return new ErrorResult<>(new IllegalArgumentException("MCP server config is required"));
+        }
+        structureLock.lock();
         try {
-            if (config != null) {
-                config.normalizeServerId();
+            config.normalizeServerId();
+            if (toolManager.getMcpServerConfig(config.getServerId()) != null) {
+                return new ErrorResult<>(new IllegalArgumentException("MCP server id already exists"));
             }
             List<McpToolCard> cards = join(toolManager.addToolServer(config, expiryTime));
             Collection<String> effectiveTags = effectiveTags(tag);
@@ -1408,8 +1415,10 @@ public class ResourceMgr {
             }
             tagManager.tagResource(config.getServerId(), effectiveTags);
             return new Ok<>(config.getServerId());
-        } catch (Exception exception) {
+        } catch (BaseError | CompletionException | IllegalArgumentException | IllegalStateException exception) {
             return new ErrorResult<>(exception);
+        } finally {
+            structureLock.unlock();
         }
     }
 

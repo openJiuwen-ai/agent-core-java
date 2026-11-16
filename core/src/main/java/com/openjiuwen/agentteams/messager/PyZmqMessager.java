@@ -7,6 +7,7 @@ package com.openjiuwen.agentteams.messager;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.agentteams.messager.TransportHandlerDispatcher.DispatchResult;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -24,9 +25,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -35,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 /**
@@ -56,6 +60,12 @@ public class PyZmqMessager implements Messager {
 
     private static final String REPLY_ROUTE_MARKER = ":reply:";
 
+    private static final String READINESS_EVENT = "__jiuwen_subscription_ready_v1";
+
+    private static final String READINESS_REQUEST = "__jiuwen_subscription_probe_v1";
+
+    private static final long READINESS_PROBE_INTERVAL_NANOS = TimeUnit.MILLISECONDS.toNanos(25L);
+
     private static final int COMMAND_QUEUE_CAPACITY = 1_024;
 
     private static final int POLL_TIMEOUT_MILLIS = 10;
@@ -63,6 +73,10 @@ public class PyZmqMessager implements Messager {
     private static final int POLLER_SOCKET_CAPACITY = 4;
 
     private static final int SOCKET_LINGER_MILLIS = 0;
+
+    private static final long MAX_DIRECT_HANDSHAKE_MILLIS = 30_000L;
+
+    private static final long MAX_STOP_DRAIN_MILLIS = 5_000L;
 
     private final MessagerTransportConfig config;
 
@@ -80,6 +94,10 @@ public class PyZmqMessager implements Messager {
 
     private final List<PendingSend> pendingSends = new ArrayList<>();
 
+    private final Map<String, PendingSubscription> pendingSubscriptions = new LinkedHashMap<>();
+
+    private final Map<DispatchResult, AtomicLong> topicDropCounts = new ConcurrentHashMap<>();
+
     private volatile boolean isRunning;
 
     private volatile boolean isStopRequested;
@@ -89,6 +107,10 @@ public class PyZmqMessager implements Messager {
     private volatile CompletableFuture<Void> stopFuture = CompletableFuture.completedFuture(null);
 
     private ExecutorService ioExecutor;
+
+    private TransportHandlerDispatcher handlerDispatcher;
+
+    private volatile long stopDeadlineNanos;
 
     private ZContext context;
 
@@ -138,6 +160,19 @@ public class PyZmqMessager implements Messager {
     }
 
     /**
+     * Return lifetime counts of topic messages rejected by this instance after receipt.
+     * PUB/SUB has no delivery acknowledgement; these counts do not include upstream network loss.
+     *
+     * @return immutable counts keyed by CLOSED, CAPACITY_EXHAUSTED, or SUBMISSION_REJECTED
+     * @since 2026-11-06
+     */
+    public Map<String, Long> getTopicDropCounts() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        topicDropCounts.forEach((reason, count) -> counts.put(reason.name(), count.get()));
+        return Map.copyOf(counts);
+    }
+
+    /**
      * Register or replace a direct-message route.
      *
      * @param peer peer identity and at least one routable endpoint
@@ -147,6 +182,10 @@ public class PyZmqMessager implements Messager {
     public void registerPeer(MessagerPeerConfig peer) {
         validatePeer(peer);
         peers.put(peer.getAgentId(), copyPeer(peer));
+    }
+
+    void unregisterPeer(String memberId) {
+        peers.remove(memberId);
     }
 
     /**
@@ -171,6 +210,8 @@ public class PyZmqMessager implements Messager {
 
     /**
      * Stop the I/O loop and deterministically close every socket and context.
+     * Already accepted handlers drain for a bounded interval before cancellation.
+     * Subsequent operations require an explicit {@link #start()}.
      *
      * @return future completed after transport resources are closed
      * @since 0.1.7
@@ -178,10 +219,14 @@ public class PyZmqMessager implements Messager {
     @Override
     public CompletableFuture<Void> stop() {
         synchronized (lifecycleLock) {
+            if (!isStopRequested) {
+                stopDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(
+                        Math.min(MAX_STOP_DRAIN_MILLIS, requestTimeoutMillis()));
+            }
+            isStopRequested = true;
             if (!isRunning) {
                 return CompletableFuture.completedFuture(null);
             }
-            isStopRequested = true;
             return stopFuture;
         }
     }
@@ -214,7 +259,8 @@ public class PyZmqMessager implements Messager {
      *
      * @param topicId topic identifier
      * @param handler asynchronous event handler
-     * @return future completed after the SUB filter is installed
+     * @return future completed after the SUB filter is installed; with metadata.subscription_barrier=true,
+     *     completion additionally requires a private probe to traverse the actual PUB/SUB path
      * @since 0.1.7
      */
     @Override
@@ -223,6 +269,9 @@ public class PyZmqMessager implements Messager {
             return failedFuture(new IllegalArgumentException("topicId is required"));
         }
         Objects.requireNonNull(handler, "handler is required");
+        if (config.getMetadata() != null && Boolean.TRUE.equals(config.getMetadata().get("subscription_barrier"))) {
+            return enqueue(result -> subscribeWithReadiness(topicId, handler, result));
+        }
         return enqueueImmediate(() -> subscribeOnIoThread(topicId, handler));
     }
 
@@ -324,6 +373,7 @@ public class PyZmqMessager implements Messager {
         startFuture = new CompletableFuture<>();
         stopFuture = new CompletableFuture<>();
         String threadSuffix = THREAD_NAME_UNSAFE.matcher(localNodeId).replaceAll("-");
+        handlerDispatcher = new TransportHandlerDispatcher(threadSuffix);
         ioExecutor = OpenJiuwenExecutors.newSingleThreadExecutor(
                 "agent-team-pyzmq-" + threadSuffix, true);
         ioExecutor.execute(this::runIoLoop);
@@ -333,11 +383,12 @@ public class PyZmqMessager implements Messager {
         try {
             initializeSockets();
             startFuture.complete(null);
-            while (!isStopRequested) {
+            while (!isStopRequested || shouldDrain()) {
                 drainCommands();
                 pollSockets();
                 receivePendingAcknowledgements();
                 expirePendingSends();
+                driveSubscriptionReadiness();
             }
         } catch (ZMQException | IllegalArgumentException | IllegalStateException transportException) {
             startFuture.completeExceptionally(transportException);
@@ -353,6 +404,11 @@ public class PyZmqMessager implements Messager {
                 finishIoLoop();
             }
         }
+    }
+
+    private boolean shouldDrain() {
+        return System.nanoTime() < stopDeadlineNanos
+                && (handlerDispatcher.hasPending() || !pendingSends.isEmpty() || !commandQueue.isEmpty());
     }
 
     private void initializeSockets() {
@@ -410,12 +466,8 @@ public class PyZmqMessager implements Messager {
     private void initializePubSubProxy() {
         proxyPublisher = createSocket(SocketType.XPUB);
         proxySubscriber = createSocket(SocketType.XSUB);
-        if (!proxyPublisher.bind(config.getPubsubSubscribeAddr())) {
-            throw new IllegalStateException("Failed to bind ZeroMQ subscription endpoint");
-        }
-        if (!proxySubscriber.bind(config.getPubsubPublishAddr())) {
-            throw new IllegalStateException("Failed to bind ZeroMQ publication endpoint");
-        }
+        config.setPubsubSubscribeAddr(bindAndResolve(proxyPublisher, config.getPubsubSubscribeAddr(), "subscription"));
+        config.setPubsubPublishAddr(bindAndResolve(proxySubscriber, config.getPubsubPublishAddr(), "publication"));
         proxyPublisherPollIndex = poller.register(proxyPublisher, ZMQ.Poller.POLLIN);
         proxySubscriberPollIndex = poller.register(proxySubscriber, ZMQ.Poller.POLLIN);
     }
@@ -433,8 +485,11 @@ public class PyZmqMessager implements Messager {
     }
 
     private void drainCommands() {
-        IoCommand command;
-        while ((command = commandQueue.poll()) != null) {
+        for (int count = 0; count < COMMAND_QUEUE_CAPACITY; count++) {
+            IoCommand command = commandQueue.poll();
+            if (command == null) {
+                break;
+            }
             executeCommand(command);
         }
     }
@@ -481,24 +536,29 @@ public class PyZmqMessager implements Messager {
         try {
             byte[] identity = frames.getFirst().getData();
             byte[] payload = frames.getLast().getData();
-            handleDirectPayload(payload);
+            boolean isAccepted = !isStopRequested && handleDirectPayload(payload);
             router.sendMore(identity);
-            router.send("ok");
+            router.send(isAccepted ? "ok" : "error:handler_unavailable");
         } finally {
             frames.destroy();
         }
     }
 
-    private void handleDirectPayload(byte[] payload) {
+    private boolean handleDirectPayload(byte[] payload) {
         try {
             WireEvent wireEvent = deserializeMessage(payload);
-            MessagerHandler handler = directHandlers.get(wireEvent.recipientId());
-            if (handler != null) {
-                dispatchHandler(handler, wireEvent.message(), "direct");
+            if (READINESS_REQUEST.equals(wireEvent.message().getEventType())) {
+                return localNodeId.equals(wireEvent.recipientId())
+                        && peers.containsKey(wireEvent.message().getSenderId())
+                        && respondToSubscriptionProbe(wireEvent.message());
             }
+            MessagerHandler handler = directHandlers.get(wireEvent.recipientId());
+            return handler == null
+                    || handlerDispatcher.dispatch(handler, wireEvent.message()) == DispatchResult.ACCEPTED;
         } catch (IOException ioException) {
             Loggers.AGENT.warn(
                     "PyZmq discarded an invalid direct message for node {}", localNodeId, ioException);
+            return false;
         }
     }
 
@@ -522,28 +582,29 @@ public class PyZmqMessager implements Messager {
         if (handler == null) {
             return;
         }
+        if (isStopRequested) {
+            recordTopicDrop(DispatchResult.CLOSED);
+            return;
+        }
         try {
-            dispatchHandler(handler, deserializeMessage(payload).message(), "topic");
+            EventMessage message = deserializeMessage(payload).message();
+            if (READINESS_EVENT.equals(message.getEventType())) {
+                completeSubscriptionReadiness(topic, message);
+                return;
+            }
+            DispatchResult result = handlerDispatcher.dispatch(handler, message);
+            if (result != DispatchResult.ACCEPTED) {
+                recordTopicDrop(result);
+            }
         } catch (IOException ioException) {
             Loggers.AGENT.warn("PyZmq discarded an invalid topic message on {}", topic, ioException);
         }
     }
 
-    private void dispatchHandler(MessagerHandler handler, EventMessage message, String routeType) {
-        CompletableFuture.runAsync(() -> {
-            CompletableFuture<Void> handlerFuture = handler.handle(message);
-            handlerFuture.whenComplete((ignored, throwable) -> {
-                if (throwable != null) {
-                    Loggers.AGENT.warn(
-                            "PyZmq {} handler failed for node {}", routeType, localNodeId, throwable);
-                }
-            });
-        }, OpenJiuwenExecutors.backgroundExecutor()).whenComplete((ignored, throwable) -> {
-            if (throwable != null) {
-                Loggers.AGENT.warn(
-                        "PyZmq {} handler invocation failed for node {}", routeType, localNodeId, throwable);
-            }
-        });
+    private void recordTopicDrop(DispatchResult reason) {
+        long count = topicDropCounts.computeIfAbsent(reason, ignored -> new AtomicLong()).incrementAndGet();
+        Loggers.AGENT.warn("PyZmq topic message dropped for node {}, reason={}, dropped_count={}",
+                localNodeId, reason, count);
     }
 
     private void forwardMultipart(ZMQ.Socket source, ZMQ.Socket target) {
@@ -569,9 +630,21 @@ public class PyZmqMessager implements Messager {
                 continue;
             }
             closeSocket(pending.socket());
-            pending.future().complete(null);
+            String response = new String(acknowledgement, StandardCharsets.UTF_8);
+            if (response.startsWith("error:")) {
+                pending.future().completeExceptionally(acknowledgementFailure(response, pending.diagnostic()));
+            } else {
+                pending.future().complete(null);
+            }
             iterator.remove();
         }
+    }
+
+    private static IllegalStateException acknowledgementFailure(String response, String diagnostic) {
+        if ("error:handler_unavailable".equals(response)) {
+            return new PeerUnavailableException(diagnostic);
+        }
+        return new IllegalStateException("ZeroMQ peer rejected delivery: " + diagnostic);
     }
 
     private void expirePendingSends() {
@@ -579,12 +652,13 @@ public class PyZmqMessager implements Messager {
         Iterator<PendingSend> iterator = pendingSends.iterator();
         while (iterator.hasNext()) {
             PendingSend pending = iterator.next();
-            if (now < pending.deadlineNanos()) {
+            if (now < pending.deadlineNanos() && !pending.future().isDone()) {
                 continue;
             }
             closeSocket(pending.socket());
             pending.future().completeExceptionally(
-                    new TimeoutException("Timed out waiting for ZeroMQ transport acknowledgement"));
+                    new TimeoutException("Timed out waiting for ZeroMQ transport acknowledgement: "
+                            + pending.diagnostic()));
             iterator.remove();
         }
     }
@@ -613,6 +687,11 @@ public class PyZmqMessager implements Messager {
     }
 
     private void unsubscribeOnIoThread(String topicId) {
+        PendingSubscription pending = pendingSubscriptions.remove(topicId);
+        if (pending != null) {
+            pending.requests.values().forEach(request -> request.cancel(false));
+            pending.future.completeExceptionally(new IllegalStateException("ZeroMQ subscription was removed"));
+        }
         if (topicHandlers.remove(topicId) != null && subscriber != null) {
             subscriber.unsubscribe(topicId);
         }
@@ -621,9 +700,11 @@ public class PyZmqMessager implements Messager {
     private void sendOnIoThread(String agentId, byte[] payload, CompletableFuture<Void> result) {
         MessagerPeerConfig peer = resolvePeer(agentId);
         ZMQ.Socket dealer = createSocket(SocketType.DEALER);
+        String messageId = UUID.randomUUID().toString();
         try {
-            String identity = localNodeId + ":" + UUID.randomUUID();
+            String identity = localNodeId + ":" + messageId;
             dealer.setIdentity(identity.getBytes(StandardCharsets.UTF_8));
+            configureDirectHandshake(dealer);
             connectOrThrow(dealer, peer.getAddrs().get(0));
             if (!dealer.send(payload)) {
                 throw new IllegalStateException("Failed to send ZeroMQ direct event");
@@ -633,8 +714,23 @@ public class PyZmqMessager implements Messager {
         }
         long timeoutMillis = requestTimeoutMillis();
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        pendingSends.add(new PendingSend(dealer, result, deadline));
+        pendingSends.add(new PendingSend(dealer, result, deadline, "phase=ack, message=" + messageId
+                + ", from=" + safeNodeId(localNodeId) + ", to=" + safeNodeId(agentId)
+                + ", request_timeout_ms=" + timeoutMillis + ", handshake_timeout_ms=" + directHandshakeMillis()));
         Loggers.AGENT.debug("PyZmq sent direct event from {} to {}", localNodeId, agentId);
+    }
+
+    private void configureDirectHandshake(ZMQ.Socket dealer) {
+        // JeroMQ otherwise waits 30 seconds for a greeting, longer than a typical send deadline.
+        // Reconnect the same pending socket before expiry; never replay an acknowledged application message.
+        if (!dealer.setHandshakeIvl(directHandshakeMillis())) {
+            throw new IllegalStateException("Failed to configure ZeroMQ direct handshake timeout");
+        }
+    }
+
+    private int directHandshakeMillis() {
+        // Reserve part of short request budgets for reconnection without lengthening JeroMQ's default.
+        return (int) Math.max(1L, Math.min(MAX_DIRECT_HANDSHAKE_MILLIS, requestTimeoutMillis() / 3L));
     }
 
     private IllegalStateException closeFailedDealer(ZMQ.Socket dealer, RuntimeException transportException) {
@@ -706,22 +802,29 @@ public class PyZmqMessager implements Messager {
     }
 
     private CompletableFuture<Void> enqueue(IoAction action) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        start().whenComplete((ignored, throwable) -> enqueueAfterStart(action, result, throwable));
-        return result;
+        synchronized (lifecycleLock) {
+            if (isStopRequested) {
+                return failedFuture(new IllegalStateException("PyZmq transport stopped; call start() explicitly"));
+            }
+            CompletableFuture<Void> result = new CompletableFuture<>();
+            start().whenComplete((ignored, throwable) -> enqueueAfterStart(action, result, throwable));
+            return result;
+        }
     }
 
     private void enqueueAfterStart(IoAction action, CompletableFuture<Void> result, Throwable startFailure) {
-        if (startFailure != null) {
-            result.completeExceptionally(startFailure);
-            return;
-        }
-        if (isStopRequested) {
-            result.completeExceptionally(new IllegalStateException("PyZmq transport is stopping"));
-            return;
-        }
-        if (!commandQueue.offer(new IoCommand(action, result))) {
-            result.completeExceptionally(new IllegalStateException("PyZmq transport command queue is full"));
+        synchronized (lifecycleLock) {
+            if (startFailure != null) {
+                result.completeExceptionally(startFailure);
+                return;
+            }
+            if (!isRunning || isStopRequested) {
+                result.completeExceptionally(new IllegalStateException("PyZmq transport is stopping"));
+                return;
+            }
+            if (!commandQueue.offer(new IoCommand(action, result))) {
+                result.completeExceptionally(new IllegalStateException("PyZmq transport command queue is full"));
+            }
         }
     }
 
@@ -773,6 +876,7 @@ public class PyZmqMessager implements Messager {
         closePollerSafely(closeFailures);
         closeContextSafely(closeFailures);
         clearIoFields();
+        handlerDispatcher.close(stopDeadlineNanos);
         throwCloseFailure(closeFailures);
     }
 
@@ -787,6 +891,8 @@ public class PyZmqMessager implements Messager {
             pending.future().completeExceptionally(stopped);
         }
         pendingSends.clear();
+        pendingSubscriptions.values().forEach(pending -> pending.future.completeExceptionally(stopped));
+        pendingSubscriptions.clear();
     }
 
     private void closeSocketSafely(ZMQ.Socket socket, List<RuntimeException> closeFailures) {
@@ -852,7 +958,7 @@ public class PyZmqMessager implements Messager {
             ExecutorService completedExecutor = ioExecutor;
             ioExecutor = null;
             isRunning = false;
-            isStopRequested = false;
+            isStopRequested = true;
             if (!startFuture.isDone()) {
                 startFuture.completeExceptionally(new IllegalStateException("PyZmq transport failed to start"));
             }
@@ -879,6 +985,162 @@ public class PyZmqMessager implements Messager {
 
     private boolean isPubSubBroker() {
         return config.getMetadata() != null && Boolean.TRUE.equals(config.getMetadata().get("pubsub_bind"));
+    }
+
+    private void subscribeWithReadiness(String topicId, MessagerHandler handler, CompletableFuture<Void> result) {
+        subscribeOnIoThread(topicId, handler);
+        PendingSubscription previous = pendingSubscriptions.remove(topicId);
+        if (previous != null) {
+            previous.requests.values().forEach(request -> request.cancel(false));
+            previous.future.completeExceptionally(new IllegalStateException("ZeroMQ subscription was replaced"));
+        }
+        String nonce = UUID.randomUUID().toString();
+        EventMessage probe = EventMessage.builder().eventType(READINESS_EVENT).senderId(localNodeId)
+                .payload(Map.of("nonce", nonce, "subscriber", localNodeId)).build();
+        try {
+            byte[] payload = serializeMessage(probe, null);
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(requestTimeoutMillis());
+            Set<String> publishers = new LinkedHashSet<>();
+            publishers.add(localNodeId);
+            peers.values().stream().filter(peer -> peer.getMetadata() != null
+                    && Boolean.TRUE.equals(peer.getMetadata().get("readiness_publisher")))
+                    .map(MessagerPeerConfig::getAgentId).forEach(publishers::add);
+            pendingSubscriptions.put(topicId, new PendingSubscription(nonce, payload, deadline, result, publishers));
+        } catch (JsonProcessingException failure) {
+            result.completeExceptionally(new IllegalStateException("Cannot encode ZeroMQ readiness probe", failure));
+        }
+    }
+
+    private void driveSubscriptionReadiness() {
+        long now = System.nanoTime();
+        Iterator<Map.Entry<String, PendingSubscription>> iterator = pendingSubscriptions.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, PendingSubscription> entry = iterator.next();
+            PendingSubscription pending = entry.getValue();
+            pending.publishers.removeIf(peer -> !localNodeId.equals(peer) && !peers.containsKey(peer));
+            if (pending.publishers.isEmpty()) {
+                pending.future.complete(null);
+            }
+            if (pending.future.isDone()) {
+                pending.requests.values().forEach(request -> request.cancel(false));
+                if (pending.future.isCompletedExceptionally()) {
+                    topicHandlers.remove(entry.getKey());
+                    subscriber.unsubscribe(entry.getKey());
+                }
+                iterator.remove();
+                continue;
+            }
+            if (now >= pending.deadlineNanos) {
+                TimeoutException failure = new TimeoutException("ZeroMQ subscription did not become ready");
+                if (pending.lastProbeFailure != null) {
+                    failure.initCause(pending.lastProbeFailure);
+                }
+                pending.future.completeExceptionally(failure);
+                pending.requests.values().forEach(request -> request.cancel(false));
+                iterator.remove();
+                topicHandlers.remove(entry.getKey());
+                subscriber.unsubscribe(entry.getKey());
+                continue;
+            }
+            if (now >= pending.nextProbeNanos && !isStopRequested) {
+                sendSubscriptionProbes(entry.getKey(), pending);
+                pending.nextProbeNanos = now + READINESS_PROBE_INTERVAL_NANOS;
+            }
+        }
+    }
+
+    private void sendSubscriptionProbes(String topic, PendingSubscription pending) {
+        if (pending.publishers.contains(localNodeId)) {
+            publishOnIoThread(topic, pending.payload);
+        }
+        for (String peer : List.copyOf(pending.publishers)) {
+            if (!localNodeId.equals(peer)) {
+                requestSubscriptionProbe(peer, topic, pending);
+            }
+        }
+    }
+
+    private void completeSubscriptionReadiness(String topic, EventMessage message) {
+        PendingSubscription pending = pendingSubscriptions.get(topic);
+        if (pending != null && localNodeId.equals(message.getPayload().get("subscriber"))
+                && pending.nonce.equals(message.getPayload().get("nonce"))) {
+            pending.publishers.remove(message.getSenderId());
+            if (pending.publishers.isEmpty()) {
+                pendingSubscriptions.remove(topic);
+                pending.requests.values().forEach(request -> request.cancel(false));
+                pending.future.complete(null);
+            }
+        }
+    }
+
+    private void requestSubscriptionProbe(String peer, String topic, PendingSubscription pending) {
+        CompletableFuture<Void> previous = pending.requests.get(peer);
+        if (previous != null && !previous.isDone()) {
+            return;
+        }
+        CompletableFuture<Void> acknowledgement = new CompletableFuture<>();
+        pending.requests.put(peer, acknowledgement);
+        acknowledgement.whenComplete((ignored, failure) -> {
+            if (failure != null && !acknowledgement.isCancelled()) {
+                if (failure instanceof PeerUnavailableException || failure instanceof TimeoutException) {
+                    pending.lastProbeFailure = failure;
+                } else {
+                    pending.future.completeExceptionally(failure);
+                }
+            }
+        });
+        EventMessage request = EventMessage.builder().eventType(READINESS_REQUEST).senderId(localNodeId)
+                .payload(Map.of("nonce", pending.nonce, "subscriber", localNodeId, "topic", topic)).build();
+        try {
+            sendOnIoThread(peer, serializeMessage(request, peer), acknowledgement);
+        } catch (JsonProcessingException | IllegalArgumentException | IllegalStateException | ZMQException failure) {
+            acknowledgement.completeExceptionally(failure);
+        }
+    }
+
+    private boolean respondToSubscriptionProbe(EventMessage request) throws JsonProcessingException {
+        Map<String, Object> payload = request.getPayload();
+        if (publisher == null || payload == null) {
+            return false;
+        }
+        Object nonce = payload.get("nonce");
+        Object subscriberId = payload.get("subscriber");
+        Object topic = payload.get("topic");
+        if (!(nonce instanceof String) || !(subscriberId instanceof String) || !(topic instanceof String topicId)) {
+            return false;
+        }
+        EventMessage probe = EventMessage.builder().eventType(READINESS_EVENT).senderId(localNodeId)
+                .payload(Map.of("nonce", nonce, "subscriber", subscriberId)).build();
+        publishOnIoThread(topicId, serializeMessage(probe, null));
+        return true;
+    }
+
+    private static final class PendingSubscription {
+        private final String nonce;
+        private final byte[] payload;
+        private final long deadlineNanos;
+        private final CompletableFuture<Void> future;
+        private final Set<String> publishers;
+        private final Map<String, CompletableFuture<Void>> requests = new LinkedHashMap<>();
+        private Throwable lastProbeFailure;
+        private long nextProbeNanos;
+
+        private PendingSubscription(String nonce, byte[] payload, long deadlineNanos,
+                CompletableFuture<Void> future, Set<String> publishers) {
+            this.nonce = nonce;
+            this.payload = payload;
+            this.deadlineNanos = deadlineNanos;
+            this.future = future;
+            this.publishers = publishers;
+        }
+    }
+
+    private static final class PeerUnavailableException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
+
+        private PeerUnavailableException(String diagnostic) {
+            super("ZeroMQ peer rejected delivery: " + diagnostic);
+        }
     }
 
     private static byte[] serializeMessage(EventMessage message, String recipientId)
@@ -950,6 +1212,11 @@ public class PyZmqMessager implements Messager {
         return isBlank(configuredNodeId) ? UUID.randomUUID().toString() : configuredNodeId;
     }
 
+    private static String safeNodeId(String nodeId) {
+        String bounded = nodeId.substring(0, Math.min(nodeId.length(), 64));
+        return THREAD_NAME_UNSAFE.matcher(bounded).replaceAll("-");
+    }
+
     private static String stringValue(Object value) {
         return value != null ? String.valueOf(value) : "";
     }
@@ -975,7 +1242,8 @@ public class PyZmqMessager implements Messager {
     private record IoCommand(IoAction action, CompletableFuture<Void> future) {
     }
 
-    private record PendingSend(ZMQ.Socket socket, CompletableFuture<Void> future, long deadlineNanos) {
+    private record PendingSend(ZMQ.Socket socket, CompletableFuture<Void> future, long deadlineNanos,
+            String diagnostic) {
     }
 
     private record WireEvent(String recipientId, EventMessage message) {

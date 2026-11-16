@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggingUtils;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
@@ -14,6 +15,8 @@ import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.interaction.SimpleAgentInteraction;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
+import com.openjiuwen.core.session.stream.TraceSchema;
+import com.openjiuwen.core.session.stream.CustomSchema;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -165,6 +168,15 @@ public class AgentSession implements AgentSessionApi {
 
     @Override
     public void writeStream(Object data) {
+        if (data instanceof TraceSchema trace && !(data instanceof OutputSchema)) {
+            triggerWriteStream(trace);
+            inner.streamWriterManager().getTraceWriter().write(trace);
+            return;
+        }
+        if (data instanceof CustomSchema custom) {
+            writeCustomStream(custom);
+            return;
+        }
         OutputSchema streamData = normalizeOutput(tagStreamPayload(data));
         triggerWriteStream(streamData);
         inner.streamWriterManager().getOutputWriter().write(streamData);
@@ -179,6 +191,29 @@ public class AgentSession implements AgentSessionApi {
     @Override
     public Iterator<Object> streamIterator() {
         return inner.streamWriterManager().streamIterator();
+    }
+
+    @Override
+    public Iterator<Object> streamIterator(RuntimeException failure) {
+        Iterator<Object> iterator = inner.streamWriterManager().streamIterator(failure);
+        closeStream();
+        return iterator;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long renewModelCallTimeout(long leaseId, long idleTimeoutMs, long delayMs) {
+        return inner.streamWriterManager().renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void endModelCallTimeout(long leaseId) {
+        inner.streamWriterManager().endModelCallTimeout(leaseId);
     }
 
     @Override
@@ -200,6 +235,8 @@ public class AgentSession implements AgentSessionApi {
         if (preRunDone) {
             return this;
         }
+        // Bind logging trace_id so concurrent sessions can be distinguished in MDC.
+        LoggingUtils.setSessionId(getSessionId());
         Map<String, Object> callbackKwargs = new LinkedHashMap<>();
         callbackKwargs.put("session_id", getSessionId());
         callbackKwargs.put("card", card);
@@ -242,12 +279,17 @@ public class AgentSession implements AgentSessionApi {
         if (postRunDone) {
             return this;
         }
-        if (closeStreamOnPostRun) {
-            closeStream();
+        try {
+            commit();
+            postRunDone = true;
+            return this;
+        } finally {
+            // Restore default so pooled threads do not leak the prior session id.
+            LoggingUtils.setSessionId();
+            if (closeStreamOnPostRun) {
+                closeStream();
+            }
         }
-        commit();
-        postRunDone = true;
-        return this;
     }
 
     @Override

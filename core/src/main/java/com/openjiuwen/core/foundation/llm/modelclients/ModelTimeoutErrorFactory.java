@@ -11,11 +11,13 @@ import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification
 import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 
+import java.net.SocketTimeoutException;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpTimeoutException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Builds the tiered timeout error surface ({@code MODEL_CALL_TIMEOUT}) with the
@@ -27,6 +29,7 @@ final class ModelTimeoutErrorFactory {
     private static final String LAYER_CONNECT = "connect";
     private static final String LAYER_HEADER_WAIT = "header_wait";
     private static final String LAYER_STREAM_IDLE = "stream_idle";
+    private static final int MAX_CHAIN_DEPTH = 32;
 
     private ModelTimeoutErrorFactory() {
     }
@@ -70,6 +73,40 @@ final class ModelTimeoutErrorFactory {
     static BaseError idleTimeoutError(TimeoutPhase phase, double timeoutSeconds, boolean isStreaming,
             Throwable cause) {
         return timeoutError(phase, LAYER_STREAM_IDLE, timeoutSeconds, isStreaming, cause);
+    }
+
+    /**
+     * Classifies a timeout raised by a delegated transport (for example an IntelliRouter
+     * driver). JDK send-stage failures reuse the send-stage mapping; idle markers keep their
+     * measured window; other socket-level timeouts surface as BEFORE_FIRST_SEGMENT/header_wait
+     * because a delegated transport does not expose finer phase information.
+     *
+     * @param error failure thrown by the delegated transport
+     * @param isStreaming true for streaming calls
+     * @param config model client config for effective timeout values
+     * @return the tiered timeout error, or empty when the failure is not a timeout
+     */
+    static Optional<BaseError> fromDelegatedTransportException(Throwable error, boolean isStreaming,
+            ModelClientConfig config) {
+        Optional<BaseError> sendStage = fromSendException(error, isStreaming, config);
+        if (sendStage.isPresent()) {
+            return sendStage;
+        }
+        Throwable cursor = error;
+        int depth = 0;
+        while (cursor != null && depth < MAX_CHAIN_DEPTH) {
+            if (cursor instanceof IdleTimeoutIOException idleTimeout) {
+                return Optional.of(idleTimeoutError(TimeoutPhase.BEFORE_FIRST_SEGMENT,
+                        idleTimeout.idleSeconds(), isStreaming, error));
+            }
+            if (cursor instanceof SocketTimeoutException || cursor instanceof TimeoutException) {
+                return Optional.of(timeoutError(TimeoutPhase.BEFORE_FIRST_SEGMENT, LAYER_HEADER_WAIT,
+                        ModelTimeoutResolver.resolveHeaderWaitSeconds(config), isStreaming, error));
+            }
+            cursor = cursor.getCause();
+            depth++;
+        }
+        return Optional.empty();
     }
 
     private static BaseError timeoutError(TimeoutPhase phase, String layer, double timeoutSeconds,

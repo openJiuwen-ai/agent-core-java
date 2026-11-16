@@ -183,6 +183,8 @@
             - [CurrentRoundCompressorConfig](2.开发指南/API文档/com.openjiuwen.core/context/processor/compressor/CurrentRoundCompressorConfig.md)
             - [DialogueCompressor](2.开发指南/API文档/com.openjiuwen.core/context/processor/compressor/DialogueCompressor.md)
             - [DialogueCompressorConfig](2.开发指南/API文档/com.openjiuwen.core/context/processor/compressor/DialogueCompressorConfig.md)
+            - [MultimodalHistoryCompactor](2.开发指南/API文档/com.openjiuwen.core/context/processor/compressor/MultimodalHistoryCompactor.md)
+            - [MultimodalHistoryCompactorConfig](2.开发指南/API文档/com.openjiuwen.core/context/processor/compressor/MultimodalHistoryCompactorConfig.md)
             - [RoundLevelCompressor](2.开发指南/API文档/com.openjiuwen.core/context/processor/compressor/RoundLevelCompressor.md)
             - [RoundLevelCompressorConfig](2.开发指南/API文档/com.openjiuwen.core/context/processor/compressor/RoundLevelCompressorConfig.md)
           - [offloader](2.开发指南/API文档/com.openjiuwen.core/context/processor/offloader.README.md)

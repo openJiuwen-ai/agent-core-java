@@ -187,12 +187,12 @@ public final class MessageHandlerUtils {
         if (agentContext == null) {
             return true;
         }
-        List<BaseMessage> lastMessageList = agentContext.getMessages(1, true);
-        if (lastMessageList == null || lastMessageList.isEmpty()) {
+        // Peek the physical tail — sized getMessages(1) is tool-group aligned
+        // and would hide a trailing ToolMessage needed for the post-tool skip.
+        BaseMessage lastMessage = agentContext.peekLastMessage();
+        if (lastMessage == null) {
             return true;
         }
-
-        BaseMessage lastMessage = lastMessageList.get(0);
         if ("tool".equals(lastMessage.getRole())) {
             LOG.info("Skipping user message - post-tool-call request");
             return false;

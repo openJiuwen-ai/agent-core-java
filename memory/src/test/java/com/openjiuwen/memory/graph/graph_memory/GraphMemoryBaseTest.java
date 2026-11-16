@@ -118,6 +118,12 @@ class GraphMemoryBaseTest {
         existing.setUserId("user-1");
         existing.setValidSince((int) LocalDateTime.now().minusDays(1).toEpochSecond(ZoneOffset.UTC));
         store.addEpisode(List.of(existing), false, false, true);
+        Episode otherUser = new Episode();
+        otherUser.setUuid("foreign-episode");
+        otherUser.setUserId("user-2");
+        otherUser.setContent("private conversation of another user");
+        otherUser.setValidSince(existing.getValidSince());
+        store.addEpisode(List.of(otherUser), false, false, true);
 
         Method initState = GraphMemory.class.getDeclaredMethod("initState", Object.class);
         initState.setAccessible(true);
@@ -142,6 +148,7 @@ class GraphMemoryBaseTest {
 
         assertThat(content).contains("hello");
         assertThat(state.getHistory()).contains("previous conversation");
+        assertThat(state.getHistory()).doesNotContain("private conversation of another user");
     }
 
     @Test

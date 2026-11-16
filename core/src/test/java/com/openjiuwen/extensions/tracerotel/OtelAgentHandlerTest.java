@@ -6,6 +6,9 @@ package com.openjiuwen.extensions.tracerotel;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.session.tracer.InvokeType;
 import com.openjiuwen.core.session.tracer.NodeStatus;
 import com.openjiuwen.core.session.tracer.SpanManager;
@@ -21,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -153,6 +157,104 @@ class OtelAgentHandlerTest {
             assertThat(s.getStatus().getStatusCode()).isEqualTo(io.opentelemetry.api.trace.StatusCode.ERROR);
             String ojError = s.getAttributes().get(AttributeKey.stringKey(SemConv.OJ_ERROR));
             assertThat(ojError).contains(String.valueOf(StatusCode.WORKFLOW_EXECUTION_ERROR.getCode()));
+        }
+
+        @Test
+        @DisplayName("default naming strategy keeps legacy llm.<model> span name")
+        void testLlmSpanNameDefaultIsModelBased() {
+            String previous = System.setProperty("openjiuwen.otel.llm-span-name", "model");
+            try {
+                OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+                TraceAgentSpan span = newSpan();
+                handler.onLlmStart(span, Map.of("prompt", "hi"), instanceInfo("MyModel"));
+                handler.onLlmEnd(span, Map.of("content", "reply"));
+
+                SpanData s = firstSpan();
+                assertThat(s.getName()).isEqualTo("llm.MyModel");
+                assertThat(s.getAttributes().get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL)))
+                        .isEqualTo("MyModel");
+            } finally {
+                restoreProperty("openjiuwen.otel.llm-span-name", previous);
+            }
+        }
+
+        @Test
+        @DisplayName("fixed naming strategy renders llm.chat regardless of model")
+        void testLlmSpanNameFixedMode() {
+            String previous = System.setProperty("openjiuwen.otel.llm-span-name", "fixed");
+            try {
+                OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+                TraceAgentSpan spanA = newSpan();
+                handler.onLlmStart(spanA, Map.of("prompt", "hi"), instanceInfo("ModelA"));
+                handler.onLlmEnd(spanA, Map.of("content", "reply"));
+
+                TraceAgentSpan spanB = newSpan();
+                handler.onLlmStart(spanB, Map.of("prompt", "hi"), instanceInfo("ModelB"));
+                handler.onLlmEnd(spanB, Map.of("content", "reply"));
+
+                List<SpanData> spans = ConftestOtel.EXPORTER.getFinishedSpanItems();
+                assertThat(spans).hasSize(2);
+                assertThat(spans.get(0).getName()).isEqualTo("llm.chat");
+                assertThat(spans.get(1).getName()).isEqualTo("llm.chat");
+                // Model identity must remain on the attribute, not the span name.
+                assertThat(spans.get(0).getAttributes()
+                        .get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL))).isEqualTo("ModelA");
+                assertThat(spans.get(1).getAttributes()
+                        .get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL))).isEqualTo("ModelB");
+            } finally {
+                restoreProperty("openjiuwen.otel.llm-span-name", previous);
+            }
+        }
+
+        @Test
+        @DisplayName("fixed naming with empty class_name still renders llm.chat")
+        void testLlmSpanNameFixedModeEmptyClassName() {
+            String previous = System.setProperty("openjiuwen.otel.llm-span-name", "FIXED");
+            try {
+                OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+                TraceAgentSpan span = newSpan();
+                handler.onLlmStart(span, Map.of("prompt", "hi"), null);
+                handler.onLlmEnd(span, Map.of("content", "reply"));
+
+                SpanData s = firstSpan();
+                assertThat(s.getName()).isEqualTo("llm.chat");
+            } finally {
+                restoreProperty("openjiuwen.otel.llm-span-name", previous);
+            }
+        }
+
+        @Test
+        @DisplayName("SecurityException while reading the property degrades to legacy naming")
+        void testLlmSpanNameSecurityExceptionFallsBackToLegacy() {
+            String previousProperty = System.setProperty("openjiuwen.otel.llm-span-name", "fixed");
+            Supplier<String> previousSupplier = OtelAgentHandler.spanNamePropertySupplier;
+            OtelAgentHandler.spanNamePropertySupplier = () -> {
+                throw new SecurityException("property read denied");
+            };
+            try {
+                OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+                TraceAgentSpan span = newSpan();
+                handler.onLlmStart(span, Map.of("prompt", "hi"), instanceInfo("MyModel"));
+                handler.onLlmEnd(span, Map.of("content", "reply"));
+
+                // The span must still be created (failure swallowed, not propagated)
+                // and fall back to the legacy model-based naming.
+                SpanData s = firstSpan();
+                assertThat(s.getName()).isEqualTo("llm.MyModel");
+                assertThat(s.getAttributes().get(AttributeKey.stringKey(SemConv.GEN_AI_REQUEST_MODEL)))
+                        .isEqualTo("MyModel");
+            } finally {
+                OtelAgentHandler.spanNamePropertySupplier = previousSupplier;
+                restoreProperty("openjiuwen.otel.llm-span-name", previousProperty);
+            }
+        }
+
+        private void restoreProperty(String key, String previous) {
+            if (previous == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, previous);
+            }
         }
     }
 
@@ -441,6 +543,247 @@ class OtelAgentHandlerTest {
             // Should not throw and should not produce a span
             handler.onLlmEnd(span, Map.of("content", "reply"));
             assertThat(ConftestOtel.EXPORTER.getFinishedSpanItems()).isEmpty();
+        }
+    }
+
+    // ================================================================
+    // Usage, cost and latency attributes
+    // ================================================================
+
+    @Nested
+    @DisplayName("Response attributes")
+    class TestResponseAttributes {
+
+        private SpanData endWithUsage(OtelAgentHandler handler, TraceAgentSpan span,
+                                      UsageMetadata usage, String finishReason) {
+            AssistantMessage message = AssistantMessage.builder()
+                    .content("reply")
+                    .finishReason(finishReason)
+                    .usageMetadata(usage)
+                    .build();
+            handler.onLlmStart(span, Map.of("prompt", "hi"), instanceInfo("MyModel"));
+            handler.onLlmEnd(span, message);
+            return firstSpan();
+        }
+
+        @Test
+        @DisplayName("token counts are written under both legacy and current GenAI keys")
+        void testTokenKeysWrittenBothWays() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().inputTokens(11).outputTokens(7).totalTokens(18).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_PROMPT_TOKENS)))
+                    .isEqualTo(11L);
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_INPUT_TOKENS)))
+                    .isEqualTo(11L);
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_COMPLETION_TOKENS)))
+                    .isEqualTo(7L);
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_OUTPUT_TOKENS)))
+                    .isEqualTo(7L);
+        }
+
+        @Test
+        @DisplayName("missing token fields are not reported as zero")
+        void testMissingTokenFieldsStayAbsent() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(), UsageMetadata.builder().build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_PROMPT_TOKENS)))
+                    .isNull();
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_COMPLETION_TOKENS)))
+                    .isNull();
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_TOTAL_TOKENS)))
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("explicit zero token counts remain distinct from missing fields")
+        void testExplicitZeroTokenCountsRemainPresent() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().inputTokens(0).totalTokens(0).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_INPUT_TOKENS)))
+                    .isZero();
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_TOTAL_TOKENS)))
+                    .isZero();
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_OUTPUT_TOKENS)))
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("actual response model is written without requiring usage")
+        void testResponseModelDoesNotRequireUsage() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            TraceAgentSpan span = newSpan();
+            handler.onLlmStart(span, Map.of("prompt", "hi"), instanceInfo("MyModel"));
+
+            handler.onLlmEnd(span, AssistantMessage.builder()
+                    .content("reply")
+                    .responseModel("routed-actual-model")
+                    .build());
+
+            assertThat(firstSpan().getAttributes().get(AttributeKey.stringKey(SemConv.GEN_AI_RESPONSE_MODEL)))
+                    .isEqualTo("routed-actual-model");
+        }
+
+        @Test
+        @DisplayName("cache read tokens are reported when the provider sent them")
+        void testCacheReadTokens() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().inputTokens(100).outputTokens(5).cacheTokens(64).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS)))
+                    .isEqualTo(64L);
+        }
+
+        @Test
+        @DisplayName("cache read attribute is omitted when no cache hit was reported")
+        void testCacheReadOmittedWhenZero() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().inputTokens(10).outputTokens(5).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS)))
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("costs are written only when non-zero")
+        void testCostAttributesSkipZero() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder()
+                            .inputTokens(10).outputTokens(5)
+                            .inputCost(0.0021d).outputCost(0.0d).totalCost(0.0021d)
+                            .build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(SemConv.OJ_GEN_AI_USAGE_INPUT_COST)))
+                    .isEqualTo(0.0021d);
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(SemConv.OJ_GEN_AI_USAGE_OUTPUT_COST)))
+                    .isNull();
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(SemConv.OJ_GEN_AI_USAGE_TOTAL_COST)))
+                    .isEqualTo(0.0021d);
+        }
+
+        @Test
+        @DisplayName("TTFT goes to the project key and never to the standard first-chunk key")
+        void testTtftUsesProjectKey() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().outputTokens(5).ttftSeconds(0.35d).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(
+                    SemConv.OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS)))
+                    .isEqualTo(350.0d);
+            // The standard key measures the first chunk of any kind, which this
+            // handler cannot observe; writing TTFT there would be a silent
+            // semantics substitution.
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(
+                    SemConv.GEN_AI_RESPONSE_TIME_TO_FIRST_CHUNK)))
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("total latency is converted from seconds to milliseconds")
+        void testTotalLatencyConverted() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().outputTokens(5).totalLatency(1.5d).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(
+                    SemConv.OJ_GEN_AI_RESPONSE_TOTAL_LATENCY_MS)))
+                    .isEqualTo(1500.0d);
+        }
+
+        @Test
+        @DisplayName("reasoning duration and retry count are reported when measured")
+        void testReasoningDurationAndRetryCount() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder()
+                            .outputTokens(5)
+                            .reasoningDurationMs(880.0d)
+                            .retryCount(2)
+                            .build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(
+                    SemConv.OJ_GEN_AI_REASONING_DURATION_MS)))
+                    .isEqualTo(880.0d);
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.OJ_REQUEST_RETRY_COUNT)))
+                    .isEqualTo(2L);
+        }
+
+        @Test
+        @DisplayName("retry count is omitted when the call was not retried")
+        void testRetryCountOmittedWhenZero() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().outputTokens(5).retryCount(0).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.OJ_REQUEST_RETRY_COUNT)))
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("finish reason is written as both a scalar and a standard array")
+        void testFinishReasonsArray() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().outputTokens(5).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.stringKey(SemConv.GEN_AI_RESPONSE_FINISH_REASON)))
+                    .isEqualTo("stop");
+            assertThat(s.getAttributes().get(AttributeKey.stringArrayKey(
+                    SemConv.GEN_AI_RESPONSE_FINISH_REASONS)))
+                    .containsExactly("stop");
+        }
+
+        @Test
+        @DisplayName("latency attributes stay absent when nothing was measured")
+        void testLatencyAttributesOmittedWhenUnmeasured() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            SpanData s = endWithUsage(handler, newSpan(),
+                    UsageMetadata.builder().outputTokens(5).build(), "stop");
+
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(
+                    SemConv.OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS)))
+                    .isNull();
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(SemConv.OJ_GEN_AI_RESPONSE_TPOT_MS)))
+                    .isNull();
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(
+                    SemConv.OJ_GEN_AI_RESPONSE_TOTAL_LATENCY_MS)))
+                    .isNull();
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(
+                    SemConv.OJ_GEN_AI_REASONING_DURATION_MS)))
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("usage is resolved from a streamed chunk list")
+        void testUsageResolvedFromChunkList() {
+            OtelAgentHandler handler = new OtelAgentHandler(ConftestOtel.OTEL_TRACER, config);
+            TraceAgentSpan span = newSpan();
+            handler.onLlmStart(span, Map.of("prompt", "hi"), instanceInfo("MyModel"));
+
+            AssistantMessageChunk first = AssistantMessageChunk.builder().content("he").build();
+            AssistantMessageChunk last = AssistantMessageChunk.builder()
+                    .content("llo")
+                    .usageMetadata(UsageMetadata.builder()
+                            .inputTokens(9).outputTokens(3)
+                            .ttftSeconds(0.2d)
+                            .build())
+                    .build();
+            handler.onLlmEnd(span, Map.of("outputs", List.of(first, last)));
+
+            SpanData s = firstSpan();
+            assertThat(s.getAttributes().get(AttributeKey.longKey(SemConv.GEN_AI_USAGE_INPUT_TOKENS)))
+                    .isEqualTo(9L);
+            assertThat(s.getAttributes().get(AttributeKey.doubleKey(
+                    SemConv.OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS)))
+                    .isEqualTo(200.0d);
         }
     }
 }

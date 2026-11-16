@@ -103,11 +103,87 @@ class RuleBasedModelErrorClassifierTest {
     }
 
     @Test
+    void parse_ssePrefixedError_extractsCodeAndMessage() {
+        ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
+            "data: {\"error\":{\"message\":\"Range of input length should be [1, 8192]\","
+                + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
+            .orElseThrow();
+
+        assertThat(parsed.code()).isEqualTo("invalid_parameter_error");
+        assertThat(parsed.message()).contains("Range of input length");
+    }
+
+    @Test
+    void classify_inputLengthRange_isContextLengthExceeded() {
+        ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
+            "{\"error\":{\"message\":\"<400> InternalError.Algo.InvalidParameter: "
+                + "Range of input length should be [1, 8192]\","
+                + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
+            .orElseThrow();
+        ModelCallClassification result = classifier.classify(invalidParameterFacts(parsed));
+
+        assertThat(parsed.code()).isEqualTo("invalid_parameter_error");
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+        assertThat(result.isRetryable()).isFalse();
+    }
+
+    @Test
+    void classify_inputLengthWordingWithoutExactKeyword_isContextLengthExceeded() {
+        ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
+            "{\"error\":{\"message\":\"input length is too large\","
+                + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
+            .orElseThrow();
+        ModelCallClassification result = classifier.classify(invalidParameterFacts(parsed));
+
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+        assertThat(result.isRetryable()).isFalse();
+    }
+
+    @Test
+    void classify_otherInvalidParameter_isNotContextLength() {
+        ErrorBodyParser.ParsedError parsed = ErrorBodyParser.parse(
+            "{\"error\":{\"message\":\"wrong temperature value\","
+                + "\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter_error\"}}")
+            .orElseThrow();
+        ModelCallClassification result = classifier.classify(invalidParameterFacts(parsed));
+
+        assertThat(result.category()).isNotEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+    }
+
+    private static ModelErrorFacts invalidParameterFacts(ErrorBodyParser.ParsedError parsed) {
+        return ModelErrorFacts.Builder.create()
+            .httpStatus(400)
+            .errorCode(parsed.code())
+            .errorMessage(parsed.message())
+            .stream(false)
+            .build();
+    }
+
+    @Test
     void classify_embeddedErrorBody_classifiedNotSuccess() {
         // Given HTTP 200 with an embedded error body, When classified, Then it is a failure
         ModelCallClassification result = classifier.classify(httpFacts(200,
             "{\"error\":{\"message\":\"rate limit reached, slow down\"}}"));
         assertThat(result.category()).isEqualTo(ModelErrorCategory.RATE_LIMITED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Prompt exceeds max length", "Prompt exceeds maximum length"})
+    void classify_gatewayWrappedPromptLimit_isContextLengthExceeded(String message) {
+        String body = "{\"detail\":\"API error: 400 - {\\\"error\\\":{\\\"message\\\":\\\""
+            + "litellm.BadRequestError: DashscopeException - " + message + "\\\"}}\"}";
+        ModelCallClassification result = classifier.classify(httpFacts(400, body));
+
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
+        assertThat(result.isRetryable()).isFalse();
+    }
+
+    @Test
+    void classify_genericLengthLimit_isNotAssumedToBeModelContext() {
+        ModelCallClassification result = classifier.classify(httpFacts(400,
+            "{\"error\":{\"message\":\"Field name exceeds max length\"}}"));
+
+        assertThat(result.category()).isNotEqualTo(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED);
     }
 
     @Test
@@ -143,6 +219,35 @@ class RuleBasedModelErrorClassifierTest {
     void classify_prematureEofMarker_temporaryRetryable() {
         ModelCallClassification result = classifier.classify(
             ModelErrorFacts.ofThrowable(new IOException("Premature EOF"), true));
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
+        assertThat(result.isRetryable()).isTrue();
+    }
+
+    @Test
+    void classify_headerParserNoBytesMarker_temporaryRetryable() {
+        ModelCallClassification result = classifier.classify(ModelErrorFacts.ofThrowable(
+            new IOException("HTTP/1.1 header parser received no bytes"), true));
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
+        assertThat(result.isRetryable()).isTrue();
+    }
+
+    @Test
+    void classify_bodyReaderClosedMarker_temporaryRetryable() {
+        // Given a body reader closed mid-stream (an abrupt peer cut on a chunked body
+        // surfaces as a plain IOException with message "closed"), When classified,
+        // Then it is temporary and retryable
+        ModelCallClassification result = classifier.classify(
+            ModelErrorFacts.ofThrowable(new IOException("closed"), true));
+        assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
+        assertThat(result.isRetryable()).isTrue();
+    }
+
+    @Test
+    void classify_chunkedBodyCutMarker_temporaryRetryable() {
+        // Given a chunked body cut off mid-stream, When classified, Then it is
+        // temporary and retryable (the JDK reports the state as a plain IOException)
+        ModelCallClassification result = classifier.classify(ModelErrorFacts.ofThrowable(
+            new IOException("chunked transfer encoding, state: READING_LENGTH"), true));
         assertThat(result.category()).isEqualTo(ModelErrorCategory.TEMPORARY);
         assertThat(result.isRetryable()).isTrue();
     }

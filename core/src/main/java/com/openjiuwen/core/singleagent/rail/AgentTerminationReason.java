@@ -26,5 +26,11 @@ public enum AgentTerminationReason {
     MODEL_ERROR,
 
     /** The invocation failed outside model execution. */
-    ERROR
+    ERROR,
+
+    /** The caller cancelled the invocation, e.g. by closing the stream iterator. */
+    CANCELLED,
+
+    /** The invocation was suspended at a step boundary by a user pause request. */
+    PAUSED
 }

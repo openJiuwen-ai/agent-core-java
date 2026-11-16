@@ -78,11 +78,7 @@ public class WorkflowInteraction extends BaseInteraction {
         if (session == null || !(session.state() instanceof WorkflowCommitState workflowState)) {
             return null;
         }
-        Object interactiveInput = workflowState.getWorkflowState(Constant.INTERACTIVE_INPUT);
-        if (interactiveInput != null) {
-            workflowState.updateAndCommitWorkflowState(singletonWithNull(Constant.INTERACTIVE_INPUT, null));
-        }
-        return interactiveInput;
+        return workflowState.popWorkflowState(Constant.INTERACTIVE_INPUT);
     }
 
     private int nextOutputIndex() {
@@ -241,11 +237,6 @@ public class WorkflowInteraction extends BaseInteraction {
         return WorkflowSessionSupport.componentId(session);
     }
 
-    private static Map<String, Object> singletonWithNull(String key, Object value) {
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put(key, value);
-        return result;
-    }
 
     private static void throwGraphInterrupt(OutputSchema output) {
         throwUnchecked(new GraphInterrupt(java.util.List.of(new Interrupt(output))));

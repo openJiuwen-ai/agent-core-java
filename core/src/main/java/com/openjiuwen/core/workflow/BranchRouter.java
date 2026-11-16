@@ -6,6 +6,7 @@ package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.graph.RunScopedRouter;
 import com.openjiuwen.core.graph.visualization.DrawableBranchRouter;
 import com.openjiuwen.core.graph.Router;
 import com.openjiuwen.core.session.BaseSession;
@@ -28,7 +29,7 @@ import java.util.function.Function;
  * Mirrors Python's {@code BranchRouter} in
  * {@code openjiuwen/core/workflow/components/flow/branch_router.py}.
  */
-public class BranchRouter implements Function<Object, Object>, Router {
+public class BranchRouter implements Function<Object, Object>, Router, RunScopedRouter {
 
     public static final String WORKFLOW_DRAWABLE = "WORKFLOW_DRAWABLE";
 
@@ -202,16 +203,29 @@ public class BranchRouter implements Function<Object, Object>, Router {
     }
 
     public List<String> apply(BaseSession session) {
-        setSession(session);
         return route(session);
     }
 
     @Override
     public Object apply(Object input) {
         if (input instanceof BaseSession baseSession) {
-            return apply(baseSession);
+            return route(baseSession);
         }
         return route(session);
+    }
+
+    /**
+     * Routes using the session of the run evaluating this router.
+     *
+     * <p>Does not touch the definition-level session, so concurrent runs never
+     * observe each other's state through this shared router.
+     *
+     * @param runSession session of the current run
+     * @return the routing result
+     */
+    @Override
+    public Object routeWith(BaseSession runSession) {
+        return route(runSession != null ? runSession : session);
     }
 
     private List<String> route(BaseSession routeSession) {

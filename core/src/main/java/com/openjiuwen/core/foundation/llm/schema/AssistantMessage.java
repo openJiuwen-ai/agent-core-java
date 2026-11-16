@@ -34,6 +34,9 @@ public class AssistantMessage extends BaseMessage {
     @JsonProperty("usage_metadata")
     private UsageMetadata usageMetadata;
 
+    @JsonProperty("response_model")
+    private String responseModel;
+
     @Builder.Default
     @JsonProperty("finish_reason")
     private String finishReason = "null";
@@ -96,6 +99,9 @@ public class AssistantMessage extends BaseMessage {
         if (usageMetadata != null) {
             result.put("usage_metadata", usageMetadata.modelDump());
         }
+        if (responseModel != null) {
+            result.put("response_model", responseModel);
+        }
         if (finishReason != null) {
             result.put("finish_reason", finishReason);
         }
@@ -135,6 +141,7 @@ public class AssistantMessage extends BaseMessage {
         }
         return Objects.equals(toolCalls, that.toolCalls)
                 && Objects.equals(usageMetadata, that.usageMetadata)
+                && Objects.equals(responseModel, that.responseModel)
                 && Objects.equals(normalizeFinishReason(finishReason), normalizeFinishReason(that.finishReason))
                 && Objects.equals(parserContent, that.parserContent)
                 && Objects.equals(reasoningContent, that.reasoningContent)
@@ -149,6 +156,7 @@ public class AssistantMessage extends BaseMessage {
                 super.hashCode(),
                 toolCalls,
                 usageMetadata,
+                responseModel,
                 normalizeFinishReason(finishReason),
                 parserContent,
                 reasoningContent,

@@ -14,6 +14,8 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
+import com.openjiuwen.core.foundation.llm.classification.ModelErrorCategory;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -32,6 +34,7 @@ import org.junit.jupiter.api.parallel.ResourceAccessMode;
 import org.junit.jupiter.api.parallel.ResourceLock;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
@@ -70,8 +73,59 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OpenAIModelClientTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    /** Serializes tests that bind production fixture ports 8088/8090. */
+
+    /** Serializes regression tests for the former implicit endpoint fallback. */
     private static final String LOCAL_FIXTURE_PORT_LOCK = "openai-local-fixture-ports-8088-8090";
+
+    @ParameterizedTest
+    @CsvSource(textBlock = """
+            length, false, length
+            length, true, length
+            max_tokens, false, max_tokens
+            max_tokens, true, max_tokens
+            max_output_tokens, false, max_output_tokens
+            max_output_tokens, true, max_output_tokens
+            content_filter, false, content_filter
+            content_filter, true, content_filter
+            stop, false, stop
+            stop, true, stop
+            tool_calls, false, tool_calls
+            tool_calls, true, tool_calls
+            vendor_specific, false, vendor_specific
+            vendor_specific, true, vendor_specific
+            <missing>, false, stop
+            <missing>, true, tool_calls
+            <null>, false, stop
+            <null>, true, tool_calls
+            '', false, stop
+            '', true, tool_calls
+            """)
+    void invokePreservesFinishReasonOrFallsBackWhenAbsent(
+            String responseFinishReason, boolean hasToolCalls, String expectedFinishReason) throws Exception {
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "assistant");
+        message.put("content", "answer");
+        if (hasToolCalls) {
+            message.put("tool_calls", List.of(Map.of(
+                    "id", "call-1", "type", "function",
+                    "function", Map.of("name", "lookup", "arguments", "{}"))));
+        }
+        Map<String, Object> choice = new LinkedHashMap<>();
+        choice.put("index", 0);
+        choice.put("message", message);
+        if (!"<missing>".equals(responseFinishReason)) {
+            choice.put("finish_reason", "<null>".equals(responseFinishReason) ? null : responseFinishReason);
+        }
+        Map<String, Object> response = Map.of(
+                "choices", List.of(choice),
+                "usage", Map.of("prompt_tokens", 1, "completion_tokens", 1, "total_tokens", 2));
+        try (MockOpenAiServer server = new MockOpenAiServer(json(response))) {
+            AssistantMessage result = client(server.baseUrl()).invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(result.getFinishReason()).isEqualTo(expectedFinishReason);
+        }
+    }
 
     @Test
     void invokeHttpStatusFailureIsModelErrorAndKeepsSanitizedBodyInErrorMsg() throws Exception {
@@ -219,6 +273,27 @@ class OpenAIModelClientTest {
             assertThat(String.valueOf(typed.getParams().get("error_msg")))
                     .contains("HTTP 429", "safe stream failure", "[REDACTED]")
                     .doesNotContain("sk-stream-secret");
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void streamEndingWithoutTerminationFrameIsRetryableTruncation() throws Exception {
+        // Given a length-delimited SSE body that stops after a content frame, with no
+        // terminal finish_reason and no [DONE]
+        String sse = "data: " + json(Map.of("choices", List.of(Map.of(
+                "delta", Map.of("content", "partial"))))) + "\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, sse, "text/event-stream"))) {
+            Throwable error = catchThrowable(() -> iteratorToList(client(server.baseUrl(), 0, Map.of())
+                    .stream(List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())));
+
+            // Then the truncation is a retryable temporary failure, not a silent success
+            BaseError typed = requireModelError(error);
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+            Map<?, ?> details = (Map<?, ?>) typed.getDetails();
+            assertThat(details.get(ModelCallClassification.DETAIL_CATEGORY))
+                    .isEqualTo(ModelErrorCategory.TEMPORARY);
+            assertThat(details.get(ModelCallClassification.DETAIL_RETRYABLE)).isEqualTo(true);
             assertThat(server.requests).hasSize(1);
         }
     }
@@ -652,8 +727,8 @@ class OpenAIModelClientTest {
 
     @Test
     void buildRequestParamsDropsTopPOnlyForOpenAiApiBase() {
-        OpenAIModelClient openAiClient = client("https://api.openai.com/v1");
-        OpenAIModelClient compatibleClient = client("https://compatible.example.test/v1");
+        OpenAIModelClient openAiClient = client("https://api.openai.com/v1", 0.8D);
+        OpenAIModelClient compatibleClient = client("https://compatible.example.test/v1", 0.8D);
 
         Map<String, Object> openAiParams = openAiClient.buildPreparedParams(
                 "hello",
@@ -679,12 +754,13 @@ class OpenAIModelClientTest {
         assertThat(openAiParams).containsEntry("temperature", 0.95D);
         assertThat(openAiParams).doesNotContainKey("top_p");
         assertThat(compatibleParams).containsEntry("temperature", 0.95D)
-                .containsEntry("top_p", 0.1D);
+                .containsEntry("top_p", 0.8D);
     }
 
     @Test
     void invokeMergesHeadersMovesReturnTokenIdsAndParsesResponse() throws Exception {
         Map<String, Object> response = new LinkedHashMap<>();
+        response.put("model", "routed-actual-model");
         response.put("prompt_token_ids", List.of(10, 11));
         response.put("usage", Map.of(
                 "prompt_tokens", 3,
@@ -736,6 +812,8 @@ class OpenAIModelClientTest {
             assertThat(message.getCompletionTokenIds()).containsExactly(20, 21);
             assertThat(message.getLogprobs()).isEqualTo(Map.of("content", List.of("lp")));
             assertThat(message.getUsageMetadata().getCacheTokens()).isEqualTo(2);
+            assertThat(message.getUsageMetadata().getModelName()).isEqualTo("routed-actual-model");
+            assertThat(message.modelDump()).containsEntry("response_model", "routed-actual-model");
             assertThat(message.getUsageMetadata().getTotalCost()).isEqualTo(0.3D);
             ToolCall toolCall = message.getToolCalls().get(0);
             assertThat(toolCall.getId()).isEqualTo("call-1");
@@ -757,6 +835,24 @@ class OpenAIModelClientTest {
 
             assertThat(message.getContent()).isEqualTo("answer");
             assertThat(message.getReasoningContent()).isEqualTo("provider reasoning");
+        }
+    }
+
+    @Test
+    void invokePreservesMissingAndExplicitZeroUsageFields() throws Exception {
+        String response = json(Map.of(
+                "model", "routed-actual-model",
+                "usage", Map.of("completion_tokens", 0),
+                "choices", List.of(Map.of("message", Map.of("content", "answer")))));
+
+        try (MockOpenAiServer server = new MockOpenAiServer(response)) {
+            AssistantMessage message = client(server.baseUrl()).invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(message.getUsageMetadata().modelDump())
+                    .containsEntry("output_tokens", 0)
+                    .doesNotContainKeys("input_tokens", "total_tokens", "cache_tokens");
+            assertThat(message.getUsageMetadata().getOutputTokens()).isZero();
         }
     }
 
@@ -933,24 +1029,35 @@ class OpenAIModelClientTest {
     }
 
     @Test
-    void successfulSseResponseIsNotReplayedAfterEarlyEof() throws Exception {
+    void earlyEofAfterFirstSegmentIsSurfacedWithoutReplay() throws Exception {
+        // Given a stream cut off after a non-terminal content frame, with retry budget left
         String partialSse = "data: " + json(Map.of("choices", List.of(Map.of(
                 "delta", Map.of("content", "partial"), "finish_reason", "null")))) + "\n\n";
         try (MockOpenAiServer server = new MockOpenAiServer(response(200, partialSse, "text/event-stream"))) {
-            List<AssistantMessageChunk> chunks = iteratorToList(client(server.baseUrl(), 1, Map.of()).stream(
-                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+            OpenAIModelClient client = client(server.baseUrl(), 1, Map.of());
 
-            assertThat(chunks).singleElement().extracting(AssistantMessageChunk::getContent).isEqualTo("partial");
+            // When the body ends early after the first segment
+            Throwable error = catchThrowable(() -> iteratorToList(client.stream(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>())));
+
+            // Then the truncation is surfaced as a retryable failure, and the started
+            // stream is not replayed as a whole call after its first segment
+            BaseError typed = requireModelError(error);
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+            Map<?, ?> details = (Map<?, ?>) typed.getDetails();
+            assertThat(details.get(ModelCallClassification.DETAIL_CATEGORY))
+                    .isEqualTo(ModelErrorCategory.TEMPORARY);
+            assertThat(details.get(ModelCallClassification.DETAIL_RETRYABLE)).isEqualTo(true);
             assertThat(server.requests).hasSize(1);
         }
     }
 
     @Test
     @ResourceLock(value = LOCAL_FIXTURE_PORT_LOCK, mode = ResourceAccessMode.READ_WRITE)
-    void localFixtureFallbackStaysInsideOneRetryAttempt() throws Exception {
+    void retriesStayOnConfiguredEndpointEvenAtFormerFixturePort() throws Exception {
         String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
         try (MockOpenAiServer primary = new MockOpenAiServer(8088,
-                response(500, "{\"error\":\"primary\"}"), response(500, "{\"error\":\"primary\"}"));
+                response(500, "{\"error\":\"primary\"}"), response(200, success));
              MockOpenAiServer fallback = new MockOpenAiServer(8090,
                      response(500, "{\"error\":\"fallback\"}"), response(200, success))) {
             AssistantMessage message = client(primary.baseUrl(), 1, Map.of()).invoke(
@@ -958,25 +1065,54 @@ class OpenAIModelClientTest {
 
             assertThat(message.getContent()).isEqualTo("ok");
             assertThat(primary.requests).hasSize(2);
-            assertThat(fallback.requests).hasSize(2);
-            assertThat(header(fallback.requests.get(0).headers, "X-Stainless-Retry-Count")).isEqualTo("0");
-            assertThat(header(fallback.requests.get(1).headers, "X-Stainless-Retry-Count")).isEqualTo("1");
+            assertThat(fallback.requests).isEmpty();
+            assertThat(header(primary.requests.get(0).headers, "X-Stainless-Retry-Count")).isEqualTo("0");
+            assertThat(header(primary.requests.get(1).headers, "X-Stainless-Retry-Count")).isEqualTo("1");
         }
     }
 
     @Test
     @ResourceLock(value = LOCAL_FIXTURE_PORT_LOCK, mode = ResourceAccessMode.READ_WRITE)
-    void localFixtureFallbackDoesNotReplayNonFixtureLoopbackPorts() throws Exception {
+    void authenticationFailureDoesNotContactAnotherEndpoint() throws Exception {
         String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
-        try (MockOpenAiServer primary = new MockOpenAiServer(response(500, "{\"error\":\"primary\"}"));
+        try (MockOpenAiServer primary = new MockOpenAiServer(8088, response(401, "{\"error\":\"primary\"}"));
              MockOpenAiServer fallback = new MockOpenAiServer(8090, response(200, success))) {
-            Throwable error = catchThrowable(() -> client(primary.baseUrl(), 0, Map.of()).invoke(
+            Throwable error = catchThrowable(() -> client(primary.baseUrl(), 2, Map.of()).invoke(
                     "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
 
             BaseError typed = requireModelError(error);
-            assertThat(typed.getParams().get("error_msg")).isEqualTo("HTTP 500: {\"error\":\"primary\"}");
+            assertThat(typed.getParams().get("error_msg")).isEqualTo("HTTP 401: {\"error\":\"primary\"}");
             assertThat(primary.requests).hasSize(1);
             assertThat(fallback.requests).isEmpty();
+        }
+    }
+
+    @Test
+    @ResourceLock(value = LOCAL_FIXTURE_PORT_LOCK, mode = ResourceAccessMode.READ_WRITE)
+    void streamFailureKeepsOriginalStatusWithoutFallback() throws Exception {
+        try (MockOpenAiServer primary = new MockOpenAiServer(8088, response(403, "access denied"));
+             MockOpenAiServer other = new MockOpenAiServer(8090, response(200, "unused"))) {
+            Throwable error = catchThrowable(() -> iteratorToList(client(primary.baseUrl(), 2, Map.of()).stream(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>())));
+
+            assertThat(String.valueOf(requireModelError(error).getParams().get("error_msg"))).contains("HTTP 403");
+            assertThat(primary.requests).hasSize(1);
+            assertThat(other.requests).isEmpty();
+        }
+    }
+
+    @Test
+    @ResourceLock(value = LOCAL_FIXTURE_PORT_LOCK, mode = ResourceAccessMode.READ_WRITE)
+    void connectionFailureDoesNotSendCredentialsToFallbackPort() throws Exception {
+        try (MockOpenAiServer primary = new MockOpenAiServer(8088, response(200, "unused"));
+             MockOpenAiServer other = new MockOpenAiServer(8090, response(200, "unused"))) {
+            String configuredBase = primary.baseUrl();
+            primary.close();
+            Throwable error = catchThrowable(() -> client(configuredBase, 0, Map.of()).invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            assertThat(requireModelError(error)).isNotNull();
+            assertThat(other.requests).isEmpty();
         }
     }
 
@@ -984,6 +1120,7 @@ class OpenAIModelClientTest {
     void streamAddsIncludeUsageAndKeepsUsageOnlyTokenIdChunk() throws Exception {
         String streamBody = String.join("\n",
                 "data: " + json(Map.of(
+                        "model", "routed-actual-model",
                         "prompt_token_ids", List.of(1, 2),
                         "choices", List.of(Map.of(
                                 "delta", Map.of(
@@ -998,7 +1135,11 @@ class OpenAIModelClientTest {
                                 "token_ids", List.of(31),
                                 "finish_reason", "stop")))),
                 "data: " + json(Map.of(
-                        "usage", Map.of("prompt_tokens", 2, "completion_tokens", 2, "total_tokens", 4),
+                        "usage", Map.of(
+                                "prompt_tokens", 2,
+                                "completion_tokens", 2,
+                                "total_tokens", 4,
+                                "prompt_tokens_details", Map.of("cached_tokens", 1)),
                         "choices", List.of())),
                 "data: [DONE]");
 
@@ -1028,6 +1169,34 @@ class OpenAIModelClientTest {
             assertThat(chunks.get(1).getContent()).isEqualTo("lo");
             assertThat(chunks.get(2).getContent()).isEqualTo("");
             assertThat(chunks.get(2).getUsageMetadata().getTotalTokens()).isEqualTo(4);
+            assertThat(chunks.get(2).getUsageMetadata().getCacheTokens()).isEqualTo(1);
+            assertThat(chunks.get(2).getUsageMetadata().getModelName()).isNull();
+            AssistantMessageChunk merged = chunks.get(0).merge(chunks.get(1)).merge(chunks.get(2));
+            assertThat(merged.modelDump()).containsEntry("response_model", "routed-actual-model");
+        }
+    }
+
+    @Test
+    void streamHonorsUsageOptOutWithoutInventingUsage() throws Exception {
+        String streamBody = String.join("\n",
+                "data: " + json(Map.of(
+                        "model", "routed-actual-model",
+                        "choices", List.of(Map.of(
+                                "delta", Map.of("content", "hello"),
+                                "finish_reason", "stop")))),
+                "data: [DONE]");
+        try (MockOpenAiServer server = new MockOpenAiServer(streamBody)) {
+            Map<String, Object> kwargs = new LinkedHashMap<>();
+            kwargs.put("stream_options", Map.of("include_usage", false, "custom_option", "kept"));
+            List<AssistantMessageChunk> chunks = iteratorToList(client(server.baseUrl()).stream(
+                    "hello", null, null, null, null, null, null, null, null, kwargs));
+
+            assertThat(server.lastBody.get("stream_options"))
+                    .isEqualTo(Map.of("include_usage", false, "custom_option", "kept"));
+            assertThat(chunks).singleElement().satisfies(chunk -> {
+                assertThat(chunk.getUsageMetadata()).isNull();
+                assertThat(chunk.modelDump()).containsEntry("response_model", "routed-actual-model");
+            });
         }
     }
 
@@ -1372,6 +1541,17 @@ class OpenAIModelClientTest {
         return client(apiBase, 3, Map.of("X-Base", "base"));
     }
 
+    private static OpenAIModelClient client(String apiBase, Double topP) {
+        return new OpenAIModelClient(
+                ModelRequestConfig.builder().modelName("gpt-test").topP(topP).build(),
+                ModelClientConfig.builder()
+                        .clientProvider(ProviderType.OPEN_AI)
+                        .apiKey("sk-test")
+                        .apiBase(apiBase)
+                        .verifySsl(false)
+                        .build());
+    }
+
     private static OpenAIModelClient client(String apiBase, int maxRetries, Map<String, Object> customHeaders) {
         return new OpenAIModelClient(
                 ModelRequestConfig.builder().modelName("gpt-test").build(),
@@ -1541,9 +1721,8 @@ class OpenAIModelClientTest {
             try {
                 return HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
             } catch (IOException exception) {
-                // Production fixture fallback is hard-wired to loopback:8088 → :8090. When system
-                // mock LLM (or another process) already owns those ports, abort as skipped instead
-                // of failing the suite with BindException Errors.
+                // Regression tests exercise the former implicit 8088 -> 8090 fallback.
+                // Never take over a port owned by another test service or application.
                 if (port != 0 && isBindFailure(exception)) {
                     Assumptions.assumeTrue(false,
                             "Fixed fixture port " + port

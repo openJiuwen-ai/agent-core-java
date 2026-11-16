@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.agents;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -416,6 +417,117 @@ class ReActAgentTest {
     }
 
     @Test
+    void copyContextEngineConfigPreservesOverflowRecoverySettings() throws Exception {
+        java.lang.reflect.Method copy = ReActAgent.class.getDeclaredMethod(
+                "copyContextEngineConfig", ContextEngineConfig.class);
+        copy.setAccessible(true);
+        ContextEngineConfig source = ContextEngineConfig.builder()
+                .enableModelContextOverflowRecovery(false)
+                .extraContextOverflowKeywords(List.of("custom_overflow_marker"))
+                .build();
+
+        ContextEngineConfig snapshot = (ContextEngineConfig) copy.invoke(null, source);
+
+        assertFalse(snapshot.isEnableModelContextOverflowRecovery());
+        assertEquals(List.of("custom_overflow_marker"), snapshot.getExtraContextOverflowKeywords());
+        assertEquals(source, snapshot);
+    }
+
+    @Test
+    void contextEngineHonorsOverflowRecoverySnapshotWithoutForcedRebuild() {
+        ContextEngine.registerProcessor("T00919ReActOverflowCompact", OverflowSnapshotCompactProcessor::new);
+        ContextEngine.ProcessorSpec compactSpec =
+                new ContextEngine.ProcessorSpec("T00919ReActOverflowCompact", new Object());
+
+        // Switch on + custom keyword must reach the live ContextEngine via config snapshot.
+        ReActAgent enabledAgent = new ReActAgent(new AgentCard("overflow-on", "overflow-on", "desc"));
+        enabledAgent.configure(ReActAgentConfig.builder()
+                .contextEngineConfig(ContextEngineConfig.builder()
+                        .enableModelContextOverflowRecovery(true)
+                        .extraContextOverflowKeywords(List.of("vendor_overflow_signal"))
+                        .build())
+                .contextProcessors(List.of(compactSpec))
+                .build());
+        ContextEngine enabledEngine = enabledAgent.getContextEngine();
+        MemorySession enabledSession = new MemorySession("overflow-on-session");
+        ModelContext enabledContext = enabledAgent.initContext(enabledSession);
+        enabledContext.setMessages(
+                List.of(new UserMessage("large historical context that must shrink")), true);
+
+        assertTrue(enabledEngine.recoverFromModelException(
+                enabledContext.contextId(),
+                enabledSession,
+                new RuntimeException("vendor_overflow_signal from provider"),
+                false,
+                0,
+                null),
+                "extraContextOverflowKeywords from the ReAct snapshot must enable recovery");
+        assertSame(enabledEngine, enabledAgent.getContextEngine());
+        assertEquals(List.of("recovered by react overflow snapshot"),
+                enabledContext.getMessages(null, true).stream().map(BaseMessage::getContentAsString).toList());
+
+        // Same processor path with switch off must decline recovery (not merely "no processor").
+        ReActAgent disabledAgent = new ReActAgent(new AgentCard("overflow-off", "overflow-off", "desc"));
+        disabledAgent.configure(ReActAgentConfig.builder()
+                .contextEngineConfig(ContextEngineConfig.builder()
+                        .enableModelContextOverflowRecovery(false)
+                        .extraContextOverflowKeywords(List.of("vendor_overflow_signal"))
+                        .build())
+                .contextProcessors(List.of(compactSpec))
+                .build());
+        ContextEngine disabledEngine = disabledAgent.getContextEngine();
+        MemorySession disabledSession = new MemorySession("overflow-off-session");
+        ModelContext disabledContext = disabledAgent.initContext(disabledSession);
+        disabledContext.setMessages(
+                List.of(new UserMessage("large historical context that must shrink")), true);
+
+        assertFalse(disabledEngine.recoverFromModelException(
+                disabledContext.contextId(),
+                disabledSession,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                null),
+                "enableModelContextOverflowRecovery=false from the ReAct snapshot must block recovery");
+        assertSame(disabledEngine, disabledAgent.getContextEngine());
+        assertEquals(List.of("large historical context that must shrink"),
+                disabledContext.getMessages(null, true).stream().map(BaseMessage::getContentAsString).toList());
+    }
+
+    @Test
+    void beforeModelCallSeesPreparedRequestMessages() {
+        AtomicReference<List<String>> beforeContents = new AtomicReference<>();
+        AgentRail observingRail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                beforeContents.set(inputs.getMessages().stream()
+                        .map(message -> ((BaseMessage) message).getContentAsString())
+                        .toList());
+            }
+        };
+        ReActAgent agent = agentWithFakeModel(new AssistantMessage("ok"));
+        agent.registerRail(observingRail).toCompletableFuture().join();
+        try {
+            AgentSessionApi session = new MemorySession("before-messages");
+            ModelContext modelContext = agent.initContext(session);
+            modelContext.addMessages(new UserMessage("visible-to-before-hook"))
+                    .toCompletableFuture().join();
+            AgentCallbackContext ctx = new AgentCallbackContext(agent);
+            ctx.setSession(session);
+            ctx.setContext(modelContext);
+
+            agent.callModel(ctx, modelContext, List.of());
+
+            assertNotNull(beforeContents.get());
+            assertTrue(beforeContents.get().stream().anyMatch(content -> content.contains("visible-to-before-hook")),
+                    "BEFORE_MODEL_CALL must observe prepareModelRequest messages");
+        } finally {
+            agent.unregisterRail(observingRail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
     void contextEngineRefreshesAfterNestedConfigMapUpdate() {
         ReActAgent agent = new ReActAgent(new AgentCard("nested-1", "nested", "desc"));
         Map<String, Integer> modelWindowTokens = new LinkedHashMap<>();
@@ -791,6 +903,123 @@ class ReActAgentTest {
         return agent;
     }
 
+    /** TC_006-UT: enableReload 双腿——false 时 reloader 工具不进 AbilityManager，true 时注册。 */
+    @org.junit.jupiter.api.Test
+    void reloaderToolAbilityListFollowsEnableReloadSwitch() {
+        java.util.function.Function<Boolean, ReActAgent> agentWithReload = enableReload -> {
+            ReActAgent agent = new ReActAgent(new AgentCard("tc006-reload-" + enableReload, "test", "desc"));
+            ReActAgentConfig config = new ReActAgentConfig();
+            config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+            config.setContextEngineConfig(ContextEngineConfig.builder()
+                    .enableReload(enableReload)
+                    .build());
+            agent.configure(config);
+            return agent;
+        };
+
+        ReActAgent disabledAgent = agentWithReload.apply(false);
+        disabledAgent.initContext(new MemorySession("tc006-disabled"));
+        assertFalse(disabledAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "enableReload=false must leave the reloader tool out of the ability list");
+        assertTrue(disabledAgent.getAbilityManager().getTools().keySet().stream()
+                        .noneMatch(name -> name.contains("reload")),
+                "no reload-flavored tool may be registered when reload is disabled");
+
+        ReActAgent enabledAgent = agentWithReload.apply(true);
+        enabledAgent.initContext(new MemorySession("tc006-enabled"));
+        assertTrue(enabledAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "enableReload=true must register the reloader tool in the ability list");
+    }
+
+    /** TC_204-UT: enableReload × enableOffload 四开关组合矩阵——工具面与服务面的正交行为。 */
+    @org.junit.jupiter.api.Test
+    void contextSwitchMatrixKeepsReloadToolFaceAndOffloadServiceFaceOrthogonal() {
+        java.util.function.BiFunction<Boolean, Boolean, ReActAgent> agentWithSwitches = (enableReload, enableOffload) -> {
+            ReActAgent agent = new ReActAgent(new AgentCard("tc204-" + enableReload + "-" + enableOffload, "test", "desc"));
+            ReActAgentConfig config = new ReActAgentConfig();
+            config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+            com.openjiuwen.core.context.offload.model.OffloadConfig offloadConfig =
+                    new com.openjiuwen.core.context.offload.model.OffloadConfig();
+            offloadConfig.setPrimaryBackend(com.openjiuwen.core.context.offload.model.OffloadBackend.MEMORY);
+            offloadConfig.setRecentMessageProtectionCount(0);
+            config.setContextEngineConfig(ContextEngineConfig.builder()
+                    .enableReload(enableReload)
+                    .enableOffload(enableOffload)
+                    .offload(offloadConfig)
+                    .build());
+            config.setContextProcessors(enableOffload
+                    ? List.of(new ContextEngine.ProcessorSpec("MessageOffloader",
+                            new com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig()))
+                    : List.of());
+            agent.configure(config);
+            return agent;
+        };
+
+        ReActAgent neitherAgent = agentWithSwitches.apply(false, false);
+        neitherAgent.initContext(new MemorySession("tc204-neither"));
+        assertFalse(neitherAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "reload off must keep the reloader tool out of the ability list");
+        assertNull(neitherAgent.getOffloadService(), "offload off must keep the v2 service unbound");
+
+        ReActAgent reloadOnlyAgent = agentWithSwitches.apply(true, false);
+        reloadOnlyAgent.initContext(new MemorySession("tc204-reload-only"));
+        assertTrue(reloadOnlyAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "reload on must register the reloader tool even when offload is off");
+        assertNull(reloadOnlyAgent.getOffloadService(), "offload off must keep the v2 service unbound");
+
+        ReActAgent offloadOnlyAgent = agentWithSwitches.apply(false, true);
+        offloadOnlyAgent.initContext(new MemorySession("tc204-offload-only"));
+        assertFalse(offloadOnlyAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "reload off must keep the reloader tool out even when offload is on");
+        assertNotNull(offloadOnlyAgent.getOffloadService(), "offload on must bind the v2 service");
+        offloadOnlyAgent.close();
+
+        ReActAgent bothAgent = agentWithSwitches.apply(true, true);
+        bothAgent.initContext(new MemorySession("tc204-both"));
+        assertTrue(bothAgent.getAbilityManager().get("reload_original_context_messages").isPresent(),
+                "reload on must register the reloader tool when offload is on");
+        assertNotNull(bothAgent.getOffloadService(), "offload on must bind the v2 service");
+        bothAgent.close();
+    }
+
+    /** TC_211-UT: CD-011 魔数语义——默认值不覆盖 offloader 配置，非默认值透传。 */
+    @org.junit.jupiter.api.Test
+    void syncProtectionConfigOverwritesOnlyNonDefaultPipelineValues() throws Exception {
+        ReActAgent agent = new ReActAgent(new AgentCard("tc211-cd011", "test", "desc"));
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+        agent.configure(config);
+
+        java.lang.reflect.Method sync = ReActAgent.class.getDeclaredMethod("syncProtectionConfig",
+                com.openjiuwen.core.context.processor.offloader.MessageOffloader.class,
+                com.openjiuwen.core.context.offload.model.OffloadConfig.class);
+        sync.setAccessible(true);
+
+        com.openjiuwen.core.context.offload.model.OffloadConfig defaultPipeline =
+                new com.openjiuwen.core.context.offload.model.OffloadConfig();
+        com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig keepTarget =
+                new com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig();
+        keepTarget.setRecentMessageProtectionCount(2);
+        keepTarget.setProtectedToolNames(List.of("tc211_custom_tool"));
+        com.openjiuwen.core.context.processor.offloader.MessageOffloader offloader =
+                new com.openjiuwen.core.context.processor.offloader.MessageOffloader(keepTarget);
+        sync.invoke(null, offloader, defaultPipeline);
+        assertEquals(2, offloader.getConfig().getRecentMessageProtectionCount(),
+                "default protection count (5) must not overwrite the offloader's own value");
+        assertEquals(List.of("tc211_custom_tool"), offloader.getConfig().getProtectedToolNames(),
+                "default protected tool names must not overwrite the offloader's own list");
+
+        com.openjiuwen.core.context.offload.model.OffloadConfig customPipeline =
+                new com.openjiuwen.core.context.offload.model.OffloadConfig();
+        customPipeline.setRecentMessageProtectionCount(3);
+        customPipeline.setProtectedToolNames(List.of("tc211_pipeline_tool"));
+        sync.invoke(null, offloader, customPipeline);
+        assertEquals(3, offloader.getConfig().getRecentMessageProtectionCount(),
+                "non-default protection count must propagate to the offloader");
+        assertEquals(List.of("tc211_pipeline_tool"), offloader.getConfig().getProtectedToolNames(),
+                "non-default protected tool names must propagate to the offloader");
+    }
+
     private static AgentCallbackContext modelCallContext(ReActAgent agent, String sessionId) {
         AgentCallbackContext context = new AgentCallbackContext(agent);
         context.setSession(new MemorySession(sessionId));
@@ -867,7 +1096,9 @@ class ReActAgentTest {
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             streamOptions = options;
             streamMessages = new ArrayList<>(messages);
-            return List.of(AssistantMessageChunk.builder().content("streamed").build()).iterator();
+            List<AssistantMessageChunk> chunks = List.of(
+                    AssistantMessageChunk.builder().content("streamed").build());
+            return chunks.iterator();
         }
 
         private int invokeCount() {
@@ -1061,6 +1292,40 @@ class ReActAgentTest {
                     tools == null ? List.of() : tools,
                     new ContextStats()
             ));
+        }
+    }
+
+    /**
+     * Force-compresses to a shorter message so overflow recovery can succeed when enabled.
+     */
+    private static final class OverflowSnapshotCompactProcessor
+            implements SessionModelContext.ContextProcessorPort {
+        private OverflowSnapshotCompactProcessor(Object config) {
+        }
+
+        @Override
+        public String processorType() {
+            return "T00919ReActOverflowCompact";
+        }
+
+        @Override
+        public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
+                                                                                List<BaseMessage> messages,
+                                                                                boolean force,
+                                                                                Map<String, Object> kwargs) {
+            if (force) {
+                context.setMessages(List.of(new UserMessage("recovered by react overflow snapshot")), true);
+                return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                        new SessionModelContext.ContextProcessorEventPort() {
+                            @Override
+                            public String compactSummary() {
+                                return "recovered by react overflow snapshot";
+                            }
+                        },
+                        List.of(),
+                        null));
+            }
+            return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(null, messages, null));
         }
     }
 

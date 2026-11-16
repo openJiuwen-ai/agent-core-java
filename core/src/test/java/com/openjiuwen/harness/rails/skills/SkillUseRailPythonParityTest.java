@@ -4,6 +4,9 @@
 
 package com.openjiuwen.harness.rails.skills;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.DynamicTest.dynamicTest;
+
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
@@ -26,9 +29,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 /**
  * Supplemental parity tests for skill rail behavior.
@@ -175,12 +175,16 @@ class SkillUseRailPythonParityTest {
         DeepAgent agent = new DeepAgent();
         SkillUseRail rail = autoListRail(skillsRoot);
 
-        agent.registerRail(rail).join();
+        try (agent) {
+            agent.registerRail(rail).join();
 
-        Set<String> toolNames = agent.getAbilityManager().getTools().keySet();
-        assertThat(toolNames).contains("skill_tool", "list_skill");
-        assertThat(rail.getOwnedToolNames()).contains("skill_tool", "list_skill");
-        assertThat(rail.getOwnedToolIds()).contains("skill_tool", "list_skill");
+            Set<String> toolNames = agent.getAbilityManager().getTools().keySet();
+            assertThat(toolNames).contains("skill_tool", "list_skill");
+            assertThat(rail.getOwnedToolNames()).contains("skill_tool", "list_skill");
+            assertThat(rail.getOwnedToolIds()).contains(
+                    agent.getAbilityManager().getTools().get("skill_tool").getId(),
+                    agent.getAbilityManager().getTools().get("list_skill").getId());
+        }
     }
 
     private static void autoListPromptIsInjectedWithoutPreselectingSkills() throws IOException {
@@ -323,7 +327,8 @@ class SkillUseRailPythonParityTest {
                 .filter(skill -> "shared-skill".equals(skill.name()))
                 .findFirst()
                 .orElseThrow();
-        assertThat(shared.directory()).isEqualTo(highPrio.resolve("shared-skill").toAbsolutePath().normalize().toString());
+        assertThat(shared.directory())
+                .isEqualTo(highPrio.resolve("shared-skill").toAbsolutePath().normalize().toString());
         assertThat(shared.description()).isEqualTo("High priority version");
     }
 

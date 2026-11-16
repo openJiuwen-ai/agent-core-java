@@ -30,5 +30,8 @@ public class PersistenceCheckpointer extends Checkpointer
 
 ## 说明
 
+- Agent 正常恢复只有在状态类型标记和载荷两个 key 均不存在时才按未命中处理。半记录、空/未知类型、非法载荷或解码后为 null/非 Map 会抛出恢复错误；合法空 Map 可恢复。
+- 校验失败发生在替换 Session state 和写入本轮输入之前，原持久化记录保留。升级前检查历史半记录；由维护方修复或通过既有 `release` 显式清理后重新开始，会话历史不会自动删除。
+- 工作流/图的合法空状态、后台步骤扫描以及独立的 RedisCheckpointer 沿用各自契约。自定义 KVStore 应保证 pipeline 成组读取一致，避免读取到不同保存批次的类型与载荷。
 - 该实现把 agent 状态交给 `PersistenceAgentStorage`，workflow 状态交给 `PersistenceWorkflowStorage`，图状态交给 `PersistenceGraphStore`。
 - `release(String sessionId, String agentId)` 只清理 agent 状态，不会单独清理 workflow 状态。

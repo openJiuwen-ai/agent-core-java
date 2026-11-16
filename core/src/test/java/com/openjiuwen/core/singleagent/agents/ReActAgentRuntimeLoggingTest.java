@@ -279,12 +279,13 @@ class ReActAgentRuntimeLoggingTest {
         @Override
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
             AssistantMessage response = nextResponse();
-            return List.of(AssistantMessageChunk.builder()
+            AssistantMessageChunk chunk = AssistantMessageChunk.builder()
                     .content(response.getContent())
                     .toolCalls(response.getToolCalls())
                     .usageMetadata(response.getUsageMetadata())
                     .reasoningContent(response.getReasoningContent())
-                    .build()).iterator();
+                    .build();
+            return List.of(chunk).iterator();
         }
 
         private AssistantMessage nextResponse() {

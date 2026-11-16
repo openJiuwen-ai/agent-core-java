@@ -62,7 +62,7 @@ public class VectorRetriever implements Retriever {
             );
         }
 
-        List<RetrievalResult> searchResults = fetchVectorThenSparse(query, topK);
+        List<RetrievalResult> searchResults = fetchVectorThenSparse(query, topK, options == null ? Map.of() : options);
         List<RetrievalResult> retrievalResults = new ArrayList<>();
         for (RetrievalResult result : searchResults) {
             if (scoreThreshold != null && result.getScore() < scoreThreshold) {
@@ -97,7 +97,7 @@ public class VectorRetriever implements Retriever {
             String mode,
             Map<String, Object> options
     ) {
-        return fetchVectorThenSparse(query, topK).stream()
+        return fetchVectorThenSparse(query, topK, options == null ? Map.of() : options).stream()
                 .map(VectorRetriever::toSearchResult)
                 .toList();
     }
@@ -114,7 +114,7 @@ public class VectorRetriever implements Retriever {
         }
     }
 
-    private List<RetrievalResult> fetchVectorThenSparse(String query, int topK) {
+    private List<RetrievalResult> fetchVectorThenSparse(String query, int topK, Map<String, Object> options) {
         if (embedModel == null) {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
@@ -128,10 +128,10 @@ public class VectorRetriever implements Retriever {
                 queryVector,
                 topK,
                 VectorStore.VectorStoreFilter.none(),
-                Map.of()
+                options
         ));
         if (searchResults.isEmpty()) {
-            return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), Map.of()));
+            return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), options));
         }
         return searchResults;
     }

@@ -10,6 +10,7 @@ import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -69,7 +70,28 @@ public class StepCheckpointTrigger {
     }
 
     /**
-     * Record one completed step boundary.
+     * Seed the sequence counter from the persisted resume point so cursors
+     * of this execution stay strictly increasing across invocations on the
+     * same session. Each trigger instance counts from zero, while the
+     * checkpointer rejects any cursor whose seq is not greater than the
+     * persisted one; without seeding, every invocation after the first (or
+     * after an explicit resume) would have its cursors silently dropped.
+     *
+     * @param lastSeq seq of the last persisted cursor, 0 when none exists
+     */
+    public void seedSeq(long lastSeq) {
+        if (lastSeq > seqCounter.get()) {
+            seqCounter.set(lastSeq);
+        }
+    }
+
+    /**
+     * Record one step boundary. A {@link StepStatus#COMPLETED} or
+     * {@link StepStatus#RUNNING} boundary follows the policy evaluation and
+     * advances the main cursor; a {@link StepStatus#FAILED} boundary is
+     * persisted unconditionally through {@link Checkpointer#stepFailed} -
+     * failure evidence must not depend on the policy verdict and must never
+     * move the resume point.
      *
      * @param session session in the middle of a task, may be null to no-op
      * @param invokeOverride per-invocation policy override; null means "not overridden"
@@ -83,13 +105,18 @@ public class StepCheckpointTrigger {
         }
         long seq = seqCounter.incrementAndGet();
         long now = System.currentTimeMillis();
-        StepCheckpointPolicy policy = evaluator.resolve(agentDefault, invokeOverride);
-        isLastBoundaryPersisted = checkpointer != null
+        isLastBoundaryPersisted = false;
+        if (boundary.status() == StepStatus.FAILED) {
+            recordFailedStep(session, seq, boundary, now);
+            return;
+        }
+        boolean shouldPersist = checkpointer != null
                 && evaluator.shouldPersist(agentDefault, invokeOverride, signalsWithDurations(signals, seq));
-        if (isLastBoundaryPersisted) {
+        if (shouldPersist) {
             try {
                 checkpointer.stepCompleted(session, new StepCursor(seq, boundary.stepType(), boundary.stepName(),
                         boundary.status(), now));
+                isLastBoundaryPersisted = true;
             } catch (RuntimeException exception) {
                 log.warn("Step-level checkpoint failed for session {}: {}",
                         session.sessionId(), exception.getMessage());
@@ -103,6 +130,112 @@ public class StepCheckpointTrigger {
                 log.debug("Step journal append failed for session {}: {}",
                         session.sessionId(), exception.getMessage());
             }
+        }
+    }
+
+    private void recordFailedStep(BaseSession session, long seq, StepBoundary boundary, long now) {
+        if (checkpointer != null) {
+            try {
+                checkpointer.stepFailed(session, new StepCursor(seq, boundary.stepType(), boundary.stepName(),
+                        StepStatus.FAILED, now));
+            } catch (RuntimeException exception) {
+                log.warn("Failed-step checkpoint could not be recorded for session {}: {}",
+                        session.sessionId(), exception.getMessage());
+            }
+        }
+        if (journal != null) {
+            try {
+                journal.append(new StepRecord(session.sessionId(), "", seq, boundary.stepType(), boundary.stepName(),
+                        "", StepStatus.FAILED, now));
+            } catch (RuntimeException exception) {
+                log.debug("Failed-step journal append failed for session {}: {}",
+                        session.sessionId(), exception.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Persist the user-pause boundary unconditionally: the cursor advances to
+     * the next sequence number, is stored as PAUSED together with the pause
+     * metadata, and the full state snapshot flushes through the regular save
+     * path. Unlike {@link #stepCompleted} this bypasses the policy evaluation
+     * - pause evidence must never depend on the persistence verdict.
+     *
+     * <p>The return value tells the caller whether the durable pause evidence
+     * was actually written: a failed write leaves the session running with no
+     * resumption point, so callers that surface the pause to the user must
+     * check it.</p>
+     *
+     * <p>Before taking the next sequence number the counter is seeded from
+     * the persisted resume point, so a trigger whose counter trails the store
+     * (an un-seeded inner-loop trigger) cannot mint a paused cursor that the
+     * stale-seq guard would silently drop.</p>
+     *
+     * @param session session being paused, carrying the live state to freeze,
+     *                may be null to no-op
+     * @param stepType step type recorded on the paused cursor
+     * @param stepName step name recorded on the paused cursor
+     * @param pauseInfo pause metadata (operator, reason, timestamps), may be null
+     * @return true when the paused cursor was persisted, false when the
+     *         session was absent, the checkpoint write failed, or no newer
+     *         pause evidence could be written because the store already
+     *         holds an equal or newer cursor
+     */
+    public boolean pauseNow(BaseSession session, String stepType, String stepName, Map<String, Object> pauseInfo) {
+        if (session == null) {
+            return false;
+        }
+        seedFromPersistedResumePoint(session);
+        long seq = seqCounter.incrementAndGet();
+        long now = System.currentTimeMillis();
+        boolean isPersisted = false;
+        if (checkpointer != null) {
+            try {
+                isPersisted = checkpointer.stepPaused(session,
+                        new StepCursor(seq, stepType, stepName, StepStatus.PAUSED, now), pauseInfo);
+            } catch (RuntimeException exception) {
+                log.warn("Paused-step checkpoint could not be recorded for session {}: {}",
+                        session.sessionId(), exception.getMessage());
+            }
+        }
+        if (journal != null) {
+            try {
+                journal.append(new StepRecord(session.sessionId(), "", seq, stepType, stepName, "",
+                        StepStatus.PAUSED, now));
+            } catch (RuntimeException exception) {
+                log.debug("Paused-step journal append failed for session {}: {}",
+                        session.sessionId(), exception.getMessage());
+            }
+        }
+        return isPersisted;
+    }
+
+    /**
+     * Lift the sequence counter above the persisted cursors of the session
+     * before minting a paused cursor, so the cursor stays above both the
+     * resume point and any stored pause evidence and passes the stale-seq
+     * guard: a trigger whose counter trails the store (an un-seeded
+     * inner-loop trigger, or one facing pause evidence left by a sibling
+     * trigger) cannot mint a paused cursor that would be silently dropped.
+     *
+     * @param session session about to persist a pause boundary
+     */
+    private void seedFromPersistedResumePoint(BaseSession session) {
+        if (checkpointer == null) {
+            return;
+        }
+        try {
+            StepCursor lastCompleted = checkpointer.lastCompletedStep(session);
+            if (lastCompleted != null) {
+                seedSeq(lastCompleted.getSeq());
+            }
+            StepCursor lastPaused = checkpointer.lastPausedStep(session);
+            if (lastPaused != null) {
+                seedSeq(lastPaused.getSeq());
+            }
+        } catch (RuntimeException exception) {
+            log.debug("Pause boundary seeding skipped for session {}: {}",
+                    session.sessionId(), exception.getMessage());
         }
     }
 

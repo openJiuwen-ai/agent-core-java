@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.skills.repository;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.core.singleagent.skills.SkillSource;
 
@@ -53,15 +54,21 @@ public final class WorkspaceSkillRepository implements SkillRepository {
         if (root == null || !Files.isDirectory(root)) {
             return List.of();
         }
+        List<Path> symlinkEscapes = new ArrayList<>();
         List<Path> skillFiles = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile)
-                    .filter(path -> isSkillFileName(path.getFileName().toString()))
-                    .filter(this::isWithinRoot)
+            stream.filter(path -> Files.isRegularFile(path) || Files.isSymbolicLink(path))
                     .sorted(Comparator.comparing(path -> path.toString().toLowerCase(Locale.ROOT)))
-                    .forEach(skillFiles::add);
+                    .forEach(path -> {
+                        classifySkillEntry(path, skillFiles, symlinkEscapes);
+                    });
         } catch (IOException ignored) {
             return List.of();
+        }
+        for (Path escape : symlinkEscapes) {
+            Loggers.AGENT.warning(
+                    "SKILL_REJECTED: action=load source=workspace skill_id={} size={} hash={} path={} reason={}",
+                    "unknown", -1, "-", escape, "path escape or symlink");
         }
         List<Skill> skills = new ArrayList<>();
         for (Path skillFile : skillFiles) {
@@ -70,16 +77,25 @@ public final class WorkspaceSkillRepository implements SkillRepository {
         return List.copyOf(skills);
     }
 
-    private boolean isWithinRoot(Path path) {
-        try {
-            Path realPath = path.toRealPath();
-            Path realRoot = root.toRealPath();
-            return realPath.startsWith(realRoot);
-        } catch (IOException exception) {
-            return false;
+    private void classifySkillEntry(
+            Path path, List<Path> skillFiles, List<Path> symlinkEscapes) {
+        if (isSkillFileName(path.getFileName().toString())) {
+            skillFiles.add(path);
+        }
+        if (Files.isSymbolicLink(path) && isSymlinkEscape(path)) {
+            symlinkEscapes.add(path);
         }
     }
 
+    private boolean isSymlinkEscape(Path path) {
+        try {
+            Path realTarget = path.toRealPath();
+            Path realRoot = root.toRealPath();
+            return !realTarget.startsWith(realRoot);
+        } catch (IOException exception) {
+            return true;
+        }
+    }
     private static boolean isSkillFileName(String fileName) {
         for (String skillFileName : SKILL_FILE_NAMES) {
             if (skillFileName.equals(fileName)) {
@@ -93,7 +109,10 @@ public final class WorkspaceSkillRepository implements SkillRepository {
         SkillContentValidator.ValidationResult validation = validator.validate(skillFile, root);
         if (!validation.isAllowed()) {
             com.openjiuwen.core.common.logging.Loggers.AGENT.warning(
-                    "SKILL_REJECTED: source=workspace path={} reason={}",
+                    "SKILL_REJECTED: action=load source=workspace skill_id={} size={} hash={} path={} reason={}",
+                    "unknown",
+                    validation.size(),
+                    validation.hash(),
                     skillFile,
                     validation.reason());
             return Optional.empty();

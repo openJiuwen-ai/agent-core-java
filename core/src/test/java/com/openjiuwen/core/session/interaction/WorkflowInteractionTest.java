@@ -3,6 +3,9 @@
  */
 package com.openjiuwen.core.session.interaction;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.internal.NodeSession;
@@ -14,18 +17,46 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tests for {@link WorkflowInteraction}.
  */
 class WorkflowInteractionTest {
+
+    @Test
+    void concurrentNodeStatesConsumeRawInputOnlyOnce() throws Exception {
+        WorkflowCommitState state = InMemoryState.create(null, null, null,
+                Map.of(Constant.INTERACTIVE_INPUT, Map.of("answer", 42)), null);
+        CyclicBarrier ready = new CyclicBarrier(3);
+        List<CompletableFuture<Object>> reads = new ArrayList<>();
+        for (int index = 0; index < 3; index++) {
+            WorkflowCommitState node = state.createNodeState("node-" + index);
+            reads.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                    ready.await(5, TimeUnit.SECONDS);
+                } catch (java.util.concurrent.BrokenBarrierException | java.util.concurrent.TimeoutException error) {
+                    throw new IllegalStateException(error);
+                } catch (InterruptedException error) {
+                    InterruptSignals.restoreCurrentThread();
+                    throw new IllegalStateException(error);
+                }
+                return node.popWorkflowState(Constant.INTERACTIVE_INPUT);
+            }));
+        }
+        CompletableFuture.allOf(reads.toArray(CompletableFuture[]::new)).get(10, TimeUnit.SECONDS);
+        assertEquals(1, reads.stream().map(CompletableFuture::join).filter(java.util.Objects::nonNull).count());
+        assertNull(state.getWorkflowState(Constant.INTERACTIVE_INPUT));
+    }
 
     @Test
     @DisplayName("workflow interaction consumes raw workflow input before interrupting")

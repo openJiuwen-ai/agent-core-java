@@ -5,9 +5,14 @@
 package com.openjiuwen.core.singleagent.skills.repository;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 /**
  * Static safety checks for workspace-level Skill files.
@@ -38,7 +43,8 @@ public final class SkillContentValidator {
         return workspaceMaxBytes;
     }
 
-    public record ValidationResult(boolean isAllowed, String reason) {}
+    public record ValidationResult(
+            boolean isAllowed, String reason, long size, String hash) {}
 
     /**
      * Validates that a Skill file exists, is readable, and is within the size limit.
@@ -48,25 +54,27 @@ public final class SkillContentValidator {
      */
     public ValidationResult validateSize(Path skillFile) {
         if (skillFile == null) {
-            return new ValidationResult(false, "null path");
+            return rejected("null path");
         }
         if (!Files.isRegularFile(skillFile)) {
-            return new ValidationResult(false, "not a regular file");
+            return rejected("not a regular file");
         }
         try {
-            long size = Files.size(skillFile);
+            SkillContentValidator.FileMetadata metadata = fileMetadata(skillFile);
+            long size = metadata.size();
             if (size > workspaceMaxBytes) {
                 return new ValidationResult(
                         false,
                         "Skill document size "
                                 + size
                                 + " bytes exceeds limit "
-                                + workspaceMaxBytes);
+                                + workspaceMaxBytes,
+                        size,
+                        metadata.hash());
             }
-            return new ValidationResult(true, null);
+            return new ValidationResult(true, null, size, metadata.hash());
         } catch (IOException exception) {
-            return new ValidationResult(
-                    false, "unreadable or invalid encoding: " + exception.getMessage());
+            return rejected("unreadable: " + exception.getMessage());
         }
     }
 
@@ -79,28 +87,97 @@ public final class SkillContentValidator {
      */
     public ValidationResult validate(Path skillFile, Path workspaceRoot) {
         if (skillFile == null || workspaceRoot == null) {
-            return new ValidationResult(false, "null path");
+            return rejected("null path");
         }
         Path normalizedFile = skillFile.toAbsolutePath().normalize();
         Path normalizedRoot = workspaceRoot.toAbsolutePath().normalize();
         if (!normalizedFile.startsWith(normalizedRoot)) {
-            return new ValidationResult(false, "path outside workspace skill root");
+            return rejected("path outside workspace skill root");
         }
-        if (!Files.isRegularFile(normalizedFile)) {
-            return new ValidationResult(false, "not a regular file");
+        ValidationResult pathResult = resolveRealPaths(normalizedFile, normalizedRoot);
+        if (!pathResult.isAllowed()) {
+            return pathResult;
         }
         try {
-            long size = Files.size(normalizedFile);
+            return validateContent(normalizedFile.toRealPath());
+        } catch (IOException exception) {
+            return rejected("unreadable: " + exception.getMessage());
+        }
+    }
+
+    private ValidationResult resolveRealPaths(Path normalizedFile, Path normalizedRoot) {
+        try {
+            Path realFile = normalizedFile.toRealPath();
+            Path realRoot = normalizedRoot.toRealPath();
+            if (!realFile.startsWith(realRoot)) {
+                return rejected("path escape or symlink");
+            }
+            if (!Files.isRegularFile(realFile)) {
+                return rejected("not a regular file");
+            }
+        } catch (IOException exception) {
+            if (Files.isSymbolicLink(normalizedFile)) {
+                return rejected("path escape or symlink");
+            }
+            return rejected("unreadable: " + exception.getMessage());
+        }
+        return new ValidationResult(true, null, -1, "-");
+    }
+
+    private ValidationResult validateContent(Path realFile) {
+        FileMetadata metadata;
+        try {
+            metadata = fileMetadata(realFile);
+        } catch (IOException exception) {
+            return rejected("unreadable: " + exception.getMessage());
+        }
+        try {
+            long size = metadata.size();
             if (size > workspaceMaxBytes) {
                 return new ValidationResult(
                         false,
-                        "SKILL.md size " + size + " bytes exceeds limit " + workspaceMaxBytes);
+                        "SKILL.md size " + size + " bytes exceeds limit " + workspaceMaxBytes,
+                        size,
+                        metadata.hash());
             }
-            Files.readString(normalizedFile, StandardCharsets.UTF_8);
-            return new ValidationResult(true, null);
+            Files.readString(realFile, StandardCharsets.UTF_8);
+            return new ValidationResult(true, null, size, metadata.hash());
+        } catch (MalformedInputException exception) {
+            return new ValidationResult(
+                    false,
+                    "invalid UTF-8 encoding: " + exception.getMessage(),
+                    metadata.size(),
+                    metadata.hash());
         } catch (IOException exception) {
             return new ValidationResult(
-                    false, "unreadable or invalid encoding: " + exception.getMessage());
+                    false,
+                    "unreadable or invalid encoding: " + exception.getMessage(),
+                    -1,
+                    "-");
         }
     }
+
+    private static ValidationResult rejected(String reason) {
+        return new ValidationResult(false, reason, -1, "-");
+    }
+
+    private static FileMetadata fileMetadata(Path skillFile) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            long size = 0L;
+            try (InputStream input = Files.newInputStream(skillFile)) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    digest.update(buffer, 0, read);
+                    size += read;
+                }
+            }
+            return new FileMetadata(size, HexFormat.of().formatHex(digest.digest()));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 digest is unavailable", exception);
+        }
+    }
+
+    private record FileMetadata(long size, String hash) {}
 }

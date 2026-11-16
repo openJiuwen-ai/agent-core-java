@@ -4,10 +4,15 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.common.exception.BaseError;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -17,12 +22,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * <p>Mirrors Python's {@code TestTagMgr} in
@@ -302,7 +301,6 @@ class TagManagerTest {
     }
 
     @Test
-    @Disabled("Assertion no longer matches current develop behavior; kept disabled pending product decision or test rewrite")
     void removeResourceTagsDeletesResourceWhenNoTagsRemain() {
         List<String> remaining = tagManager.removeResourceTags("res1", List.of("tag1", "tag2"));
         assertEquals(List.of(), remaining);

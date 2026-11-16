@@ -15,16 +15,33 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.sun.net.httpserver.HttpServer;
 
+import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.net.Authenticator;
+import java.net.CookieHandler;
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
  * <p>Mirrors Python's {@code DashScopeModelClient} in
  * {@code openjiuwen/core/foundation/llm/model_clients/dashscope_model_client.py}.</p>
  */
+@Isolated
 class DashScopeModelClientTest {
     @Test
     void generateImageBuildsDashScopeMessageAndExtractsImages() throws Exception {
@@ -251,6 +269,215 @@ class DashScopeModelClientTest {
 
         assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_1_1);
         assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(5));
+    }
+
+    @Test
+    void generateImage_officialSignalDeath_surfacesAndRecoversNext() throws Exception {
+        // Given the sole pooled multimodal client dies with the JDK's official selector-closed
+        // signal, When generating an image, Then the failure surfaces without resend (the
+        // official signal can also fire after the request bytes reached the wire) and the
+        // next call recovers on a fresh pooled client
+        try (StubServer server = new StubServer()
+            .enqueue(200, imageResponse("https://example.test/first.png"))
+            .enqueue(200, imageResponse("https://example.test/recovered.png"))) {
+            DashScopeModelClient client = dashScopeClient(server);
+            // Clear after construction: the ctor also builds the pooled chat delegate entry.
+            ModelHttpClients.clearSharedClientsForTesting();
+            client.generateImage(imageMessages(), null, null, null, 1, false, false, 0,
+                    new LinkedHashMap<>());
+            ModelHttpClients.replaceSolePooledClientForTesting(
+                    new FailingHttpClient("selector manager closed"));
+
+            assertThatThrownBy(() -> client.generateImage(imageMessages(), null, null, null, 1,
+                    false, false, 0, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThat(server.requests).hasSize(1);
+
+            ImageGenerationResponse recovered = client.generateImage(imageMessages(), null, null,
+                    null, 1, false, false, 0, new LinkedHashMap<>());
+
+            assertThat(recovered.getImages()).containsExactly("https://example.test/recovered.png");
+            assertThat(server.requests).hasSize(2);
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
+    void generateImage_thresholdEviction_surfacesAndRecoversNext() throws Exception {
+        // Given the sole pooled multimodal client keeps failing with an unrecognized wording,
+        // When generating images, Then failures surface without resend, the third consecutive
+        // failure reaches the threshold (evict + register), and the next call recovers
+        try (StubServer server = new StubServer()
+            .enqueue(200, imageResponse("https://example.test/first.png"))
+            .enqueue(200, imageResponse("https://example.test/recovered.png"))) {
+            DashScopeModelClient client = dashScopeClient(server);
+            // Clear after construction: the ctor also builds the pooled chat delegate entry.
+            ModelHttpClients.clearSharedClientsForTesting();
+            client.generateImage(imageMessages(), null, null, null, 1, false, false, 0,
+                    new LinkedHashMap<>());
+            ModelHttpClients.replaceSolePooledClientForTesting(
+                    new FailingHttpClient("connection reset"));
+
+            assertThatThrownBy(() -> client.generateImage(imageMessages(), null, null, null, 1,
+                    false, false, 0, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThatThrownBy(() -> client.generateImage(imageMessages(), null, null, null, 1,
+                    false, false, 0, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThatThrownBy(() -> client.generateImage(imageMessages(), null, null, null, 1,
+                    false, false, 0, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThat(server.requests).hasSize(1);
+
+            ImageGenerationResponse recovered = client.generateImage(imageMessages(), null, null,
+                    null, 1, false, false, 0, new LinkedHashMap<>());
+
+            assertThat(recovered.getImages()).containsExactly("https://example.test/recovered.png");
+            assertThat(server.requests).hasSize(2);
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    private static List<UserMessage> imageMessages() {
+        return List.of(UserMessage.builder().content(List.of("draw a fox")).build());
+    }
+
+    private static String imageResponse(String imageUrl) {
+        return "{\"output\":{\"choices\":[{\"message\":{\"content\":[{\"image\":\""
+                + imageUrl + "\"}]}}]}}";
+    }
+
+    private static DashScopeModelClient dashScopeClient(StubServer server) {
+        return new DashScopeModelClient(
+                ModelRequestConfig.builder().modelName("dashscope-default").build(),
+                ModelClientConfig.builder()
+                        .clientProvider(ProviderType.DASH_SCOPE)
+                        .apiKey("sk-test")
+                        .apiBase(server.baseUrl())
+                        .verifySsl(false)
+                        .build());
+    }
+
+    // A client whose sends always fail with the given wording, so hook tests can poison the
+    // pooled entry: "selector manager closed" exercises the official-signal path, any other
+    // wording exercises the failure-count fallback.
+    private static final class FailingHttpClient extends HttpClient {
+        private final String failureMessage;
+
+        private FailingHttpClient(String failureMessage) {
+            this.failureMessage = failureMessage;
+        }
+
+        @Override
+        public Optional<CookieHandler> cookieHandler() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Duration> connectTimeout() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Redirect followRedirects() {
+            return Redirect.NEVER;
+        }
+
+        @Override
+        public Optional<ProxySelector> proxy() {
+            return Optional.empty();
+        }
+
+        @Override
+        public SSLContext sslContext() {
+            return null;
+        }
+
+        @Override
+        public SSLParameters sslParameters() {
+            return new SSLParameters();
+        }
+
+        @Override
+        public Optional<Authenticator> authenticator() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Version version() {
+            return Version.HTTP_1_1;
+        }
+
+        @Override
+        public Optional<Executor> executor() {
+            return Optional.empty();
+        }
+
+        @Override
+        public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
+                throws IOException {
+            throw new IOException(failureMessage);
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler,
+                HttpResponse.PushPromiseHandler<T> pushPromiseHandler) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    // Minimal HTTP stub serving the multimodal generation endpoint; requests are counted so
+    // tests can assert zero in-call resend.
+    private static final class StubServer implements AutoCloseable {
+        private final HttpServer server;
+        private final Deque<Map<String, Object>> responses = new ArrayDeque<>();
+        private final List<String> requests = new ArrayList<>();
+
+        private StubServer() throws IOException {
+            this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            this.server.createContext("/", this::handle);
+            this.server.start();
+        }
+
+        private StubServer enqueue(int status, String body) {
+            responses.add(Map.of("status", status, "body", body));
+            return this;
+        }
+
+        private String baseUrl() {
+            return "http://127.0.0.1:" + server.getAddress().getPort();
+        }
+
+        private void handle(com.sun.net.httpserver.HttpExchange exchange) throws IOException {
+            requests.add(exchange.getRequestMethod());
+            Map<String, Object> response = responses.size() > 1 ? responses.poll() : responses.peek();
+            Object statusValue = response.get("status");
+            Object bodyValue = response.get("body");
+            if (!(statusValue instanceof Integer status) || !(bodyValue instanceof String bodyText)) {
+                exchange.sendResponseHeaders(500, -1);
+                exchange.close();
+                return;
+            }
+            byte[] bytes = bodyText.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        }
+
+        @Override
+        public void close() {
+            server.stop(0);
+        }
     }
 
     private static DashScopeModelClient client(CapturingTransport transport) {

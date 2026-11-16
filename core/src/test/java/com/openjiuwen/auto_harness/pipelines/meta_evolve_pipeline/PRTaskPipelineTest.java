@@ -4,6 +4,8 @@
 
 package com.openjiuwen.auto_harness.pipelines.meta_evolve_pipeline;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.auto_harness.contexts.BaseExecutionContext;
 import com.openjiuwen.auto_harness.contexts.TaskContext;
 import com.openjiuwen.auto_harness.contexts.TaskRuntime;
@@ -22,7 +24,11 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.auto_harness.stages.BaseStage;
 import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.harness.HarnessResourceTestCleanup;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,16 +40,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Mirrors Python's {@code PRTaskPipeline} and module helpers in
  * {@code openjiuwen/auto_harness/pipelines/meta_evolve_pipeline/meta_evolve_task_pipeline.py}.
  */
 class PRTaskPipelineTest {
-
     @TempDir
     Path tempDir;
+
+    @BeforeEach
+    void clearSharedHarnessToolsBefore() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
+
+    @AfterEach
+    void clearSharedHarnessToolsAfter() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
 
     @Test
     void stageMapContainsTaskStageSlots() {

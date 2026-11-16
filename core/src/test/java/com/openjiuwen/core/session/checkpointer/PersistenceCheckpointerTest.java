@@ -7,6 +7,8 @@ package com.openjiuwen.core.session.checkpointer;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
+import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
+import com.openjiuwen.core.graph.store.Serializer;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
@@ -29,6 +31,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
+
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -276,6 +285,125 @@ class PersistenceCheckpointerTest {
                 "",
                 State.DEFAULT_NODE_ID
         );
+    }
+
+    @Test
+    void invalidAgentSnapshotsFailWithoutChangingSessionOrStoredValues() throws IOException {
+        byte[] valid = Serializer.create("java").dumpsTyped(Map.of()).data();
+        Object[][] invalid = {
+                {"java", null}, {null, valid}, {"", valid}, {"yaml", valid},
+                {"empty", valid}, {"java", new byte[0]}, {"java", new byte[] {1, 2, 3}},
+                {"java", javaBytes(null)}, {"java", javaBytes("not-a-map")},
+                {"java", javaBytes(new java.io.File("not-allowlisted"))}, {42, valid}
+        };
+        for (Object[] values : invalid) {
+            InMemoryKVStore store = new InMemoryKVStore();
+            String prefix = "invalid:agent:agent-a:agent_state_blobs";
+            store.set(prefix + "_dump_type", values[0]).join();
+            store.set(prefix, values[1]).join();
+            Map<String, Object> before = store.getByPrefix("invalid:").join();
+            AgentStateCollection state = new AgentStateCollection();
+            state.update(Map.of("keep", "original"));
+            Map<String, Object> stateBefore = state.getState();
+
+            assertThrows(RuntimeException.class, () -> new PersistenceCheckpointer(store)
+                    .preAgentExecute(TestSession.agent("invalid", "agent-a", state), "new-input"));
+
+            assertEquals(stateBefore, state.getState());
+            assertEquals("original", state.get("keep"));
+            assertNull(state.get(Constant.INTERACTIVE_INPUT));
+            assertEquals(before, store.getByPrefix("invalid:").join());
+        }
+    }
+
+    @Test
+    void missingHalfOfAgentSnapshotFails() {
+        InMemoryKVStore store = new InMemoryKVStore();
+        store.set("partial:agent:agent-a:agent_state_blobs_dump_type", "java").join();
+        assertThrows(IllegalArgumentException.class, () -> new PersistenceCheckpointer(store)
+                .preAgentExecute(TestSession.agent("partial", "agent-a", new AgentStateCollection()), null));
+        assertEquals("java", store.get("partial:agent:agent-a:agent_state_blobs_dump_type").join());
+    }
+
+    @Test
+    void malformedPipelineReadFailsInsteadOfStartingNewSession() {
+        InMemoryKVStore store = new InMemoryKVStore() {
+            @Override
+            public BasedKVStorePipeline pipeline() {
+                return new BasedKVStorePipeline(operations -> CompletableFuture.completedFuture(List.of()));
+            }
+        };
+        assertThrows(IllegalArgumentException.class, () -> new PersistenceCheckpointer(store)
+                .preAgentExecute(TestSession.agent("protocol", "agent-a", new AgentStateCollection()), null));
+    }
+
+    @Test
+    void persistenceBackendsRetainValidSnapshotsAndRejectPartialRecords(@TempDir Path directory) {
+        for (String backend : List.of("memory", "sqlite", "shelve")) {
+            PersistenceCheckpointer checkpoint = (PersistenceCheckpointer) CheckpointerFactory.create(
+                    new CheckpointerConfig("persistence", Map.of("db_type", backend,
+                            "db_path", directory.resolve(backend).toString())));
+            try {
+                AgentStateCollection state = new AgentStateCollection();
+                state.update(Map.of("answer", "持久化"));
+                checkpoint.postAgentExecute(TestSession.agent("backend", "agent-a", state));
+                AgentStateCollection recovered = new AgentStateCollection();
+                checkpoint.preAgentExecute(TestSession.agent("backend", "agent-a", recovered), null);
+                assertEquals("持久化", recovered.get("answer"));
+                checkpoint.kvStore().delete("backend:agent:agent-a:agent_state_blobs").join();
+                assertThrows(IllegalArgumentException.class, () -> checkpoint.preAgentExecute(
+                        TestSession.agent("backend", "agent-a", new AgentStateCollection()), null));
+                checkpoint.release("backend");
+                checkpoint.preAgentExecute(TestSession.agent("backend", "agent-a", recovered), null);
+            } finally {
+                checkpoint.close();
+            }
+        }
+    }
+
+    @Test
+    void validEmptyMapAndByteEncodedTypeRecover() {
+        InMemoryKVStore store = new InMemoryKVStore();
+        String prefix = "empty-map:agent:agent-a:agent_state_blobs";
+        store.set(prefix + "_dump_type", "java".getBytes(java.nio.charset.StandardCharsets.UTF_8)).join();
+        store.set(prefix, Serializer.create("java").dumpsTyped(Map.of()).data()).join();
+        new PersistenceCheckpointer(store).preAgentExecute(
+                TestSession.agent("empty-map", "agent-a", new AgentStateCollection()), null);
+    }
+
+    private static byte[] javaBytes(Object value) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream stream = new ObjectOutputStream(bytes)) {
+            stream.writeObject(value);
+        }
+        return bytes.toByteArray();
+    }
+
+    @Test
+    void incompatibleSerialVersionIsPropagatedBeforeStateReplacement() throws IOException {
+        byte[] payload = javaBytes(new java.util.ArrayList<>(List.of("value")));
+        byte[] descriptor = "java.util.ArrayList".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        int position = -1;
+        for (int index = 0; index <= payload.length - descriptor.length - Long.BYTES; index++) {
+            if (java.util.Arrays.equals(descriptor,
+                    java.util.Arrays.copyOfRange(payload, index, index + descriptor.length))) {
+                position = index + descriptor.length;
+                break;
+            }
+        }
+        assertTrue(position >= 0, "class descriptor exists in the serialized fixture");
+        payload[position + Long.BYTES - 1] ^= 1;
+        InMemoryKVStore store = new InMemoryKVStore();
+        String prefix = "version:agent:agent-a:agent_state_blobs";
+        store.set(prefix + "_dump_type", "java").join();
+        store.set(prefix, payload).join();
+        AgentStateCollection state = new AgentStateCollection();
+        state.update(Map.of("keep", "original"));
+        RuntimeException error = assertThrows(RuntimeException.class, () -> new PersistenceCheckpointer(store)
+                .preAgentExecute(TestSession.agent("version", "agent-a", state), null));
+        assertInstanceOf(java.io.InvalidClassException.class, error.getCause());
+        assertEquals("original", state.get("keep"));
+        assertTrue(store.exists(prefix).join());
     }
 
     /**

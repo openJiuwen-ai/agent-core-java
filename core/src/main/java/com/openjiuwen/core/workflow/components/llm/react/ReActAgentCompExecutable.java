@@ -10,6 +10,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -178,6 +179,26 @@ public class ReActAgentCompExecutable extends ComponentExecutable<Object, Object
                 return castIterator(typedIterator);
             }
             return List.<Object>of().iterator();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public long renewModelCallTimeout(long leaseId, long idleTimeoutMs, long delayMs) {
+            StreamWriterManager manager = session == null ? null : session.streamWriterManager();
+            return manager == null ? 0L : manager.renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void endModelCallTimeout(long leaseId) {
+            StreamWriterManager manager = session == null ? null : session.streamWriterManager();
+            if (manager != null) {
+                manager.endModelCallTimeout(leaseId);
+            }
         }
 
         private Object invokeSessionMethod(String methodName) {

@@ -10,20 +10,33 @@ import static org.assertj.core.api.Assertions.fail;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreakerSnapshot;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallRetrier;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.sun.net.httpserver.HttpServer;
 
+import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
+import java.net.Authenticator;
+import java.net.CookieHandler;
 import java.net.InetSocketAddress;
+import java.net.ProxySelector;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -31,6 +44,16 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 
 /**
  * UT-S: streaming first-segment retry boundary and error frame surfacing on
@@ -38,7 +61,70 @@ import java.util.Map;
  *
  * @since 2026-10-19
  */
+@Isolated
 class ModelCallRetryFlowTest {
+    @Test
+    void exhaustedRetriesCountOnceAndFastFailPreservesSnapshot() throws Exception {
+        try (StubServer server = new StubServer().enqueue(503, errorFrame("service unavailable"))) {
+            Model model = new Model(client(server, 2, new ModelCircuitBreaker(1, 60_000L)));
+            Model otherModel = new Model(client(server));
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 0));
+
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(server.requests).hasSize(3);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(true, 1));
+            assertThat(otherModel.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 0));
+
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(server.requests).hasSize(3);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(true, 1));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {401, 402, 400})
+    void permanentHttpFailurePreservesCountAndSuccessResets(int status) throws Exception {
+        try (StubServer server = new StubServer()
+            .enqueue(429, errorFrame("rate limit reached"))
+            .enqueue(status, errorFrame("context_length_exceeded"))
+            .enqueue(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}")) {
+            Model model = new Model(client(server, 0, new ModelCircuitBreaker(3, 60_000L)));
+
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 1));
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 1));
+
+            assertThat(model.invoke("hello").toCompletableFuture().join().getContent()).isEqualTo("ok");
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 0));
+            assertThat(server.requests).hasSize(3);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void configuredFacadeAndCompatibleAliasExposeLiveSnapshot(boolean isCompatibleAlias) throws Exception {
+        try (StubServer server = new StubServer().enqueue(503, errorFrame("service unavailable"))) {
+            ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName("gpt-test").build();
+            ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI).apiKey("sk-test").apiBase(server.baseUrl())
+                .verifySsl(false).maxRetries(0).build();
+            Model model = isCompatibleAlias
+                ? new Model(new OpenAiCompatibleModelClient(requestConfig, clientConfig))
+                : new Model(clientConfig, requestConfig);
+
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 0));
+            assertThatThrownBy(() -> model.invoke("hello").toCompletableFuture().join())
+                .isInstanceOf(RuntimeException.class);
+            assertThat(model.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(false, 1));
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
     @Test
     void stream_openPhase429_retriedAndStreams() throws Exception {
         // Given a 429 at the open phase then a good stream, When iterating,
@@ -157,10 +243,120 @@ class ModelCallRetryFlowTest {
 
             assertThatThrownBy(iterator::hasNext).isInstanceOf(BaseError.class);
             assertThat(server.requests).hasSize(2);
+            assertThat(client.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(true, 1));
             assertThatThrownBy(() -> client.stream(
                 "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
                 .isInstanceOf(BaseError.class);
             assertThat(server.requests).hasSize(2);
+            assertThat(client.getCircuitBreakerSnapshot()).contains(new ModelCircuitBreakerSnapshot(true, 1));
+        }
+    }
+
+    @Test
+    void invoke_officialSignalDeath_rebuildsFieldAndSurfacesWithoutResend() throws Exception {
+        // Given a field client that always fails with the JDK's official selector-dead signal,
+        // When invoking, Then the field is rebuilt, the failure surfaces with zero wire
+        // traffic (no in-call resend — the official signal can fire post-write), and the next
+        // call recovers on the rebuilt client
+        ModelHttpClients.clearSharedClientsForTesting();
+        try (StubServer server = new StubServer()
+            .enqueue(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"recovered\"}}]}")) {
+            OpenAIModelClient noRetry = client(server, 0, new ModelCircuitBreaker());
+            FailingHttpClient dead = new FailingHttpClient("selector manager closed");
+            noRetry.replaceHttpClientForTesting(dead);
+
+            assertThatThrownBy(() -> noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThat(server.requests).isEmpty();
+            assertThat(noRetry.httpClientForTesting()).isNotSameAs(dead);
+
+            AssistantMessage recovered = noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(recovered.getContentAsString()).isEqualTo("recovered");
+            assertThat(server.requests).hasSize(1);
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
+    void invoke_concurrentRecovery_keepsNewerClientAndUsesIt() throws Exception {
+        ModelHttpClients.clearSharedClientsForTesting();
+        try (StubServer server = new StubServer()
+            .enqueue(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"losing\"}}]}")) {
+            OpenAIModelClient noRetry = client(server, 0, new ModelCircuitBreaker());
+            ModelHttpClients.clearSharedClientsForTesting();
+            FailingHttpClient failed = new FailingHttpClient("selector manager closed");
+            FailingHttpClient newer = new FailingHttpClient("newer sender");
+            noRetry.replaceHttpClientForTesting(failed);
+            CountDownLatch replacementStarted = new CountDownLatch(1);
+            CountDownLatch finishReplacement = new CountDownLatch(1);
+            AtomicBoolean shouldPause = new AtomicBoolean(true);
+            long now = System.nanoTime();
+            ModelHttpClients.setNanoClockForTesting(() -> {
+                if (shouldPause.compareAndSet(true, false)) {
+                    replacementStarted.countDown();
+                    awaitBuildRelease(finishReplacement);
+                }
+                return now;
+            });
+            CompletableFuture<Void> failedCall = CompletableFuture.runAsync(() -> assertThatThrownBy(() ->
+                noRetry.invoke("hello", null, null, null, null, null, null, null, null,
+                    new LinkedHashMap<>())).isInstanceOf(BaseError.class));
+            try {
+                assertThat(replacementStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                noRetry.replaceHttpClientForTesting(newer);
+            } finally {
+                finishReplacement.countDown();
+            }
+            failedCall.get(5, TimeUnit.SECONDS);
+
+            assertThatThrownBy(() -> noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThat(noRetry.httpClientForTesting()).isSameAs(newer);
+            assertThat(failed.sendCount).hasValue(1);
+            assertThat(newer.sendCount).hasValue(1);
+            assertThat(server.requests).isEmpty();
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
+    void invoke_unrecognizedFailure_keepsFieldClientWithoutResend() throws Exception {
+        // Given a field client failing with an unrecognized wording (ALIVE verdict), When
+        // invoking twice, Then the field client stays in place (no rebuild) and failures
+        // surface with zero wire traffic
+        ModelHttpClients.clearSharedClientsForTesting();
+        try (StubServer server = new StubServer()
+            .enqueue(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ignored\"}}]}")) {
+            OpenAIModelClient noRetry = client(server, 0, new ModelCircuitBreaker());
+            FailingHttpClient alive = new FailingHttpClient("connection reset by peer");
+            noRetry.replaceHttpClientForTesting(alive);
+
+            assertThatThrownBy(() -> noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThatThrownBy(() -> noRetry.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                .isInstanceOf(BaseError.class);
+            assertThat(noRetry.httpClientForTesting()).isSameAs(alive);
+            assertThat(server.requests).isEmpty();
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    private static void awaitBuildRelease(CountDownLatch release) {
+        try {
+            if (!release.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to finish the replacement build");
+            }
+        } catch (InterruptedException exception) {
+            throw new IllegalStateException("Interrupted while waiting to finish the replacement build", exception);
         }
     }
 
@@ -206,6 +402,83 @@ class ModelCallRetryFlowTest {
             body.append("data: ").append(frame).append("\n\n");
         }
         return body.toString();
+    }
+
+    // A client whose sends always fail with the given wording, so OAI hook tests can drive
+    // the eviction/rebuild path: "selector manager closed" exercises the official-signal
+    // path, any other wording exercises the ALIVE verdict (no rebuild).
+    private static final class FailingHttpClient extends HttpClient {
+        private final String failureMessage;
+        private final AtomicInteger sendCount = new AtomicInteger();
+
+        private FailingHttpClient(String failureMessage) {
+            this.failureMessage = failureMessage;
+        }
+
+        @Override
+        public Optional<CookieHandler> cookieHandler() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Duration> connectTimeout() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Redirect followRedirects() {
+            return Redirect.NEVER;
+        }
+
+        @Override
+        public Optional<ProxySelector> proxy() {
+            return Optional.empty();
+        }
+
+        @Override
+        public SSLContext sslContext() {
+            return null;
+        }
+
+        @Override
+        public SSLParameters sslParameters() {
+            return new SSLParameters();
+        }
+
+        @Override
+        public Optional<Authenticator> authenticator() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Version version() {
+            return Version.HTTP_1_1;
+        }
+
+        @Override
+        public Optional<Executor> executor() {
+            return Optional.empty();
+        }
+
+        @Override
+        public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
+                throws IOException {
+            sendCount.incrementAndGet();
+            throw new IOException(failureMessage);
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler,
+                HttpResponse.PushPromiseHandler<T> pushPromiseHandler) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static final class StubServer implements AutoCloseable {

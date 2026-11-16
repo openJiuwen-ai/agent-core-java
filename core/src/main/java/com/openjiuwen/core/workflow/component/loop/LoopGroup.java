@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.graph.CompiledGraph;
 import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.PregelGraph;
 import com.openjiuwen.core.graph.pregel.PregelConfig;
@@ -252,7 +253,13 @@ public class LoopGroup extends BaseWorkflow implements HasDrawable {
                     PregelConstants.MAX_RECURSIVE_LIMIT);
             graphConfig.setParentNs(runtimeSession.workflowId());
             graphInputs.put(Constant.CONFIG_KEY, graphConfig);
-            return ((ExecutableGraph<Object, Object>) compiled).invoke(graphInputs, runtimeSession);
+            Object result = ((ExecutableGraph<Object, Object>) compiled).invoke(graphInputs, runtimeSession);
+            if (compiled instanceof CompiledGraph completedGraph && completedGraph.getPregel().getStore() != null) {
+                // Retain interrupted-round checkpoints, but never replay one after that round completed.
+                completedGraph.getPregel().getStore().delete(runtimeSession.sessionId(), graphNamespace)
+                        .toCompletableFuture().join();
+            }
+            return result;
         } finally {
             runtimeSession.setActorManager(previousActorManager);
         }

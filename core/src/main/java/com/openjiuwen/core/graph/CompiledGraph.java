@@ -23,10 +23,37 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
 
     private final Pregel pregel;
     private final GraphCheckpointer checkpointer;
+    private final Map<String, Vertex> runNodes;
+    private final BaseSession compileSession;
+    private final Map<String, Object> compileOptions;
+    private final RunRoutingScope routingScope;
 
     public CompiledGraph(Pregel pregel, GraphCheckpointer checkpointer) {
+        this(pregel, checkpointer, null, null, null, null);
+    }
+
+    /**
+     * Creates a CompiledGraph with per-run session context.
+     *
+     * @param pregel         the compiled Pregel engine (one per compile call)
+     * @param checkpointer   checkpointer derived from the compile-argument session
+     * @param runNodes       vertices owned by this compilation; initialized
+     *                       before each invocation and never shared with
+     *                       another compilation of the same graph
+     * @param compileSession the session passed to {@code compile()} (per-run)
+     * @param compileOptions the options map passed to {@code compile()}
+     * @param routingScope   routing scope this compilation's branch selectors
+     *                       resolve against, may be {@code null}
+     */
+    public CompiledGraph(Pregel pregel, GraphCheckpointer checkpointer,
+                         Map<String, Vertex> runNodes, BaseSession compileSession,
+                         Map<String, Object> compileOptions, RunRoutingScope routingScope) {
         this.pregel = pregel;
         this.checkpointer = checkpointer;
+        this.runNodes = runNodes;
+        this.compileSession = compileSession;
+        this.compileOptions = compileOptions;
+        this.routingScope = routingScope;
     }
 
     @Override
@@ -36,6 +63,11 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
         Exception exception = null;
         Map<String, Object> result = null;
 
+        // Per-run vertex init: bind this compilation's vertices to the session
+        // of this invocation so nodes read/write the correct workflow state.
+        // Vertices are private to the compilation, so an overlapping run of
+        // another compilation cannot rebind them mid-flight.
+        initVerticesForRun(session);
         try {
             if (isMain && checkpointer != null) {
                 checkpointer.preWorkflowExecute(session, inputs);
@@ -53,14 +85,42 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
             }
             if (isMain && checkpointer != null) {
                 checkpointer.postWorkflowExecute(session, result, exception);
-            } else if (exception != null) {
-                throw propagate(exception);
+            } else {
+                if (exception != null) {
+                    throw propagate(exception);
+                }
             }
             return result;
         } catch (RuntimeException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
+        }
+    }
+
+    /**
+     * Initialize this compilation's vertices with the invocation session.
+     *
+     * <p>Falls back to the compile-argument session when the invocation
+     * session is not a VertexSession (e.g. null or a plain BaseSession),
+     * preserving backward compatibility for callers that pass session only
+     * at compile time.
+     *
+     * @param session the invocation session passed to the current run
+     */
+    private void initVerticesForRun(BaseSession session) {
+        BaseSession effectiveSession = session != null ? session : compileSession;
+        if (routingScope != null) {
+            routingScope.bind(effectiveSession);
+        }
+        if (runNodes == null || runNodes.isEmpty()) {
+            return;
+        }
+        if (effectiveSession instanceof Vertex.VertexSession vertexSession) {
+            PregelGraph.initVertices(runNodes, vertexSession, compileOptions);
+        }
+        if (effectiveSession instanceof StreamVertexBinder binder) {
+            binder.bindStreamVertices(runNodes);
         }
     }
 

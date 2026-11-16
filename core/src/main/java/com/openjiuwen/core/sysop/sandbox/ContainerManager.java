@@ -81,7 +81,7 @@ public class ContainerManager {
         boolean isRemovedClient = clients.remove(key) != null;
         Container removedContainer = containers.remove(key);
         Optional<SandboxRecord> removed = store.hdel(key);
-        if (removed.isPresent()) {
+        if (removed.isPresent() && hasSandboxId(removed.get())) {
             SandboxRecord record = removed.get();
             SandboxLauncher launcher = launcherFor(record.getLauncherType());
             if ("pause".equalsIgnoreCase(onStop)) {
@@ -113,14 +113,23 @@ public class ContainerManager {
             return List.of();
         }
         List<SandboxRecord> evicted = store.evictExpired(idleTtlSeconds, now);
+        containers.entrySet().removeIf(entry -> {
+            if (store.get(entry.getKey()).isEmpty()) {
+                clients.remove(entry.getKey());
+                return true;
+            }
+            return false;
+        });
         for (SandboxRecord record : evicted) {
-            clients.remove(record.getSandboxId());
-            containers
-                    .entrySet()
-                    .removeIf(entry -> record.getSandboxId().equals(entry.getValue().getSandboxId()));
-            launcherFor(record.getLauncherType()).delete(record.getSandboxId()).join();
+            if (hasSandboxId(record)) {
+                launcherFor(record.getLauncherType()).delete(record.getSandboxId()).join();
+            }
         }
         return evicted;
+    }
+
+    private static boolean hasSandboxId(SandboxRecord record) {
+        return record.getSandboxId() != null && !record.getSandboxId().isBlank();
     }
 
     private String normalizeKey(String key, SandboxGatewayConfig config) {

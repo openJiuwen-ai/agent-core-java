@@ -4,19 +4,19 @@
 
 package com.openjiuwen.dev_tools.prompt_builder.builder;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Mirrors Python behavior in
@@ -32,7 +32,7 @@ class PromptBuilderUtilsTest {
     }
 
     @Test
-    void getStringPromptSupportsStringTemplateMessagesAndMapContent() {
+    void getStringPromptSupportsStringsMessagesAndMessageMappings() {
         assertThat(PromptBuilderUtils.getStringPrompt("plain")).isEqualTo("plain");
 
         PromptTemplate stringTemplate = PromptTemplate.builder().content("content").build();
@@ -43,11 +43,18 @@ class PromptBuilderUtilsTest {
                 .build();
         assertThat(PromptBuilderUtils.getStringPrompt(messageTemplate)).isEqualTo("u\ns");
 
-        Map<String, String> ordered = new LinkedHashMap<>();
-        ordered.put("first", "a");
-        ordered.put("second", "b");
-        PromptTemplate mapTemplate = PromptTemplate.builder().content(List.of(ordered)).build();
+        PromptTemplate mapTemplate = PromptTemplate.builder().content(List.of(
+                Map.of("role", "user", "content", "a"),
+                Map.of("role", "system", "content", "b"))).build();
         assertThat(PromptBuilderUtils.getStringPrompt(mapTemplate)).isEqualTo("a\nb");
+    }
+
+    @Test
+    void arbitraryMapIsRejectedAtTemplateConstruction() {
+        assertThatThrownBy(() -> PromptTemplate.builder()
+                .content(List.of(Map.of("first", "a", "second", "b"))).build())
+                .isInstanceOf(BaseError.class)
+                .hasMessageContaining("prompt template type must be in str or list[BaseMessage]");
     }
 
     @Test

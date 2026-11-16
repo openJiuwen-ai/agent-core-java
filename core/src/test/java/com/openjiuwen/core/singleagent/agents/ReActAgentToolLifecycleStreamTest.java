@@ -33,6 +33,8 @@ import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,6 +49,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ReActAgentToolLifecycleStreamTest {
 
@@ -352,6 +355,58 @@ class ReActAgentToolLifecycleStreamTest {
         assertThat(outputs).filteredOn(output -> "answer".equals(output.getType()))
                 .extracting(OutputSchema::getIndex)
                 .containsOnly(0);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"key\":\"env\"}", "{\"key\":\"different\"}"})
+    void repeatedCallIdFailsBeforeDuplicateSideEffects(String repeatedArguments) {
+        CountingTool tool = new CountingTool(unique("replay-tool"), "lookupEnv", "prod");
+        ReActAgent agent = streamingAgent(List.of(
+                toolChunk("replayed-id", "lookupEnv", "{\"key\":\"env\"}"),
+                toolChunk("replayed-id", "lookupEnv", repeatedArguments),
+                answerChunk("done")));
+        registerGlobalTool(agent, tool);
+        MemorySession session = new MemorySession(unique("replay-session"));
+
+        List<OutputSchema> outputs = collectOutput(agent.stream(Map.of("query", "lookup"), session, List.of()));
+
+        assertThat(payload(singleOutput(outputs, "answer")))
+                .containsEntry("result_type", "error");
+        assertThat(payload(singleOutput(outputs, "answer")).toString()).contains("duplicate tool_call_id");
+        assertThat(outputsOfType(outputs, "tool_output")).hasSize(1);
+        assertThat(tool.invokeCount).isEqualTo(1);
+    }
+
+    @Test
+    void duplicateIdsInOneModelResponseRejectTheWholeBatch() {
+        CountingTool tool = new CountingTool(unique("duplicate-tool"), "lookupEnv", "prod");
+        ToolCall call = ToolCall.builder().id("duplicate-id").name("lookupEnv").arguments("{}").build();
+        ReActAgent agent = invokeAgent(List.of(AssistantMessage.builder().content("")
+                .toolCalls(List.of(call, call)).build()));
+        registerGlobalTool(agent, tool);
+
+        assertThatThrownBy(() -> agent.invoke(Map.of("query", "lookup"), new MemorySession(unique("batch"))))
+                .hasMessageContaining("duplicate tool_call_id");
+        assertThat(tool.invokeCount).isZero();
+    }
+
+    @Test
+    void differentCallIdsPermitRepeatedToolAndNewUserTurns() {
+        CountingTool tool = new CountingTool(unique("repeat-tool"), "lookupEnv", "prod");
+        ReActAgent agent = invokeAgent(List.of(
+                toolMessage("first"), toolMessage("second"), new AssistantMessage("done"),
+                toolMessage("first"), new AssistantMessage("next")));
+        registerGlobalTool(agent, tool);
+        MemorySession session = new MemorySession(unique("turns"));
+
+        assertThat(agent.invoke(Map.of("query", "lookup twice"), session).toString()).contains("done");
+        assertThat(agent.invoke(Map.of("query", "lookup again"), session).toString()).contains("next");
+        assertThat(tool.invokeCount).isEqualTo(3);
+    }
+
+    private static AssistantMessage toolMessage(String id) {
+        return AssistantMessage.builder().content("").toolCalls(List.of(
+                ToolCall.builder().id(id).name("lookupEnv").arguments("{}").build())).build();
     }
 
     private static ReActAgent streamingAgent(List<AssistantMessageChunk> chunks) {

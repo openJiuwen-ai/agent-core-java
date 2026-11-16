@@ -29,6 +29,65 @@ import java.util.Map;
 @EqualsAndHashCode(callSuper = true)
 public class AssistantMessageChunk extends AssistantMessage {
 
+    /**
+     * Whether this chunk carries model output rather than stream framing.
+     *
+     * <p>A chunk counts once it holds a non-empty content or reasoning fragment
+     * (whitespace included, since it is still a generated token), or a tool call
+     * fragment that names the tool or extends its arguments. Role-only deltas,
+     * heartbeat deltas, and usage-only or finish-only frames do not count.
+     * Latency metrics (time to first token) share this definition so they
+     * measure real generation progress.</p>
+     *
+     * @return {@code true} if the chunk carries model output
+     */
+    public boolean carriesOutputToken() {
+        if (!isEmptyContent(getContent())) {
+            return true;
+        }
+        String reasoning = getReasoningContent();
+        if (reasoning != null && !reasoning.isEmpty()) {
+            return true;
+        }
+        List<ToolCall> calls = getToolCalls();
+        if (calls != null) {
+            for (ToolCall call : calls) {
+                if (call == null) {
+                    continue;
+                }
+                boolean isNamed = call.getName() != null && !call.getName().isEmpty();
+                boolean hasArguments = call.getArguments() != null && !call.getArguments().isEmpty();
+                if (isNamed || hasArguments) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Judge whether a chunk content payload is empty.
+     *
+     * <p>String payloads count as empty when zero-length; collection payloads
+     * (multimodal parts) count as empty when they contain no element. Any other
+     * non-null payload is treated as content.</p>
+     *
+     * @param content the raw content payload
+     * @return {@code true} if the payload carries no output
+     */
+    private static boolean isEmptyContent(Object content) {
+        if (content == null) {
+            return true;
+        }
+        if (content instanceof CharSequence sequence) {
+            return sequence.length() == 0;
+        }
+        if (content instanceof java.util.Collection<?> collection) {
+            return collection.isEmpty();
+        }
+        return false;
+    }
+
     public AssistantMessageChunk merge(AssistantMessageChunk other) {
         return merge((Object) other);
     }
@@ -44,6 +103,9 @@ public class AssistantMessageChunk extends AssistantMessage {
         String mergedFinishReason = (otherFinishReason != null && !"null".equals(otherFinishReason))
                 ? otherFinishReason
                 : getFinishReason();
+        String mergedResponseModel = otherChunk.getResponseModel() != null
+                ? otherChunk.getResponseModel()
+                : getResponseModel();
 
         return AssistantMessageChunk.builder()
                 .role(getRole())
@@ -51,6 +113,7 @@ public class AssistantMessageChunk extends AssistantMessage {
                 .toolCalls(mergedToolCalls.isEmpty() ? null : mergedToolCalls)
                 .usageMetadata(otherChunk.getUsageMetadata() != null
                         ? otherChunk.getUsageMetadata() : getUsageMetadata())
+                .responseModel(mergedResponseModel)
                 .finishReason(mergedFinishReason)
                 .parserContent(MessageChunkMerge.mergeParserContent(getParserContent(), otherChunk.getParserContent()))
                 .reasoningContent(orEmpty(getReasoningContent()) + orEmpty(otherChunk.getReasoningContent()))

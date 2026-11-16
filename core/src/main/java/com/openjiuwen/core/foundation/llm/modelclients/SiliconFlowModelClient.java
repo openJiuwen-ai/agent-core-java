@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UrlUtils;
+import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
 import com.openjiuwen.core.foundation.llm.classification.ErrorBodyParser;
 import com.openjiuwen.core.foundation.llm.classification.FirstSegmentRetryIterator;
@@ -57,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -167,7 +169,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 ensureClassifiedSuccess(result.statusCode(), result.body(), false);
                 ensureNoEmbeddedError(result.body(), false);
                 Map<String, Object> parsed = parseJsonObject(result.body());
-                Loggers.LLM.info("SiliconFlow API response received. {}", Map.of("response", parsed));
+                Loggers.LLM.info("SiliconFlow API response received. {}", Map.of("response", logValue(parsed)));
                 return parsed;
             }, null);
             AssistantMessage assistantMessage = parseResponse(data, outputParser);
@@ -179,7 +181,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
             throw cancellation;
         } catch (IOException | IllegalStateException | IllegalArgumentException
                 | ClassCastException exception) {
-            Loggers.LLM.error("SiliconFlow API async invoke error. {}", exception.getMessage());
+            Loggers.LLM.error("SiliconFlow API async invoke error. {}", errorLogMessage(exception));
             throw classifyTransportFailure(exception, false);
         }
     }
@@ -222,7 +224,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
             throw cancellation;
         } catch (IOException | IllegalStateException | IllegalArgumentException
                 | ClassCastException exception) {
-            Loggers.LLM.error("SiliconFlow API async stream error. {}", exception.getMessage());
+            Loggers.LLM.error("SiliconFlow API async stream error. {}", errorLogMessage(exception));
             throw classifyTransportFailure(exception, true);
         }
     }
@@ -360,14 +362,18 @@ public class SiliconFlowModelClient extends BaseModelClient {
         String content = message.get("content") == null ? "" : String.valueOf(message.get("content"));
         String reasoningContent = asString(message.get("reasoning_content"));
         List<ToolCall> toolCalls = parseToolCalls(message.get("tool_calls"));
-        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), true);
+        String responseModel = asString(response.get("model"));
+        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), responseModel);
         Object parserContent = parseContent(parser, content);
 
         return AssistantMessage.builder()
                 .content(content)
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
-                .finishReason(toolCalls.isEmpty() ? "stop" : "tool_calls")
+                .responseModel(responseModel)
+                .finishReason(isPythonTruthy(choice.get("finish_reason"))
+                        ? String.valueOf(choice.get("finish_reason"))
+                        : (toolCalls.isEmpty() ? "stop" : "tool_calls"))
                 .reasoningContent(reasoningContent)
                 .parserContent(parserContent)
                 .build();
@@ -402,9 +408,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
             String content = delta.get("content") == null ? "" : String.valueOf(delta.get("content"));
             String reasoningContent = asString(delta.get("reasoning_content"));
             List<ToolCall> toolCalls = parseToolCalls(delta.get("tool_calls"));
-            UsageMetadata usageMetadata = parseUsageMetadata(chunkData.get("usage"), false);
+            String responseModel = asString(chunkData.get("model"));
+            UsageMetadata usageMetadata = parseUsageMetadata(chunkData.get("usage"), responseModel);
             if (!isPythonTruthy(content) && !isPythonTruthy(reasoningContent) && toolCalls.isEmpty()
-                    && usageMetadata == null) {
+                    && usageMetadata == null && responseModel == null) {
                 return null;
             }
 
@@ -413,6 +420,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     .reasoningContent(reasoningContent)
                     .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                     .usageMetadata(usageMetadata)
+                    .responseModel(responseModel)
                     .finishReason(isPythonTruthy(choice.get("finish_reason"))
                             ? String.valueOf(choice.get("finish_reason"))
                             : "null")
@@ -420,8 +428,34 @@ public class SiliconFlowModelClient extends BaseModelClient {
         } catch (JsonProcessingException exception) {
             return null;
         } catch (ClassCastException | IllegalStateException | IndexOutOfBoundsException exception) {
-            Loggers.LLM.warning("Error parsing stream chunk. {}", exception.getMessage());
+            Loggers.LLM.warning("Error parsing stream chunk. {}", errorLogMessage(exception));
             return null;
+        }
+    }
+
+    /**
+     * Tells whether a data frame carries a terminal finish_reason even when the chunk
+     * parser drops the frame for lacking delta content. The JSON is inspected rather
+     * than the raw text because non-terminal frames carry a null finish_reason.
+     *
+     * @param data data frame payload without the {@code data:} prefix
+     * @return true when the first choice declares a truthy finish_reason
+     */
+    private boolean declaresFinishReason(String data) {
+        try {
+            Map<String, Object> chunkData = parseJsonObject(data);
+            List<?> choices = asList(chunkData.get("choices"));
+            if (choices.isEmpty()) {
+                return false;
+            }
+            Map<String, Object> choice = asObjectMap(choices.get(0));
+            Object finishReason = choice.get("finish_reason");
+            // The string sentinel "null" (used when the frame omits finish_reason) must
+            // not count as a terminal state; only a truthy, non-sentinel value does.
+            return isPythonTruthy(finishReason) && !"null".equals(String.valueOf(finishReason));
+        } catch (JsonProcessingException | ClassCastException | IllegalStateException
+                | IndexOutOfBoundsException exception) {
+            return false;
         }
     }
 
@@ -440,8 +474,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         String apiUrl = resolveApiUrl();
         HttpRequest request = requestBuilder(apiUrl, payload).build();
         double idleSeconds = ModelTimeoutResolver.resolvePerCallIdleSeconds(timeout, modelClientConfig);
-        HttpResponse<InputStream> response = createHttpClient(apiUrl)
-                .send(request, IdleBoundInputStream.bodyHandler(idleSeconds));
+        HttpResponse<InputStream> response = sendWithClientEviction(apiUrl, request, idleSeconds);
         String body = IdleGuardedBodyReader.readFully(response.body(), idleSeconds, false);
         return new HttpResult(response.statusCode(), body);
     }
@@ -462,7 +495,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         validateApiBaseUrl();
         String apiUrl = resolveApiUrl();
         HttpRequest request = requestBuilder(apiUrl, payload).build();
-        return createHttpClient(apiUrl).send(request, IdleBoundInputStream.bodyHandler(idleSeconds));
+        return sendWithClientEviction(apiUrl, request, idleSeconds);
     }
 
     protected void validateApiBaseUrl() {
@@ -546,12 +579,33 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 .build();
     }
 
+    private HttpResponse<InputStream> sendWithClientEviction(String apiUrl, HttpRequest request,
+            double idleSeconds) throws IOException, InterruptedException {
+        HttpClient client = createHttpClient(apiUrl);
+        try {
+            HttpResponse<InputStream> response = client.send(request,
+                    IdleBoundInputStream.bodyHandler(idleSeconds));
+            ModelHttpClients.noteSendSuccess(client);
+            return response;
+        } catch (IOException exception) {
+            // A dead verdict evicts (and threshold-registers) the client, then the failure
+            // surfaces. No in-call resend: the official selector-closed signal can also fire
+            // after the request bytes reached the wire (JDK 17 SocketTube post-write check),
+            // so resending could duplicate a call the server may have billed. The next call
+            // (or a retryable classification's new attempt) runs on a fresh client.
+            ModelHttpClients.evictIfDead(client, exception);
+            throw exception;
+        }
+    }
+
     private Map<String, Object> requestLogMetadata(Map<String, Object> params, boolean stream) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("model_name", params.get("model"));
         metadata.put("model_provider", modelClientConfig.getClientProvider());
-        metadata.put("messages", params.get("messages"));
-        metadata.put("tools", params.get("tools"));
+        if (!UserConfig.isSensitive()) {
+            metadata.put("messages", params.get("messages"));
+            metadata.put("tools", params.get("tools"));
+        }
         metadata.put("temperature", params.get("temperature"));
         metadata.put("top_p", params.get("top_p"));
         metadata.put("max_tokens", params.get("max_tokens"));
@@ -563,7 +617,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         Loggers.LLM.info("Before parse content with parser. {}", Map.of(
                 "model_name", modelConfig.getModelName(),
                 "model_provider", modelClientConfig.getClientProvider(),
-                "response_content", content,
+                "response_content", logValue(content),
                 "is_stream", false
         ));
         if (parser == null || !isPythonTruthy(content)) {
@@ -571,12 +625,26 @@ public class SiliconFlowModelClient extends BaseModelClient {
         }
         try {
             Object parserContent = parser.<CompletableFuture<Object>>parse(content).join();
-            Loggers.LLM.info("Parser parse success. {}", Map.of("parser_content", parserContent));
+            Loggers.LLM.info("Parser parse success. {}", Map.of("parser_content", logValue(parserContent)));
             return parserContent;
         } catch (RuntimeException exception) {
-            Loggers.LLM.warning("Parser parse error. {}", exception.getMessage());
+            Loggers.LLM.warning("Parser parse error. {}", errorLogMessage(exception));
             return null;
         }
+    }
+
+    private static String logValue(Object value) {
+        if (UserConfig.isSensitive()) {
+            return "[redacted]";
+        }
+        return String.valueOf(value);
+    }
+
+    private static String errorLogMessage(Exception exception) {
+        if (UserConfig.isSensitive()) {
+            return exception.getClass().getSimpleName();
+        }
+        return exception.getMessage();
     }
 
     private List<ToolCall> parseToolCalls(Object rawToolCalls) {
@@ -603,26 +671,24 @@ public class SiliconFlowModelClient extends BaseModelClient {
         return toolCalls;
     }
 
-    private UsageMetadata parseUsageMetadata(Object usageValue, boolean includeCacheTokens) {
+    private UsageMetadata parseUsageMetadata(Object usageValue, String responseModel) {
         if (!(usageValue instanceof Map<?, ?> usageMap)) {
             return null;
         }
         Map<String, Object> usage = toObjectMap(usageMap);
-        int cacheTokens = 0;
-        if (includeCacheTokens && usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
-            cacheTokens = intValue(toObjectMap(promptDetails).get("cached_tokens"));
-        }
         CostInfo costInfo = extractCostInfo(usage);
-        return UsageMetadata.builder()
-                .modelName(modelConfig.getModelName())
-                .inputTokens(intValue(usage.get("prompt_tokens")))
-                .outputTokens(intValue(usage.get("completion_tokens")))
-                .totalTokens(intValue(usage.get("total_tokens")))
-                .cacheTokens(cacheTokens)
+        var metadata = UsageMetadata.builder()
+                .modelName(responseModel)
                 .inputCost(costInfo.inputCost())
                 .outputCost(costInfo.outputCost())
-                .totalCost(costInfo.totalCost())
-                .build();
+                .totalCost(costInfo.totalCost());
+        if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
+            optionalIntValue(toObjectMap(promptDetails).get("cached_tokens")).ifPresent(metadata::cacheTokens);
+        }
+        optionalIntValue(usage.get("prompt_tokens")).ifPresent(metadata::inputTokens);
+        optionalIntValue(usage.get("completion_tokens")).ifPresent(metadata::outputTokens);
+        optionalIntValue(usage.get("total_tokens")).ifPresent(metadata::totalTokens);
+        return metadata.build();
     }
 
     private Map<String, Object> parseJsonObject(String json) throws JsonProcessingException {
@@ -726,6 +792,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
         return value == null ? null : String.valueOf(value);
     }
 
+    private static OptionalInt optionalIntValue(Object value) {
+        return value == null ? OptionalInt.empty() : OptionalInt.of(intValue(value));
+    }
+
     private static int intValue(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -784,6 +854,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
         private boolean isEffectiveFirstSegmentReceived;
         private boolean isDone;
         private boolean isClosed;
+        private boolean isTerminated;
 
         SiliconFlowSseIterator(InputStream inputStream, double idleSeconds) {
             this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
@@ -837,30 +908,65 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         throw errorFrameException(data);
                     }
                     if ("[DONE]".equals(data)) {
+                        isTerminated = true;
                         break;
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(line);
                     if (chunk != null) {
+                        markTerminatedIfFinished(chunk);
                         shouldKeepOpen = true;
                         isEffectiveFirstSegmentReceived = true;
                         return Optional.of(chunk);
                     }
+                    if (declaresFinishReason(data)) {
+                        // Frames without delta content still terminate the stream when
+                        // they carry a finish_reason; the chunk parser drops them.
+                        isTerminated = true;
+                    }
                 }
-                finish();
-                return Optional.empty();
+                return finishOrFailEarly();
             } catch (IOException exception) {
                 finish();
-                throwIfIdleTimeout(exception);
-                if (exception instanceof InterruptedIOException
-                        && !(exception instanceof SocketTimeoutException)) {
-                    // SocketTimeoutException is a read timeout, not a cancellation.
-                    throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
+                throwIfCancellation(exception);
+                if (isTerminated) {
+                    // The SSE content already ended with a terminal finish_reason or [DONE];
+                    // a body read that fails after that point — for example a chunked body
+                    // closed without its terminating 0-chunk — is a normal end of stream.
+                    return Optional.empty();
                 }
+                throwIfIdleTimeout(exception);
                 throw classifiedStreamFailure(exception);
             } finally {
                 if (!shouldKeepOpen) {
                     close();
                 }
+            }
+        }
+
+        private void markTerminatedIfFinished(AssistantMessageChunk chunk) {
+            if (chunk != null && !"null".equals(chunk.getFinishReason())) {
+                // A terminal finish_reason ends the SSE content even when the
+                // server omits the [DONE] frame.
+                isTerminated = true;
+            }
+        }
+
+        private Optional<AssistantMessageChunk> finishOrFailEarly() throws IOException {
+            if (!isTerminated) {
+                // The body ended without [DONE] or a terminal finish_reason. Report
+                // the truncation through the catch machinery below instead of
+                // returning partial content as success.
+                throw new IOException("premature eof: stream ended without termination marker");
+            }
+            finish();
+            return Optional.empty();
+        }
+
+        private void throwIfCancellation(Exception exception) {
+            if (exception instanceof InterruptedIOException
+                    && !(exception instanceof SocketTimeoutException)) {
+                // SocketTimeoutException is a read timeout, not a cancellation.
+                throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
             }
         }
 
@@ -915,7 +1021,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 reader.close();
             } catch (IOException exception) {
                 Loggers.LLM.debug("Failed to close SiliconFlow stream reader. {}",
-                        exception.getMessage());
+                        errorLogMessage(exception));
             }
         }
     }
@@ -957,7 +1063,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         accumulatedContent.setLength(0);
                     }
                 } catch (IllegalStateException | IllegalArgumentException | CompletionException exception) {
-                    Loggers.LLM.debug("Stream parser attempt error. {}", exception.getMessage());
+                    Loggers.LLM.debug("Stream parser attempt error. {}", errorLogMessage(exception));
                 }
             }
             return AssistantMessageChunk.builder()
@@ -965,6 +1071,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                     .reasoningContent(chunkItem.getReasoningContent())
                     .toolCalls(chunkItem.getToolCalls())
                     .usageMetadata(chunkItem.getUsageMetadata())
+                    .responseModel(chunkItem.getResponseModel())
                     .finishReason(chunkItem.getFinishReason())
                     .parserContent(parserContent)
                     .build();

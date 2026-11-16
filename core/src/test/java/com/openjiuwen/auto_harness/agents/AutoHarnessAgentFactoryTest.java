@@ -4,6 +4,13 @@
 
 package com.openjiuwen.auto_harness.agents;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.auto_harness.rails.AutoHarnessContextRail;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.AutoHarnessConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -11,16 +18,20 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.HarnessResourceTestCleanup;
+import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.rails.LspRail;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.rails.skills.SkillUseRail;
+import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.tools.WebTools;
 import com.openjiuwen.harness.tools.skills.SkillDescriptor;
-import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
-import com.openjiuwen.harness.schema.config.DeepAgentConfig;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -28,13 +39,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's factory helpers in
@@ -44,6 +48,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code tests/unit_tests/auto_harness/test_agent.py}.</p>
  */
 class AutoHarnessAgentFactoryTest {
+    @BeforeEach
+    void clearSharedHarnessToolsBefore() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
+
+    @AfterEach
+    void clearSharedHarnessToolsAfter() {
+        HarnessResourceTestCleanup.forceRemoveSharedHarnessTools();
+    }
 
     @Test
     void trustedLocalSysOperationUsesPermissiveLocalConfig() {

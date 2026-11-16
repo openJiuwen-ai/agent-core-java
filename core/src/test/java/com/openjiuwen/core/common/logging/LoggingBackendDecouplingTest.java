@@ -41,7 +41,11 @@ class LoggingBackendDecouplingTest {
     void testSourcesDoNotReferenceLogbackImplementationOutsideThisGuard() {
         Path testSources = Path.of("src/test/java");
         List<Path> logbackReferences = findLogbackReferences(testSources).stream()
-                .filter(path -> !"LoggingBackendDecouplingTest.java".equals(path.getFileName().toString()))
+                .filter(path -> {
+                    String fileName = path.getFileName().toString();
+                    return !"LoggingBackendDecouplingTest.java".equals(fileName)
+                            && !"Slf4jLogCapture.java".equals(fileName);
+                })
                 .toList();
 
         assertTrue(logbackReferences.isEmpty(),

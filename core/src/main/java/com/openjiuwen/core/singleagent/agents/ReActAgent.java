@@ -6,7 +6,10 @@ package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.utils.TextTruncate;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
@@ -65,9 +68,11 @@ import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
 import com.openjiuwen.core.session.checkpointer.step.KvStepJournal;
 import com.openjiuwen.core.session.checkpointer.step.PolicyEvaluator;
+import com.openjiuwen.core.session.checkpointer.step.PauseRequestRegistry;
 import com.openjiuwen.core.session.checkpointer.step.StepBoundary;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointPolicy;
 import com.openjiuwen.core.session.checkpointer.step.StepCheckpointTrigger;
+import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.session.checkpointer.step.StepJournal;
 import com.openjiuwen.core.session.checkpointer.step.StepSignalContext;
 import com.openjiuwen.core.session.checkpointer.step.StepStatus;
@@ -108,9 +113,12 @@ import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -121,12 +129,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
@@ -149,11 +159,23 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     /** Chunk size (characters) when wrapping non-stream responses as stream chunks. */
     private static final int STREAM_CHUNK_SIZE = 200;
 
+    private static final int MAX_CAUSE_CHAIN_DEPTH = 32;
+
     /** JDK 17: bounded platform pool; JDK 21+: virtual thread per task. */
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
+    private static final String MODEL_CALL_TIMEOUT_LEASE_ID_KEY = "_model_call_timeout_lease_id";
+    private static final String MODEL_CALL_IDLE_TIMEOUT_MS_KEY = "_model_call_idle_timeout_ms";
+    private static final String MODEL_CALL_INVOCATION_OWNER_KEY = "_model_call_invocation_owner";
+
+    /** Extra key that marks a cancellation requested through the stream close hook. */
+    private static final String CANCEL_REQUESTED_KEY = "_cancel_requested";
+
+    /** Cancel flags for background streams, keyed weakly by session identity. */
+    private static final Map<Object, AtomicBoolean> CANCEL_FLAGS =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Stateless normalizer shared by all structured multimodal entry inputs. */
     private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
@@ -432,14 +454,52 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     public Object railedModelCall(AgentCallbackContext ctx) {
+        // Populate ModelCallInputs before BEFORE_MODEL_CALL so rails can inspect
+        // and edit the current request messages (security/tracing/observability).
+        // Do not rebuild on attempt 0 after those rails run — that would wipe
+        // BEFORE_MODEL_CALL edits (Python builds the final window inside the
+        // railed body from the post-rail prompt, while Java keeps rail-edited
+        // inputs as the request snapshot).
         prepareModelRequest(ctx);
-        return Rails.run(
-                ctx,
-                AgentCallbackEvent.BEFORE_MODEL_CALL,
-                AgentCallbackEvent.AFTER_MODEL_CALL,
-                AgentCallbackEvent.ON_MODEL_EXCEPTION,
-                () -> doRailedModelCall(ctx)
-        );
+        boolean isModelCallSuccessful = false;
+        try {
+            Object result = Rails.run(
+                    ctx,
+                    AgentCallbackEvent.BEFORE_MODEL_CALL,
+                    AgentCallbackEvent.AFTER_MODEL_CALL,
+                    AgentCallbackEvent.ON_MODEL_EXCEPTION,
+                    new Rails.RailedOperation() {
+                        /**
+                         * {@inheritDoc}
+                         */
+                        @Override
+                        public Object execute() {
+                            // On Rails.run retries (e.g. overflow compress+requestRetry),
+                            // rebuild from ModelContext so the provider sees the
+                            // post-recovery snapshot rather than the pre-failure one.
+                            if (ctx.getRetryAttempt() > 0) {
+                                prepareModelRequest(ctx);
+                            }
+                            return doRailedModelCall(ctx);
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        @Override
+                        public void onNoRetry() {
+                            renewModelCallTimeout(ctx, Long.MAX_VALUE, 0L);
+                        }
+                    }
+            );
+            isModelCallSuccessful = true;
+            return result;
+        } finally {
+            if (isModelCallSuccessful
+                    || !Boolean.TRUE.equals(ctx.getExtra().get(MODEL_CALL_INVOCATION_OWNER_KEY))) {
+                endModelCallTimeout(ctx);
+            }
+        }
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
@@ -461,6 +521,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .join();
         runtime.extraFields().remove("__openjiuwen_kvc_model");
         ModelInvokeOptions options = optionsBuilder.build();
+        renewModelCallTimeout(ctx, options);
         StreamModelCall modelCall = new StreamModelCall(ctx, model, messages, options, modelInputs);
         if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
             return invokeNonStreaming(modelCall, kvLease);
@@ -553,14 +614,63 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         clampModelCallTimeoutToRemainingBudget(ctx, optionsBuilder, perCallIdleTimeout);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
-            optionsBuilder.retryListener(event -> session.writeStream(new OutputSchema(
-                    "model_retry",
-                    nextStreamIndex(ctx),
-                    modelRetryPayload(event)
-            )));
+            optionsBuilder.retryListener(event -> {
+                renewClientModelCallTimeout(ctx, event);
+                session.writeStream(new OutputSchema(
+                        "model_retry",
+                        nextStreamIndex(ctx),
+                        modelRetryPayload(event)
+                ));
+            });
         }
 
         return optionsBuilder;
+    }
+
+    private static void renewModelCallTimeout(AgentCallbackContext ctx, ModelInvokeOptions options) {
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) || ctx.getSession() == null
+                || options == null || options.getTimeout() == null) {
+            return;
+        }
+        long idleTimeoutMs = ModelTimeoutResolver.toDuration(options.getTimeout().doubleValue()).toMillis();
+        ctx.getExtra().put(MODEL_CALL_IDLE_TIMEOUT_MS_KEY, idleTimeoutMs);
+        renewModelCallTimeout(ctx, idleTimeoutMs, 0L);
+    }
+
+    private static void renewClientModelCallTimeout(AgentCallbackContext ctx, ModelRetryEvent event) {
+        Object actualIdle = ctx.getExtra().get(MODEL_CALL_IDLE_TIMEOUT_MS_KEY);
+        if (!(actualIdle instanceof Number idleTimeout)) {
+            return;
+        }
+        long delayMs = event.delay() == null ? 0L : event.delay().toMillis();
+        renewModelCallTimeout(ctx, idleTimeout.longValue(), delayMs);
+    }
+
+    private static void renewModelCallTimeout(AgentCallbackContext ctx, long idleTimeoutMs, long delayMs) {
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) || ctx.getSession() == null) {
+            return;
+        }
+        long leaseId = currentModelCallLeaseId(ctx);
+        long renewedLease = ctx.getSession().renewModelCallTimeout(leaseId, idleTimeoutMs, delayMs);
+        ctx.getExtra().put(MODEL_CALL_TIMEOUT_LEASE_ID_KEY, renewedLease);
+    }
+
+    private static long currentModelCallLeaseId(AgentCallbackContext ctx) {
+        Object currentLease = ctx.getExtra().get(MODEL_CALL_TIMEOUT_LEASE_ID_KEY);
+        return currentLease instanceof Number number ? number.longValue() : 0L;
+    }
+
+    private static void endModelCallTimeout(AgentCallbackContext ctx) {
+        if (ctx == null || ctx.getSession() == null
+                || !Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+            return;
+        }
+        long leaseId = currentModelCallLeaseId(ctx);
+        if (leaseId == 0L) {
+            return;
+        }
+        ctx.getSession().endModelCallTimeout(leaseId);
+        ctx.getExtra().put(MODEL_CALL_TIMEOUT_LEASE_ID_KEY, 0L);
     }
 
     private record ModelCallRuntime(
@@ -1696,14 +1806,19 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         if (engineConfig == null || !engineConfig.isEnableOffload() || !(context instanceof SessionModelContext smc)) {
             return;
         }
+        OffloadConfig offloadConfig = engineConfig.getOffload() == null
+                ? new OffloadConfig()
+                : engineConfig.getOffload();
         if (smc.getOffloadService() != null) {
-            // Context reuse (engine pool): already bound — keep the single shared pipeline.
+            // Context reuse: keep the shared pipeline, but re-inject into any
+            // MessageOffloader instances swapped in by processor realignment.
+            for (MessageOffloader offloader : findOffloaders(smc)) {
+                syncProtectionConfig(offloader, offloadConfig);
+            }
+            smc.rebindOffloadProcessors();
             return;
         }
         try {
-            OffloadConfig offloadConfig = engineConfig.getOffload() == null
-                    ? new OffloadConfig()
-                    : engineConfig.getOffload();
             CompositeOffloadStore compositeStore = buildCompositeStore(offloadConfig);
             OffloadCatalog catalog = new OffloadCatalogImpl();
             OffloadService service = new OffloadServiceImpl(catalog, compositeStore,
@@ -1959,6 +2074,28 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .resolve(config.getStepCheckpointPolicy(), invokeOverride);
         stepCheckpointTrigger = new StepCheckpointTrigger(checkpointer, journal, effectivePolicy,
                 new PolicyEvaluator());
+        seedTriggerSeq(session, checkpointer);
+    }
+
+    private void seedTriggerSeq(AgentSessionApi session, Checkpointer checkpointer) {
+        if (checkpointer == null || session == null) {
+            return;
+        }
+        BaseSession baseSession = typedBaseSession(session);
+        if (baseSession == null) {
+            return;
+        }
+        StepCursor last = checkpointer.lastCompletedStep(baseSession);
+        if (last != null) {
+            stepCheckpointTrigger.seedSeq(last.getSeq());
+        }
+        // Pause evidence left by a previous process holds a seq beyond the
+        // resume point; seeding past it keeps the next pauseNow above the
+        // stale-seq guard instead of being silently rejected.
+        StepCursor lastPaused = checkpointer.lastPausedStep(baseSession);
+        if (lastPaused != null) {
+            stepCheckpointTrigger.seedSeq(lastPaused.getSeq());
+        }
     }
 
     private Checkpointer resolveCheckpointer(AgentSessionApi session) {
@@ -2059,6 +2196,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             invokeInputs.setConversationId(conversationId);
 
             ctx = new AgentCallbackContext(this);
+            ctx.getExtra().put(MODEL_CALL_INVOCATION_OWNER_KEY, Boolean.TRUE);
             ctx.setInputs(invokeInputs);
             ctx.setSession(session);
             ctx.setConfig(config);
@@ -2169,6 +2307,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             }
 
             if (invokeInputs.getResult() == null) {
+                Set<String> acceptedToolCallIds = currentTurnToolCallIds(context);
                 for (int iteration = startIteration; iteration < ctx.getMaxIterations(); iteration++) {
                     ctx.enterIteration(iteration);
                     int iterationNumber = iteration + 1;
@@ -2176,6 +2315,21 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     Loggers.AGENT.info("ReAct iteration {}/{} started",
                             iterationNumber, ctx.getMaxIterations());
                     try {
+                        Map<String, Object> pauseInfo = consumePauseIfRequested(session);
+                        if (pauseInfo != null) {
+                            if (applyPausedResult(ctx, session, invokeInputs, pauseInfo)) {
+                                break;
+                            }
+                            // The pause evidence could not be persisted, so the
+                            // consumed request is discarded and the loop keeps
+                            // running rather than ending with a shape no resume
+                            // can continue.
+                            continue;
+                        }
+                        if (isCancelRequested(ctx)) {
+                            applyCancelledResult(ctx, session, invokeInputs);
+                            break;
+                        }
                         List<String> steering = ctx.drainSteering();
                         if (!steering.isEmpty()) {
                             context.addMessages(new UserMessage("[STEERING] " + String.join("\n", steering)))
@@ -2187,8 +2341,16 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                         try {
                             modelResult = callModel(ctx, context, tools);
                         } catch (RuntimeException exception) {
+                            if (isCancelRequested(ctx)) {
+                                applyCancelledResult(ctx, session, invokeInputs);
+                                break;
+                            }
                             ctx.finish(AgentTerminationReason.MODEL_ERROR);
                             throw exception;
+                        }
+                        if (isCancelRequested(ctx)) {
+                            applyCancelledResult(ctx, session, invokeInputs);
+                            break;
                         }
                         ForceFinishRequest finish = ctx.consumeForceFinish();
                         boolean hasForceFinishSignal = ctx.consumeForceFinishSignal();
@@ -2212,16 +2374,20 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                         List<ToolCall> toolCalls = aiMessage.getToolCalls();
                         ensureToolCallIds(toolCalls);
                         repairToolCallJsonObjectArguments(toolCalls);
+                        validateNewToolCallIds(toolCalls, acceptedToolCallIds);
                         context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
                         if (toolCalls == null || toolCalls.isEmpty()) {
                             if (ctx.hasPendingSteering()) {
                                 continue;
                             }
                             contextEngine.saveContexts(session);
-                            invokeInputs.setResult(new LinkedHashMap<>(Map.of(
-                                    "output", Objects.toString(aiMessage.getContent(), ""),
-                                    "result_type", "answer"
-                            )));
+                            Map<String, Object> answerResult = new LinkedHashMap<>();
+                            answerResult.put("output", Objects.toString(aiMessage.getContent(), ""));
+                            answerResult.put("result_type", "answer");
+                            if (isLengthCappedFinishReason(aiMessage.getFinishReason())) {
+                                answerResult.put("finish_reason", aiMessage.getFinishReason());
+                            }
+                            invokeInputs.setResult(answerResult);
                             ctx.finish(AgentTerminationReason.TEXT_TERMINATION);
                             break;
                         }
@@ -2245,6 +2411,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                         List<AbilityManager.ExecutionResult> results = executeToolCall(
                                 ctx, toolCalls, session, context);
                         activateSkillsLoadedByToolCalls(toolCalls, results, session);
+                        if (isCancelRequested(ctx)) {
+                            applyCancelledResult(ctx, session, invokeInputs);
+                            break;
+                        }
                         if (completeToolExecutionTurn(
                                 ctx,
                                 context,
@@ -2266,6 +2436,12 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                         iterationDurationMillis(ctx)));
                     } catch (RuntimeException exception) {
                         iterationFailureLogged = true;
+                        stepCheckpointTrigger.stepCompleted(
+                                typedBaseSession(session),
+                                null,
+                                null,
+                                new StepBoundary("ITERATION", "iteration-" + iterationNumber, StepStatus.FAILED,
+                                        iterationDurationMillis(ctx)));
                         Loggers.AGENT.exception(
                                 "ReAct iteration %d/%d failed"
                                         .formatted(iterationNumber, ctx.getMaxIterations()),
@@ -2307,6 +2483,32 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             }
             return result;
         } catch (RuntimeException exception) {
+            if (isCancelRequested(ctx)) {
+                Thread.interrupted();
+                contextEngine.saveContexts(session);
+                invokeInputs.setResult(cancelledInvokeResult());
+                if (ctx != null && ctx.getTerminationReason() == null) {
+                    ctx.finish(AgentTerminationReason.CANCELLED);
+                }
+                if (initializationComplete && ctx.getEvent() != AgentCallbackEvent.AFTER_INVOKE) {
+                    ctx.setInputs(invokeInputs);
+                    ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
+                }
+                if (initializationComplete && streaming) {
+                    try {
+                        Map<String, Object> cancelResult = cancelledInvokeResult();
+                        writeInvokeResultToStreamInternal(cancelResult, session, streamIndexRef(ctx));
+                        return cancelResult;
+                    } catch (RuntimeException streamingCancelFailure) {
+                        Loggers.AGENT.exception(
+                                "ReActAgent streaming cancel result write failed",
+                                streamingCancelFailure
+                        );
+                        throw streamingCancelFailure;
+                    }
+                }
+                return invokeInputs.getResult();
+            }
             if (ctx != null && ctx.getTerminationReason() == null) {
                 ctx.finish(AgentTerminationReason.ERROR);
             }
@@ -2343,7 +2545,14 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     }
                 }
             } finally {
-                SessionContextHolder.restoreCurrentSession(previousSession);
+                try {
+                    endModelCallTimeout(ctx);
+                } finally {
+                    if (ctx != null) {
+                        ctx.getExtra().remove(MODEL_CALL_INVOCATION_OWNER_KEY);
+                    }
+                    SessionContextHolder.restoreCurrentSession(previousSession);
+                }
             }
         }
     }
@@ -2391,6 +2600,64 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return ref[0]++;
     }
 
+    /**
+     * Renews the current model wait through the guardrail delay, then publishes the retry event.
+     * Observation is best-effort and cannot revoke the pending model retry.
+     *
+     * @param context current model callback context
+     * @param retryCount guardrail-local retry sequence, starting at one
+     * @param maxRetries guardrail-local retry budget
+     * @param delaySeconds delay requested for the guardrail retry, in seconds
+     */
+    public void publishGuardrailRetry(AgentCallbackContext context, int retryCount, int maxRetries,
+            double delaySeconds) {
+        if (context == null || context.getSession() == null
+                || !Boolean.TRUE.equals(context.getExtra().get("_streaming"))) {
+            return;
+        }
+        renewGuardrailModelCallTimeout(context, delaySeconds);
+        Map<String, Object> payload = guardrailRetryPayload(retryCount, maxRetries, delaySeconds);
+        try {
+            context.getSession().writeStream(new OutputSchema(
+                    "model_retry",
+                    nextStreamIndex(context),
+                    payload
+            ));
+        } catch (IllegalStateException | IllegalArgumentException | NullPointerException exception) {
+            Loggers.AGENT.warning("Guardrail retry event write failed; retry continues. {}", Map.of(
+                    "retry_count", retryCount,
+                    "write_exception_type", exception.getClass().getName()));
+        }
+    }
+
+    private static void renewGuardrailModelCallTimeout(AgentCallbackContext context, double delaySeconds) {
+        Object actualIdle = context.getExtra().get(MODEL_CALL_IDLE_TIMEOUT_MS_KEY);
+        if (!(actualIdle instanceof Number idleTimeout)) {
+            return;
+        }
+        long delayMs = guardrailDelayMillis(delaySeconds);
+        renewModelCallTimeout(context, idleTimeout.longValue(), delayMs);
+    }
+
+    private static long guardrailDelayMillis(double delaySeconds) {
+        long roundedMillis = BigDecimal.valueOf(delaySeconds)
+                .multiply(BigDecimal.valueOf(1000L))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValue();
+        return Math.max(0L, roundedMillis);
+    }
+
+    private static Map<String, Object> guardrailRetryPayload(int retryCount, int maxRetries, double delaySeconds) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("retry_count", retryCount);
+        payload.put("max_retries", maxRetries);
+        payload.put("delay_ms", guardrailDelayMillis(delaySeconds));
+        payload.put("delay_source", "guardrail");
+        payload.put("message", "模型调用预算耗尽，护栏层发起整轮重试 %d/%d".formatted(retryCount, maxRetries));
+        payload.put("retry_tier", "rail");
+        return payload;
+    }
+
     private static Map<String, Object> modelRetryPayload(ModelRetryEvent event) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("retry_count", event.retryCount());
@@ -2404,7 +2671,37 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         } else if (event.exceptionType() != null) {
             payload.put("exception_type", event.exceptionType());
         }
+        payload.put("retry_tier", "client");
         return payload;
+    }
+
+    private Set<String> currentTurnToolCallIds(ModelContext context) {
+        Set<String> ids = new HashSet<>();
+        for (BaseMessage message : context.getMessages(null, true)) {
+            if (message instanceof UserMessage) {
+                ids.clear();
+                continue;
+            }
+            if (message instanceof AssistantMessage assistant && assistant.getToolCalls() != null) {
+                ids.addAll(toolCallIds(assistant.getToolCalls()));
+            }
+        }
+        return ids;
+    }
+
+    private void validateNewToolCallIds(List<ToolCall> toolCalls, Set<String> acceptedIds) {
+        if (toolCalls == null) {
+            return;
+        }
+        Set<String> batchIds = new HashSet<>();
+        for (ToolCall call : toolCalls) {
+            if (call != null && (acceptedIds.contains(call.getId()) || !batchIds.add(call.getId()))) {
+                // Reject before appending history or executing any part of a replayed batch.
+                throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_EXECUTION_ERROR,
+                        "error_msg", "Model protocol violation: duplicate tool_call_id in the current turn");
+            }
+        }
+        acceptedIds.addAll(batchIds);
     }
 
     private void ensureToolCallIds(List<ToolCall> toolCalls) {
@@ -2545,11 +2842,30 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         session.writeStream(new OutputSchema(
                 "answer",
                 0,
-                new LinkedHashMap<>(Map.of(
-                        "output", Objects.toString(result.get("output"), ""),
-                        "result_type", Objects.toString(resultType, "")
-                ))
+                toAnswerPayload(result)
         ));
+    }
+
+    /**
+     * Builds the wire payload for a final answer chunk, preserving the structured failure
+     * descriptor when the invoke result carries one.
+     *
+     * @param result invoke result map
+     * @return answer payload with output, result type, and an optional failure entry
+     * @since 0.1.17
+     */
+    static Map<String, Object> toAnswerPayload(Map<String, Object> result) {
+        Map<String, Object> payload = new LinkedHashMap<>(Map.of(
+                "output", Objects.toString(result.get("output"), ""),
+                "result_type", Objects.toString(result.get("result_type"), "")
+        ));
+        if (result.get("failure") instanceof Map<?, ?> failure) {
+            payload.put("failure", failure);
+        }
+        if (result.get("finish_reason") != null) {
+            payload.put("finish_reason", result.get("finish_reason"));
+        }
+        return payload;
     }
 
     @Override
@@ -2573,15 +2889,131 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     private Iterator<Object> startBackgroundStream(Object inputs, AgentSessionApi session) {
         String streamThreadName = resolveStreamWorkerThreadName(inputs);
+        Object cancelKey = cancelFlagKey(session);
+        AtomicBoolean cancelFlag = new AtomicBoolean(false);
+        CANCEL_FLAGS.put(cancelKey, cancelFlag);
         Future<?> streamFuture;
         try {
             streamFuture = STREAM_EXECUTOR.submit(() -> runNamedStreamingInvoke(inputs, session, streamThreadName));
         } catch (RejectedExecutionException exception) {
+            CANCEL_FLAGS.remove(cancelKey);
             writeInvokeResultToStreamInternal(buildErrorResult(exception), session);
             closeStreamAndCommit(session);
             return session.streamIterator();
         }
-        return OperatorStream.wrap(session.streamIterator(), () -> streamFuture.cancel(true));
+        return OperatorStream.wrap(session.streamIterator(), () -> {
+            cancelFlag.set(true);
+            streamFuture.cancel(true);
+        });
+    }
+
+    /**
+     * Requests cancellation of the invocation running on the given session so the
+     * ReAct loop stops before the next model or tool call.
+     *
+     * <p>The cancel flag is registered when a background stream is started via
+     * {@link #stream(Object, AgentSessionApi, List)} for sessions that run in
+     * the background. Calling this method before the stream has been started is
+     * a no-op because no flag has been registered yet.</p>
+     *
+     * @param session invocation session carrying the cancel flag; must be a
+     *                session whose background stream is already in flight
+     */
+    public static void requestCancel(AgentSessionApi session) {
+        if (session == null) {
+            return;
+        }
+        AtomicBoolean flag = CANCEL_FLAGS.get(cancelFlagKey(session));
+        if (flag != null) {
+            flag.set(true);
+        }
+    }
+
+    private static Object cancelFlagKey(AgentSessionApi session) {
+        return session == null ? Object.class : session;
+    }
+
+    private static boolean isCancelRequested(AgentCallbackContext ctx) {
+        if (ctx == null) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(ctx.getExtra().get(CANCEL_REQUESTED_KEY))) {
+            return true;
+        }
+        AgentSessionApi session = ctx.getSession();
+        AtomicBoolean flag = session == null ? null : CANCEL_FLAGS.get(cancelFlagKey(session));
+        return flag != null && flag.get();
+    }
+
+    private static void markCancelled(AgentCallbackContext ctx) {
+        if (ctx != null) {
+            ctx.getExtra().put(CANCEL_REQUESTED_KEY, Boolean.TRUE);
+        }
+    }
+
+    private static Map<String, Object> cancelledInvokeResult() {
+        return new LinkedHashMap<>(Map.of(
+                "output", "Cancelled by user",
+                "result_type", "cancelled"
+        ));
+    }
+
+    private void applyCancelledResult(AgentCallbackContext ctx, AgentSessionApi session,
+                                      InvokeInputs invokeInputs) {
+        Thread.interrupted();
+        markCancelled(ctx);
+        contextEngine.saveContexts(session);
+        invokeInputs.setResult(cancelledInvokeResult());
+        ctx.finish(AgentTerminationReason.CANCELLED);
+    }
+
+    /**
+     * Applies a consumed user-pause request: the PAUSED step cursor and the
+     * pause metadata persist through the checkpoint save path and the
+     * invocation ends with the {@code PAUSED} termination reason, so the
+     * session can continue from the persisted boundary on explicit resume.
+     *
+     * @param ctx callback context of the running invocation
+     * @param session invocation session carrying the paused boundary
+     * @param invokeInputs invocation inputs receiving the paused result
+     * @param pauseInfo consumed pause metadata (operator, reason), may be null
+     * @return true when the pause evidence was persisted and the invocation
+     *         ended as paused; false when the cursor could not be persisted,
+     *         leaving the invocation running without a paused result shape
+     */
+    private boolean applyPausedResult(AgentCallbackContext ctx, AgentSessionApi session,
+                                      InvokeInputs invokeInputs, Map<String, Object> pauseInfo) {
+        BaseSession baseSession = typedBaseSession(session);
+        boolean isPausePersisted = stepCheckpointTrigger.pauseNow(baseSession, "PHASE", "user-pause", pauseInfo);
+        if (!isPausePersisted) {
+            Loggers.AGENT.warning("User pause requested but the paused cursor could not be persisted for session {};"
+                    + " the invocation keeps running so no resume will be attempted",
+                    session == null ? null : session.getSessionId());
+            return false;
+        }
+        contextEngine.saveContexts(session);
+        Map<String, Object> pausedResult = new LinkedHashMap<>();
+        pausedResult.put("output", "Paused by user request");
+        pausedResult.put("result_type", "paused");
+        if (pauseInfo != null && !pauseInfo.isEmpty()) {
+            pausedResult.put("pause_info", pauseInfo);
+        }
+        invokeInputs.setResult(pausedResult);
+        ctx.finish(AgentTerminationReason.PAUSED);
+        return true;
+    }
+
+    /**
+     * Consumes the pending pause intent of the invocation session, if any.
+     *
+     * @param session invocation session carrying the pause intent
+     * @return the consumed pause metadata, or null when no pause was requested
+     */
+    private static Map<String, Object> consumePauseIfRequested(AgentSessionApi session) {
+        if (session == null) {
+            return null;
+        }
+        return PauseRequestRegistry.consumePauseRequest(session.getSessionId());
     }
 
     private void runNamedStreamingInvoke(Object inputs, AgentSessionApi session, String streamThreadName) {
@@ -2592,6 +3024,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             runStreamingInvoke(inputs, session, false);
         } finally {
             worker.setName(previousName);
+            CANCEL_FLAGS.remove(cancelFlagKey(session));
         }
     }
 
@@ -2748,7 +3181,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .enableOpenrouterModelContextWindowTokens(source.isEnableOpenrouterModelContextWindowTokens())
                 .openrouterRequestTimeout(source.getOpenrouterRequestTimeout())
                 .enableOffload(source.isEnableOffload())
-                .offload(source.getOffload());
+                .offload(source.getOffload())
+                .enableModelContextOverflowRecovery(source.isEnableModelContextOverflowRecovery())
+                .extraContextOverflowKeywords(source.getExtraContextOverflowKeywords());
         Map<String, Integer> modelWindowTokens = source.getModelContextWindowTokens();
         if (modelWindowTokens != null) {
             snapshotBuilder.modelContextWindowTokens(new LinkedHashMap<>(modelWindowTokens));
@@ -2859,6 +3294,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     return aiMessage;
                 }
                 if (hasReasoningContent(aiMessage)) {
+                    if (isLengthCappedFinishReason(aiMessage.getFinishReason())) {
+                        Loggers.AGENT.warning("ReAct stream hit the length cap with reasoning but no answer "
+                                + "content or tool calls; returning the truncated result as-is");
+                        return aiMessage;
+                    }
                     Loggers.AGENT.warning("ReAct stream completed with reasoning but no answer content or "
                             + "tool calls; falling back to non-stream");
                     return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(),
@@ -2929,17 +3369,25 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         Long firstTokenTime = null;
         Long lastTokenTime = null;
         int chunkCount = 0;
+        ctx.getExtra().put("_stream_chunks_emitted", 0);
         try {
             iterator = model.stream(messages, options);
             while (iterator.hasNext()) {
                 AssistantMessageChunk chunk = iterator.next();
                 streamAttempt.markChunkReceived();
                 accumulatedChunk = accumulatedChunk == null ? chunk : (AssistantMessageChunk) accumulatedChunk.merge(chunk);
-                if (firstTokenTime == null) {
-                    firstTokenTime = System.nanoTime();
+                // Only chunks that actually carry model output advance the latency
+                // window: role-only deltas, heartbeats, and usage-only or finish-only
+                // frames would otherwise inflate both TTFT and inter-token latency.
+                if (chunk.carriesOutputToken()) {
+                    long now = System.nanoTime();
+                    if (firstTokenTime == null) {
+                        firstTokenTime = now;
+                    }
+                    lastTokenTime = now;
                 }
-                lastTokenTime = System.nanoTime();
                 chunkCount++;
+                ctx.getExtra().put("_stream_chunks_emitted", chunkCount);
                 AgentSessionApi session = ctx.getSession();
                 if (session != null && chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
                     session.writeStream(new OutputSchema("llm_reasoning", nextStreamIndex(ctx),
@@ -2965,6 +3413,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     .toolCalls(accumulatedChunk.getToolCalls() == null ? List.of() : accumulatedChunk.getToolCalls())
                     .finishReason(accumulatedChunk.getFinishReason())
                     .usageMetadata(accumulatedChunk.getUsageMetadata())
+                    .responseModel(accumulatedChunk.getResponseModel())
                     .reasoningContent(accumulatedChunk.getReasoningContent())
                     .promptTokenIds(accumulatedChunk.getPromptTokenIds())
                     .completionTokenIds(accumulatedChunk.getCompletionTokenIds())
@@ -2992,12 +3441,46 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
             payload.put("result_type", "answer");
-            payload.put("total_latency_ms", roundMillis(System.nanoTime() - callStartTime));
-            if (firstTokenTime != null) {
-                payload.put("ttft_ms", roundMillis(firstTokenTime - callStartTime));
+            // Prefer the model layer's whole-call measurement so this frame and the
+            // OTel span report the same window; the local clock starts after the
+            // request is dispatched and would come out slightly short.
+            double usageTotalLatency = aiMessage.getUsageMetadata().getTotalLatency();
+            if (usageTotalLatency > 0.0d) {
+                payload.put("total_latency_ms", roundMillis(
+                        BigDecimal.valueOf(usageTotalLatency)
+                                .multiply(BigDecimal.valueOf(1_000_000_000L))
+                                .doubleValue()));
+            } else {
+                payload.put("total_latency_ms", roundMillis(System.nanoTime() - callStartTime));
             }
-            if (firstTokenTime != null && lastTokenTime != null && chunkCount > 1) {
-                payload.put("tpot_ms", roundMillis((lastTokenTime - firstTokenTime) / (double) (chunkCount - 1)));
+            // TTFT / inter-token latency are computed centrally by the model layer
+            // and carried on usage metadata; fall back to the local window only when
+            // the model layer did not run (e.g. an undecorated client).
+            Double ttftSeconds = aiMessage.getUsageMetadata().getTtftSeconds();
+            if (ttftSeconds != null) {
+                payload.put("ttft_ms", roundMillis(
+                        BigDecimal.valueOf(ttftSeconds)
+                                .multiply(BigDecimal.valueOf(1_000_000_000L))
+                                .doubleValue()));
+            } else if (firstTokenTime != null) {
+                payload.put("ttft_ms", roundMillis(firstTokenTime - callStartTime));
+            } else {
+                Loggers.AGENT.debug("No TTFT measurement available from either source.");
+            }
+            Double interTokenMs = aiMessage.getUsageMetadata().getInterTokenLatencyMs();
+            if (interTokenMs != null) {
+                payload.put("tpot_ms", roundMillis(
+                        BigDecimal.valueOf(interTokenMs)
+                                .multiply(BigDecimal.valueOf(1_000_000L))
+                                .doubleValue()));
+            } else if (firstTokenTime != null && lastTokenTime != null
+                    && aiMessage.getUsageMetadata().getOutputTokens() > 1) {
+                // Denominator is the provider-reported output token count, not the
+                // chunk count: a single chunk may carry several tokens.
+                payload.put("tpot_ms", roundMillis((lastTokenTime - firstTokenTime)
+                        / (double) (aiMessage.getUsageMetadata().getOutputTokens() - 1)));
+            } else {
+                Loggers.AGENT.debug("No inter-token measurement available from either source.");
             }
             ctx.getSession().writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), payload));
         }
@@ -3016,6 +3499,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static boolean hasReasoningContent(AssistantMessage message) {
         return message != null && message.getReasoningContent() != null
                 && !message.getReasoningContent().isBlank();
+    }
+
+    static boolean isLengthCappedFinishReason(String finishReason) {
+        return finishReason != null && !finishReason.isBlank() && !"null".equals(finishReason)
+                && (finishReason.equalsIgnoreCase("length") || finishReason.equalsIgnoreCase("max_tokens"));
     }
 
     private static boolean hasIoCause(Throwable throwable) {
@@ -3443,6 +3931,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 .toolCalls(aiMessage.getToolCalls())
                 .reasoningContent(aiMessage.getReasoningContent())
                 .usageMetadata(aiMessage.getUsageMetadata())
+                .responseModel(aiMessage.getResponseModel())
                 .build();
     }
 
@@ -3552,11 +4041,51 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return result;
     }
 
-    private static Map<String, Object> buildErrorResult(RuntimeException exception) {
-        return new LinkedHashMap<>(Map.of(
+    /**
+     * Builds the error result written to the stream when a streaming invoke fails. When the
+     * failure chain carries a {@link BaseError}, its stable code, numeric code, and recoverable
+     * flag are attached as a structured failure entry so remote adapters can reconstruct a
+     * programmatic failure descriptor instead of parsing the flattened output text.
+     *
+     * @param exception streaming failure
+     * @return error result map with output, result type, and an optional failure entry
+     * @since 0.1.17
+     */
+    static Map<String, Object> buildErrorResult(RuntimeException exception) {
+        Map<String, Object> result = new LinkedHashMap<>(Map.of(
                 "output", describeStreamThrowable(exception),
                 "result_type", "error"
         ));
+        findBaseError(exception).ifPresent(baseError -> result.put("failure", buildFailurePayload(baseError)));
+        return result;
+    }
+
+    /**
+     * Finds the first {@link BaseError} in the cause chain.
+     *
+     * @param throwable throwable to inspect
+     * @return the first base error in the cause chain, or empty when none exists
+     * @since 0.1.17
+     */
+    static Optional<BaseError> findBaseError(Throwable throwable) {
+        Throwable current = throwable;
+        int depth = 0;
+        while (current != null && depth < MAX_CAUSE_CHAIN_DEPTH) {
+            if (current instanceof BaseError baseError) {
+                return Optional.of(baseError);
+            }
+            current = current.getCause();
+            depth++;
+        }
+        return Optional.empty();
+    }
+
+    private static Map<String, Object> buildFailurePayload(BaseError baseError) {
+        Map<String, Object> failure = new LinkedHashMap<>();
+        failure.put("code", baseError.getStatus() == null ? "AGENT_CORE_ERROR" : baseError.getStatus().name());
+        failure.put("numericCode", baseError.getCode());
+        failure.put("retryable", baseError.isRecoverable());
+        return failure;
     }
 
     private static String exceptionMessage(RuntimeException exception) {
@@ -3605,7 +4134,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     private static String truncate(String text, int maxLength) {
-        return text.length() <= maxLength ? text : text.substring(0, maxLength);
+        return TextTruncate.safePrefix(text, maxLength);
     }
 
     private static double roundMillis(double nanos) {

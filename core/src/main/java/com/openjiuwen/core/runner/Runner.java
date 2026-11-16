@@ -337,7 +337,8 @@ public final class Runner {
     }
 
     public static Iterator<Object> runAgentTeamStreaming(String agentTeam, Object inputs, Object session) {
-        return joinOrThrow(runAgentTeamStreaming(agentTeam, inputs, true, false, session, null, null, null));
+        boolean isBaseTeam = GLOBAL_RUNNER.getTeamRuntimeManager().getState(agentTeam).isEmpty();
+        return joinOrThrow(runAgentTeamStreaming(agentTeam, inputs, isBaseTeam, false, session, null, null, null));
     }
 
     public static Iterator<Object> runAgentTeamStreaming(TeamAgentSpec agentTeam, Map<String, String> inputs,
@@ -351,7 +352,7 @@ public final class Runner {
     public static Iterator<Object> runAgentTeamStreaming(TeamAgent agentTeam, Map<String, String> inputs,
                                                          String conversationId) {
         return runAgentTeamStreaming(
-                agentTeam, inputs, false, true, conversationId, null, null, null)
+                agentTeam, inputs, false, false, conversationId, null, null, null)
                 .toCompletableFuture()
                 .join();
     }
@@ -1392,6 +1393,10 @@ public final class Runner {
                 if (agent instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
                     agentSession.preRun(inputKwargs(inputs));
                     return new PreparedAgent(legacyAgent, agentSession, agentSession);
+                }
+                if (agent instanceof DeepAgent deepAgent) {
+                    agentSession.preRun(inputKwargs(inputs));
+                    return new PreparedAgent(deepAgent, agentSession, agentSession);
                 }
             }
 

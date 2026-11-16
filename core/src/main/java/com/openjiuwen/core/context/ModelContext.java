@@ -48,6 +48,23 @@ public interface ModelContext {
         return getMessages(null, true);
     }
 
+    /**
+     * Latest stored message without count-based tool-group realignment.
+     *
+     * <p>Use this for control-flow checks (duplicate / post-tool skips). Sized
+     * {@link #getMessages(Integer, boolean)} reads may drop leading orphan tools
+     * continuity and are not a substitute for the physical tail.</p>
+     *
+     * @return the last stored message, or {@code null} when empty
+     */
+    default BaseMessage peekLastMessage() {
+        List<BaseMessage> messages = getMessages(null, true);
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+        return messages.get(messages.size() - 1);
+    }
+
     void setMessages(List<BaseMessage> messages, boolean withHistory);
 
     /** Defaults to {@code setMessages(messages, true)}. */

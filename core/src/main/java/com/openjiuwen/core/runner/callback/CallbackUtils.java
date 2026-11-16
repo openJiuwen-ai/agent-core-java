@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner.callback;
 
+import com.openjiuwen.core.runner.Runner;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -39,6 +41,32 @@ public final class CallbackUtils {
             throw new IllegalStateException("Runner or callback_framework is not initialized.");
         }
         return framework;
+    }
+
+    /**
+     * Resolve the framework that instrumentation should notify, falling back to
+     * the process-global framework owned by {@link Runner}.
+     *
+     * <p>Python reads {@code Runner.callback_framework} directly from the model,
+     * tool and workflow layers, so the global instance is the natural default
+     * rather than "no callbacks at all". Without this fallback a component that
+     * never had {@code setCallbackFramework} called on it silently loses every
+     * event, which is what happened to the streaming latency collection.</p>
+     *
+     * <p>{@link Runner} is only touched inside this method body, so loading
+     * this class never triggers the runner initialisation chain.</p>
+     *
+     * @param componentFramework a framework explicitly installed on the calling
+     *     component (e.g. via {@code Model.setCallbackFramework}), may be null
+     * @return the framework to notify, or {@code null} only if even the global
+     *     runner has no framework (never the case after {@link Runner} loads)
+     */
+    public static DecoratorFramework resolveCallbackFramework(DecoratorFramework componentFramework) {
+        if (componentFramework != null) {
+            return componentFramework;
+        }
+        DecoratorFramework installed = frameworkSupplier.get();
+        return installed != null ? installed : Runner.callbackFramework();
     }
 
     public static void setFrameworkSupplier(Supplier<DecoratorFramework> supplier) {

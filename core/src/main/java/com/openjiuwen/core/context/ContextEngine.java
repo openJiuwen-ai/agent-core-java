@@ -6,12 +6,14 @@ package com.openjiuwen.core.context;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.context.ContextUtils;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressor;
 import com.openjiuwen.core.context.processor.compressor.DialogueCompressor;
 import com.openjiuwen.core.context.processor.compressor.FullCompactProcessor;
 import com.openjiuwen.core.context.processor.compressor.MicroCompactProcessor;
+import com.openjiuwen.core.context.processor.compressor.MultimodalHistoryCompactor;
 import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressor;
 import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
 import com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloader;
@@ -23,10 +25,12 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,6 +52,7 @@ public class ContextEngine {
         registerProcessor("RoundLevelCompressor", RoundLevelCompressor.class);
         registerProcessor("CurrentRoundCompressor", CurrentRoundCompressor.class);
         registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class);
+        registerProcessor("MultimodalHistoryCompactor", MultimodalHistoryCompactor.class);
         registerProcessor("FullCompactProcessor", FullCompactProcessor.class);
         registerProcessor("MessageOffloader", MessageOffloader.class);
         registerProcessor("MessageSummaryOffloader", MessageSummaryOffloader.class);
@@ -59,6 +64,7 @@ public class ContextEngine {
     private final SessionModelContext.SysOperationPort sysOperation;
     private final SessionModelContext.ModelContextWindowTokenProvider modelContextWindowTokenProvider;
     private final Map<String, ModelContext> contextPool = new ConcurrentHashMap<>();
+    private final Map<String, List<ProcessorSpec>> installedProcessorSpecs = new ConcurrentHashMap<>();
 
     public ContextEngine() {
         this(null);
@@ -102,18 +108,72 @@ public class ContextEngine {
                 processedContextId, sessionId, session, processors, historyMessages, tokenCounter));
         if (context instanceof SessionModelContext sessionModelContext) {
             sessionModelContext.setSessionRef(session);
+            installedProcessorSpecs.putIfAbsent(fullContextId, copyProcessorSpecs(processors));
+            alignProcessorsOnCacheHit(sessionModelContext, fullContextId, processors);
         }
         loadStateFromSession(context, session, historyMessages);
         return context;
     }
 
+    /**
+     * Aligns cached context processors when a later {@link #createContext} call supplies a different
+     * declaration (type and/or config), e.g. checkpointer seed without processors then agent init,
+     * or the same types with updated processor configs.
+     *
+     * <p>{@code null} specs mean the caller did not request a processor update and existing
+     * instances are left unchanged.</p>
+     *
+     * @param context cached session model context
+     * @param fullContextId pool key for this context
+     * @param processors requested processor declaration; {@code null} skips alignment
+     */
+    private void alignProcessorsOnCacheHit(SessionModelContext context, String fullContextId,
+                                           List<ProcessorSpec> processors) {
+        if (processors == null) {
+            return;
+        }
+        List<ProcessorSpec> installed = installedProcessorSpecs.getOrDefault(fullContextId, List.of());
+        if (hasSameProcessorDeclaration(installed, processors)) {
+            return;
+        }
+        context.reconfigureProcessors(createProcessorInstances(processors));
+        installedProcessorSpecs.put(fullContextId, copyProcessorSpecs(processors));
+    }
+
+    /**
+     * Compares two processor declarations by ordered type and config equality.
+     *
+     * @param installed last installed declaration for the cached context
+     * @param requested processor specs from the createContext call
+     * @return {@code true} when sizes and each {@code (processorType, config)} pair match
+     */
+    private static boolean hasSameProcessorDeclaration(List<ProcessorSpec> installed,
+                                                       List<ProcessorSpec> requested) {
+        if (installed.size() != requested.size()) {
+            return false;
+        }
+        for (int index = 0; index < installed.size(); index++) {
+            ProcessorSpec left = installed.get(index);
+            ProcessorSpec right = requested.get(index);
+            if (!Objects.equals(left.processorType(), right.processorType())
+                    || !Objects.equals(left.config(), right.config())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static List<ProcessorSpec> copyProcessorSpecs(List<ProcessorSpec> processors) {
+        if (processors == null || processors.isEmpty()) {
+            return List.of();
+        }
+        return List.copyOf(processors);
+    }
+
     private SessionModelContext newSessionContext(String processedContextId, String sessionId, Object session,
                                                   List<ProcessorSpec> processors, List<BaseMessage> historyMessages,
                                                   ModelContext.TokenCounterPort tokenCounter) {
-        List<SessionModelContext.ContextProcessorPort> processorInstances = new ArrayList<>();
-        for (ProcessorSpec processorSpec : processors == null ? List.<ProcessorSpec>of() : processors) {
-            processorInstances.add(createProcessor(processorSpec.processorType(), processorSpec.config()));
-        }
+        List<SessionModelContext.ContextProcessorPort> processorInstances = createProcessorInstances(processors);
 
         // Default to CJK-weighted SimpleTokenCounter when no encoder is configured.
         // when the caller omits token_counter. TiktokenCounter has no encoder in this JDK build.
@@ -185,6 +245,126 @@ public class ContextEngine {
         return sessionModelContext.compressContext(processorTypes, effectiveKwargs).toCompletableFuture().join();
     }
 
+    /**
+     * Recovers from a model context-window rejection by compressing once.
+     *
+     * <p>A retry is warranted only when the provider error describes an input/context limit,
+     * {@link #compressContext} returns {@code compressed}, and the context footprint
+     * (message count + content size) strictly shrinks. A processor that emits an event
+     * without reducing size must not trigger retry. Streaming responses that already
+     * emitted chunks are not recovered (avoids duplicating output).</p>
+     *
+     * @param contextId context id; {@code null} uses the default
+     * @param session session owning the context
+     * @param exception model-call failure
+     * @param streaming whether the failed call was streaming
+     * @param streamChunksEmitted number of stream chunks already visible to the caller
+     * @param kwargs optional compress kwargs; {@code compression_trigger} defaults to
+     *               {@code model_context_overflow}
+     * @return {@code true} when compression shrank the context and the caller should retry
+     */
+    public boolean recoverFromModelException(String contextId, Object session, Throwable exception,
+                                             boolean streaming, int streamChunksEmitted,
+                                             Map<String, Object> kwargs) {
+        if (!config.isEnableModelContextOverflowRecovery()) {
+            return false;
+        }
+        if (streaming && streamChunksEmitted > 0) {
+            Loggers.CONTEXT_ENGINE.warning(
+                    "skip model context recovery after streaming output was emitted, stream_chunks_emitted="
+                            + streamChunksEmitted);
+            return false;
+        }
+        if (!isContextOverflowError(exception, config.getExtraContextOverflowKeywords())) {
+            return false;
+        }
+
+        Map<String, Object> compressionKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
+        compressionKwargs.putIfAbsent("compression_trigger", "model_context_overflow");
+        final String effectiveContextId = contextId == null ? DEFAULT_CONTEXT_ID : contextId;
+        final String resolvedSessionId;
+        final int beforeFootprint;
+        final Object result;
+        try {
+            resolvedSessionId = session != null ? resolveSessionId(session) : DEFAULT_SESSION_ID;
+            ModelContext modelContext = getContext(effectiveContextId, resolvedSessionId);
+            beforeFootprint = estimateContextFootprint(
+                    modelContext == null ? List.of() : modelContext.getMessages(null, true));
+            result = compressContext(contextId, session, null, null, compressionKwargs);
+        } catch (RuntimeException compressFailure) {
+            // Intentional broad catch: recovery must never replace the original model
+            // exception with a compress failure (BaseError and other runtime failures
+            // included). Error/Throwable still propagate. Same pattern as createProcessor.
+            Loggers.CONTEXT_ENGINE.warning(
+                    "model context recovery compress failed; preserving original model exception: "
+                            + compressFailure.getMessage());
+            return false;
+        }
+        Object resultCode = result instanceof Map<?, ?> map ? map.get("result") : result;
+        if (!SessionModelContext.ACTIVE_COMPRESSION_RESULT_COMPRESSED.equals(resultCode)) {
+            Loggers.CONTEXT_ENGINE.info(
+                    "model context recovery did not change context, result=" + resultCode);
+            return false;
+        }
+        ModelContext afterContext = getContext(effectiveContextId, resolvedSessionId);
+        int afterFootprint = estimateContextFootprint(
+                afterContext == null ? List.of() : afterContext.getMessages(null, true));
+        if (afterFootprint >= beforeFootprint) {
+            Loggers.CONTEXT_ENGINE.info(
+                    "model context recovery did not shrink context, before_footprint="
+                            + beforeFootprint + ", after_footprint=" + afterFootprint);
+            return false;
+        }
+        Loggers.CONTEXT_ENGINE.info("model context recovery compressed context");
+        return true;
+    }
+
+    /**
+     * Estimates recoverable context size for overflow recovery decisions.
+     *
+     * <p>Combines message count with total content length so a same-count rewrite that
+     * does not shrink text (or grows it) is treated as ineffective compression.</p>
+     *
+     * @param messages context messages; {@code null} is treated as empty
+     * @return non-negative footprint score
+     */
+    static int estimateContextFootprint(List<BaseMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int contentChars = 0;
+        for (BaseMessage message : messages) {
+            if (message == null) {
+                continue;
+            }
+            String content = message.getContentAsString();
+            contentChars += content == null ? 0 : content.length();
+        }
+        return messages.size() + contentChars;
+    }
+
+    /**
+     * Returns whether {@code exception} describes an input context overflow.
+     *
+     * @param exception provider or wrapped model error
+     * @return {@code true} when the error is treated as recoverable context overflow
+     */
+    public static boolean isContextOverflowError(Throwable exception) {
+        return isContextOverflowError(exception, List.of());
+    }
+
+    /**
+     * Returns whether {@code exception} describes an input context overflow,
+     * including optional extra keyword phrases from configuration.
+     *
+     * @param exception provider or wrapped model error
+     * @param extraKeywords additional phrases; may be {@code null} or empty
+     * @return {@code true} when the error is treated as recoverable context overflow
+     */
+    public static boolean isContextOverflowError(Throwable exception, Collection<String> extraKeywords) {
+        return ContextOverflowErrorMatcher.matches(exception, extraKeywords);
+    }
+
     public void clearContext() {
         clearContext(null, null);
     }
@@ -192,16 +372,25 @@ public class ContextEngine {
     public void clearContext(String contextId, String sessionId) {
         if (sessionId == null) {
             contextPool.clear();
+            installedProcessorSpecs.clear();
             return;
         }
 
         if (contextId == null) {
-            contextPool.entrySet().removeIf(entry -> sessionId.equals(entry.getValue().sessionId()));
+            contextPool.entrySet().removeIf(entry -> {
+                if (sessionId.equals(entry.getValue().sessionId())) {
+                    installedProcessorSpecs.remove(entry.getKey());
+                    return true;
+                }
+                return false;
+            });
             return;
         }
 
         String processedContextId = processContextId(contextId);
-        contextPool.remove(sessionId + "_" + processedContextId);
+        String fullContextId = sessionId + "_" + processedContextId;
+        contextPool.remove(fullContextId);
+        installedProcessorSpecs.remove(fullContextId);
     }
 
     public Map<String, Object> saveContexts(Object session) {

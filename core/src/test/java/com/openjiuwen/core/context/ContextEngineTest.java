@@ -10,6 +10,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.offload.api.OffloadCatalogImpl;
+import com.openjiuwen.core.context.offload.api.OffloadService;
+import com.openjiuwen.core.context.offload.api.OffloadServiceImpl;
+import com.openjiuwen.core.context.offload.api.OffloadStore;
+import com.openjiuwen.core.context.offload.cleanup.SessionOffloadGate;
+import com.openjiuwen.core.context.offload.model.OffloadBackend;
+import com.openjiuwen.core.context.offload.model.OffloadConfig;
+import com.openjiuwen.core.context.offload.model.OffloadNamespace;
+import com.openjiuwen.core.context.offload.store.CompositeOffloadStore;
+import com.openjiuwen.core.context.offload.store.MemoryOffloadStore;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloaderConfig;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -24,6 +36,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 /**
  * Focused parity tests for {@link ContextEngine}.
@@ -125,6 +139,296 @@ class ContextEngineTest {
         Map<String, Object> payload = (Map<String, Object>) result;
         assertThat(payload.get("result")).isEqualTo(SessionModelContext.ACTIVE_COMPRESSION_RESULT_COMPRESSED);
         assertThat(payload.get("compact_summary")).isEqualTo("recorded by test processor");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void createContextCacheHitAlignsProcessorsWhenSeededWithoutThem() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-processor-align");
+
+        ModelContext seededRaw = engine.createContext("ctx", session, null, null, null);
+        assertThat(seededRaw).isInstanceOf(SessionModelContext.class);
+        if (!(seededRaw instanceof SessionModelContext seeded)) {
+            return;
+        }
+        assertThat(seeded.getProcessors()).isEmpty();
+
+        List<ContextEngine.ProcessorSpec> processorSpecs = List.of(
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of("enabled", true)));
+        ModelContext alignedRaw = engine.createContext("ctx", session, processorSpecs, null, null);
+        assertThat(alignedRaw).isInstanceOf(SessionModelContext.class);
+        if (!(alignedRaw instanceof SessionModelContext aligned)) {
+            return;
+        }
+
+        assertThat(aligned).isSameAs(seeded);
+        assertThat(aligned.getProcessors()).hasSize(1);
+        assertThat(aligned.getProcessors().get(0).processorType()).isEqualTo("T00919CompactProcessor");
+
+        Object result = engine.compressContext("ctx", session, null,
+                List.of("T00919CompactProcessor"),
+                Map.of("return_state", true));
+        assertThat(result).isInstanceOf(Map.class);
+        Map<String, Object> payload = (Map<String, Object>) result;
+        assertThat(payload.get("result")).isEqualTo(SessionModelContext.ACTIVE_COMPRESSION_RESULT_COMPRESSED);
+    }
+
+    @Test
+    void createContextCacheHitKeepsProcessorsWhenSpecsOmitted() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-processor-keep");
+        List<ContextEngine.ProcessorSpec> processorSpecs = List.of(
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of()));
+
+        ModelContext withProcessorsRaw = engine.createContext("ctx", session, processorSpecs, null, null);
+        assertThat(withProcessorsRaw).isInstanceOf(SessionModelContext.class);
+        if (!(withProcessorsRaw instanceof SessionModelContext withProcessors)) {
+            return;
+        }
+        ModelContext reusedRaw = engine.createContext("ctx", session, null, null, null);
+        assertThat(reusedRaw).isInstanceOf(SessionModelContext.class);
+        if (!(reusedRaw instanceof SessionModelContext reused)) {
+            return;
+        }
+
+        assertThat(reused).isSameAs(withProcessors);
+        assertThat(reused.getProcessors()).hasSize(1);
+        assertThat(reused.getProcessors().get(0).processorType()).isEqualTo("T00919CompactProcessor");
+    }
+
+    @Test
+    void createContextCacheHitRealignsWhenProcessorConfigDiffers() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-processor-config");
+
+        List<ContextEngine.ProcessorSpec> firstSpecs = List.of(
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of("version", 1)));
+        ModelContext firstRaw = engine.createContext("ctx", session, firstSpecs, null, null);
+        assertThat(firstRaw).isInstanceOf(SessionModelContext.class);
+        if (!(firstRaw instanceof SessionModelContext context)) {
+            return;
+        }
+        SessionModelContext.ContextProcessorPort firstProcessor = context.getProcessors().get(0);
+
+        List<ContextEngine.ProcessorSpec> secondSpecs = List.of(
+                new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of("version", 2)));
+        engine.createContext("ctx", session, secondSpecs, null, null);
+
+        assertThat(context.getProcessors()).hasSize(1);
+        assertThat(context.getProcessors().get(0)).isNotSameAs(firstProcessor);
+        assertThat(context.getProcessors().get(0).processorType()).isEqualTo("T00919CompactProcessor");
+    }
+
+    @Test
+    void createContextCacheHitRebindsOffloadServiceAfterProcessorRealign() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-offload-rebind");
+        MessageOffloaderConfig configA = new MessageOffloaderConfig();
+        configA.setLargeMessageThreshold(500);
+        List<ContextEngine.ProcessorSpec> firstSpecs = List.of(
+                new ContextEngine.ProcessorSpec("MessageOffloader", configA));
+
+        ModelContext createdRaw = engine.createContext("ctx", session, firstSpecs, null, null);
+        assertThat(createdRaw).isInstanceOf(SessionModelContext.class);
+        if (!(createdRaw instanceof SessionModelContext context)) {
+            return;
+        }
+        assertThat(context.getProcessors().get(0)).isInstanceOf(MessageOffloader.class);
+        if (!(context.getProcessors().get(0) instanceof MessageOffloader firstOffloader)) {
+            return;
+        }
+
+        OffloadService service = memoryOffloadService();
+        Supplier<OffloadNamespace> namespaceSupplier = () -> OffloadNamespace.of("", session.getSessionId(), "ctx");
+        context.bindOffloadService(service, namespaceSupplier);
+        firstOffloader.setOffloadService(service, namespaceSupplier);
+        assertThat(firstOffloader.getOffloadService()).isSameAs(service);
+
+        MessageOffloaderConfig configB = new MessageOffloaderConfig();
+        configB.setLargeMessageThreshold(800);
+        List<ContextEngine.ProcessorSpec> secondSpecs = List.of(
+                new ContextEngine.ProcessorSpec("MessageOffloader", configB));
+        engine.createContext("ctx", session, secondSpecs, null, null);
+
+        assertThat(context.getProcessors().get(0)).isInstanceOf(MessageOffloader.class);
+        if (!(context.getProcessors().get(0) instanceof MessageOffloader secondOffloader)) {
+            return;
+        }
+        assertThat(secondOffloader).isNotSameAs(firstOffloader);
+        assertThat(secondOffloader.getOffloadService()).isSameAs(service);
+    }
+
+    @Test
+    void isContextOverflowErrorDetectsProviderAndBailianMessages() {
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("This model's maximum context length is 1048576 tokens."))).isTrue();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("Range of input length should be [1, 1000000]"))).isTrue();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("输入长度超过限制"))).isTrue();
+
+        RuntimeException wrapped = new RuntimeException("model call failed",
+                new RuntimeException("maximum context length is 8192"));
+        assertThat(ContextEngine.isContextOverflowError(wrapped)).isTrue();
+
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("insufficient_quota: billing limit reached"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("maximum output tokens exceeded"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("network timeout"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("context deadline exceeded"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("StatusRuntimeException: DEADLINE_EXCEEDED: context deadline exceeded")))
+                .isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("TimeoutException: context deadline exceeded"))).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(null)).isFalse();
+    }
+
+    @Test
+    void isContextOverflowErrorHonorsExtraKeywordsFromArgument() {
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("custom_vendor_overflow_signal"), List.of())).isFalse();
+        assertThat(ContextEngine.isContextOverflowError(
+                new RuntimeException("custom_vendor_overflow_signal"),
+                List.of("custom_vendor_overflow_signal"))).isTrue();
+    }
+
+    @Test
+    void recoverFromModelExceptionCompressesContextOnce() {
+        RecordingCompactProcessor.resetForceInvokeCount();
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover");
+        ModelContext context = engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context that must shrink")),
+                null);
+        int beforeFootprint = ContextEngine.estimateContextFootprint(context.getMessages(null, true));
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isTrue();
+        assertThat(RecordingCompactProcessor.forceInvokeCount()).isEqualTo(1);
+        assertThat(contents(context.getMessages(null, true)))
+                .containsExactly("recorded by test processor");
+        assertThat(ContextEngine.estimateContextFootprint(context.getMessages(null, true)))
+                .isLessThan(beforeFootprint);
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenProcessorEventDoesNotShrinkContext() {
+        ContextEngine.registerProcessor("T00919NonShrinkingCompactProcessor",
+                NonShrinkingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-nonshrink");
+        ModelContext context = engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919NonShrinkingCompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context")),
+                null);
+        List<String> beforeContents = contents(context.getMessages(null, true));
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isFalse();
+        assertThat(contents(context.getMessages(null, true))).isEqualTo(beforeContents);
+    }
+
+    @Test
+    void recoverFromModelExceptionSkipsPartialStream() {
+        ContextEngine.registerProcessor("T00919CompactProcessor", RecordingCompactProcessor::new);
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-stream");
+        ModelContext context = engine.createContext("ctx", session,
+                List.of(new ContextEngine.ProcessorSpec("T00919CompactProcessor", Map.of())),
+                List.of(new UserMessage("large historical context")),
+                null);
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("This model's maximum context length is 1048576 tokens."),
+                true,
+                1,
+                null);
+
+        assertThat(recovered).isFalse();
+        assertThat(context.getMessages(null, true).get(0).getContentAsString())
+                .isEqualTo("large historical context");
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenCompressionNoop() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-noop");
+        engine.createContext("ctx", session, null, List.of(new UserMessage("keep")), null);
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                session,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                Map.of("return_state", true));
+
+        assertThat(recovered).isFalse();
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenContextMissing() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-missing");
+
+        boolean recovered = engine.recoverFromModelException(
+                "missing-ctx",
+                session,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                null);
+
+        assertThat(recovered).isFalse();
+    }
+
+    @Test
+    void recoverFromModelExceptionReturnsFalseWhenCompressThrowsUnexpectedRuntimeException() {
+        ContextEngine engine = new ContextEngine(new ContextEngineConfig());
+        RecordingSession session = new RecordingSession("session-recover-throw");
+        engine.createContext("ctx", session, null, List.of(new UserMessage("large historical context")), null);
+
+        // Session identity lookup throws a RuntimeException outside the prior typed catch list
+        // (e.g. NPE); recovery must return false instead of propagating it.
+        ContextEngine.SessionPort explodingSession = () -> {
+            throw new NullPointerException("session exploded during recover");
+        };
+
+        boolean recovered = engine.recoverFromModelException(
+                "ctx",
+                explodingSession,
+                new RuntimeException("maximum context length exceeded"),
+                false,
+                0,
+                null);
+
+        assertThat(recovered).isFalse();
     }
 
     @Test
@@ -517,6 +821,13 @@ class ContextEngineTest {
         return messages.stream().map(BaseMessage::getContentAsString).toList();
     }
 
+    private static OffloadService memoryOffloadService() {
+        LinkedHashMap<OffloadBackend, OffloadStore> chain = new LinkedHashMap<>();
+        chain.put(OffloadBackend.MEMORY, new MemoryOffloadStore());
+        return new OffloadServiceImpl(new OffloadCatalogImpl(), new CompositeOffloadStore(chain),
+                new SessionOffloadGate(), new OffloadConfig());
+    }
+
     private static final class RecordingSession implements ContextEngine.SessionPort {
         private final String sessionId;
         private final Map<String, Object> state = new LinkedHashMap<>();
@@ -556,10 +867,19 @@ class ContextEngineTest {
      * {@code openjiuwen/core/context_engine/context_engine.py}.</p>
      */
     private static final class RecordingCompactProcessor implements SessionModelContext.ContextProcessorPort {
+        private static final AtomicInteger FORCE_INVOKE_COUNT = new AtomicInteger();
         private final Object config;
 
         private RecordingCompactProcessor(Object config) {
             this.config = config;
+        }
+
+        private static void resetForceInvokeCount() {
+            FORCE_INVOKE_COUNT.set(0);
+        }
+
+        private static int forceInvokeCount() {
+            return FORCE_INVOKE_COUNT.get();
         }
 
         @Override
@@ -572,9 +892,47 @@ class ContextEngineTest {
                                                                                 List<BaseMessage> messages,
                                                                                 boolean force,
                                                                                 Map<String, Object> kwargs) {
+            if (force) {
+                FORCE_INVOKE_COUNT.incrementAndGet();
+                context.setMessages(List.of(new UserMessage("recorded by test processor")), true);
+                return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                        new RecordingEvent(config),
+                        List.of(),
+                        null
+                ));
+            }
             return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
-                    new RecordingEvent(config),
+                    null,
                     messages,
+                    null
+            ));
+        }
+    }
+
+    /**
+     * Emits a compression event without reducing context footprint.
+     */
+    private static final class NonShrinkingCompactProcessor implements SessionModelContext.ContextProcessorPort {
+        private NonShrinkingCompactProcessor(Object config) {
+        }
+
+        @Override
+        public String processorType() {
+            return "T00919NonShrinkingCompactProcessor";
+        }
+
+        @Override
+        public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
+                                                                                List<BaseMessage> messages,
+                                                                                boolean force,
+                                                                                Map<String, Object> kwargs) {
+            if (force) {
+                // Same-size rewrite: event present but footprint does not shrink.
+                context.setMessages(List.of(new UserMessage("large historical context")), true);
+            }
+            return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(
+                    new RecordingEvent("non-shrink"),
+                    force ? List.of() : messages,
                     null
             ));
         }

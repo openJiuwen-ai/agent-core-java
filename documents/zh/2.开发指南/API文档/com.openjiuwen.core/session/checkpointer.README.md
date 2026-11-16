@@ -16,4 +16,5 @@
 
 ## 说明
 
-- 相关测试：`InMemoryCheckpointerTest`。
+- 相关测试：`InMemoryCheckpointerTest`、`StepPauseResumeTest`。
+- 用户主动暂停/显式恢复：`Checkpointer` 提供 `stepPaused` / `lastPausedStep` / `resumePaused` 暂停族方法，`StepCheckpointRecoveryService` 提供 `scanPausedSteps` 扫描入口；三后端语义一致，详见[检查点机制：用户暂停](../../高阶用法/Checkpointer检查点机制.md#断点续跑与用户暂停paused0117)。

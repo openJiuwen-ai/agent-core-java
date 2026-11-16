@@ -22,6 +22,21 @@ import java.util.Queue;
  * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
  */
 public class AgentCallbackContext {
+    /**
+     * Gates context-overflow compress+retry within one {@code Rails.run} chain.
+     * Cleared when a new model step starts ({@code retryAttempt == 0}).
+     */
+    public static final String EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED =
+            "_model_exception_recovery_attempted";
+
+    /**
+     * Set when overflow recovery just requested a retry in this
+     * {@code ON_MODEL_EXCEPTION} wave so {@code ModelBackupRail} can yield.
+     * Cleared at the start of every model-call attempt ({@code beforeModelCall}).
+     */
+    public static final String EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY =
+            "_context_overflow_recovery_pending_retry";
+
     private BaseAgent agent;
     private AgentCallbackEvent event;
     private Object inputs = new LinkedHashMap<String, Object>();

@@ -131,9 +131,11 @@ public class TraceAgentHandler extends TraceBaseHandler {
     }
 
     public void onLlmRequest(TraceAgentSpan span, Map<String, Object> kwargs) {
-        updateRunningTraceData(span, kwargs);
+        Map<String, Object> requestData = new LinkedHashMap<>(kwargs);
+        requestData.remove("span");
+        updateRunningTraceData(span, requestData);
         sendData(span);
-        dispatchExt(h -> h.onLlmRequest(span, kwargs));
+        dispatchExt(h -> h.onLlmRequest(span, requestData));
     }
 
     public void onLlmEnd(TraceAgentSpan span, Object outputs) {

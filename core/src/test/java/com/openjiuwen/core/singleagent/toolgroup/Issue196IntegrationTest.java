@@ -13,6 +13,7 @@ import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -23,11 +24,13 @@ import com.openjiuwen.core.singleagent.skills.repository.ClasspathSkillRepositor
 import com.openjiuwen.core.singleagent.skills.repository.FileSystemSkillRepository;
 import com.openjiuwen.core.singleagent.skills.repository.WorkspaceSkillRepository;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.io.IOException;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +42,11 @@ class Issue196IntegrationTest {
     @TempDir
     private Path tempDir;
 
+    @AfterEach
+    void releaseGlobalResources() {
+        Runner.resourceMgr().release();
+    }
+
     @Test
     @Tag("TC-LNK-01")
     @Tag("TC-LNK-02")
@@ -49,6 +57,7 @@ class Issue196IntegrationTest {
     @Tag("TC-PRF-05")
     void endToEnd_registerActivateFilterRejectSkill() throws Exception {
         IntegrationAgent agent = new IntegrationAgent();
+        registerEnvSkill(agent);
 
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
@@ -102,6 +111,23 @@ class Issue196IntegrationTest {
                 .extracting(ToolInfo::getName)
                 .contains("clock")
                 .contains("skill_tool");
+    }
+
+    private void registerEnvSkill(IntegrationAgent agent) throws IOException {
+        Path skillRoot = tempDir.resolve("env-skill-root");
+        com.openjiuwen.core.singleagent.skills.SkillFixtureFactory.writeSkill(
+                skillRoot,
+                com.openjiuwen.core.singleagent.skills.SkillFixtureFactory.SkillFixtureSource
+                        .FILESYSTEM,
+                "EnvSkill",
+                "EnvSkill body.",
+                false);
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.setSysOperationId("env-skill-registration");
+        agent.configure(config);
+        agent.getSkillUtil().getSkillManager().setRepositories(
+                List.of(new FileSystemSkillRepository(skillRoot)));
+        agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
     }
 
     private void assertActiveToolInfo(IntegrationAgent agent, MemorySession session) {

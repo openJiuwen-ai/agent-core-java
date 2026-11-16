@@ -247,7 +247,11 @@ class ReActAgentIterationLoggingTest {
                 .content("")
                 .toolCalls(List.of(toolCall("call-1", "echo", "{}")))
                 .build();
-        ScriptedAgent agent = scriptedAgent(2, toolRequest);
+        AssistantMessage secondToolRequest = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(toolCall("call-2", "echo", "{}")))
+                .build();
+        ScriptedAgent agent = scriptedAgent(2, toolRequest, secondToolRequest);
         agent.getAbilityManager().add(new EchoTool());
 
         try (AgentLogCapture logs = new AgentLogCapture()) {

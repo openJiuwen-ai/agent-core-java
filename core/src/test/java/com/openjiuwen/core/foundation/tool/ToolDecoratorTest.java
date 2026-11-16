@@ -4,6 +4,14 @@
 
 package com.openjiuwen.core.foundation.tool;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.common.exception.ValidationError;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 
 import org.junit.jupiter.api.Test;
@@ -12,13 +20,8 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Mirrors Python's {@code tool(...)} decorator behavior in
@@ -35,7 +38,30 @@ class ToolDecoratorTest {
         assertEquals("add", add.getCard().getId());
         assertEquals("add", add.getCard().getName());
         assertEquals("Function add", add.getCard().getDescription());
-        assertEquals(Map.of("type", "object", "properties", Map.of()), add.getCard().getInputParams());
+        assertEquals(Map.of("type", "object", "properties", Map.of(), "additionalProperties", true),
+                add.getCard().getInputParams());
+    }
+
+    @Test
+    void fallbackSchemaPreservesNestedAndVariableArguments() throws Exception {
+        Map<String, Object> arguments = Map.of("args", List.of(1, 2), "kwargs", Map.of("key", "value"));
+        LocalFunction tool = ToolDecorator.tool(inputs -> inputs,
+                ToolDecorator.Options.builder().name("echo").autoExtract(false).build());
+
+        assertEquals(arguments, tool.invoke(arguments));
+    }
+
+    @Test
+    void explicitEmptySchemaStillRejectsArgumentsBeforeInvocation() throws Exception {
+        AtomicInteger invocations = new AtomicInteger();
+        Map<String, Object> schema = Map.of("type", "object", "properties", Map.of());
+        LocalFunction tool = ToolDecorator.tool(inputs -> invocations.incrementAndGet(),
+                ToolDecorator.Options.builder().name("noArgs").inputParams(schema).build());
+
+        assertThrows(ValidationError.class, () -> tool.invoke(Map.of("unexpected", 1)));
+        assertEquals(0, invocations.get());
+        assertEquals(schema, tool.getCard().getInputParams());
+        assertEquals(1, tool.invoke(Map.of()));
     }
 
     @Test
@@ -58,6 +84,8 @@ class ToolDecoratorTest {
         assertEquals("search", search.getCard().getName());
         assertEquals("Search tool", search.getCard().getDescription());
         assertEquals(schema, search.getCard().getInputParams());
+        assertThrows(ValidationError.class, () -> search.invoke(Map.of("query", "java", "unexpected", true)));
+        assertThrows(ValidationError.class, () -> search.invoke(Map.of()));
     }
 
     @Test

@@ -244,6 +244,92 @@ class SessionModelContextTest {
     }
 
     @Test
+    void reloaderToolLimitBeyondRemainingReturnsAllRest() {
+        // TC_011-UT: limit 大于剩余消息数时返回从 offset 起的全部剩余。
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext context = new SessionModelContext("ctx", "session", config);
+        context.offloadMessages("handle-rest", List.of(
+                new BaseMessage("user", "r1"),
+                new BaseMessage("assistant", "r2"),
+                new BaseMessage("user", "r3")));
+
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawTool = context.reloaderTool();
+        SessionModelContext.ReloaderTool tool =
+                rawTool instanceof SessionModelContext.ReloaderTool t ? t : null;
+        String page = tool.reloadOriginalContextMessages("handle-rest", "in_memory", 1, 99);
+
+        assertThat(page).contains("offset=1");
+        assertThat(page).contains("r2").contains("r3");
+        assertThat(page).doesNotContain("r1");
+    }
+
+    @Test
+    void reloaderToolRendersStructuredErrorsWithoutStacksOrPaths() {
+        // TC_059: FORBIDDEN/GONE/CORRUPT 经 reloader 渲染为 "code: handle=..."，
+        // 无堆栈、无绝对路径（共享约定 9 反向断言）。
+        ContextEngineConfig config = new ContextEngineConfig();
+        SessionModelContext context = new SessionModelContext("ctx", "session", config);
+        context.bindOffloadService(new ForbiddenService(), () -> null);
+
+        // G.TYP.13: guard the cast with an instanceof check before downcasting
+        Object rawTool = context.reloaderTool();
+        SessionModelContext.ReloaderTool tool =
+                rawTool instanceof SessionModelContext.ReloaderTool t ? t : null;
+        String text = tool.reloadOriginalContextMessages("gone-handle", "in_memory");
+
+        assertThat(text).isEqualTo("OFFLOAD_GONE: handle=gone-handle");
+        assertThat(text).doesNotContain("at com.openjiuwen");
+        assertThat(text).doesNotContain(java.io.File.separator);
+    }
+
+    /** Service raising three distinct load errors to drive the error-render path. */
+    private static final class ForbiddenService implements com.openjiuwen.core.context.offload.api.OffloadService {
+        @Override
+        public java.util.Optional<com.openjiuwen.core.context.offload.model.OffloadRef> save(
+                com.openjiuwen.core.context.offload.model.OffloadRequest request) {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public com.openjiuwen.core.context.offload.model.OffloadPayload load(
+                com.openjiuwen.core.context.offload.model.OffloadNamespace ns, String handle, String type) {
+            throw new com.openjiuwen.core.context.offload.api.OffloadException(
+                    com.openjiuwen.core.context.offload.api.OffloadErrorCode.OFFLOAD_GONE,
+                    "offload backing entry vanished: " + handle);
+        }
+
+        @Override
+        public boolean delete(com.openjiuwen.core.context.offload.model.OffloadNamespace ns, String handle) {
+            return false;
+        }
+
+        @Override
+        public void deleteNamespace(com.openjiuwen.core.context.offload.model.OffloadNamespace ns) {
+        }
+
+        @Override
+        public void pin(String handle, java.time.Duration duration) {
+            throw new com.openjiuwen.core.context.offload.api.OffloadException(
+                    com.openjiuwen.core.context.offload.api.OffloadErrorCode.OFFLOAD_MISSING, "gone");
+        }
+
+        @Override
+        public void unpin(String handle) {
+        }
+
+        @Override
+        public void extendTtl(String handle, java.time.Duration delta) {
+            throw new com.openjiuwen.core.context.offload.api.OffloadException(
+                    com.openjiuwen.core.context.offload.api.OffloadErrorCode.OFFLOAD_MISSING, "gone");
+        }
+
+        @Override
+        public void capOrphanTtl(String handle) {
+        }
+    }
+
+    @Test
     void saveAndLoadStateUseContextIdEnvelope() {
         ContextEngineConfig config = new ContextEngineConfig();
         SessionModelContext source = new SessionModelContext("ctx", "session", config);

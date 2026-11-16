@@ -1,19 +1,8 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.prompt;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,6 +11,18 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Focused parity tests for prompt templates.
@@ -78,11 +79,22 @@ class PromptTemplateTest {
 
     @Test
     void rejectsNonMessageListItems() {
-        PromptTemplate template = PromptTemplate.builder().content(List.of("bad")).build();
-
-        BaseError error = assertThrows(BaseError.class, template::toMessages);
+        BaseError error = assertThrows(BaseError.class,
+                () -> PromptTemplate.builder().content(List.of("bad")).build());
 
         assertEquals(StatusCode.PROMPT_TEMPLATE_INVALID, error.getStatus());
+    }
+
+    @Test
+    void normalizesMessageMappingsAndRejectsInvalidLists() {
+        Map<String, Object> mapped = Map.of("role", "user", "content", "hello {{name}}",
+                "metadata", Map.of("source", "mapping"));
+        PromptTemplate template = PromptTemplate.builder().content(List.of(mapped)).build();
+        BaseMessage message = template.format(Map.of("name", "Ada")).toMessages().get(0);
+        assertEquals("user", message.getRole());
+        assertEquals("hello Ada", message.getContent());
+        assertEquals(Map.of("source", "mapping"), message.getMetadata());
+        assertThrows(BaseError.class, () -> PromptTemplate.builder().content(List.of(Map.of("bad", 1))).build());
     }
 
     @Test

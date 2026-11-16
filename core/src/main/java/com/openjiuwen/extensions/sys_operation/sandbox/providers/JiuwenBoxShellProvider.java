@@ -12,6 +12,7 @@ import com.openjiuwen.core.sysop.result.ExecuteCmdData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxLifecycleProvider;
 import com.openjiuwen.core.sysop.sandbox.providers.BaseShellProvider;
 
 import java.util.ArrayList;
@@ -25,7 +26,7 @@ import java.util.concurrent.Flow;
  * Mirrors Python's {@code JiuwenBoxShellProvider} in
  * {@code openjiuwen/extensions/sys_operation/sandbox/providers/jiuwenbox.py}.
  */
-public class JiuwenBoxShellProvider extends BaseShellProvider {
+public class JiuwenBoxShellProvider extends BaseShellProvider implements SandboxLifecycleProvider {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("jiuwenbox-shell-provider-io", true);
@@ -35,6 +36,21 @@ public class JiuwenBoxShellProvider extends BaseShellProvider {
     public JiuwenBoxShellProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         super(endpoint, config);
         this.state = new JiuwenBoxProviderSupport.ProviderState(endpoint, config);
+    }
+
+    @Override
+    public String getSandboxId() {
+        return state.currentSandboxId();
+    }
+
+    @Override
+    public String getSandboxBaseUrl() {
+        return state.baseUrl();
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteSandbox(String sandboxId) {
+        return state.deleteSandbox(sandboxId, IO_EXECUTOR);
     }
 
     @Override
@@ -53,7 +69,7 @@ public class JiuwenBoxShellProvider extends BaseShellProvider {
             }
             String workdir = cwd == null || ".".equals(cwd) ? null : cwd;
             Integer execTimeout = timeoutSeconds != null && timeoutSeconds > 0 ? timeoutSeconds : null;
-            Map<String, Object> extraParams = state.launcherExtraParams(false);
+            Map<String, Object> extraParams = state.launcherExtraParams();
             List<String> excludePatterns = JiuwenBoxProviderSupport.readExcludedCommands(extraParams);
             boolean fallbackOnFailure = extraParams.get("fallback_on_failure") instanceof Boolean bool && bool;
 

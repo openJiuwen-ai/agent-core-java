@@ -17,6 +17,9 @@ import com.openjiuwen.core.retrieval.common.StoreType;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,6 +38,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class ChromaVectorStoreTest {
 
+    @TempDir
+    Path storage;
+
     @BeforeAll
     static void registerChromaQueryLanguage() {
         QueryExpr.registerLanguage("chroma", ChromaQueryLanguage.CHROMA_DEF, true);
@@ -44,7 +50,7 @@ class ChromaVectorStoreTest {
     void constructorCreatesPersistentClientAndNormalizesDefaults() {
         ChromaVectorStore store = new ChromaVectorStore(
                 config("test_collection", "euclidean"),
-                "/tmp/test_chroma",
+                storage.toString(),
                 "body",
                 "vector",
                 "sparse",
@@ -53,7 +59,7 @@ class ChromaVectorStoreTest {
         );
 
         assertThat(store.getCollectionName()).isEqualTo("test_collection");
-        assertThat(store.getChromaPath()).isEqualTo("/tmp/test_chroma");
+        assertThat(store.getChromaPath()).isEqualTo(storage.toString());
         assertThat(store.getTextField()).isEqualTo("body");
         assertThat(store.getVectorField().getVectorField()).isEqualTo("vector");
         assertThat(store.getSparseVectorField()).isEqualTo("sparse");
@@ -73,7 +79,7 @@ class ChromaVectorStoreTest {
 
         assertThatThrownBy(() -> new ChromaVectorStore(
                 config("test_collection", "cosine"),
-                "/tmp/test_chroma",
+                storage.toString(),
                 "content",
                 42,
                 "sparse_vector",
@@ -97,7 +103,7 @@ class ChromaVectorStoreTest {
         ));
         ChromaVectorStore store = new ChromaVectorStore(
                 config("test_collection", "cosine"),
-                "/tmp/test_chroma",
+                storage.toString(),
                 "content",
                 vectorField,
                 "sparse_vector",
@@ -115,7 +121,7 @@ class ChromaVectorStoreTest {
 
         ChromaVectorStore mismatchedMaxNeighbors = new ChromaVectorStore(
                 config("test_collection", "cosine"),
-                "/tmp/test_chroma",
+                storage.toString(),
                 "content",
                 vectorField,
                 "sparse_vector",
@@ -129,7 +135,7 @@ class ChromaVectorStoreTest {
 
         ChromaVectorStore mismatchedDistance = new ChromaVectorStore(
                 config("test_collection", "cosine"),
-                "/tmp/test_chroma",
+                storage.toString(),
                 "content",
                 vectorField,
                 "sparse_vector",
@@ -143,7 +149,7 @@ class ChromaVectorStoreTest {
 
         ChromaVectorStore emptyConfig = new ChromaVectorStore(
                 config("test_collection", "cosine"),
-                "/tmp/test_chroma",
+                storage.toString(),
                 "content",
                 vectorField,
                 "sparse_vector",
@@ -161,7 +167,7 @@ class ChromaVectorStoreTest {
         ChromaVectorField vectorField = chromaField(16, 200);
         ChromaVectorStore partialMismatch = new ChromaVectorStore(
                 config("test_collection", "cosine"),
-                "/tmp/test_chroma",
+                storage.toString(),
                 "content",
                 vectorField,
                 "sparse_vector",
@@ -177,7 +183,7 @@ class ChromaVectorStoreTest {
 
     @Test
     void addBatchesAndConvertsMetadataSparseVector() {
-        ChromaVectorStore store = new ChromaVectorStore(config("test_collection", "cosine"), "/tmp/test_chroma");
+        ChromaVectorStore store = new ChromaVectorStore(config("test_collection", "cosine"), storage.toString());
 
         store.add(List.of(
                 Map.of("id", "missing-vector", "content", "skip"),
@@ -217,7 +223,7 @@ class ChromaVectorStoreTest {
 
     @Test
     void searchSparseAndHybridMirrorChromaResultScoring() {
-        ChromaVectorStore store = new ChromaVectorStore(config("test_collection", "dot"), "/tmp/test_chroma");
+        ChromaVectorStore store = new ChromaVectorStore(config("test_collection", "dot"), storage.toString());
         store.add(List.of(
                 mapOf("id", "chunk-1", "content", "alpha document", "embedding", List.of(1.0d, 0.0d),
                         "metadata", Map.of("source", "unit"), "document_id", "doc-1"),
@@ -259,7 +265,7 @@ class ChromaVectorStoreTest {
 
     @Test
     void deleteAndTableOperationsMirrorPythonReturnValues() {
-        ChromaVectorStore store = new ChromaVectorStore(config("test_collection", "cosine"), "/tmp/test_chroma");
+        ChromaVectorStore store = new ChromaVectorStore(config("test_collection", "cosine"), storage.toString());
         store.add(List.of(
                 mapOf("id", "chunk-1", "content", "alpha", "embedding", List.of(1.0d, 0.0d),
                         "metadata", Map.of("source", "unit")),

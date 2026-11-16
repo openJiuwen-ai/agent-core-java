@@ -10,7 +10,6 @@ import com.openjiuwen.core.common.utils.DictUtils;
 import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.Graph;
 import com.openjiuwen.core.graph.PregelGraph;
-import com.openjiuwen.core.graph.Router;
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.graph.stream_actor.StreamGraph;
 import com.openjiuwen.core.graph.visualization.Drawable;
@@ -18,7 +17,6 @@ import com.openjiuwen.core.graph.visualization.Stringifiable;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.ProxySession;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
-import com.openjiuwen.core.workflow.internal.RouterSession;
 import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
 
 import java.util.ArrayList;
@@ -216,7 +214,8 @@ public class BaseWorkflow implements HasDrawable {
 
         if (router instanceof BranchRouter) {
             BranchRouter branchRouter = (BranchRouter) router;
-            branchRouter.setSession(session);
+            // The router is a shared definition. Its session is supplied by the
+            // run at dispatch time, so no run state is stored here.
             graph.addConditionalEdges(srcCompId, router);
             Set<String> allTargets = branchRouter.allTargets();
             if (allTargets.size() > 1) {
@@ -224,9 +223,10 @@ public class BaseWorkflow implements HasDrawable {
             }
         } else if (router instanceof Function) {
             Function<Object, Object> routerFunc = (Function<Object, Object>) router;
-            RouterSession routerSessionWrapper = new RouterSession(session);
-            Function<Object, Object> newRouter = state -> routerFunc.apply(routerSessionWrapper);
-            graph.addConditionalEdges(srcCompId, (Router) newRouter::apply);
+            // The adapter resolves the session of whichever run is dispatching
+            // the route, so this shared condition stores no run state.
+            FunctionRouterAdapter adapter = new FunctionRouterAdapter(routerFunc, () -> session);
+            graph.addConditionalEdges(srcCompId, adapter);
         } else {
             throw ErrorHelper.buildError(StatusCode.WORKFLOW_CONDITION_EDGE_INVALID,
                     "src_comp_id", srcCompId,
@@ -255,7 +255,9 @@ public class BaseWorkflow implements HasDrawable {
                 }
             }
         }
-        session.setSession(sessionArg);
+        if (sessionArg != null) {
+            session.setSession(sessionArg);
+        }
         try {
             Map<String, Object> kwargs = context != null ? Map.of("context", context) : null;
             return graph.compile(sessionArg, kwargs);

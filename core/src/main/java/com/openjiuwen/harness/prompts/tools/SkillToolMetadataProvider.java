@@ -19,7 +19,11 @@ public final class SkillToolMetadataProvider implements ToolMetadataProvider {
 
     static {
         DESCRIPTIONS.put("cn", "使用此工具查看特定技能的内容");
-        DESCRIPTIONS.put("en", "Use this tool to view the skill contents of a certain skill");
+        DESCRIPTIONS.put(
+                "en",
+                "Read skill documents. Select a skill by skill_name, skill_id, or skill_path;"
+                        + " use relative_path='SKILL.md' for the main document or a relative path"
+                        + " for extra files.");
 
         Map<String, Object> cnSchema = new LinkedHashMap<>();
         cnSchema.put("type", "object");
@@ -49,21 +53,20 @@ public final class SkillToolMetadataProvider implements ToolMetadataProvider {
         Map<String, Object> enProperties = new LinkedHashMap<>();
         enProperties.put("skill_name", Map.of(
                 "type", "string",
-                "description", "Name of the skill"
+                "description", "Name of the skill to read"
         ));
         enProperties.put("skill_id", Map.of(
                 "type", "string",
-                "description", "Optional stable Skill id. Use this to explicitly select a non-default Skill layer."
+                "description", "Optional stable Skill id. Prefer this to select a non-default Skill layer."
         ));
         enProperties.put("skill_path", Map.of(
                 "type", "string",
-                "description", "Optional Skill directory or SKILL.md path. It must resolve "
-                        + "inside a trusted registered repository."
+                "description", "Optional trusted Skill directory or SKILL.md path. Must resolve "
+                        + "to a registered repository."
         ));
         enProperties.put("relative_path", Map.of(
                 "type", "string",
-                "description", "Optional. Views a specific file within the skill directory"
-                        + " at the relative_path. Leave blank to view the main SKILL.md file."
+                "description", "Relative path within skill directory (default: SKILL.md)"
         ));
         enSchema.put("properties", enProperties);
         enSchema.put("required", List.of());

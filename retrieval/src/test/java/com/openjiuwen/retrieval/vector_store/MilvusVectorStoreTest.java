@@ -294,6 +294,25 @@ class MilvusVectorStoreTest {
     }
 
     @Test
+    void scopedSearchAndHybridFallbackKeepCollection() {
+        FakeMilvusClientFacade client = new FakeMilvusClientFacade();
+        client.collections.addAll(List.of("test_collection", "graph_triples"));
+        MilvusVectorStore store = newStore(client, "cosine");
+        Map<String, Object> options = Map.of("collection_name", "graph_triples");
+        store.search(List.of(1.0, 0.0), 3, VectorStore.VectorStoreFilter.none(), options).join();
+        store.search(List.of(1.0, 0.0), 3, VectorStore.VectorStoreFilter.none(), Map.of()).join();
+        client.throwHybridSearch = true;
+        store.hybridSearch("query", List.of(1.0, 0.0), 3, 0.5,
+                VectorStore.VectorStoreFilter.ofMap(Map.of("source", "owned")), options).join();
+
+        assertThat(client.loadedCollections).containsExactly("graph_triples", "test_collection");
+        assertThat(client.searchedCollections).containsExactly("graph_triples", "test_collection",
+                "graph_triples", "graph_triples", "graph_triples");
+        assertThat(client.lastSearchFilter).isNull();
+        assertThat(store.getCollectionName()).isEqualTo("test_collection");
+    }
+
+    @Test
     void searchBuildsPythonFilterAndConvertsMilvusHit() {
         FakeMilvusClientFacade client = new FakeMilvusClientFacade();
         client.collections.add("test_collection");
@@ -715,6 +734,7 @@ class MilvusVectorStoreTest {
     private static final class FakeMilvusClientFacade implements MilvusVectorStore.MilvusClientFacade {
         private final Set<String> collections = new LinkedHashSet<>();
         private final List<String> loadedCollections = new ArrayList<>();
+        private final List<String> searchedCollections = new ArrayList<>();
         private final List<List<Map<String, Object>>> insertedBatches = new ArrayList<>();
         private final List<String> flushedCollections = new ArrayList<>();
         private final Map<String, Object> indexDescription = new LinkedHashMap<>();
@@ -771,6 +791,7 @@ class MilvusVectorStoreTest {
                 Map<String, Object> searchParams,
                 String filter
         ) {
+            searchedCollections.add(collectionName);
             lastSearchRequest = request;
             lastSearchMetricType = metricType;
             lastSearchFilter = filter;
@@ -792,6 +813,7 @@ class MilvusVectorStoreTest {
                 int topK,
                 List<String> outputFields
         ) {
+            searchedCollections.add(collectionName);
             if (throwHybridSearch) {
                 throw new IllegalStateException("Hybrid search error");
             }

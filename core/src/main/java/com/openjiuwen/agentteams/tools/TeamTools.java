@@ -15,6 +15,7 @@ import com.openjiuwen.agentteams.worktree.WorktreeSession;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ModelTextResult;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.tools.ToolOutput;
@@ -421,7 +422,7 @@ public final class TeamTools {
     /**
      * Tool output with a pre-computed mapped string content.
      */
-    public static final class MappedToolOutput extends ToolOutput {
+    public static final class MappedToolOutput extends ToolOutput implements ModelTextResult {
         private final String mappedContent;
 
         private MappedToolOutput(boolean success, Object data, String error, String mappedContent) {
@@ -447,6 +448,17 @@ public final class TeamTools {
          */
         @Override
         public String toString() {
+            return mappedContent;
+        }
+
+        /**
+         * Return the task or member summary without discarding its status fields.
+         *
+         * @return mapped model-facing text
+         * @since 0.1.17
+         */
+        @Override
+        public String modelText() {
             return mappedContent;
         }
     }

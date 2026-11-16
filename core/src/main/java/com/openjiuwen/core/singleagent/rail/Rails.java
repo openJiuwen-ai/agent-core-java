@@ -87,6 +87,7 @@ public final class Rails {
                 }
                 RetryRequest retryRequest = context.consumeRetryRequest();
                 if (retryRequest == null) {
+                    operation.onNoRetry();
                     throw exception;
                 }
                 if (retryRequest.getDelaySeconds() > 0) {
@@ -132,5 +133,11 @@ public final class Rails {
     @FunctionalInterface
     public interface RailedOperation {
         Object execute();
+
+        /**
+         * Called after the exception event declines another retry and before the original failure is rethrown.
+         */
+        default void onNoRetry() {
+        }
     }
 }

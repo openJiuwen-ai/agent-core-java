@@ -282,9 +282,13 @@ public class SpawnedProcessHandle {
                 if (!isAlive() || shutdownRequested) {
                     break;
                 }
-                // 在当前 worker 上直接执行，避免再 submit 到同一 EXECUTOR 造成自死锁
+
+                // Execute on this worker to avoid waiting for another worker in the same pool.
                 performHealthCheckBlocking();
             } catch (CompletionException exception) {
+                if (exception.getCause() instanceof InterruptedException) {
+                    return;
+                }
                 LOGGER.error("Health check error for process {}: {}", processId, exception.getMessage());
                 healthy = false;
                 recordHealthFailure();
@@ -359,12 +363,21 @@ public class SpawnedProcessHandle {
                 recordHealthFailure();
                 return false;
             }
-        } catch (Exception exception) {
-            healthy = false;
-            LOGGER.error("Health check failed for process {}: {}", processId, exception.getMessage());
-            recordHealthFailure();
-            return false;
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof InterruptedException) {
+                throw exception;
+            }
+            return recordHealthCheckError(exception);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            return recordHealthCheckError(exception);
         }
+    }
+
+    private boolean recordHealthCheckError(Exception exception) {
+        healthy = false;
+        LOGGER.error("Health check failed for process {}: {}", processId, exception.getMessage());
+        recordHealthFailure();
+        return false;
     }
 
     private synchronized void recordHealthFailure() {
@@ -478,7 +491,6 @@ public class SpawnedProcessHandle {
             long millis = Math.max(0L, Math.round(seconds * 1000.0D));
             Thread.sleep(millis);
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
             throw new CompletionException(interrupted);
         }
     }
@@ -498,7 +510,7 @@ public class SpawnedProcessHandle {
             future.cancel(true);
             throw exception;
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+            future.cancel(true);
             throw new CompletionException(interrupted);
         } catch (java.util.concurrent.ExecutionException exception) {
             Throwable cause = exception.getCause();

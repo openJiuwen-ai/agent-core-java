@@ -11,6 +11,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.foundation.llm.classification.ClassifiedModelErrors;
 import com.openjiuwen.core.foundation.llm.classification.ErrorBodyParser;
 import com.openjiuwen.core.foundation.llm.classification.FirstSegmentRetryIterator;
@@ -25,6 +26,7 @@ import com.openjiuwen.core.foundation.llm.classification.RetryContext;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreakerSnapshot;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryListener;
 import com.openjiuwen.core.foundation.llm.modelclients.errors.ErrorResponseBodySanitizer;
@@ -40,6 +42,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.openjiuwen.core.foundation.llm.utils.RequestSanitizer;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -47,8 +50,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
-import java.net.ConnectException;
-import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -72,6 +73,8 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -97,11 +100,14 @@ public class OpenAIModelClient extends BaseModelClient
     private static final String VIDEOS_PATH = "/videos";
     private static final String IMAGE_CREATE_PATH_KWARG = "image_create_path";
     private static final String IMAGE_URLS_PATH_KWARG = "image_urls_path";
+    private static final String IMAGE_BASE64_PATH_KWARG = "image_base64_path";
     private static final String VIDEO_BODY_KWARG = "video_body";
     private static final String VIDEO_BODY_REFERENCE = "reference";
     private static final String VIDEO_BODY_PROMPT = "prompt";
     private static final String VIDEO_CREATE_PATH_KWARG = "video_create_path";
     private static final String VIDEO_POLL_PATH_KWARG = "video_poll_path";
+    private static final String VIDEO_TASK_ID_PATH_KWARG = "video_task_id_path";
+    private static final String VIDEO_STATUS_PATH_KWARG = "video_status_path";
     private static final String VIDEO_RESULT_URL_PATH_KWARG = "video_result_url_path";
     private static final String VIDEO_RESULT_DOWNLOAD_PATH_KWARG = "video_result_download_path";
     private static final String VIDEO_FILE_RETRIEVE_PATH_KWARG = "video_file_retrieve_path";
@@ -123,7 +129,7 @@ public class OpenAIModelClient extends BaseModelClient
     private static final String RETRY_LISTENER_KWARG = "__openjiuwen_retry_listener";
     private static final String REQUEST_HEADERS_KWARG = "__openjiuwen_request_headers";
 
-    private final HttpClient httpClient;
+    private final AtomicReference<HttpClient> httpClient;
     private final ModelCallRetrier retrier;
     private final Map<String, String> baseHeaders;
 
@@ -166,10 +172,21 @@ public class OpenAIModelClient extends BaseModelClient
     OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
             ModelCallRetrier retrier, ModelCircuitBreaker circuitBreaker) {
         super(modelConfig, modelClientConfig);
-        this.httpClient = createHttpClient(modelClientConfig);
+        this.httpClient = new AtomicReference<>(createHttpClient(modelClientConfig));
         this.retrier = retrier;
         this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
         this.circuitBreaker = circuitBreaker;
+    }
+
+    /**
+     * Sample this client's circuit breaker without exposing its mutation methods.
+     *
+     * @return a present immutable diagnostic sample, with independently sampled fields
+     * @since 0.1.17
+     */
+    @Override
+    public Optional<ModelCircuitBreakerSnapshot> getCircuitBreakerSnapshot() {
+        return Optional.of(circuitBreaker.snapshot());
     }
 
     @Override
@@ -538,7 +555,8 @@ public class OpenAIModelClient extends BaseModelClient
                         "parse_response",
                         sensitiveValues);
             }
-            Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
+
+            Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", logValue(responseData)));
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
             return assistantMessage;
         } catch (BaseError exception) {
@@ -620,8 +638,10 @@ public class OpenAIModelClient extends BaseModelClient
      * <p>Control kwargs (removed from the create-body kwargs): {@code image_create_path} overrides
      * the create endpoint path (default {@code /images/generations}); {@code image_urls_path} is a
      * dotted JSON path to a JSON array of image url strings in the response (for example
-     * {@code data.image_urls}); when unset the default OpenAI response shape is parsed
-     * ({@code data[].url} plus {@code data[].b64_json}).</p>
+     * {@code data.image_urls}); {@code image_base64_path} is a dotted JSON path to a base64
+     * payload string or array of strings (for example {@code data.image_base64} under a
+     * vendor-specific response shape); when both are unset the default OpenAI response shape is
+     * parsed ({@code data[].url} plus {@code data[].b64_json}).</p>
      *
      * @param messages exactly one user message providing the text prompt
      * @param model image model name; blank falls back to the configured model name
@@ -648,6 +668,7 @@ public class OpenAIModelClient extends BaseModelClient
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         String createPath = stringKwarg(effectiveKwargs, IMAGE_CREATE_PATH_KWARG, IMAGES_GENERATIONS_PATH);
         String urlsPath = stringKwarg(effectiveKwargs, IMAGE_URLS_PATH_KWARG, null);
+        String base64Path = stringKwarg(effectiveKwargs, IMAGE_BASE64_PATH_KWARG, null);
         GenerationCallContext call = resolveGenerationCallContext(effectiveKwargs);
         ImageCreateSpec spec = new ImageCreateSpec(size, negativePrompt, n, seed);
         Map<String, Object> params = buildImageGenerationParams(messages, model, spec, effectiveKwargs);
@@ -657,7 +678,8 @@ public class OpenAIModelClient extends BaseModelClient
         Map<String, Object> responseData = postJson(
                 createPath, params, null, call.transportHeaders().authorization(),
                 call.transportHeaders().headers(), call.sensitiveValues(), call.retryListener());
-        ImageGenerationResponse response = parseImageGenerationResponse(responseData, resolvedModel, urlsPath);
+        ImageGenerationResponse response = parseImageGenerationResponse(responseData, resolvedModel, urlsPath,
+                base64Path);
         Loggers.LLM.info("Image generation succeeded. model={}, urlCount={}, base64Count={}",
                 resolvedModel, collectionSize(response.getImages()), collectionSize(response.getImagesBase64()));
         return response;
@@ -686,6 +708,10 @@ public class OpenAIModelClient extends BaseModelClient
      *   <li>{@code video_create_path}: create endpoint path, default {@code /videos}.</li>
      *   <li>{@code video_poll_path}: poll path template with a {@code {taskId}} placeholder, default
      *       {@code {createPath}/{taskId}}.</li>
+     *   <li>{@code video_task_id_path}: dotted JSON path to the task id in the create response;
+     *       unset scans the top-level {@code id} and {@code task_id} fields.</li>
+     *   <li>{@code video_status_path}: dotted JSON path to the task status in the poll response;
+     *       unset reads the top-level {@code status} field.</li>
      *   <li>{@code video_result_url_path}: dotted JSON path to a direct video url in the poll
      *       response; unset falls back to a generic scan of {@code content.video_url}, {@code video_url}
      *       and {@code url}.</li>
@@ -746,7 +772,9 @@ public class OpenAIModelClient extends BaseModelClient
         Map<String, Object> created = postJson(config.createPath(), createParams, null,
                 call.transportHeaders().authorization(), call.transportHeaders().headers(),
                 call.sensitiveValues(), call.retryListener());
-        String taskId = extractVideoTaskId(created);
+        String taskId = extractVideoTaskId(created, config.taskIdPath());
+        Loggers.LLM.info("Video generation task created. taskId={}, response={}",
+                taskId, abbreviateMap(created));
         String pollPath = renderPathTemplate(config.pollPathTemplate() != null
                         ? config.pollPathTemplate()
                         : config.createPath() + "/" + TASK_ID_PLACEHOLDER,
@@ -759,6 +787,8 @@ public class OpenAIModelClient extends BaseModelClient
         private final String createPath;
         private final String pollPathTemplate;
         private final String bodyStyle;
+        private final String taskIdPath;
+        private final String statusPath;
         private final String resultUrlPath;
         private final String resultDownloadTemplate;
         private final String fileRetrieveTemplate;
@@ -772,6 +802,8 @@ public class OpenAIModelClient extends BaseModelClient
             this.createPath = builder.createPath;
             this.pollPathTemplate = builder.pollPathTemplate;
             this.bodyStyle = builder.bodyStyle;
+            this.taskIdPath = builder.taskIdPath;
+            this.statusPath = builder.statusPath;
             this.resultUrlPath = builder.resultUrlPath;
             this.resultDownloadTemplate = builder.resultDownloadTemplate;
             this.fileRetrieveTemplate = builder.fileRetrieveTemplate;
@@ -792,6 +824,14 @@ public class OpenAIModelClient extends BaseModelClient
 
         private String bodyStyle() {
             return bodyStyle;
+        }
+
+        private String taskIdPath() {
+            return taskIdPath;
+        }
+
+        private String statusPath() {
+            return statusPath;
         }
 
         private String resultUrlPath() {
@@ -834,6 +874,8 @@ public class OpenAIModelClient extends BaseModelClient
             private String createPath = VIDEOS_PATH;
             private String pollPathTemplate;
             private String bodyStyle = VIDEO_BODY_PROMPT;
+            private String taskIdPath;
+            private String statusPath;
             private String resultUrlPath;
             private String resultDownloadTemplate;
             private String fileRetrieveTemplate;
@@ -855,6 +897,16 @@ public class OpenAIModelClient extends BaseModelClient
 
             private Builder bodyStyle(String value) {
                 this.bodyStyle = value;
+                return this;
+            }
+
+            private Builder statusPath(String value) {
+                this.statusPath = value;
+                return this;
+            }
+
+            private Builder taskIdPath(String value) {
+                this.taskIdPath = value;
                 return this;
             }
 
@@ -956,12 +1008,17 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     private ImageGenerationResponse parseImageGenerationResponse(Map<String, Object> responseData,
-                                                                 String resolvedModel, String urlsPath) {
+                                                                 String resolvedModel, String urlsPath,
+                                                                 String base64Path) {
         List<String> images = new ArrayList<>();
         List<String> imagesBase64 = new ArrayList<>();
         if (urlsPath != null) {
             images.addAll(resolveUrlList(responseData, urlsPath));
-        } else {
+        }
+        if (base64Path != null) {
+            imagesBase64.addAll(resolveStringPayloadList(responseData, base64Path));
+        }
+        if (urlsPath == null && base64Path == null) {
             collectOpenAiImagePayloads(responseData, images, imagesBase64);
         }
         if (images.isEmpty() && imagesBase64.isEmpty()) {
@@ -1013,6 +1070,38 @@ public class OpenAIModelClient extends BaseModelClient
             }
         }
         return urls;
+    }
+
+    /**
+     * Resolves a dotted path to payload strings, accepting either a single
+     * string (some vendors return one base64 payload as a bare string) or a
+     * JSON array of strings.
+     *
+     * @param source     response body
+     * @param dottedPath dotted path to the payload
+     * @return non-blank payload strings, empty when the path is missing
+     */
+    private static List<String> resolveStringPayloadList(Map<String, Object> source, String dottedPath) {
+        Object current = source;
+        for (String segment : dottedPath.split("\\.")) {
+            if (!(current instanceof Map<?, ?> map)) {
+                return List.of();
+            }
+            current = map.get(segment);
+        }
+        if (current instanceof String value) {
+            return value.isBlank() ? List.of() : List.of(value);
+        }
+        if (!(current instanceof List<?> items)) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof String value && !value.isBlank()) {
+                values.add(value);
+            }
+        }
+        return values;
     }
 
     private static String abbreviateMap(Map<String, Object> responseData) {
@@ -1073,7 +1162,7 @@ public class OpenAIModelClient extends BaseModelClient
             Map<String, Object> status = getJson(context.pollPath(), null,
                     context.call().transportHeaders().authorization(),
                     context.call().transportHeaders().headers(), context.call().sensitiveValues());
-            String state = Objects.toString(status.get("status"), "").trim().toLowerCase(Locale.ROOT);
+            String state = resolveTaskStatus(status, context.config().statusPath());
             if (context.config().successStatuses().contains(state)) {
                 Loggers.LLM.info("Video generation task succeeded. taskId={}", context.taskId());
                 return buildVideoSuccessResponse(context, status);
@@ -1119,9 +1208,10 @@ public class OpenAIModelClient extends BaseModelClient
     private VideoGenerationResponse buildFileIndirectVideoResponse(VideoPollContext context,
                                                                    Map<String, Object> status) throws Exception {
         VideoTaskConfig config = context.config();
-        if (!(status.get("file_id") instanceof String fileId) || fileId.isBlank()) {
+        String fileId = fileId(status.get("file_id"));
+        if (fileId.isBlank()) {
             throw modelCallError("Video task succeeded but the response contains no file_id required "
-                    + "by the configured file retrieval flow", null);
+                    + "by the configured file retrieval flow; response: " + abbreviateMap(status), null);
         }
         String retrievePath = renderPathTemplate(config.fileRetrieveTemplate(), FILE_ID_PLACEHOLDER, fileId);
         Map<String, Object> fileResponse = getJson(retrievePath, null,
@@ -1146,6 +1236,35 @@ public class OpenAIModelClient extends BaseModelClient
             return resolveDottedPath(status, resultUrlPath);
         }
         return extractVideoUrl(status);
+    }
+
+    /**
+     * Reads the task status from a poll response: the configured dotted path
+     * when it resolves (for vendors that nest it, for example MiniMax's
+     * {@code task.status}), otherwise the top-level {@code status} field.
+     *
+     * @param status     poll response body
+     * @param statusPath configured dotted status path, may be null
+     * @return normalized lower-case status, never null
+     */
+    private static String resolveTaskStatus(Map<String, Object> status, String statusPath) {
+        if (statusPath != null) {
+            Optional<String> configured = resolveDottedPath(status, statusPath);
+            if (configured.isPresent()) {
+                return configured.get().trim().toLowerCase(Locale.ROOT);
+            }
+        }
+        return Objects.toString(status.get("status"), "").trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String fileId(Object value) {
+        if (value instanceof String text) {
+            return text.trim();
+        }
+        if (value instanceof Number number) {
+            return String.valueOf(number.longValue());
+        }
+        return "";
     }
 
     private static Optional<String> resolveDottedPath(Map<String, Object> source, String dottedPath) {
@@ -1186,13 +1305,31 @@ public class OpenAIModelClient extends BaseModelClient
         return Objects.toString(status.get("error"), "");
     }
 
-    private String extractVideoTaskId(Map<String, Object> created) {
+    /**
+     * Reads the task id from the create response: the configured dotted path
+     * first, then the standard top-level {@code id} / {@code task_id} fields.
+     * The failure message carries the abbreviated response body so a vendor
+     * protocol mismatch is diagnosable from the log.
+     *
+     * @param created    create response body
+     * @param taskIdPath configured dotted task-id path, may be null
+     * @return task id
+     */
+    private String extractVideoTaskId(Map<String, Object> created, String taskIdPath) {
+        if (taskIdPath != null) {
+            Optional<String> configured = resolveDottedPath(created, taskIdPath);
+            if (configured.isPresent()) {
+                return configured.get();
+            }
+        }
         for (String key : List.of("id", "task_id")) {
             if (created.get(key) instanceof String taskId && !taskId.isBlank()) {
                 return taskId;
             }
         }
-        throw modelCallError("Video generation create response contains no task id", null);
+        throw modelCallError("Video generation create response contains no task id"
+                + (taskIdPath == null ? "" : " (configured path " + taskIdPath + ")")
+                + "; response: " + abbreviateMap(created), null);
     }
 
     private static VideoTaskConfig popVideoTaskConfig(Map<String, Object> kwargs) {
@@ -1204,6 +1341,8 @@ public class OpenAIModelClient extends BaseModelClient
                 .createPath(stringKwarg(kwargs, VIDEO_CREATE_PATH_KWARG, VIDEOS_PATH))
                 .pollPathTemplate(stringKwarg(kwargs, VIDEO_POLL_PATH_KWARG, null))
                 .bodyStyle(bodyStyle)
+                .taskIdPath(stringKwarg(kwargs, VIDEO_TASK_ID_PATH_KWARG, null))
+                .statusPath(stringKwarg(kwargs, VIDEO_STATUS_PATH_KWARG, null))
                 .resultUrlPath(stringKwarg(kwargs, VIDEO_RESULT_URL_PATH_KWARG, null))
                 .resultDownloadTemplate(stringKwarg(kwargs, VIDEO_RESULT_DOWNLOAD_PATH_KWARG, null))
                 .fileRetrieveTemplate(stringKwarg(kwargs, VIDEO_FILE_RETRIEVE_PATH_KWARG, null))
@@ -1356,20 +1495,15 @@ public class OpenAIModelClient extends BaseModelClient
     private <T> HttpResponse<T> sendGenerationRequest(String path, Float timeout, String authorization,
             Map<String, String> requestHeaders, HttpResponse.BodyHandler<T> bodyHandler)
             throws IOException, InterruptedException {
+        HttpClient sender = httpClient.get();
         try {
-            return httpClient.send(buildGetRequest(modelClientConfig.getApiBase(), path, timeout,
-                    authorization, requestHeaders), bodyHandler);
+            HttpResponse<T> response = sender.send(buildGetRequest(modelClientConfig.getApiBase(), path,
+                    timeout, authorization, requestHeaders), bodyHandler);
+            ModelHttpClients.noteSendSuccess(sender);
+            return response;
         } catch (IOException exception) {
-            String fallbackApiBase = localFixtureFallbackApiBase(exception);
-            if (fallbackApiBase == null) {
-                throw exception;
-            }
-            return ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                    .withSsl()
-                    .withProxy()
-                    .build()
-                    .send(buildGetRequest(fallbackApiBase, path, timeout, authorization, requestHeaders),
-                            bodyHandler);
+            recoverDeadClient(sender, exception);
+            throw exception;
         }
     }
 
@@ -1388,7 +1522,8 @@ public class OpenAIModelClient extends BaseModelClient
         Map<String, Object> message = asObjectMap(rawMessage);
 
         List<ToolCall> toolCalls = parseToolCalls(message.get("tool_calls"), true);
-        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), true);
+        String responseModel = asString(response.get("model"));
+        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), responseModel);
         Object content = requireStringOrNullContent(message.get("content"), "choices[0].message.content");
         Object parserContent = parseContent(parser, content);
 
@@ -1396,7 +1531,10 @@ public class OpenAIModelClient extends BaseModelClient
                 .content(content)
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
-                .finishReason(toolCalls.isEmpty() ? "stop" : "tool_calls")
+                .responseModel(responseModel)
+                .finishReason(pythonTruthy(choice.get("finish_reason"))
+                        ? String.valueOf(choice.get("finish_reason"))
+                        : (toolCalls.isEmpty() ? "stop" : "tool_calls"))
                 .reasoningContent(reasoningContentFrom(message))
                 .parserContent(parserContent)
                 .promptTokenIds(integerList(response.get("prompt_token_ids")))
@@ -1412,15 +1550,17 @@ public class OpenAIModelClient extends BaseModelClient
     private AssistantMessageChunk parseStreamChunk(
             Map<String, Object> chunk,
             Map<Integer, ToolCallState> toolCallStates) {
-        UsageMetadata usageMetadata = parseUsageMetadata(chunk.get("usage"), false);
+        String responseModel = asString(chunk.get("model"));
+        UsageMetadata usageMetadata = parseUsageMetadata(chunk.get("usage"), responseModel);
         List<Integer> promptTokenIds = integerList(chunk.get("prompt_token_ids"));
         List<Map<String, Object>> choices = asListOfObjectMaps(chunk.get("choices"));
 
         if (choices.isEmpty()) {
-            if (usageMetadata != null || promptTokenIds != null) {
+            if (usageMetadata != null || promptTokenIds != null || responseModel != null) {
                 return AssistantMessageChunk.builder()
                         .content("")
                         .usageMetadata(usageMetadata)
+                        .responseModel(responseModel)
                         .finishReason("null")
                         .promptTokenIds(promptTokenIds)
                         .build();
@@ -1443,6 +1583,7 @@ public class OpenAIModelClient extends BaseModelClient
                 .reasoningContent(reasoningContentFrom(delta))
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
+                .responseModel(responseModel)
                 .finishReason(pythonTruthy(choice.get("finish_reason"))
                         ? String.valueOf(choice.get("finish_reason"))
                         : "null")
@@ -1611,7 +1752,12 @@ public class OpenAIModelClient extends BaseModelClient
     private static final class LoggingFirstChunkIterator
             implements Iterator<AssistantMessageChunk>, AutoCloseable {
         private final Iterator<AssistantMessageChunk> delegate;
+        private final long startedNanos = System.nanoTime();
         private boolean isFirstLogged;
+        private boolean isEndLogged;
+        private int chunkCount;
+        private String finishReason;
+        private UsageMetadata lastUsage;
 
         private LoggingFirstChunkIterator(Iterator<AssistantMessageChunk> delegate) {
             this.delegate = delegate;
@@ -1619,12 +1765,23 @@ public class OpenAIModelClient extends BaseModelClient
 
         @Override
         public boolean hasNext() {
-            return delegate.hasNext();
+            boolean hasMore = delegate.hasNext();
+            if (!hasMore) {
+                logEnd("completed");
+            }
+            return hasMore;
         }
 
         @Override
         public AssistantMessageChunk next() {
             AssistantMessageChunk chunk = delegate.next();
+            chunkCount++;
+            if (chunk.getFinishReason() != null && !chunk.getFinishReason().isBlank()) {
+                finishReason = chunk.getFinishReason();
+            }
+            if (chunk.getUsageMetadata() != null) {
+                lastUsage = chunk.getUsageMetadata();
+            }
             if (!isFirstLogged) {
                 isFirstLogged = true;
                 Loggers.LLM.info("OpenAI API stream first chunk. {}", chunk);
@@ -1634,6 +1791,7 @@ public class OpenAIModelClient extends BaseModelClient
 
         @Override
         public void close() {
+            logEnd("cancelled");
             if (delegate instanceof Closeable closeable) {
                 try {
                     closeable.close();
@@ -1642,48 +1800,40 @@ public class OpenAIModelClient extends BaseModelClient
                 }
             }
         }
+
+        private void logEnd(String reason) {
+            if (isEndLogged) {
+                return;
+            }
+            isEndLogged = true;
+            long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
+            if ("cancelled".equals(reason)) {
+                Loggers.LLM.info(
+                        "OpenAI API stream cancelled. chunkCount={}, finishReason={}, usage={}, durationMs={}",
+                        chunkCount, finishReason, lastUsage, durationMs);
+            } else {
+                Loggers.LLM.info(
+                        "OpenAI API stream end. chunkCount={}, finishReason={}, usage={}, durationMs={}",
+                        chunkCount, finishReason, lastUsage, durationMs);
+            }
+        }
     }
 
     private HttpResponse<InputStream> sendStreamAttempt(
             PreparedRequest preparedRequest,
             int retryCount,
             double idleSeconds) throws IOException, InterruptedException {
-        HttpResponse<InputStream> response;
+        HttpClient sender = httpClient.get();
         try {
-            response = httpClient.send(
+            HttpResponse<InputStream> response = sender.send(
                     buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
-                    IdleBoundInputStream.bodyHandler(idleSeconds)
-            );
+                    IdleBoundInputStream.bodyHandler(idleSeconds));
+            ModelHttpClients.noteSendSuccess(sender);
+            return response;
         } catch (IOException exception) {
-            String fallbackApiBase = localFixtureFallbackApiBase(exception);
-            if (fallbackApiBase == null) {
-                throw exception;
-            }
-            response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                    .withSsl()
-                    .withProxy()
-                    .build()
-                    .send(
-                            buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                            IdleBoundInputStream.bodyHandler(idleSeconds)
-                    );
+            recoverDeadClient(sender, exception);
+            throw exception;
         }
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String fallbackApiBase = localFixtureFallbackApiBase(response.statusCode());
-            if (fallbackApiBase != null) {
-                readBodyWithIdleTimeout(response.body(),
-                        ModelTimeoutResolver.resolveStreamIdleSeconds(modelClientConfig), true);
-                response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
-                        .withSsl()
-                        .withProxy()
-                        .build()
-                        .send(
-                                buildRequest(preparedRequest, fallbackApiBase, retryCount),
-                                IdleBoundInputStream.bodyHandler(idleSeconds)
-                        );
-            }
-        }
-        return response;
     }
 
     private Iterator<AssistantMessageChunk> tracingIterator(
@@ -1700,7 +1850,8 @@ public class OpenAIModelClient extends BaseModelClient
             Map<String, Object> params,
             String authorization,
             Map<String, String> requestHeaders) throws JsonProcessingException {
-        String bodyJson = OBJECT_MAPPER.writeValueAsString(requestBodyParams(params));
+        Map<String, Object> sanitized = RequestSanitizer.sanitizeChatRequest(requestBodyParams(params));
+        String bodyJson = OBJECT_MAPPER.writeValueAsString(sanitized);
         return new PreparedRequest(
                 path,
                 bodyJson,
@@ -1740,45 +1891,6 @@ public class OpenAIModelClient extends BaseModelClient
             Duration timeout,
             String authorization,
             Map<String, String> extraHeaders) {
-    }
-
-    private String localFixtureFallbackApiBase(IOException exception) {
-        if (!isConnectionFailure(exception) || modelClientConfig.isVerifySsl()) {
-            return null;
-        }
-        return localFixtureFallbackApiBase();
-    }
-
-    private String localFixtureFallbackApiBase(int statusCode) {
-        if (statusCode < 400 || modelClientConfig.isVerifySsl()) {
-            return null;
-        }
-        return localFixtureFallbackApiBase();
-    }
-
-    private String localFixtureFallbackApiBase() {
-        try {
-            URI uri = URI.create(modelClientConfig.getApiBase());
-            String host = uri.getHost();
-            if (host == null || uri.getPort() != 8088 || !InetAddress.getByName(host).isLoopbackAddress()) {
-                return null;
-            }
-            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
-            return uri.getScheme() + "://" + host + ":8090" + path;
-        } catch (RuntimeException | java.net.UnknownHostException ignored) {
-            return null;
-        }
-    }
-
-    private static boolean isConnectionFailure(IOException exception) {
-        Throwable current = exception;
-        while (current != null) {
-            if (current instanceof ConnectException) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
     }
 
     private static void validateAuthorizationHeader(String authorization) {
@@ -2173,6 +2285,7 @@ public class OpenAIModelClient extends BaseModelClient
         private String pendingToolCallFinishReason = "null";
         private boolean isFirstSegmentReceived;
         private boolean closed;
+        private boolean isTerminated;
 
         private boolean isEffectiveFirstSegmentReceived;
 
@@ -2228,6 +2341,7 @@ public class OpenAIModelClient extends BaseModelClient
                         return finalToolCallChunk();
                     }
                     AssistantMessageChunk chunk = parseStreamChunk(parseJsonObject(data), toolCallStates);
+                    markTerminatedIfFinished(chunk);
                     if (chunk == null) {
                         continue;
                     }
@@ -2240,27 +2354,65 @@ public class OpenAIModelClient extends BaseModelClient
                     isEffectiveFirstSegmentReceived = true;
                     return parsedChunk;
                 }
-                close();
-                return finalToolCallChunk();
+                return finishOrFailEarly();
             } catch (IOException | IllegalStateException | IllegalArgumentException | ClassCastException
                     | IndexOutOfBoundsException exception) {
                 close();
-                if (exception instanceof IOException ioException) {
-                    throwIfIdleTimeout(ioException);
+                throwIfCancellation(exception);
+                if (exception instanceof IOException ioException
+                        && isNormalEndAfterTermination(ioException)) {
+                    return finalToolCallChunk();
                 }
-                if (exception instanceof InterruptedIOException
-                        && !(exception instanceof SocketTimeoutException)) {
-                    // SocketTimeoutException is a read timeout, not a cancellation.
-                    throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
-                }
-                String detail = errorDetail(exception);
-                Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
-                throw classifiedStreamFailure(exception);
+                throw classifiedFailure(exception);
             } finally {
                 if (!shouldKeepOpen) {
                     close();
                 }
             }
+        }
+
+        private boolean isNormalEndAfterTermination(IOException exception) {
+            if (isTerminated) {
+                // The SSE content already ended with a terminal finish_reason or [DONE];
+                // a body read that fails after that point — for example a chunked body
+                // closed without its terminating 0-chunk — is a normal end of stream.
+                return true;
+            }
+            throwIfIdleTimeout(exception);
+            return false;
+        }
+
+        private void markTerminatedIfFinished(AssistantMessageChunk chunk) {
+            if (chunk != null && !"null".equals(chunk.getFinishReason())) {
+                // A terminal finish_reason ends the SSE content even when the
+                // server omits the [DONE] frame.
+                isTerminated = true;
+            }
+        }
+
+        private AssistantMessageChunk finishOrFailEarly() throws IOException {
+            close();
+            if (!isTerminated) {
+                // The body ended without [DONE] or a terminal finish_reason. Report
+                // the truncation through the catch machinery below instead of
+                // returning partial content as success.
+                throw new IOException("premature eof: stream ended without termination marker");
+            }
+            return finalToolCallChunk();
+        }
+
+        private void throwIfCancellation(Exception exception) {
+            if (exception instanceof InterruptedIOException
+                    && !(exception instanceof SocketTimeoutException)) {
+                // SocketTimeoutException is a read timeout, not a cancellation.
+                throw ClassifiedModelErrors.toCancellation("model stream read cancelled");
+            }
+        }
+
+        private BaseError classifiedFailure(Exception exception) {
+            String detail = errorDetail(exception);
+            Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
+            return classifiedStreamFailure(exception);
         }
 
         private void throwIfIdleTimeout(IOException exception) {
@@ -2367,6 +2519,7 @@ public class OpenAIModelClient extends BaseModelClient
                     .reasoningContent(chunk.getReasoningContent())
                     .toolCalls(chunk.getToolCalls())
                     .usageMetadata(chunk.getUsageMetadata())
+                    .responseModel(chunk.getResponseModel())
                     .finishReason(chunk.getFinishReason())
                     .parserContent(parserContent)
                     .promptTokenIds(chunk.getPromptTokenIds())
@@ -2465,26 +2618,24 @@ public class OpenAIModelClient extends BaseModelClient
         private final StringBuilder arguments = new StringBuilder();
     }
 
-    private UsageMetadata parseUsageMetadata(Object usageValue, boolean includeCacheTokens) {
+    private UsageMetadata parseUsageMetadata(Object usageValue, String responseModel) {
         if (!(usageValue instanceof Map<?, ?> usageMap)) {
             return null;
         }
         Map<String, Object> usage = toObjectMap(usageMap);
-        int cacheTokens = 0;
-        if (includeCacheTokens && usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
-            cacheTokens = intValue(toObjectMap(promptDetails).get("cached_tokens"));
-        }
         CostInfo costInfo = extractCostInfo(usage);
-        return UsageMetadata.builder()
-                .modelName(modelConfig.getModelName())
-                .inputTokens(intValue(usage.get("prompt_tokens")))
-                .outputTokens(intValue(usage.get("completion_tokens")))
-                .totalTokens(intValue(usage.get("total_tokens")))
-                .cacheTokens(cacheTokens)
+        var metadata = UsageMetadata.builder()
+                .modelName(responseModel)
                 .inputCost(costInfo.inputCost())
                 .outputCost(costInfo.outputCost())
-                .totalCost(costInfo.totalCost())
-                .build();
+                .totalCost(costInfo.totalCost());
+        if (usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
+            optionalIntValue(toObjectMap(promptDetails).get("cached_tokens")).ifPresent(metadata::cacheTokens);
+        }
+        optionalIntValue(usage.get("prompt_tokens")).ifPresent(metadata::inputTokens);
+        optionalIntValue(usage.get("completion_tokens")).ifPresent(metadata::outputTokens);
+        optionalIntValue(usage.get("total_tokens")).ifPresent(metadata::totalTokens);
+        return metadata.build();
     }
 
     private AssistantMessageChunk mergeChunks(List<AssistantMessageChunk> chunks) {
@@ -2628,7 +2779,23 @@ public class OpenAIModelClient extends BaseModelClient
     }
 
     HttpClient httpClientForTesting() {
-        return httpClient;
+        return httpClient.get();
+    }
+
+    // Test seam (L2 §4.3): injects a failing stub into the instance field so hook tests can
+    // drive the eviction/rebuild path without reflection.
+    void replaceHttpClientForTesting(HttpClient replacement) {
+        this.httpClient.set(Objects.requireNonNull(replacement));
+    }
+
+    private void recoverDeadClient(HttpClient sender, IOException exception) {
+        if (!ModelHttpClients.evictIfDead(sender, exception).isDead() || httpClient.get() != sender) {
+            return;
+        }
+        HttpClient replacement = createHttpClient(modelClientConfig);
+        // A newer sender may be installed while the replacement is being built. Install this
+        // replacement only if the field still holds the same failed sender.
+        httpClient.compareAndSet(sender, replacement);
     }
 
     private HttpClient createHttpClient(ModelClientConfig clientConfig) {
@@ -2763,6 +2930,10 @@ public class OpenAIModelClient extends BaseModelClient
         return asString(reasoningContent);
     }
 
+    private static OptionalInt optionalIntValue(Object value) {
+        return value == null ? OptionalInt.empty() : OptionalInt.of(intValue(value));
+    }
+
     private static int intValue(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -2804,5 +2975,12 @@ public class OpenAIModelClient extends BaseModelClient
             return !map.isEmpty();
         }
         return true;
+    }
+
+    private static String logValue(Object value) {
+        if (UserConfig.isSensitive()) {
+            return "[redacted]";
+        }
+        return String.valueOf(value);
     }
 }

@@ -289,6 +289,7 @@ public final class HarnessFactory {
                 .promptMode(source.getPromptMode())
                 .skills(new ArrayList<>(source.getSkills() != null ? source.getSkills() : List.of()))
                 .enableSkillDiscovery(source.isEnableSkillDiscovery())
+                .contextEngineConfig(source.getContextEngineConfig())
                 .factoryKwargs(new java.util.LinkedHashMap<>(
                         source.getFactoryKwargs() != null ? source.getFactoryKwargs() : Map.of()))
                 .isAsyncSubagentEnabled(source.isEnableAsyncSubagent())
@@ -306,6 +307,7 @@ public final class HarnessFactory {
                         : new LinkedHashMap<>(source.getTodoStorageConfig()))
                 .sessionStoreType(source.getSessionStoreType())
                 .kvStoreConfig(source.getKvStoreConfig())
+                .stepCheckpointPolicy(source.getStepCheckpointPolicy())
                 .tmpTtl(source.getTmpTtl())
                 .tmpTtlScanInterval(source.getTmpTtlScanInterval())
                 .build();

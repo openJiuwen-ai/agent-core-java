@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.skills.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.openjiuwen.core.common.logging.LogCaptureFixture;
 import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.core.singleagent.skills.SkillSource;
 
@@ -146,6 +147,42 @@ class SkillRepositoryTest {
 
         assertThat(loaded).hasSize(1);
         assertThat(loaded.get(0).getName()).isEqualTo("inside_skill");
+    }
+
+    @Test
+    void workspaceRepository_rejectsSymlinkOutsideRootWithAudit() throws IOException {
+        Path workspaceRoot = tempDir.resolve("ws-symlink-root");
+        Path outsideRoot = tempDir.resolve("ws-symlink-outside");
+        writeSkill(workspaceRoot.resolve("inside_skill"), "inside_skill", "Inside skill.");
+        writeSkill(outsideRoot, "outside_skill", "Outside skill.");
+        Path linkedSkill = workspaceRoot.resolve("linked_skill");
+
+        try {
+            Files.createSymbolicLink(linkedSkill, outsideRoot);
+        } catch (UnsupportedOperationException | IOException | SecurityException exception) {
+            assumeTrue(false, "Symbolic link creation is unavailable without platform privilege");
+            return;
+        }
+
+        try (LogCaptureFixture audit = LogCaptureFixture.attach("agent")) {
+            List<Skill> loaded =
+                    new WorkspaceSkillRepository(workspaceRoot, "user1").loadAll();
+
+            assertThat(loaded)
+                    .extracting(Skill::getName)
+                    .contains("inside_skill")
+                    .doesNotContain("outside_skill");
+            assertThat(audit.count("WARNING", "SKILL_REJECTED")).isEqualTo(1);
+            assertThat(audit.messagesAt("WARNING").get(0))
+                    .contains("action=load")
+                    .contains("source=workspace")
+                    .contains("skill_id=unknown")
+                    .contains("size=-1")
+                    .contains("hash=-")
+                    .contains("path=" + linkedSkill)
+                    .contains("reason=path escape or symlink")
+                    .doesNotContain("Outside skill.");
+        }
     }
 
     @Test

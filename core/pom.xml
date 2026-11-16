@@ -34,6 +34,7 @@
         <failureaccess.version>1.0.2</failureaccess.version>
         <grpc.version>1.82.1</grpc.version>
         <guava.version>33.0.0-jre</guava.version>
+        <jsr305.version>3.0.2</jsr305.version>
         <jna.version>5.19.1</jna.version>
         <jsonschema.version>4.38.0</jsonschema.version>
         <kotlin.version>2.4.10</kotlin.version>
@@ -182,6 +183,12 @@
     </dependencyManagement>
 
     <dependencies>
+        <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+            <version>${jsr305.version}</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -468,10 +475,8 @@
                     <groups>${surefire.groups}</groups>
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                     <forkedProcessTimeoutInSeconds>1800</forkedProcessTimeoutInSeconds>
-                    <!-- Single fork with reuse: classes run concurrently inside one JVM via
-                         JUnit 5 parallel execution (see junit-platform.properties). Forking per
-                         class would negate the in-JVM parallelism and add JVM startup overhead
-                         across 2000+ test classes. -->
+                    <!-- Reuse one JVM to avoid per-class startup overhead. JUnit execution is
+                         serial because tests use process-global state (see junit-platform.properties). -->
                     <forkCount>1</forkCount>
                     <reuseForks>true</reuseForks>
                 </configuration>

@@ -49,8 +49,25 @@ public final class SemConv {
     /** gen_ai.usage.total_tokens attribute key. */
     public static final String GEN_AI_USAGE_TOTAL_TOKENS = "gen_ai.usage.total_tokens";
 
+    /** gen_ai.usage.input_tokens attribute key (current GenAI semantics). */
+    public static final String GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens";
+
+    /** gen_ai.usage.output_tokens attribute key (current GenAI semantics). */
+    public static final String GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens";
+
+    /**
+     * gen_ai.usage.cache_read.input_tokens attribute key.
+     *
+     * <p>Backed by {@link com.openjiuwen.core.foundation.llm.schema.UsageMetadata#getCacheTokens()},
+     * which Java clients populate from {@code prompt_tokens_details.cached_tokens}.</p>
+     */
+    public static final String GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS = "gen_ai.usage.cache_read.input_tokens";
+
     /** gen_ai.response.finish_reason attribute key. */
     public static final String GEN_AI_RESPONSE_FINISH_REASON = "gen_ai.response.finish_reason";
+
+    /** gen_ai.response.finish_reasons attribute key (plural, JSON array). */
+    public static final String GEN_AI_RESPONSE_FINISH_REASONS = "gen_ai.response.finish_reasons";
 
     /** gen_ai.response.model attribute key. */
     public static final String GEN_AI_RESPONSE_MODEL = "gen_ai.response.model";
@@ -88,8 +105,88 @@ public final class SemConv {
     /** gen_ai.tool.definitions attribute key. */
     public static final String GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions";
 
-    /** gen_ai.response.time_to_first_token_ms attribute key. */
+    /**
+     * gen_ai.response.time_to_first_token_ms attribute key.
+     *
+     * <p>Legacy project key, kept for source compatibility only. It borrows the
+     * standard {@code gen_ai.*} namespace for a non-standard name, so this
+     * handler no longer writes it; {@link #OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS}
+     * is the project-correct key for the same measurement.</p>
+     */
     public static final String GEN_AI_RESPONSE_TTFT_MS = "gen_ai.response.time_to_first_token_ms";
+
+    /**
+     * gen_ai.response.time_to_first_chunk attribute key, unit <b>seconds</b>.
+     *
+     * <p>Per GenAI semantic conventions this measures the first chunk of
+     * <i>any</i> kind. This handler deliberately does not write it: Java can
+     * only observe chunks after output-bearing detection, so writing TTFT here
+     * would silently substitute a different measurement under a standard name.
+     * Reserved for a future source that can time the raw first frame.</p>
+     */
+    public static final String GEN_AI_RESPONSE_TIME_TO_FIRST_CHUNK = "gen_ai.response.time_to_first_chunk";
+
+    /**
+     * openjiuwen.gen_ai.response.time_to_first_token_ms attribute key.
+     *
+     * <p>Time from request dispatch to the first chunk <b>carrying model
+     * output</b>, in milliseconds. This is the real TTFT. It is deliberately
+     * <b>not</b> written to the standard {@code gen_ai.response.time_to_first_chunk}:
+     * that key measures the first chunk of any kind — on a reasoning model the
+     * provider may open with a role-only delta seconds before prefill finishes —
+     * so reusing it for TTFT would understate the wait for standard-key
+     * consumers. Mirrors Python's {@code OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS}.</p>
+     */
+    public static final String OJ_GEN_AI_RESPONSE_TIME_TO_FIRST_TOKEN_MS =
+            "openjiuwen.gen_ai.response.time_to_first_token_ms";
+
+    /**
+     * openjiuwen.gen_ai.response.total_latency_ms attribute key.
+     *
+     * <p>Whole-call elapsed time in milliseconds, from dispatch to the end of
+     * the stream. Backfilled from
+     * {@link com.openjiuwen.core.foundation.llm.schema.UsageMetadata#getTotalLatency()},
+     * which stores the same measurement in seconds. Mirrors Python's
+     * {@code OJ_GEN_AI_RESPONSE_TOTAL_LATENCY_MS}.</p>
+     */
+    public static final String OJ_GEN_AI_RESPONSE_TOTAL_LATENCY_MS =
+            "openjiuwen.gen_ai.response.total_latency_ms";
+
+    /**
+     * openjiuwen.gen_ai.reasoning.duration_ms attribute key.
+     *
+     * <p>First-to-last reasoning chunk span in milliseconds. Mirrors Python's
+     * {@code OJ_GEN_AI_REASONING_DURATION_MS}.</p>
+     */
+    public static final String OJ_GEN_AI_REASONING_DURATION_MS =
+            "openjiuwen.gen_ai.reasoning.duration_ms";
+
+    /**
+     * openjiuwen.gen_ai.usage.{input,output,total}_cost attribute keys.
+     *
+     * <p>Cost as reported by the provider's pricing table, not recomputed here.
+     * Written only when non-zero so an unpriced call is distinguishable from a
+     * genuinely free one. Mirror Python's {@code OJ_GEN_AI_USAGE_*_COST}.</p>
+     */
+    public static final String OJ_GEN_AI_USAGE_INPUT_COST = "openjiuwen.gen_ai.usage.input_cost";
+
+    /** openjiuwen.gen_ai.usage.output_cost attribute key. */
+    public static final String OJ_GEN_AI_USAGE_OUTPUT_COST = "openjiuwen.gen_ai.usage.output_cost";
+
+    /** openjiuwen.gen_ai.usage.total_cost attribute key. */
+    public static final String OJ_GEN_AI_USAGE_TOTAL_COST = "openjiuwen.gen_ai.usage.total_cost";
+
+    /** openjiuwen.request.retry_count attribute key. */
+    public static final String OJ_REQUEST_RETRY_COUNT = "openjiuwen.request.retry_count";
+
+    /**
+     * openjiuwen.gen_ai.response.tpot_ms attribute key.
+     *
+     * <p>Average time per output token in <b>milliseconds</b>, divided by
+     * {@code output_tokens - 1}. Mirrors Python's
+     * {@code OJ_GEN_AI_RESPONSE_TPOT_MS}.</p>
+     */
+    public static final String OJ_GEN_AI_RESPONSE_TPOT_MS = "openjiuwen.gen_ai.response.tpot_ms";
 
     /** langfuse.gen_ai.prompt attribute key. */
     public static final String LANGFUSE_GEN_AI_PROMPT = "langfuse.gen_ai.prompt";

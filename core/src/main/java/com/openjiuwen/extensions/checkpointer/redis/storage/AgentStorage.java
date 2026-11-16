@@ -159,12 +159,35 @@ public class AgentStorage extends BaseRedisStorage {
      * @return one RUNNING cursor per session that has one, empty when none
      */
     public CompletableFuture<List<StepCursor>> scanRunningCursors() {
+        return scanCursors(StepStatus.RUNNING);
+    }
+
+    /**
+     * Scan all persisted agent state blobs for paused-step cursors, i.e.
+     * sessions a user explicitly suspended.
+     *
+     * @return one PAUSED cursor per paused session, empty when none
+     */
+    public CompletableFuture<List<StepCursor>> scanPausedCursors() {
+        return scanCursors(StepStatus.PAUSED);
+    }
+
+    /**
+     * Read the paused-step cursor of one session identified by id,
+     * deserialized from the session's agent-state blob.
+     *
+     * @param sessionId id of the session to inspect, never null or blank
+     * @return future holding the paused cursor, or null when the session has none
+     */
+    public CompletableFuture<StepCursor> lastPausedCursor(String sessionId) {
         try {
+            if (sessionId == null || sessionId.isBlank()) {
+                return CompletableFuture.completedFuture(null);
+            }
             Map<String, Object> blobs = redisStore
-                    .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix("")).join();
-            List<StepCursor> running = new ArrayList<>();
+                    .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join();
             if (blobs == null || blobs.isEmpty()) {
-                return CompletableFuture.completedFuture(running);
+                return CompletableFuture.completedFuture(null);
             }
             for (Map.Entry<String, Object> entry : blobs.entrySet()) {
                 if (!entry.getKey().endsWith(":" + STATE_BLOBS)
@@ -179,15 +202,141 @@ public class AgentStorage extends BaseRedisStorage {
                 }
                 Map<String, Object> normalized = new LinkedHashMap<>();
                 stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-                StepCursor cursor = StepCursor.fromState(normalized);
-                if (cursor != null && cursor.getStatus() == StepStatus.RUNNING) {
-                    running.add(cursor);
+                StepCursor cursor = StepCursor.pausedFromState(normalized);
+                if (cursor != null && cursor.getStatus() == StepStatus.PAUSED) {
+                    return CompletableFuture.completedFuture(cursor);
                 }
             }
-            return CompletableFuture.completedFuture(running);
+            return CompletableFuture.completedFuture(null);
         } catch (Throwable throwable) {
             return CompletableFuture.failedFuture(wrapFailure(throwable));
         }
+    }
+
+    /**
+     * Resume one user-paused session identified by id: overwrite every
+     * agent-state blob of the session that holds paused evidence with the
+     * main cursor flipped back to RUNNING at the paused seq and the paused
+     * evidence removed. A multi-agent session may hold paused evidence in
+     * several blobs, so one agent's continuation must not leave its siblings
+     * paused behind a session the caller considers resumed.
+     *
+     * @param sessionId id of the session to resume, never null or blank
+     * @return future completing when the resumed states are persisted
+     */
+    public CompletableFuture<Void> resumePausedBySessionId(String sessionId) {
+        try {
+            java.util.Objects.requireNonNull(sessionId, "sessionId");
+            Map<String, Object> blobs = redisStore
+                    .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join();
+            boolean hasResumedOne = false;
+            if (blobs != null) {
+                for (Map.Entry<String, Object> entry : blobs.entrySet()) {
+                    if (!entry.getKey().endsWith(":" + STATE_BLOBS)
+                            || !entry.getKey().contains(":" + Checkpointer.SESSION_NAMESPACE_AGENT + ":")) {
+                        continue;
+                    }
+                    Object dumpType = blobs.get(entry.getKey().substring(0,
+                            entry.getKey().length() - STATE_BLOBS.length()) + STATE_BLOBS_DUMP_TYPE);
+                    Object state = deserializeState(dumpType, entry.getValue());
+                    if (!(state instanceof Map<?, ?> stateMap)) {
+                        continue;
+                    }
+                    Map<String, Object> normalized = new LinkedHashMap<>();
+                    stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+                    StepCursor paused = StepCursor.pausedFromState(normalized);
+                    if (paused == null) {
+                        continue;
+                    }
+                    Checkpointer.applyResumeToState(normalized, paused);
+                    // Write back through the exact keys the blob was read from:
+                    // re-deriving them from the session id would miss the agent
+                    // segment (agentId may differ) and the tenant prefix.
+                    persistResumedState(normalized, entry.getKey(),
+                            entry.getKey().substring(0,
+                                    entry.getKey().length() - STATE_BLOBS.length()) + STATE_BLOBS_DUMP_TYPE);
+                    hasResumedOne = true;
+                }
+            }
+            if (!hasResumedOne) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("No paused session found for session_id " + sessionId));
+            }
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(wrapFailure(throwable));
+        }
+    }
+
+    private CompletableFuture<List<StepCursor>> scanCursors(StepStatus expected) {
+        try {
+            Map<String, Object> blobs = redisStore
+                    .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix("")).join();
+            List<StepCursor> matched = new ArrayList<>();
+            if (blobs == null || blobs.isEmpty()) {
+                return CompletableFuture.completedFuture(matched);
+            }
+            for (Map.Entry<String, Object> entry : blobs.entrySet()) {
+                if (!entry.getKey().endsWith(":" + STATE_BLOBS)
+                        || !entry.getKey().contains(":" + Checkpointer.SESSION_NAMESPACE_AGENT + ":")) {
+                    continue;
+                }
+                Object dumpType = blobs.get(entry.getKey().substring(0,
+                        entry.getKey().length() - STATE_BLOBS.length()) + STATE_BLOBS_DUMP_TYPE);
+                Object state = deserializeState(dumpType, entry.getValue());
+                if (!(state instanceof Map<?, ?> stateMap)) {
+                    continue;
+                }
+                Map<String, Object> normalized = new LinkedHashMap<>();
+                stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+                StepCursor cursor = expected == StepStatus.PAUSED
+                        ? StepCursor.pausedFromState(normalized)
+                        : StepCursor.fromState(normalized);
+                if (cursor == null || cursor.getStatus() != expected) {
+                    continue;
+                }
+                if (expected == StepStatus.RUNNING && StepCursor.pausedFromState(normalized) != null) {
+                    // Paused evidence marks user intent: such sessions must
+                    // not surface as RUNNING leftovers or the automatic
+                    // pipeline would mark them lost against the documented
+                    // pause contract.
+                    continue;
+                }
+                matched.add(cursor);
+            }
+            return CompletableFuture.completedFuture(matched);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(wrapFailure(throwable));
+        }
+    }
+
+    /**
+     * Resume one user-paused session: resolve the session id carried by the
+     * paused cursor and delegate to the by-id path, which locates the owning
+     * blob directly. seq and step name alone are not unique across sessions,
+     * so a cursor without a session id is rejected instead of guessing the
+     * session from a whole-store scan.
+     *
+     * @param cursor paused cursor of the session to resume, never null
+     * @return future completing when the resumed state is persisted
+     */
+    public CompletableFuture<Void> resumePaused(StepCursor cursor) {
+        java.util.Objects.requireNonNull(cursor, "cursor");
+        if (cursor.getSessionId() == null || cursor.getSessionId().isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                    "Cannot resume by cursor without a session id; use resumePausedBySessionId instead"));
+        }
+        return resumePausedBySessionId(cursor.getSessionId());
+    }
+
+    private CompletableFuture<Void> persistResumedState(Map<String, Object> state, String blobKey,
+                                                        String dumpTypeKey) {
+        var stateBlob = serializeState(state);
+        BasedKVStorePipeline pipeline = redisStore.pipeline();
+        pipeline.set(dumpTypeKey, stateBlob.type(), ttlSeconds);
+        pipeline.set(blobKey, stateBlob.data(), ttlSeconds);
+        pipeline.execute().join();
+        return CompletableFuture.completedFuture(null);
     }
 
     private String resolveAgentId(BaseSession session) {

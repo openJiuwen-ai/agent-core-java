@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Lightweight circuit breaker for LLM HTTP clients.
  * <p>
- * After {@code failureThreshold} consecutive connect-level failures, subsequent
+ * After {@code failureThreshold} counted failures, subsequent
  * calls fail fast for {@code openDurationMillis} so a refused LLM backend does not
  * keep flooding the process with doomed connection attempts.
  *
@@ -51,7 +51,7 @@ public final class ModelCircuitBreaker {
     /**
      * Create a breaker with explicit thresholds.
      *
-     * @param failureThreshold consecutive connect failures before opening
+     * @param failureThreshold counted failures before opening
      * @param openDurationMillis how long to fail-fast while open
      * @since 0.1.14
      */
@@ -104,6 +104,22 @@ public final class ModelCircuitBreaker {
         }
     }
 
+    /**
+     * Sample the fail-fast window and failure count without exposing mutable state.
+     *
+     * <p>Rate-limited and temporary classified failures count, with a connect-failure
+     * fallback for unclassified errors. Success resets the count; ignored errors
+     * and window expiry leave it unchanged. The two fields are read independently,
+     * so concurrent updates may be reflected at different instants.</p>
+     *
+     * @return an immutable diagnostic sample
+     * @since 0.1.17
+     */
+    public ModelCircuitBreakerSnapshot snapshot() {
+        return new ModelCircuitBreakerSnapshot(
+                openUntilMillis.get() > System.currentTimeMillis(), consecutiveFailures.get());
+    }
+
     private static boolean shouldCount(Throwable error) {
         Optional<ModelCallClassification> classification = ModelCallClassification.of(error);
         if (classification.isPresent()) {
@@ -111,26 +127,6 @@ public final class ModelCircuitBreaker {
             return category == ModelErrorCategory.RATE_LIMITED || category == ModelErrorCategory.TEMPORARY;
         }
         return isConnectFailure(error);
-    }
-
-    /**
-     * Visible for tests.
-     *
-     * @return true when fail-fast window is active
-     * @since 0.1.14
-     */
-    boolean isOpen() {
-        return openUntilMillis.get() > System.currentTimeMillis();
-    }
-
-    /**
-     * Visible for tests.
-     *
-     * @return consecutive connect failures
-     * @since 0.1.14
-     */
-    int consecutiveFailures() {
-        return consecutiveFailures.get();
     }
 
     /**

@@ -74,7 +74,9 @@ public class LLMExecutable extends ComponentExecutable {
             }
         }
 
-        return createOutput(response);
+        Object output = createOutput(response);
+        appendTurn(inputs, response);
+        return output;
     }
 
     @Override
@@ -281,6 +283,7 @@ public class LLMExecutable extends ComponentExecutable {
         }
 
         Object output = createOutput(llmOutputContent);
+        appendTurn(inputs, llmOutputContent);
         return Collections.singletonList(output).iterator();
     }
 
@@ -308,11 +311,13 @@ public class LLMExecutable extends ComponentExecutable {
         }
 
         List<Object> results = new ArrayList<>();
+        StringBuilder response = new StringBuilder();
         try {
             while (llmStream.hasNext()) {
                 AssistantMessageChunk chunk = llmStream.next();
                 String content = chunk.getContent() != null ? chunk.getContent().toString() : "";
                 if (!content.isEmpty()) {
+                    response.append(content);
                     if (config.isCacheStream()) {
                         state.accumulateContent(content);
                     }
@@ -328,7 +333,21 @@ public class LLMExecutable extends ComponentExecutable {
             throw e;
         }
 
+        appendTurn(inputs, response.toString());
         return results.iterator();
+    }
+
+    private void appendTurn(Object inputs, String response) {
+        if (!config.isEnableHistory() || context == null) {
+            return;
+        }
+        Map<String, Object> variables = new java.util.LinkedHashMap<>();
+        if (inputs instanceof Map<?, ?> inputMap) {
+            inputMap.forEach((key, value) -> variables.put(String.valueOf(key), value));
+        }
+        List<BaseMessage> messages = new ArrayList<>(buildUserPromptContent(variables));
+        messages.add(new AssistantMessage(response));
+        context.addMessages(messages).toCompletableFuture().join();
     }
 
     private void validateConfig(LLMCompConfig cfg) {
@@ -353,6 +372,10 @@ public class LLMExecutable extends ComponentExecutable {
                 throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_TEMPLATE_CONFIG_ERROR,
                         "error_msg", "system message must be before user message");
             }
+        }
+        if (!containsUserMessage) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_TEMPLATE_CONFIG_ERROR,
+                    "error_msg", "user message is required");
         }
     }
 

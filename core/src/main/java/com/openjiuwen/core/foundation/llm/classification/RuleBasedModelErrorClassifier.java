@@ -50,10 +50,16 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
         "insufficient_balance", "insufficient balance", "insufficient_quota", "欠费", "余额不足");
     private static final Set<String> CONTEXT_LENGTH_KEYWORDS = Set.of(
         "context_length_exceeded", "prompt_too_long", "max_context_length", "context window",
-        "context length", "maximum context", "too many tokens", "reduce the length");
+        "context length", "maximum context", "too many tokens", "reduce the length",
+        "prompt exceeds max length", "prompt exceeds maximum length",
+        "range of input length", "input length should be");
     private static final Set<String> RATE_LIMIT_KEYWORDS = Set.of(
         "rate limit", "rate_limit", "ratelimit", "too many requests");
-    private static final Set<String> TRUNCATION_KEYWORDS = Set.of("premature eof", "bytes received");
+    private static final Set<String> TRUNCATION_KEYWORDS =
+        Set.of("premature eof", "bytes received", "received no bytes", "chunked transfer encoding");
+
+    /** Generic invalid-parameter code used by some OpenAI-compatible providers for context overflow. */
+    private static final String GENERIC_INVALID_PARAMETER_CODE = "invalid_parameter_error";
 
     private final List<ClassificationRule> rules;
 
@@ -172,6 +178,19 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
         if (containsAny(facts, CONTEXT_LENGTH_KEYWORDS)) {
             return Optional.of(permanent(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED));
         }
+        // Some OpenAI-compatible providers wrap context-length overflow in a generic
+        // invalid_parameter_error code and describe the limit in the message (for example
+        // "Range of input length should be [1, 8192]"). The generic code alone is too
+        // broad; require the message to describe an input-length range.
+        String code = facts.errorCode();
+        String message = facts.errorMessage();
+        if (code != null && GENERIC_INVALID_PARAMETER_CODE.equalsIgnoreCase(code.trim())
+            && message != null) {
+            String lower = message.toLowerCase(Locale.ROOT);
+            if (lower.contains("input length") || lower.contains("range of input")) {
+                return Optional.of(permanent(ModelErrorCategory.CONTEXT_LENGTH_EXCEEDED));
+            }
+        }
         return Optional.empty();
     }
 
@@ -202,10 +221,28 @@ public class RuleBasedModelErrorClassifier implements ModelErrorClassifier {
         // not flip the permanent classification.
         Integer status = facts.httpStatus();
         boolean isKeywordSignal = status == null || status < STATUS_4XX_LOW;
-        if (isKeywordSignal && containsAny(facts, TRUNCATION_KEYWORDS)) {
+        // A body reader closed mid-stream reports the exact message "closed"; that
+        // marker is matched exactly because the generic word is far too broad for
+        // the keyword set.
+        boolean isClosedSignal = isKeywordSignal && hasExactClosedMessage(facts);
+        if (isKeywordSignal && (isClosedSignal || containsAny(facts, TRUNCATION_KEYWORDS))) {
             return Optional.of(temporary(true));
         }
         return Optional.empty();
+    }
+
+    private static boolean hasExactClosedMessage(ModelErrorFacts facts) {
+        Throwable cursor = facts.throwable();
+        int depth = 0;
+        while (cursor != null && depth < MAX_CAUSE_DEPTH) {
+            String message = cursor.getMessage();
+            if (message != null && "closed".equalsIgnoreCase(message.trim())) {
+                return true;
+            }
+            cursor = cursor.getCause();
+            depth++;
+        }
+        return false;
     }
 
     private static Optional<ModelCallClassification> ruleRateLimitKeywords(ModelErrorFacts facts) {

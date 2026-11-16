@@ -63,6 +63,7 @@ import java.util.concurrent.TimeUnit;
 public class ContextProcessorRail extends AgentRail {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String DEFAULT_MODEL_KEY = "__default__";
+    static final String STREAM_CHUNKS_EMITTED_KEY = "_stream_chunks_emitted";
 
     private final boolean preset;
     private final List<ContextEngine.ProcessorSpec> userProcessors = new ArrayList<>();
@@ -161,9 +162,32 @@ public class ContextProcessorRail extends AgentRail {
 
     @Override
     public void beforeModelCall(AgentCallbackContext context) {
+        resetOverflowRecoveryGates(context);
         refreshTaskStateRuntime(context);
         maybeInjectOffloadSection(context);
         refreshProcessorsForDynamicModel(context);
+    }
+
+    /**
+     * Clears overflow-recovery extras for the current model-call attempt.
+     *
+     * <ul>
+     *   <li>{@code retryAttempt == 0}: new ReAct model step — clear the once-per-chain
+     *       attempted gate so a later iteration can recover again.</li>
+     *   <li>every attempt: clear the pending-retry signal so {@code ModelBackupRail}
+     *       may switch models if a prior compress+retry still failed.</li>
+     * </ul>
+     *
+     * @param context callback context; {@code null} is ignored
+     */
+    private static void resetOverflowRecoveryGates(AgentCallbackContext context) {
+        if (context == null || context.getExtra() == null) {
+            return;
+        }
+        if (context.getRetryAttempt() == 0) {
+            context.getExtra().remove(AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED);
+        }
+        context.getExtra().remove(AgentCallbackContext.EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY);
     }
 
     @Override
@@ -180,6 +204,60 @@ public class ContextProcessorRail extends AgentRail {
     public void onModelException(AgentCallbackContext context) {
         refreshTaskStateRuntime(context);
         fixIncompleteToolContext(context);
+        tryRecoverFromContextOverflow(context);
+    }
+
+    /**
+     * Compresses context once on provider context-overflow errors and requests a
+     * model-call retry when compression changed the context.
+     *
+     * <p>Priority 85 runs before {@code ModelBackupRail} (default 50). On success this
+     * sets {@link AgentCallbackContext#EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY}
+     * so backup switching yields for this exception wave (compress first; backup only
+     * if compress+retry still fails). Within one {@code Rails.run} chain, recovery is
+     * gated by {@link AgentCallbackContext#EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED},
+     * cleared in {@link #beforeModelCall} when {@code retryAttempt == 0}.</p>
+     *
+     * @param context callback context carrying the model exception
+     */
+    private void tryRecoverFromContextOverflow(AgentCallbackContext context) {
+        if (context == null || context.getException() == null) {
+            return;
+        }
+        if (Boolean.TRUE.equals(context.getExtra().get(
+                AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED))) {
+            return;
+        }
+        ContextEngine engine = resolveContextEngine();
+        ModelContext modelContext = context.getContext();
+        if (engine == null || modelContext == null) {
+            return;
+        }
+        boolean streaming = Boolean.TRUE.equals(context.getExtra().get("_streaming"));
+        int streamChunksEmitted = readStreamChunksEmitted(context);
+        // recoverFromModelException swallows compress RuntimeExceptions and returns
+        // false; do not let recovery failures replace the original model exception.
+        boolean isRecovered = engine.recoverFromModelException(
+                modelContext.contextId(),
+                context.getSession(),
+                context.getException(),
+                streaming,
+                streamChunksEmitted,
+                null);
+        if (!isRecovered) {
+            return;
+        }
+        context.getExtra().put(AgentCallbackContext.EXTRA_MODEL_EXCEPTION_RECOVERY_ATTEMPTED, Boolean.TRUE);
+        context.getExtra().put(AgentCallbackContext.EXTRA_CONTEXT_OVERFLOW_RECOVERY_PENDING_RETRY, Boolean.TRUE);
+        context.requestRetry(0);
+    }
+
+    private static int readStreamChunksEmitted(AgentCallbackContext context) {
+        Object value = context.getExtra().get(STREAM_CHUNKS_EMITTED_KEY);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
     }
 
     public List<ContextEngine.ProcessorSpec> getAllProcessors() {

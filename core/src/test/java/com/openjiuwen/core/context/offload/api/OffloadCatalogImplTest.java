@@ -244,6 +244,24 @@ class OffloadCatalogImplTest {
     }
 
     @Test
+    void listExpiredBoundaryTreatsEqualExpiryAsExpiredButKeepsPlusOneMs() {
+        // 过期判定等号侧：expiresAt 恰等于扫描时刻的条目立即纳入过期集合，晚 1ms 的条目存活。
+        catalog.reserve(pendingRecord("h-edge-due", NS));
+        catalog.commit("h-edge-due", OffloadBackend.MEMORY, "k", 1L, 1000L);
+        catalog.reserve(pendingRecord("h-edge-alive", NS));
+        catalog.commit("h-edge-alive", OffloadBackend.MEMORY, "k", 1L, 1001L);
+
+        List<OffloadRecord> expired = catalog.listExpired(1000L, 10);
+
+        assertEquals(1, expired.size());
+        assertEquals("h-edge-due", expired.get(0).handle());
+
+        // 扫描时刻推进 1ms 后存活侧也进入过期集合（同一条 <= 语义）
+        List<OffloadRecord> nextTick = catalog.listExpired(1001L, 10);
+        assertEquals(2, nextTick.size());
+    }
+
+    @Test
     void usedBytesAndEntriesCountOnlyReadyEntriesOfNamespace() {
         catalog.reserve(pendingRecord("h-1", NS));
         catalog.commit("h-1", OffloadBackend.MEMORY, "k", 120L, null);

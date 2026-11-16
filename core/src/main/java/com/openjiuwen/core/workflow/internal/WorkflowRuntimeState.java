@@ -4,18 +4,18 @@
 
 package com.openjiuwen.core.workflow.internal;
 
+import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.CompiledGraph;
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.session.state.CommitStateLike;
 import com.openjiuwen.core.session.state.InMemoryCommitState;
 import com.openjiuwen.core.session.state.InMemoryStateLike;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
-import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.SchemaOrTransformer;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -94,11 +94,24 @@ public class WorkflowRuntimeState extends WorkflowCommitState
             Object prefixedInputs = super.getInputs(originalSchema);
             inputs = mergeMissingValues(inputs, prefixedInputs);
         }
+        inputs = mergeEnclosingLoopInputs(inputs, originalSchema);
         inputs = normalizeSubWorkflowValues(inputs);
         if (inputs instanceof Map<?, ?> map) {
             return sortRootMap(map);
         }
         return Map.of();
+    }
+
+    private Object mergeEnclosingLoopInputs(Object inputs, Object schema) {
+        if (ioState == null || parentId == null || parentId.isBlank()
+                || ioState.getByPrefix(Constant.LOOP_ID, parentId) == null) {
+            return inputs;
+        }
+        // Loop bodies share the enclosing workflow's inputs but keep their own output namespace.
+        // Do not fall back across arbitrary subworkflow boundaries or replace resolved local values.
+        int separator = parentId.lastIndexOf('.');
+        String enclosingScope = separator < 0 ? "" : parentId.substring(0, separator);
+        return mergeMissingValues(inputs, ioState.getByPrefix(schema, enclosingScope));
     }
 
     @Override

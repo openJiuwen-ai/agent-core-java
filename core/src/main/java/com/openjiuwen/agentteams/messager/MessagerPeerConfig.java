@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agentteams.messager;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,7 +26,9 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MessagerPeerConfig {
+    @JsonAlias("agent_id")
     private String agentId;
+    @JsonAlias("peer_id")
     private String peerId;
     @Builder.Default
     /**

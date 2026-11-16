@@ -744,7 +744,7 @@ public final class OpenJiuwenExecutors {
         TASK_MANAGER_WORKER("task-manager-worker", 16, 128),
         DEEP_AGENT_STREAM("deep-agent-stream", 32, 128),
         REACT_AGENT_STREAM("react-agent-stream", 32, 128),
-        DEEP_AGENT_INVOKE("deep-agent-invoke", 16, 128),
+        DEEP_AGENT_INVOKE("deep-agent-invoke", 40, 128),
         SPAWN_PROCESS_MANAGER("spawn-process-manager", 64, 64),
         GIT_STREAM("git-stream", 32, 128),
         GENERIC("", 32, 256);
@@ -763,11 +763,12 @@ public final class OpenJiuwenExecutors {
          * 解析该模块池的最大线程数。
          *
          * @return 流式会话池（deep-agent-stream / react-agent-stream / vertex-stream / stream-actor）
-         *         返回 CPU 公式值，其余池返回枚举声明的固定值
+         *         与 DeepAgent invoke 池（deep-agent-invoke）返回 CPU 公式值，其余池返回枚举声明的固定值
          */
         int resolveMaxSize() {
             return switch (this) {
-                case DEEP_AGENT_STREAM, REACT_AGENT_STREAM, VERTEX_STREAM, STREAM_ACTOR -> defaultIoBoundMaxSize();
+                case DEEP_AGENT_STREAM, REACT_AGENT_STREAM, VERTEX_STREAM, STREAM_ACTOR,
+                        DEEP_AGENT_INVOKE -> defaultIoBoundMaxSize();
                 default -> maxSize;
             };
         }

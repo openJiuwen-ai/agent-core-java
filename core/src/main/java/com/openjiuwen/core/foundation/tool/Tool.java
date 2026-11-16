@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.tool;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.callback.CallbackDecorators;
+import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.ToolCallEvents;
 
@@ -64,7 +65,7 @@ public abstract class Tool {
      * @throws Exception when the underlying tool execution fails
      */
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         InvocationInput request = prepareInput(framework, ToolCallEvents.TOOL_INVOKE_INPUT, inputs, kwargs);
         trigger(framework, ToolCallEvents.TOOL_INVOKE_INPUT, request.args(), merge(request.kwargs(), toolExtra()));
         trigger(framework, ToolCallEvents.TOOL_CALL_STARTED, request.args(), lifecycleKwargs(request));
@@ -96,7 +97,7 @@ public abstract class Tool {
      * @throws Exception when stream creation fails
      */
     public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        DecoratorFramework framework = callbackFramework;
+        DecoratorFramework framework = CallbackUtils.resolveCallbackFramework(callbackFramework);
         InvocationInput request = prepareInput(framework, ToolCallEvents.TOOL_STREAM_INPUT, inputs, kwargs);
         trigger(framework, ToolCallEvents.TOOL_STREAM_INPUT, request.args(), merge(request.kwargs(), toolExtra()));
         trigger(framework, ToolCallEvents.TOOL_CALL_STARTED, request.args(), lifecycleKwargs(request));
@@ -133,7 +134,7 @@ public abstract class Tool {
     }
 
     protected final void triggerCallback(String event, Map<String, Object> kwargs) {
-        trigger(callbackFramework, event, new Object[0], kwargs);
+        trigger(CallbackUtils.resolveCallbackFramework(callbackFramework), event, new Object[0], kwargs);
     }
 
     private static RuntimeException toolCardInvalid(ToolCard card, String reason) {

@@ -4,20 +4,22 @@
 
 package com.openjiuwen.harness.subagents;
 
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
+import com.openjiuwen.harness.security.ToolPermissionHost;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 
 /**
  * Public class SubAgentConfig used by the Java parity implementation.
@@ -108,12 +110,17 @@ public class SubAgentConfig {
     private boolean enableSkillDiscovery = false;
     private Object model;
     private Object backend;
+    private Map<String, Object> permissions;
+    private ToolPermissionHost permissionHost;
     private String promptMode;
     private SysOperation sysOperation;
     @Builder.Default
     private String workspacePath = "";
     @Builder.Default
     private boolean isRestrictToWorkDir = true;
+
+    /** Optional context engine bounds; when null the parent's config is inherited instead. */
+    private ContextEngineConfig contextEngineConfig;
 
     /**
      * setEnableTaskLoop.
@@ -166,9 +173,14 @@ public class SubAgentConfig {
                 .rails(new ArrayList<>(rails)).mcps(new ArrayList<>(mcps)).subagents(new ArrayList<>(subagents))
                 .skillDirectories(new ArrayList<>(skillDirectories)).skillMode(skillMode)
                 .skills(new ArrayList<>(skills)).enableSkillDiscovery(enableSkillDiscovery).model(model)
-                .backend(backend).promptMode(promptMode).sysOperation(sysOperation)
+                .backend(backend)
+                .permissions(permissions == null ? null : new LinkedHashMap<>(permissions))
+                .permissionHost(permissionHost)
+                .promptMode(promptMode).sysOperation(sysOperation)
                 .factoryKwargs(new LinkedHashMap<>(factoryKwargs)).workspacePath(workspacePath)
-                .isRestrictToWorkDir(isRestrictToWorkDir).build();
+                .isRestrictToWorkDir(isRestrictToWorkDir)
+                .contextEngineConfig(contextEngineConfig)
+                .build();
     }
 
     /**

@@ -190,6 +190,22 @@ class JiuwenBoxProvidersTest {
         assertEquals(List.of("stale-sandbox"), state.deletedSandboxIds);
     }
 
+    @Test
+    void shellProviderDoesNotAttemptHttp2UpgradeOverPlainHttp() throws Exception {
+        MockJiuwenBoxState state = new MockJiuwenBoxState();
+        server = startServer(state);
+        String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+        SandboxGatewayConfig config = gatewayConfig(baseUrl, Map.of());
+        SandboxEndpoint endpoint = new SandboxEndpoint(baseUrl, "existing-sandbox");
+
+        JiuwenBoxShellProvider provider = new JiuwenBoxShellProvider(endpoint, config);
+        ExecuteCmdResult result = provider.executeCmd("echo plain-http", null, 30, null, null).join();
+
+        assertEquals(StatusCode.SUCCESS.getCode(), result.getCode());
+        assertEquals(0, state.upgradeHeaderRequests.get(),
+                "plain-HTTP sandbox must not receive an h2c upgrade attempt");
+    }
+
     private HttpServer startServer(MockJiuwenBoxState state) throws IOException {
         HttpServer httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         httpServer.createContext("/", exchange -> state.handle(exchange));
@@ -212,6 +228,7 @@ class JiuwenBoxProvidersTest {
         private final Map<String, Map<String, byte[]>> sandboxFiles = new ConcurrentHashMap<>();
         private final AtomicInteger createCalls = new AtomicInteger();
         private final AtomicInteger execCalls = new AtomicInteger();
+        private final AtomicInteger upgradeHeaderRequests = new AtomicInteger();
         private final List<String> deletedSandboxIds = new ArrayList<>();
 
         private volatile boolean forceNonZeroExit;
@@ -219,6 +236,9 @@ class JiuwenBoxProvidersTest {
 
         void handle(HttpExchange exchange) throws IOException {
             try {
+                if (exchange.getRequestHeaders().containsKey("Upgrade")) {
+                    upgradeHeaderRequests.incrementAndGet();
+                }
                 String path = exchange.getRequestURI().getPath();
                 if ("/api/v1/sandboxes".equals(path) && "POST".equals(exchange.getRequestMethod())) {
                     handleCreateSandbox(exchange);

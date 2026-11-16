@@ -8,8 +8,13 @@ import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -20,6 +25,8 @@ import java.util.concurrent.CompletionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mockStatic;
 
 /**
  * Mirrors Python's {@code tests/system_tests/agent/skill/test_skill_init.py}.
@@ -27,6 +34,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Mirrors Python's {@code tests/unit_tests/agent/skill/test_skill_lazy_init.py}.</p>
  */
 class SkillInitMissingTest {
+    private ResourceMgr resourceMgr;
+    private MockedStatic<Runner> runner;
+
+    @BeforeEach
+    void isolateResources() {
+        resourceMgr = new ResourceMgr();
+        runner = mockStatic(Runner.class, CALLS_REAL_METHODS);
+        runner.when(Runner::resourceMgr).thenReturn(resourceMgr);
+    }
+
+    @AfterEach
+    void releaseResources() {
+        try {
+            resourceMgr.release().toCompletableFuture().join();
+        } finally {
+            runner.close();
+        }
+    }
+
     @Test
     void configureCreatesSkillUtilAndLazyInitIsIdempotent() {
         TestableReActAgent agent = new TestableReActAgent();

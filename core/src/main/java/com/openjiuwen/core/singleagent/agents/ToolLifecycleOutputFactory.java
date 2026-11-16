@@ -125,11 +125,17 @@ final class ToolLifecycleOutputFactory {
             Method method = target.getClass().getMethod(getter);
             return method.invoke(target);
         } catch (ReflectiveOperationException ignored) {
+            String booleanGetter = "is" + Character.toUpperCase(name.charAt(0)) + name.substring(1);
             try {
-                Field field = target.getClass().getField(name);
-                return field.get(target);
-            } catch (ReflectiveOperationException ignoredAgain) {
-                return null;
+                Method method = target.getClass().getMethod(booleanGetter);
+                return method.invoke(target);
+            } catch (ReflectiveOperationException ignoredBoolean) {
+                try {
+                    Field field = target.getClass().getField(name);
+                    return field.get(target);
+                } catch (ReflectiveOperationException ignoredAgain) {
+                    return null;
+                }
             }
         }
     }

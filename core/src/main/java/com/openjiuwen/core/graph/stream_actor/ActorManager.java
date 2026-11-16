@@ -89,6 +89,28 @@ public class ActorManager {
     }
 
     /**
+     * Rebinds every consumer actor to the vertices of the current run.
+     *
+     * <p>An {@code ActorManager} lives for one graph execution while vertices
+     * are per-run, so the actors must be pointed at the run's own vertices
+     * before the graph starts producing. Consumer ids without a vertex in
+     * {@code runNodes} keep their current binding.
+     *
+     * @param runNodes node id to the current run's stream consumer
+     */
+    public void bindVertices(Map<String, ? extends StreamConsumer> runNodes) {
+        if (runNodes == null || runNodes.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, StreamActor> entry : streams.entrySet()) {
+            StreamConsumer vertex = runNodes.get(entry.getKey());
+            if (vertex != null) {
+                entry.getValue().bindVertex(vertex);
+            }
+        }
+    }
+
+    /**
      * Returns the sub-workflow stream queue.
      *
      * @return sub-workflow stream queue
@@ -207,6 +229,18 @@ public class ActorManager {
     }
 
     /**
+     * Waits for this consumer's scheduled stream call before its batch side inspects completion.
+     *
+     * @param consumerId consumer node identifier
+     */
+    public void awaitStreamReady(String consumerId) {
+        StreamActor actor = streams.get(consumerId);
+        if (actor != null) {
+            actor.awaitStarted();
+        }
+    }
+
+    /**
      * Creates consumer stream inputs and closes already-finished inactive producers.
      *
      * @param consumerId consumer node id
@@ -234,12 +268,20 @@ public class ActorManager {
             Set<ComponentAbility> activeAbilities = activeProducerIds.getOrDefault(producerId, Set.of());
             if (activeAbilities.isEmpty()) {
                 for (ComponentAbility producerAbility : allAbilities) {
-                    endMessage(producerId, producerAbility);
-                    activeProduceAbility(producerId, producerAbility);
+                    restoreProducerEnd(producerId, producerAbility);
                 }
             }
         }
         return consumeIter;
+    }
+
+    private void restoreProducerEnd(String producerId, ComponentAbility ability) {
+        activeProduceAbility(producerId, ability);
+
+        // Replay to every consumer, including those whose first frame has not arrived yet.
+        for (String consumerId : streamEdges.getOrDefault(producerId, List.of())) {
+            getActor(consumerId).restoreProducerEnd(producerId, ability);
+        }
     }
 
     /**

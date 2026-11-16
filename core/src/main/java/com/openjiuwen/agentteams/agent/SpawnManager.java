@@ -30,9 +30,10 @@ import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -60,8 +61,9 @@ public class SpawnManager {
     private final RecoveryManager recoveryManager;
     private final Supplier<String> sessionIdGetter;
     private final ThreadPoolExecutor executor;
-    private final Map<String, SpawnHandle> spawnedHandles = new LinkedHashMap<>();
-    private final Set<Future<?>> recoveryTasks = ConcurrentHashMap.newKeySet();
+    private final Map<String, SpawnHandle> spawnedHandles = new ConcurrentHashMap<>();
+    private final Object recoveryLock = new Object();
+    private final Map<String, FutureTask<Void>> recoveryTasks = new LinkedHashMap<>();
 
     /**
      * Construct a SpawnManager that uses a default daemon-threaded executor for recovery tasks.
@@ -173,8 +175,10 @@ public class SpawnManager {
      * @since 0.1.7
      */
     public int getRecoveryTaskCount() {
-        cleanupFinishedRecoveryTasks();
-        return recoveryTasks.size();
+        synchronized (recoveryLock) {
+            recoveryTasks.values().removeIf(Future::isDone);
+            return recoveryTasks.size();
+        }
     }
 
     /**
@@ -269,7 +273,7 @@ public class SpawnManager {
         }
         spawnedHandles.put(memberName, handle);
         recoveryManager.registerSpawnedHandle(memberName);
-        handle.setOnUnhealthy(() -> triggerUnhealthyRecovery(memberName));
+        handle.setOnUnhealthy(() -> triggerUnhealthyRecovery(memberName, handle));
         handle.startHealthCheck(Math.max(1L, healthCheckIntervalMillis));
     }
 
@@ -280,12 +284,16 @@ public class SpawnManager {
      * @since 0.1.7
      */
     public void cleanupTeammate(String memberName) {
+        if (memberName == null || memberName.isBlank()) {
+            return;
+        }
         SpawnHandle handle = spawnedHandles.remove(memberName);
         recoveryManager.removeSpawnedHandle(memberName);
         if (handle == null) {
             return;
         }
         try {
+            handle.setOnUnhealthy(null);
             handle.stopHealthCheck();
             if (handle.isAlive()) {
                 handle.forceKill();
@@ -369,22 +377,47 @@ public class SpawnManager {
     /**
      * Submit an asynchronous recovery task for an unhealthy teammate.
      *
+     * <p>Concurrent recovery requests for the same member share one task. Health callbacks
+     * from a handle that has already been removed or replaced do not recover its successor.</p>
+     *
      * @param memberName the member to recover
      * @return the future tracking the recovery task
      * @since 0.1.7
      */
     public Future<?> triggerUnhealthyRecovery(String memberName) {
-        Future<?> task =
-                executor.submit(
-                        () -> {
-                            try {
-                                onTeammateUnhealthy(memberName);
-                            } finally {
-                                cleanupFinishedRecoveryTasks();
-                            }
-                        });
-        recoveryTasks.add(task);
-        cleanupFinishedRecoveryTasks();
+        if (memberName == null || memberName.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return triggerUnhealthyRecovery(memberName, spawnedHandles.get(memberName));
+    }
+
+    private Future<?> triggerUnhealthyRecovery(String memberName, SpawnHandle expectedHandle) {
+        if (expectedHandle != null && spawnedHandles.get(memberName) != expectedHandle) {
+            return CompletableFuture.completedFuture(null);
+        }
+        FutureTask<Void> task;
+        synchronized (recoveryLock) {
+            recoveryTasks.values().removeIf(Future::isDone);
+            FutureTask<Void> current = recoveryTasks.get(memberName);
+            if (current != null) {
+                return current;
+            }
+            task = new FutureTask<>(() -> {
+                if (expectedHandle == null || spawnedHandles.get(memberName) == expectedHandle) {
+                    onTeammateUnhealthy(memberName);
+                }
+            }, null);
+            recoveryTasks.put(memberName, task);
+        }
+        try {
+            executor.execute(task);
+        } catch (RejectedExecutionException exception) {
+            task.cancel(false);
+            synchronized (recoveryLock) {
+                recoveryTasks.remove(memberName, task);
+            }
+            throw exception;
+        }
         return task;
     }
 
@@ -480,12 +513,14 @@ public class SpawnManager {
      * @since 0.1.7
      */
     public void cancelRecoveryTasks() {
-        for (Future<?> task : recoveryTasks) {
-            if (!task.isDone()) {
-                task.cancel(true);
+        synchronized (recoveryLock) {
+            for (Future<?> task : recoveryTasks.values()) {
+                if (!task.isDone()) {
+                    task.cancel(true);
+                }
             }
+            recoveryTasks.clear();
         }
-        recoveryTasks.clear();
     }
 
     /**
@@ -523,10 +558,6 @@ public class SpawnManager {
         } catch (JsonProcessingException | IllegalArgumentException ignored) {
             return nullValue();
         }
-    }
-
-    private void cleanupFinishedRecoveryTasks() {
-        recoveryTasks.removeIf(Future::isDone);
     }
 
     private static String stringValue(Object value) {

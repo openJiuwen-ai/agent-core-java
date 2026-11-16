@@ -14,7 +14,7 @@ public class ModelRequestConfig
 | --- | --- |
 | `private String modelName =` | 保存 `modelName` 相关状态或配置。 |
 | `private Double temperature = 0.95` | 保存 `temperature` 相关状态或配置。 |
-| `private Double topP = 0.1` | 保存 `topP` 相关状态或配置。 |
+| `private Double topP` | 核采样阈值；未设置（null）时请求不携带 `top_p`。 |
 | `private Integer maxTokens` | 保存 `maxTokens` 相关状态或配置。 |
 | `private String stop` | 保存 `stop` 相关状态或配置。 |
 | `private String user` | 保存 `user` 相关状态或配置。 |

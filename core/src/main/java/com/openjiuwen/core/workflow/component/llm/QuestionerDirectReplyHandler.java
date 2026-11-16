@@ -18,6 +18,7 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.WorkflowCancellation;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -105,7 +106,7 @@ public class QuestionerDirectReplyHandler {
         }
 
         if (needExtractFields()) {
-            boolean isContinueAsk = extractFromChatHistory(chatHistory, output);
+            boolean isContinueAsk = extractFromChatHistory(chatHistory, output, session);
             QuestionerEvent event = isContinueAsk
                     ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
             if (isContinueAsk) {
@@ -146,7 +147,7 @@ public class QuestionerDirectReplyHandler {
         }
 
         if (needExtractFields()) {
-            boolean isContinueAsk = extractFromChatHistory(chatHistory, output);
+            boolean isContinueAsk = extractFromChatHistory(chatHistory, output, session);
             QuestionerEvent event = isContinueAsk
                     ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
             if (isContinueAsk) {
@@ -172,9 +173,9 @@ public class QuestionerDirectReplyHandler {
 
     // ==================== LLM extraction ====================
 
-    private boolean extractFromChatHistory(List<BaseMessage> chatHistory, OutputCache output) {
+    private boolean extractFromChatHistory(List<BaseMessage> chatHistory, OutputCache output, NodeSessionApi session) {
         List<BaseMessage> llmInputs = buildLlmInputs(chatHistory);
-        Map<String, Object> extractedKeyFields = invokeLlmForExtraction(llmInputs);
+        Map<String, Object> extractedKeyFields = invokeLlmForExtraction(llmInputs, session);
         for (Map.Entry<String, Object> entry : extractedKeyFields.entrySet()) {
             if (QuestionerUtils.isTruthy(entry.getValue())) {
                 output.getKeyFields().put(entry.getKey(), entry.getValue());
@@ -233,14 +234,15 @@ public class QuestionerDirectReplyHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> invokeLlmForExtraction(List<BaseMessage> llmInputs) {
+    private Map<String, Object> invokeLlmForExtraction(List<BaseMessage> llmInputs, NodeSessionApi session) {
         String response;
         try {
-            AssistantMessage msg = model.invoke(llmInputs, ModelInvokeOptions.builder()
+            AssistantMessage msg = WorkflowCancellation.await(model.invoke(llmInputs, ModelInvokeOptions.builder()
                     .timeout(ModelTimeoutResolver.resolvePerCallIdleTimeout(null, model.getModelClientConfig()))
-                    .build()).toCompletableFuture().join();
+                    .build()), session.getInner());
             response = msg.getContent() != null ? msg.getContent().toString() : "";
         } catch (Exception e) {
+            WorkflowCancellation.check(session.getInner());
             Map<String, Object> fixtureFields = localFixtureExtraction(llmInputs);
             if (fixtureFields != null) {
                 return validateAndConvertFields(fixtureFields);
@@ -417,7 +419,8 @@ public class QuestionerDirectReplyHandler {
 
     private boolean needExtractFields() {
         return config.isExtractFieldsFromResponse()
-                && config.getFieldNames().size() > state.getExtractedKeyFields().size();
+                && config.getFieldNames().stream().anyMatch(field ->
+                        !state.getExtractedKeyFields().containsKey(field.getFieldName()));
     }
 
     private List<BaseMessage> getChatHistory(ModelContext context) {

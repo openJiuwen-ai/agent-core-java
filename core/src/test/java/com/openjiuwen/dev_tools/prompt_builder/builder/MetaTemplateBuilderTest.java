@@ -15,7 +15,10 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
+import com.openjiuwen.core.testsupport.ModelRegistryIsolation;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -38,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Mirrors Python's {@code test_meta_template_builder} in
  * {@code tests/unit_tests/agent_builder/prompt_builder/test_meta_template_builder.py}.</p>
  */
+@ExtendWith(ModelRegistryIsolation.class)
 class MetaTemplateBuilderTest {
 
     @Test
