@@ -2481,7 +2481,7 @@ public class DeepAgent implements AutoCloseable {
      * @param rounds            recorded rounds of this run
      */
     private record TaskLoopRun(AgentSessionApi session, String sessionId, String steeringSessionId,
-                               LoopCoordinator coordinator, List<Map<String, Object>> rounds) {
+        LoopCoordinator coordinator, List<Map<String, Object>> rounds) {
     }
 
     private Map<String, Object> runTaskLoop(
@@ -2540,18 +2540,18 @@ public class DeepAgent implements AutoCloseable {
         DeepAgentState loopState = loadState(run.session());
         loopState.addPendingFollowUps(loopController.drainFollowUp(run.sessionId()));
         Object query = currentQuery;
-        boolean followUp = isFollowUp;
+        boolean isFollowUpRound = isFollowUp;
         // First outer round always runs the invoke query; follow-ups apply from round 2+.
         if (!run.rounds().isEmpty() && loopState.hasPendingFollowUps()) {
             query = loopState.pollPendingFollowUp();
-            followUp = true;
+            isFollowUpRound = true;
         }
         saveState(run.session(), loopState);
         Object roundQuery = query;
         if (taskCompletionRail != null && query instanceof String queryText) {
-            roundQuery = taskCompletionRail.applyTaskInstruction(queryText, followUp);
+            roundQuery = taskCompletionRail.applyTaskInstruction(queryText, isFollowUpRound);
         }
-        return new RoundPlan(query, roundQuery, followUp);
+        return new RoundPlan(query, roundQuery, isFollowUpRound);
     }
 
     /**
