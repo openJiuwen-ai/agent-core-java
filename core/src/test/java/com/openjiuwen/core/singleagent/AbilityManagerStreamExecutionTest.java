@@ -13,6 +13,8 @@ import static org.mockito.Mockito.verify;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.JsonUtils;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -21,6 +23,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -96,9 +99,14 @@ class AbilityManagerStreamExecutionTest {
 
         // Then: executed exactly once, and the complete result is one chunk
         assertThat(executions.get()).as("underlying function must run exactly once").isEqualTo(1);
-        verify(agentSession, times(1)).writeStream(any());
+        ArgumentCaptor<OutputSchema> written = ArgumentCaptor.forClass(OutputSchema.class);
+        verify(agentSession, times(1)).writeStream(written.capture());
         assertThat(entry.result()).isSameAs(payload);
-        assertThat(entry.toolMessage().getContent()).isEqualTo(payload.toString());
+        String content = String.valueOf(entry.toolMessage().getContent());
+        assertThat(JsonUtils.safeJsonLoads(content, Map.class)).containsEntry("status", "charged");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> streamPayload = (Map<String, Object>) written.getValue().getPayload();
+        assertThat(streamPayload.get("content")).isEqualTo(content);
     }
 
     @Test

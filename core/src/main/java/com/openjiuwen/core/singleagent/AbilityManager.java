@@ -11,6 +11,7 @@ import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
@@ -36,8 +37,10 @@ import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.harness.tools.ToolOutput;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -955,7 +958,7 @@ public class AbilityManager implements ToolRegistry {
             }
         }
 
-        String content = String.valueOf(result);
+        String content = renderToolResult(result);
         ToolMessage toolMessage = ToolMessage.builder().content(content).toolCallId(toolCall.getId()).build();
 
         return new ToolExecutionEntry(result, toolMessage);
@@ -1557,7 +1560,7 @@ public class AbilityManager implements ToolRegistry {
                             result == null ? "" : result, 0));
                 }
                 ToolMessage toolMsg = ToolMessage.builder()
-                        .content(result == null ? "" : result.toString())
+                        .content(renderToolResult(result))
                         .toolCallId(toolCall.getId())
                         .build();
                 return new ToolExecutionEntry(result, toolMsg);
@@ -1614,7 +1617,7 @@ public class AbilityManager implements ToolRegistry {
         Object merged = mergeStreamChunks(accumulated);
 
         ToolMessage toolMsg = ToolMessage.builder()
-                .content(merged == null ? "" : merged.toString())
+                .content(renderToolResult(merged))
                 .toolCallId(toolCall.getId())
                 .build();
         return new ToolExecutionEntry(merged, toolMsg);
@@ -1672,8 +1675,47 @@ public class AbilityManager implements ToolRegistry {
         payload.put("task_id", taskId == null ? "" : taskId);
         payload.put("tool_name", toolCall.getName());
         payload.put("tool_call_id", toolCall.getId());
-        payload.put("content", content);
+        payload.put("content", streamContent(content));
         return new OutputSchema("tool_output", chunkIndex, payload);
+    }
+
+    /**
+     * Render one tool result for both {@code ToolMessage.content} and {@code tool_output} content.
+     * Plain text stays unchanged. Structured results become JSON so downstream parsers do not
+     * receive a Java {@code toString()} such as {@code ToolOutput(...)}.
+     *
+     * @param result tool result, may be null
+     * @return message text, never null
+     */
+    public static String renderToolResult(Object result) {
+        if (result == null) {
+            return "";
+        }
+        if (result instanceof CharSequence text) {
+            return text.toString();
+        }
+        if (!shouldRenderAsJson(result)) {
+            return String.valueOf(result);
+        }
+        Object serializable = result instanceof ToolOutput output ? output.toMap() : result;
+        try {
+            return JsonUtils.safeJsonDumps(serializable);
+        } catch (RuntimeException exception) {
+            Loggers.TOOL.warning("Failed to JSON-serialize tool result of type {}: {}",
+                    result.getClass().getName(), exception.getMessage());
+            return String.valueOf(result);
+        }
+    }
+
+    private static Object streamContent(Object content) {
+        if (content == null || content instanceof CharSequence || !shouldRenderAsJson(content)) {
+            return content;
+        }
+        return renderToolResult(content);
+    }
+
+    private static boolean shouldRenderAsJson(Object result) {
+        return result instanceof Map<?, ?> || result instanceof Collection<?> || result instanceof ToolOutput;
     }
 
     /**

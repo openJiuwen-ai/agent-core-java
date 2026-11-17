@@ -12,26 +12,32 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-@Timeout(value = 30, unit = TimeUnit.SECONDS)
+@Timeout(value = 60, unit = TimeUnit.SECONDS)
 class PyZmqMessagerCompatibilityTest {
     private static final String LOOPBACK_WILDCARD_ENDPOINT = "tcp://127.0.0.1:*";
 
     private final List<PyZmqMessager> liveMessagers = new ArrayList<>();
 
     private final List<Process> liveProcesses = new ArrayList<>();
+
+    private final StringBuilder childOutput = new StringBuilder();
 
     @AfterEach
     void tearDown() {
@@ -172,10 +178,11 @@ class PyZmqMessagerCompatibilityTest {
         }).join();
         Process child = startChildProcess(parent.getLocalPeer().getAddrs().get(0), childEndpoint);
 
-        parent.send("child", EventMessage.builder().eventType("ping").payload(Map.of("origin", "parent")).build())
-                .join();
+        sendUntilChildAnswers(parent, child, responseLatch);
 
-        assertThat(responseLatch.await(10L, TimeUnit.SECONDS)).isTrue();
+        assertThat(responseLatch.getCount())
+                .as("childAlive=%s exit=%s output=%s", child.isAlive(), childExit(child), childOutput)
+                .isZero();
         assertThat(response.get().getEventType()).isEqualTo("pong");
         assertThat(response.get().getPayload()).containsEntry("origin", "parent");
         assertThat(child.waitFor(10L, TimeUnit.SECONDS)).isTrue();
@@ -233,11 +240,51 @@ class PyZmqMessagerCompatibilityTest {
                 DirectTransportChild.class.getName(),
                 parentEndpoint,
                 childEndpoint));
-        builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        builder.redirectError(ProcessBuilder.Redirect.DISCARD);
+        builder.redirectErrorStream(true);
+        builder.redirectOutput(ProcessBuilder.Redirect.PIPE);
         Process process = builder.start();
         liveProcesses.add(process);
+        Thread outputReader = new Thread(() -> captureProcessOutput(process), "pyzmq-child-output");
+        outputReader.setDaemon(true);
+        outputReader.start();
         return process;
+    }
+
+    private void sendUntilChildAnswers(PyZmqMessager parent, Process child, CountDownLatch responseLatch)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20L);
+        while (responseLatch.getCount() > 0L && System.nanoTime() < deadline && child.isAlive()) {
+            try {
+                parent.send("child", EventMessage.builder().eventType("ping")
+                                .payload(Map.of("origin", "parent")).build())
+                        .orTimeout(2L, TimeUnit.SECONDS)
+                        .join();
+            } catch (CompletionException ignored) {
+                // The child JVM or its router may not be bound yet. A lost acknowledgement
+                // is retried until the pong arrives or the deadline passes.
+            }
+            if (responseLatch.await(200L, TimeUnit.MILLISECONDS)) {
+                return;
+            }
+        }
+    }
+
+    private void captureProcessOutput(Process process) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                synchronized (childOutput) {
+                    childOutput.append(line).append('\n');
+                }
+            }
+        } catch (IOException ignored) {
+            // The child is stopped during teardown, which closes this stream.
+        }
+    }
+
+    private static Object childExit(Process child) {
+        return child.isAlive() ? "running" : child.exitValue();
     }
 
     private static MessagerPeerConfig peer(String agentId, String endpoint) {
@@ -285,7 +332,7 @@ class PyZmqMessagerCompatibilityTest {
                         .eventType("pong")
                         .payload(Map.of("origin", message.getPayload().get("origin")))
                         .build()).whenComplete((ignored, throwable) -> completed.countDown())).join();
-                if (!completed.await(15L, TimeUnit.SECONDS)) {
+                if (!completed.await(20L, TimeUnit.SECONDS)) {
                     throw new IllegalStateException("Child did not receive a direct transport message");
                 }
             } finally {

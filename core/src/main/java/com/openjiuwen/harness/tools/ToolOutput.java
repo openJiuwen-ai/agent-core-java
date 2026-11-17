@@ -4,10 +4,17 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.security.JsonUtils;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Public class ToolOutput used by the Java parity implementation.
@@ -19,6 +26,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ToolOutput {
+    @JsonProperty("isSuccess")
+    @JsonAlias("success")
     private boolean isSuccess;
     private Object data;
     private String error;
@@ -39,6 +48,34 @@ public class ToolOutput {
         public ToolOutputBuilder success(boolean value) {
             this.isSuccess = value;
             return this;
+        }
+    }
+
+    /**
+     * JSON-facing view of this result. The key stays {@code isSuccess} so it matches the
+     * field consumers already see, instead of Jackson's JavaBean name {@code success}.
+     *
+     * @return serializable result map
+     */
+    public Map<String, Object> toMap() {
+        Map<String, Object> rendered = new LinkedHashMap<>();
+        rendered.put("isSuccess", isSuccess);
+        rendered.put("data", data);
+        rendered.put("error", error);
+        return rendered;
+    }
+
+    /**
+     * Same JSON text written into tool messages, so {@code String.valueOf(toolOutput)} is parseable.
+     *
+     * @return JSON object text, or a non-recursive fallback when serialization fails
+     */
+    @Override
+    public String toString() {
+        try {
+            return JsonUtils.safeJsonDumps(toMap());
+        } catch (RuntimeException exception) {
+            return "ToolOutput(isSuccess=" + isSuccess + ", error=" + error + ")";
         }
     }
 }
