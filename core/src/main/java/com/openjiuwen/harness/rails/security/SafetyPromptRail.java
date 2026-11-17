@@ -55,6 +55,10 @@ public class SafetyPromptRail extends BaseSecurityRail {
     @Override
     public void beforeModelCall(AgentCallbackContext context) {
         CallbackContext callback = toCallbackContext(context);
+        // Let legacy hooks observe the effective model without writing their changes back.
+        if (context.getDynamicModelId() != null) {
+            callback.setDynamicModelId(context.getDynamicModelId());
+        }
         // Only a section produced by this invocation may update the request.
         callback.getValues().remove("safety_section");
         callback.put("agent", context.getAgent());

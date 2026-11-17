@@ -316,14 +316,16 @@ class SafetyPromptRailTest {
     }
 
     @Test
-    @DisplayName("旧回调可定制安全段，但不回传模型选择及无关字段")
+    @DisplayName("旧回调按原生有效模型定制安全段，但不回传模型选择及无关字段")
     void beforeModelCall_whenLegacyHookCustomizesSafety_onlyWritesSafety() {
         SafetyPromptRail custom = new SafetyPromptRail() {
             @Override
             public void beforeModelCall(CallbackContext context) {
                 super.beforeModelCall(context);
+                assertEquals("model-1", context.getDynamicModelId());
                 PromptSection section = new PromptSection(SectionName.SAFETY,
-                        Map.of("cn", "custom safety", "en", "custom safety"), 85);
+                        Map.of("cn", "custom safety for " + context.getDynamicModelId(),
+                                "en", "custom safety for " + context.getDynamicModelId()), 85);
                 getSystemPromptBuilder().removeSection(SectionName.SAFETY);
                 getSystemPromptBuilder().addSection(section);
                 context.put("safety_section", section);
@@ -337,14 +339,16 @@ class SafetyPromptRailTest {
             inputs.getMessages().add(new UserMessage("hi"));
             context.setInputs(inputs);
             context.setDynamicModelId("model-1");
+            context.getExtra().put("target_model_id", "model-2");
 
             custom.getCallbacks().get(AgentCallbackEvent.BEFORE_MODEL_CALL)
                     .handle(context).toCompletableFuture().orTimeout(5, TimeUnit.SECONDS).join();
 
             assertEquals("model-1", context.getDynamicModelId());
+            assertEquals("model-2", context.getExtra().get("target_model_id"));
             assertFalse(context.getExtra().containsKey("marker"));
             assertTrue(inputs.getMessages().stream().map(BaseMessage.class::cast)
-                    .anyMatch(message -> message.getContentAsString().contains("custom safety")));
+                    .anyMatch(message -> message.getContentAsString().contains("custom safety for model-1")));
         }
     }
 
