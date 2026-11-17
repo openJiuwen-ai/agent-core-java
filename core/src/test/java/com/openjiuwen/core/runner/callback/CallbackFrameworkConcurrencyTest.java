@@ -182,7 +182,9 @@ class CallbackFrameworkConcurrencyTest {
      * continuous trigger of pre-existing callbacks while a
      * 16-thread register/unregister storm runs on the same event must keep
      * the existing callbacks' invocation counts exact: no lost and no
-     * duplicated invocations, and no exceptions anywhere.
+     * duplicated invocations, and no exceptions anywhere. The trigger loop
+     * completes one round before observing the stop flag, so a delayed
+     * trigger thread still records a round after the storm finishes.
      *
      * @throws Exception if any concurrent worker fails or exceeds its wait bound
      */
@@ -272,10 +274,12 @@ class CallbackFrameworkConcurrencyTest {
     private int triggerLoop(CountDownLatch start, String event, AtomicBoolean stop) throws Exception {
         start.await();
         int round = 0;
-        while (!stop.get()) {
+        // One trigger always runs. The storm can set stop before this thread is
+        // scheduled, and a while-check at the top would then report zero rounds.
+        do {
             round++;
             framework.trigger(event, Map.of("round", round));
-        }
+        } while (!stop.get());
         return round;
     }
 
