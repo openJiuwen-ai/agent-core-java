@@ -6,11 +6,14 @@ package com.openjiuwen.core.singleagent.interrupt;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * Context object used while resuming a tool interruption.
@@ -32,6 +35,7 @@ public class ResumeContext {
     private AgentSessionApi session;
     private InvokeInputs invokeInputs;
     private ExecuteToolCall executeToolCall;
+    private Function<Object, Optional<UserMessage>> resumeMessageBuilder = input -> Optional.empty();
 
     public ToolInterruptionState getState() {
         return state;
@@ -87,5 +91,26 @@ public class ResumeContext {
 
     public void setExecuteToolCall(ExecuteToolCall executeToolCall) {
         this.executeToolCall = executeToolCall;
+    }
+
+    /**
+     * Return the callback that validates and builds a user message before tool execution.
+     *
+     * @return callback producing an optional message; defaults to an empty result
+     * @since 0.1.17
+     */
+    public Function<Object, Optional<UserMessage>> getResumeMessageBuilder() {
+        return resumeMessageBuilder;
+    }
+
+    /**
+     * Configure user message construction while leaving resume sequencing to the handler.
+     *
+     * @param resumeMessageBuilder callback returning a non-null optional message;
+     *                             {@code null} restores the default empty result
+     * @since 0.1.17
+     */
+    public void setResumeMessageBuilder(Function<Object, Optional<UserMessage>> resumeMessageBuilder) {
+        this.resumeMessageBuilder = resumeMessageBuilder == null ? input -> Optional.empty() : resumeMessageBuilder;
     }
 }

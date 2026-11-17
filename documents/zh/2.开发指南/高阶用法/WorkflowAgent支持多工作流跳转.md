@@ -83,6 +83,26 @@ agent.addWorkflows(List.of(
 
 这里的 `defaultResponse` 也很重要：当多 workflow 意图识别没有命中时，Java 当前实现优先返回默认回复，而不是强行承诺一定能选对业务流。
 
+### 意图识别异常的处理策略
+
+意图识别抛出异常时，默认保持旧版行为：回退到已注册的第一个工作流。
+如果业务要求模型调用失败时终止当前请求，并保留原始异常供调用方分类处理，可在接受请求前开启错误传播：
+
+```java
+var controller = (com.openjiuwen.core.application.workflow_agent.WorkflowController) agent.getController();
+controller.setPropagateIntentErrors(true);
+```
+
+开启后，模型配置错误、网络错误和检测器执行错误均向调用方传播，不启动替代工作流。
+该开关只改变异常处理，不改变检测器正常返回结果时的路由规则。
+取消请求优先遵循取消协议，不因回退策略而启动新工作流。
+
+默认模型提示词将分类解释为工作流的业务领域，允许用户只补充部分信息，
+并结合历史在未完成的工作流之间切换；不要求每轮都提交完整业务请求。
+`Questioner` 的模型请求同时包含字段描述和类型，要求返回指定字段的 JSON，
+例如 `integer` 金额返回数字而非带单位的字符串。缺失字段的追问仍由工作流生成。
+关闭 Questioner 聊天历史时，已提取字段通过节点状态保存，后续轮次继续收集缺失字段。
+
 ## 运行时到底怎么选 workflow
 
 这部分由 `WorkflowEventHandler.intentDetection(...)` 负责。Java 当前可验证的优先级是：
