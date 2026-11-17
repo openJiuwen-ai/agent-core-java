@@ -126,6 +126,21 @@ class AbilityManagerToolResultJsonTest {
     }
 
     @Test
+    void renderToolResult_nestedToolOutputKeepsIsSuccessKey() {
+        ToolOutput nested = ToolOutput.builder().success(false).error("denied").build();
+        ToolOutput outer = ToolOutput.builder().success(true).data(nested).build();
+
+        Map<String, Object> insideData = item(json(rendered(outer)));
+        assertThat(insideData).containsEntry("isSuccess", false).containsEntry("error", "denied");
+        assertThat(insideData).doesNotContainKey("success");
+
+        String listed = AbilityManager.renderToolResult(List.of(nested));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> parsedList = JsonUtils.safeJsonLoads(listed, List.class);
+        assertThat(parsedList.get(0)).containsEntry("isSuccess", false).doesNotContainKey("success");
+    }
+
+    @Test
     void toolOutputChunk_usesSameJsonAsToolMessage() throws Exception {
         ToolOutput output = ToolOutput.builder().success(true).data(List.of(Map.of("id", "task-1"))).build();
         String rendered = AbilityManager.renderToolResult(output);

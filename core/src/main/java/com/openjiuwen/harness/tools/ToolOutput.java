@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.security.JsonUtils;
 
 import lombok.AllArgsConstructor;
@@ -24,6 +26,8 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ToolOutput {
+    @JsonProperty("isSuccess")
+    @JsonAlias("success")
     private boolean isSuccess;
     private Object data;
     private String error;
