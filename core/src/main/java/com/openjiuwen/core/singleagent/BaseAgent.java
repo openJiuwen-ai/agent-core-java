@@ -31,6 +31,7 @@ import com.openjiuwen.core.singleagent.skills.GitHubTree;
 import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.core.singleagent.skills.SkillConfig;
 import com.openjiuwen.core.singleagent.skills.SkillDocumentLoader;
+import com.openjiuwen.core.singleagent.skills.SkillManager;
 import com.openjiuwen.core.singleagent.skills.SkillToolBinding;
 import com.openjiuwen.core.singleagent.skills.SkillToolRegistry;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
@@ -236,10 +237,13 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             boolean isToolInRegisteredGroup =
                     toolGroupManager.getGroups().stream()
                             .anyMatch(group -> group.toolNames().contains(toolName));
-            if (isToolInRegisteredGroup || toolGroupManager.hasRevokedToolNames()) {
+            if (isToolInRegisteredGroup) {
                 return toolGroupManager.isToolEligibleForExecution(toolName, activeGroupNames);
             }
             if (skillToolRegistry.isSkillTool(toolName)) {
+                if (abilityManager.getTools().containsKey(toolName)) {
+                    return true;
+                }
                 return findActiveSkillTool(toolName, session).isPresent();
             }
             return true;
@@ -287,7 +291,23 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         synchronized (skillUtilLock) {
             local = skillUtil;
             if (local == null) {
-                skillUtil = createSkillUtil(sysOperationId);
+                local = createSkillUtil(sysOperationId);
+                if (local != null) {
+                    local.getSkillManager()
+                            .setSkillLifecycleListener(
+                                    new SkillManager.SkillLifecycleListener() {
+                                        @Override
+                                        public void onSkillsAdded(Collection<String> skillNames) {
+                                            rebindImplicitSkillGroups(skillNames);
+                                        }
+
+                                        @Override
+                                        public void onSkillsRemoved(Collection<String> skillNames) {
+                                            unregisterImplicitSkillGroups(skillNames);
+                                        }
+                                    });
+                    skillUtil = local;
+                }
             } else {
                 local.setSysOperationId(sysOperationId);
             }
@@ -485,13 +505,50 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             return;
         }
         String implicitGroupName = "skill:" + binding.getSkillName();
-        toolGroupManager.unregisterToolGroup(implicitGroupName);
+        toolGroupManager.unregisterSkillToolGroup(implicitGroupName);
         ToolGroup implicitGroup =
                 new ToolGroup(
                         implicitGroupName,
                         "Implicit group for skill " + binding.getSkillName(),
                         toolNames);
         toolGroupManager.registerSkillToolGroup(implicitGroup);
+    }
+
+    private void rebindImplicitSkillGroups(Collection<String> skillNames) {
+        if (skillUtil == null || skillNames == null || skillNames.isEmpty()) {
+            return;
+        }
+        for (String skillName : skillNames) {
+            if (skillName == null
+                    || skillName.isBlank()
+                    || !skillUtil.getSkillManager().has(skillName)) {
+                continue;
+            }
+            List<Tool> tools = skillToolRegistry
+                    .listToolsByActiveSkill(List.of(skillName))
+                    .getOrDefault(skillName, List.of());
+            if (!tools.isEmpty()) {
+                SkillToolBinding binding = SkillToolBinding.builder()
+                        .skillName(skillName)
+                        .tools(tools)
+                        .build();
+                registerImplicitSkillGroup(binding);
+            }
+        }
+    }
+
+    private void unregisterImplicitSkillGroups(Collection<String> skillNames) {
+        if (skillUtil == null || skillNames == null || skillNames.isEmpty()) {
+            return;
+        }
+        for (String skillName : skillNames) {
+            if (skillName == null
+                    || skillName.isBlank()
+                    || skillUtil.getSkillManager().has(skillName)) {
+                continue;
+            }
+            toolGroupManager.unregisterSkillToolGroup("skill:" + skillName.trim());
+        }
     }
 
     /**
@@ -827,7 +884,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     public List<ToolInfo> listEffectiveToolInfo(AgentSessionApi session) {
         List<String> activeSkillNames = getActiveSkillNames(session);
-        if (toolGroupManager.getGroups().isEmpty() && !toolGroupManager.hasRevokedToolNames()) {
+        if (toolGroupManager.getGroups().isEmpty()) {
             return listEffectiveToolInfo(activeSkillNames);
         }
         return listEffectiveToolInfoWithGroups(activeSkillNames, getActiveToolGroupNames(session));

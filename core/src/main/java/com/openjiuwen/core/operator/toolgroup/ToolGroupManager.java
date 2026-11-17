@@ -27,8 +27,6 @@ public final class ToolGroupManager {
 
     private final Map<String, ToolGroup> toolGroupsByName =
             Collections.synchronizedMap(new LinkedHashMap<>());
-    private final Set<String> revokedToolNames =
-            Collections.synchronizedSet(new LinkedHashSet<>());
 
     /**
      * Registers an explicit tool group and rejects duplicate or reserved names.
@@ -55,7 +53,6 @@ public final class ToolGroupManager {
                 Loggers.TOOL.warning("Registered empty tool group: {}", toolGroup.name());
             }
             toolGroupsByName.put(toolGroup.name(), toolGroup);
-            revokedToolNames.removeAll(toolGroup.toolNames());
         }
     }
 
@@ -75,12 +72,29 @@ public final class ToolGroupManager {
         }
         synchronized (toolGroupsByName) {
             toolGroupsByName.put(toolGroup.name(), toolGroup);
-            revokedToolNames.removeAll(toolGroup.toolNames());
         }
     }
 
     /**
-     * Removes a registered group; unknown names are ignored.
+     * Removes a Skill-owned implicit group.
+     *
+     * @param groupName name of the implicit Skill group to remove
+     */
+    public void unregisterSkillToolGroup(String groupName) {
+        if (groupName == null || groupName.isBlank()
+                || !groupName.trim().startsWith(SKILL_GROUP_PREFIX)) {
+            return;
+        }
+        toolGroupsByName.remove(groupName.trim());
+    }
+
+    /**
+     * Removes a registered group classification; unknown names are ignored.
+     *
+     * <p>Unregistration does not revoke access to tools. Tools that no longer
+     * belong to any registered group fall back to ungrouped semantics. Use
+     * session deactivation or remove the tool from the ability registry to
+     * restrict access.
      *
      * @param groupName name of the group to remove
      */
@@ -88,27 +102,20 @@ public final class ToolGroupManager {
         if (groupName == null || groupName.isBlank()) {
             return;
         }
-        synchronized (toolGroupsByName) {
-            ToolGroup removedGroup = toolGroupsByName.remove(groupName.trim());
-            if (removedGroup == null) {
-                return;
-            }
-            Set<String> remainingToolNames = findOwningToolNames();
-            for (String toolName : removedGroup.toolNames()) {
-                if (!remainingToolNames.contains(toolName)) {
-                    revokedToolNames.add(toolName);
-                }
-            }
-        }
+        toolGroupsByName.remove(groupName.trim());
     }
 
     /**
      * Returns whether any tool names have been revoked by group unregistration.
      *
-     * @return {@code true} when revoked tool names are recorded
+     * @return always {@code false}; revoked-name tombstones are no longer maintained
+     * @deprecated Group unregistration removes a classification and does not revoke
+     *     tool access. Deactivate the group for a session or remove the tool from
+     *     the ability registry instead.
      */
+    @Deprecated(forRemoval = true)
     public boolean hasRevokedToolNames() {
-        return !revokedToolNames.isEmpty();
+        return false;
     }
 
     /**
@@ -159,9 +166,6 @@ public final class ToolGroupManager {
                 }
             }
             for (String toolName : normalizedRegisteredToolNames) {
-                if (revokedToolNames.contains(toolName)) {
-                    continue;
-                }
                 if (isToolEligible(
                         toolName,
                         owningGroupsByToolName.get(toolName),
@@ -188,9 +192,6 @@ public final class ToolGroupManager {
         }
         Set<String> normalizedActiveGroupNames = normalizeNames(activeGroupNames);
         synchronized (toolGroupsByName) {
-            if (revokedToolNames.contains(normalizedToolName)) {
-                return false;
-            }
             List<ToolGroup> owningGroups =
                     toolGroupsByName.values().stream()
                             .filter(toolGroup -> toolGroup.toolNames().contains(normalizedToolName))
@@ -209,14 +210,6 @@ public final class ToolGroupManager {
             }
         }
         return owningGroupsByToolName;
-    }
-
-    private Set<String> findOwningToolNames() {
-        Set<String> toolNames = new LinkedHashSet<>();
-        for (ToolGroup toolGroup : toolGroupsByName.values()) {
-            toolNames.addAll(toolGroup.toolNames());
-        }
-        return toolNames;
     }
 
     private static boolean isToolEligible(

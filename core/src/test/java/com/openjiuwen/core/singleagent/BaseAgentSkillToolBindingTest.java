@@ -13,6 +13,7 @@ import com.openjiuwen.core.common.logging.LogCaptureFixture;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
@@ -184,6 +185,33 @@ class BaseAgentSkillToolBindingTest {
     }
 
     @Test
+    void skillUnregisterRemovesImplicitGroupAndRestoresGlobalTool() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("unregister-skill-session");
+        registerSkill(agent, "RecoveredSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("RecoveredSkill")
+                                .tools(List.of(tool("recoveredTool")))
+                                .build())
+                .toCompletableFuture()
+                .join();
+        agent.activateSkill("RecoveredSkill", session);
+
+        assertThat(agent.getToolGroupManager().getToolGroup("skill:RecoveredSkill")).isPresent();
+        assertThat(visibleToolNames(agent, session)).contains("recoveredTool", "skill_tool");
+
+        agent.getSkillUtil().getSkillManager().unregister("RecoveredSkill");
+        registerGlobalTool(agent, "recoveredTool");
+
+        assertThat(agent.getSkillUtil().getSkillManager().has("RecoveredSkill")).isFalse();
+        assertThat(agent.getToolGroupManager().getToolGroup("skill:RecoveredSkill")).isEmpty();
+        assertThat(visibleToolNames(agent, session)).contains("recoveredTool", "skill_tool");
+        assertThat(executeTool(agent, session, "global-restored", "recoveredTool"))
+                .doesNotContain("not active");
+    }
+
+    @Test
     void activatingSkillStoresSessionStateAndExposesSkillTools() {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("session-a");
@@ -334,6 +362,10 @@ class BaseAgentSkillToolBindingTest {
 
             assertThat(agent.getSkillUtil().getSkillManager().has("RejectedWorkspaceSkill"))
                     .isFalse();
+            assertThat(
+                            agent.getToolGroupManager()
+                                    .getToolGroup("skill:RejectedWorkspaceSkill"))
+                    .isEmpty();
             assertThat(agent.getActiveSkillNames(session))
                     .containsExactly("RejectedWorkspaceSkill");
             assertThat(visibleToolNames(agent, session)).doesNotContain("rejectedSkillTool");
@@ -351,6 +383,10 @@ class BaseAgentSkillToolBindingTest {
             writeSkillFile(skillDirectory.resolve("SKILL.md"), "RejectedWorkspaceSkill");
             agent.getSkillUtil().getSkillManager().refreshIncrementally(List.of());
 
+            assertThat(
+                            agent.getToolGroupManager()
+                                    .getToolGroup("skill:RejectedWorkspaceSkill"))
+                    .isPresent();
             assertThat(visibleToolNames(agent, session)).contains("rejectedSkillTool");
         } finally {
             Runner.resourceMgr().removeSysOperation(sysOperationId);
@@ -542,6 +578,26 @@ class BaseAgentSkillToolBindingTest {
                 .get(0)
                 .toolMessage()
                 .getContentAsString();
+    }
+
+    private static void registerGlobalTool(TestAgent agent, String name) {
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder()
+                        .id(name)
+                        .name(name)
+                        .description("global " + name)
+                        .inputParams(
+                                Map.of(
+                                        "type",
+                                        "object",
+                                        "properties",
+                                        Map.of(),
+                                        "required",
+                                        List.of()))
+                        .stateless(true)
+                        .build(),
+                inputs -> Map.of());
+        agent.getAbilityManager().addAbility(tool.getCard(), tool);
     }
 
     private static void writeSkillFile(Path skillFile, String skillName) throws IOException {
