@@ -369,6 +369,10 @@ public class IntelliRouterModelClient extends BaseModelClient {
             params.putAll(kwargs);
         }
 
+        if (stream) {
+            ensureStreamUsageOption(params);
+        }
+
         logRequestParams(model, messages, toolsDict, finalTemperature, finalTopP, finalMaxTokens, stop, stream);
         return params;
     }

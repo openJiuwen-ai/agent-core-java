@@ -291,6 +291,7 @@ class IntelliRouterModelClientTest {
                 .containsEntry("custom", "value");
         assertThat(router.requestParams).containsKey("tools");
         assertThat(router.requestParams).doesNotContainKeys("model", "messages", "stream", "tool_choice");
+        assertThat(router.requestParams).doesNotContainKey("stream_options");
 
         assertThat(result.getContent()).isEqualTo("parsed:raw");
         assertThat(result.getReasoningContent()).isEqualTo("think");
@@ -417,7 +418,25 @@ class IntelliRouterModelClientTest {
                 .containsEntry("max_tokens", 64)
                 .containsEntry("request_id", "r1");
         assertThat(router.requestParams).doesNotContainKeys("model", "messages", "stream");
+        assertThat(router.requestParams).containsEntry("stream_options", Map.of("include_usage", true));
         assertThat(chunks).extracting(AssistantMessageChunk::getContent).containsExactly("a", "b", "");
+    }
+
+    @Test
+    void streamingRequestMergesConfiguredStreamOptions() throws Exception {
+        RecordingRouter router = RecordingRouter.withChunks(List.of(Map.of("choices", List.of())));
+        IntelliRouterModelClient client = new IntelliRouterModelClient(requestConfig(), intelliRouterConfig(), router);
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("stream_options", Map.of("custom_flag", true));
+
+        Iterator<AssistantMessageChunk> iterator = client.stream("Hi", null, null, null, null,
+                null, null, null, null, kwargs);
+        while (iterator.hasNext()) {
+            iterator.next();
+        }
+
+        assertThat(router.requestParams)
+                .containsEntry("stream_options", Map.of("custom_flag", true, "include_usage", true));
     }
 
     @Test

@@ -376,7 +376,7 @@ public abstract class BaseModelClient implements Model.ModelClient {
      * @param params effective request parameters
      * @since 0.1.17
      */
-    private static void ensureStreamUsageOption(Map<String, Object> params) {
+    static void ensureStreamUsageOption(Map<String, Object> params) {
         Object existingOptions = params.get("stream_options");
         if (existingOptions == null) {
             params.put("stream_options", new LinkedHashMap<>(Map.of("include_usage", true)));
