@@ -11,16 +11,24 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.Tag;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.prompts.sections.SectionName;
+import com.openjiuwen.harness.rails.CallbackContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -30,6 +38,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -271,6 +280,108 @@ class SafetyPromptRailTest {
         }
     }
 
+    @Test
+    @DisplayName("前序回调选择的模型优先于旧参数，实际模型请求仍包含安全段")
+    void callModel_whenEarlierRailSelectsModel_preservesSelectionAndInjectsSafety() {
+        String firstId = "safety-first-" + UUID.randomUUID();
+        String secondId = "safety-second-" + UUID.randomUUID();
+        var resources = Runner.resourceMgr();
+        String originalDefault = resources.getDefaultModelId();
+        try (Fixture first = new Fixture(); Fixture second = new Fixture()) {
+            resources.addModel(firstId, first.agent::getLlm, List.of(Tag.GLOBAL));
+            resources.addModel(secondId, second.agent::getLlm, List.of(Tag.GLOBAL));
+            AgentRail selection = new AgentRail() {
+                @Override
+                public void beforeModelCall(AgentCallbackContext context) {
+                    context.getExtra().put("target_model_id", secondId);
+                    context.setDynamicModelId(firstId);
+                }
+            };
+            selection.setPriority(100);
+            first.agent.registerRail(selection).toCompletableFuture().orTimeout(5, TimeUnit.SECONDS).join();
+
+            first.call(false);
+
+            assertEquals(1, first.requests.size());
+            assertTrue(second.requests.isEmpty());
+            assertOneSafetySection(first.requests.get(0));
+        } finally {
+            for (String id : List.of(firstId, secondId)) {
+                if (resources.listModelIds().contains(id)) {
+                    resources.removeModelForce(id, true);
+                }
+            }
+            resources.setDefaultModelId(originalDefault);
+        }
+    }
+
+    @Test
+    @DisplayName("旧回调可定制安全段，但不回传模型选择及无关字段")
+    void beforeModelCall_whenLegacyHookCustomizesSafety_onlyWritesSafety() {
+        SafetyPromptRail custom = new SafetyPromptRail() {
+            @Override
+            public void beforeModelCall(CallbackContext context) {
+                super.beforeModelCall(context);
+                PromptSection section = new PromptSection(SectionName.SAFETY,
+                        Map.of("cn", "custom safety", "en", "custom safety"), 85);
+                getSystemPromptBuilder().removeSection(SectionName.SAFETY);
+                getSystemPromptBuilder().addSection(section);
+                context.put("safety_section", section);
+                context.setDynamicModelId("model-3");
+                context.put("marker", "changed");
+            }
+        };
+        try (Fixture f = new Fixture(custom)) {
+            AgentCallbackContext context = new AgentCallbackContext(f.agent);
+            ModelCallInputs inputs = new ModelCallInputs();
+            inputs.getMessages().add(new UserMessage("hi"));
+            context.setInputs(inputs);
+            context.setDynamicModelId("model-1");
+
+            custom.getCallbacks().get(AgentCallbackEvent.BEFORE_MODEL_CALL)
+                    .handle(context).toCompletableFuture().orTimeout(5, TimeUnit.SECONDS).join();
+
+            assertEquals("model-1", context.getDynamicModelId());
+            assertFalse(context.getExtra().containsKey("marker"));
+            assertTrue(inputs.getMessages().stream().map(BaseMessage.class::cast)
+                    .anyMatch(message -> message.getContentAsString().contains("custom safety")));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @DisplayName("本次未生成安全段时不注入遗留段，无 builder 也执行旧回调")
+    void beforeModelCall_whenNoNewSafetySection_ignoresStaleSection(boolean hasBuilder) {
+        AtomicInteger calls = new AtomicInteger();
+        SafetyPromptRail custom = new SafetyPromptRail() {
+            @Override
+            public void beforeModelCall(CallbackContext context) {
+                calls.incrementAndGet();
+            }
+        };
+        try (Fixture f = new Fixture(custom)) {
+            if (!hasBuilder) {
+                custom.uninit(f.owner);
+            }
+            AgentCallbackContext context = hasBuilder
+                    ? new AgentCallbackContext(f.agent) : new AgentCallbackContext();
+            ModelCallInputs inputs = new ModelCallInputs();
+            inputs.getMessages().add(new UserMessage("hi"));
+            context.setInputs(inputs);
+            PromptSection stale = new PromptSection(SectionName.SAFETY,
+                    Map.of("cn", "stale safety", "en", "stale safety"), 85);
+            context.getExtra().put("safety_section", stale);
+
+            custom.getCallbacks().get(AgentCallbackEvent.BEFORE_MODEL_CALL)
+                    .handle(context).toCompletableFuture().orTimeout(5, TimeUnit.SECONDS).join();
+
+            assertEquals(1, calls.get());
+            assertEquals(1, inputs.getMessages().size());
+            assertEquals("hi", ((BaseMessage) inputs.getMessages().get(0)).getContentAsString());
+            assertSame(stale, context.getExtra().get("safety_section"));
+        }
+    }
+
     private static void assertOneSafetySection(String request) {
         assertEquals(1, request.split("# 安全原则", -1).length - 1,
                 "Each request should contain exactly one safety section");
@@ -286,11 +397,16 @@ class SafetyPromptRailTest {
         final AgentCard card = new AgentCard(UUID.randomUUID().toString(), "safety-test", "test");
         final ReActAgent agent = new ReActAgent(card);
         final DeepAgent owner = new DeepAgent();
-        final SafetyPromptRail rail = new SafetyPromptRail();
+        final SafetyPromptRail rail;
         final List<String> requests = new ArrayList<>();
         boolean failFirst;
 
         Fixture() {
+            this(new SafetyPromptRail());
+        }
+
+        Fixture(SafetyPromptRail rail) {
+            this.rail = rail;
             agent.configure(config());
             agent.setLlm(new Model(new Model.ModelClient() {
                 @Override

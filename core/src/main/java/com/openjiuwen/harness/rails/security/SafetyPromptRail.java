@@ -55,17 +55,17 @@ public class SafetyPromptRail extends BaseSecurityRail {
     @Override
     public void beforeModelCall(AgentCallbackContext context) {
         CallbackContext callback = toCallbackContext(context);
+        // Only a section produced by this invocation may update the request.
+        callback.getValues().remove("safety_section");
         callback.put("agent", context.getAgent());
         refreshSystemPromptBuilder(callback);
-        if (systemPromptBuilder == null) {
-            return;
-        }
-        String previousPrompt = systemPromptBuilder.build();
-        String previousSafety = systemPromptBuilder.getSection(SectionName.SAFETY)
+        String previousPrompt = systemPromptBuilder == null ? "" : systemPromptBuilder.build();
+        String previousSafety = systemPromptBuilder == null ? "" : systemPromptBuilder.getSection(SectionName.SAFETY)
                 .map(section -> section.render(systemPromptBuilder.getLanguage())).orElse("");
         beforeModelCall(callback);
-        applyCallbackContext(context, callback);
-        if (context.getInputs() instanceof ModelCallInputs inputs
+        // This rail owns safety prompts, not model selection or other callback state.
+        // Applying the whole context could overwrite a previous rail's dynamic model.
+        if (systemPromptBuilder != null && context.getInputs() instanceof ModelCallInputs inputs
                 && callback.get("safety_section") instanceof PromptSection section) {
             updateRequest(inputs, previousPrompt, previousSafety,
                     section.render(systemPromptBuilder.getLanguage()));
