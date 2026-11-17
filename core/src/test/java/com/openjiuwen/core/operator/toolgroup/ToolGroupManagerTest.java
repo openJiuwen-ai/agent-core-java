@@ -169,13 +169,29 @@ class ToolGroupManagerTest {
                 new ToolGroup("research", "Research", List.of("search")));
 
         toolGroupManager.unregisterToolGroup("research");
+        assertThat(toolGroupManager.hasRevokedToolNames()).isTrue();
+
+        assertThat(toolGroupManager.getActiveToolNames(
+                List.of("ghost"), List.of("search", "clock")))
+                .containsExactlyInAnyOrder("clock", "search");
+        assertThat(toolGroupManager.isToolEligibleForExecution(
+                "search", List.of("ghost")))
+                .isTrue();
+    }
+
+    @Test
+    void unregisterToolGroup_residueDeniesStaleActiveOwner() {
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("research", "Research", List.of("search")));
+
+        toolGroupManager.unregisterToolGroup("research");
 
         assertThat(toolGroupManager.getActiveToolNames(
                 List.of("research"), List.of("search", "clock")))
-                .containsExactlyInAnyOrder("clock", "search");
+                .containsExactly("clock");
         assertThat(toolGroupManager.isToolEligibleForExecution(
                 "search", List.of("research")))
-                .isTrue();
+                .isFalse();
     }
 
     @Test
@@ -207,7 +223,7 @@ class ToolGroupManagerTest {
         toolGroupManager.unregisterToolGroup("research");
         assertThat(toolGroupManager.isToolEligibleForExecution(
                 "search", List.of("research")))
-                .isTrue();
+                .isFalse();
 
         toolGroupManager.registerToolGroup(researchGroup);
         assertThat(toolGroupManager.isToolEligibleForExecution(

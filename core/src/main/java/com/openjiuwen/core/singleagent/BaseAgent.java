@@ -237,7 +237,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             boolean isToolInRegisteredGroup =
                     toolGroupManager.getGroups().stream()
                             .anyMatch(group -> group.toolNames().contains(toolName));
-            if (isToolInRegisteredGroup) {
+            if (isToolInRegisteredGroup || toolGroupManager.hasRevokedToolNames()) {
                 return toolGroupManager.isToolEligibleForExecution(toolName, activeGroupNames);
             }
             if (skillToolRegistry.isSkillTool(toolName)) {
@@ -884,7 +884,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     public List<ToolInfo> listEffectiveToolInfo(AgentSessionApi session) {
         List<String> activeSkillNames = getActiveSkillNames(session);
-        if (toolGroupManager.getGroups().isEmpty()) {
+        if (toolGroupManager.getGroups().isEmpty() && !toolGroupManager.hasRevokedToolNames()) {
             return listEffectiveToolInfo(activeSkillNames);
         }
         return listEffectiveToolInfoWithGroups(activeSkillNames, getActiveToolGroupNames(session));
