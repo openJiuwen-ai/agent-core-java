@@ -28,7 +28,7 @@ public final class LoopCoordinator {
     private final List<StopConditionEvaluator> evaluators;
     private int iteration;
     private int tokenUsage;
-    private boolean aborted;
+    private volatile boolean aborted;
     private long startNanoTime;
     private String stopReason;
     private Map<String, Object> lastResult;
