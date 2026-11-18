@@ -670,10 +670,23 @@ public class SkillManager {
         return registry.size();
     }
 
+    /**
+     * Observes the lifecycle changes of skills managed by {@link SkillManager}.
+     */
     public interface SkillLifecycleListener {
+        /**
+         * Called after one or more skills become available.
+         *
+         * @param skillNames names of the added skills
+         */
         default void onSkillsAdded(Collection<String> skillNames) {
         }
 
+        /**
+         * Called after one or more skills stop being available.
+         *
+         * @param skillNames names of the removed skills
+         */
         default void onSkillsRemoved(Collection<String> skillNames) {
         }
     }
