@@ -6,6 +6,10 @@ package com.openjiuwen.harness.tools;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.security.JsonUtils;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Mirrors Python's {@code ToolOutput} in
@@ -53,6 +57,18 @@ public class ToolOutput {
     }
 
     /**
+     * JSON-facing view. The key stays {@code success}, matching the constructor
+     * property, so nested {@code ToolOutput} values serialize the same way.
+     */
+    public Map<String, Object> toMap() {
+        Map<String, Object> rendered = new LinkedHashMap<>();
+        rendered.put("success", success);
+        rendered.put("data", data);
+        rendered.put("error", error);
+        return rendered;
+    }
+
+    /**
      * Create a new builder for ToolOutput.
      *
      * @return a new Builder instance
@@ -91,6 +107,10 @@ public class ToolOutput {
 
     @Override
     public String toString() {
-        return "ToolOutput(success=" + success + ", data=" + data + ", error=" + error + ")";
+        try {
+            return JsonUtils.safeJsonDumps(toMap());
+        } catch (RuntimeException exception) {
+            return "ToolOutput(success=" + success + ", error=" + error + ")";
+        }
     }
 }

@@ -7,7 +7,7 @@
 
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-memory-java</artifactId>
-    <version>0.1.17</version>
+    <version>0.1.18</version>
     <packaging>jar</packaging>
 
     <name>agent-core-memory-java</name>
