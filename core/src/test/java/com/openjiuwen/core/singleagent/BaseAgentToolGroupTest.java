@@ -92,37 +92,7 @@ class BaseAgentToolGroupTest {
 
     @Test
     @Tag("TC-SEC-01")
-    void unregisteredGroup_withoutStaleActiveGroupName_restoresUngroupedSemantics() {
-        TestAgent agent = new TestAgent();
-        MemorySession session = new MemorySession("session-a");
-        registerGlobalTool(agent, "clock");
-        registerGlobalTool(agent, "search");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
-
-        session.updateState(
-                Map.of(BaseAgent.ACTIVE_TOOL_GROUP_NAMES_STATE_KEY, List.of("ghost")));
-
-        assertThat(agent.listEffectiveToolInfo(session))
-                .extracting(ToolInfo::getName)
-                .containsExactly("clock");
-
-        agent.unregisterToolGroup("research");
-
-        assertThat(agent.listEffectiveToolInfo(session))
-                .extracting(ToolInfo::getName)
-                .containsExactlyInAnyOrder("clock", "search");
-        ToolCall residueCall =
-                ToolCall.builder().id("call-residue").name("search").arguments("{}").build();
-        List<AbilityManager.ExecutionResult> residueResults =
-                agent.getAbilityManager().execute(null, residueCall, session, false);
-        assertThat(residueResults.get(0).result()).isNotNull();
-        assertThat(residueResults.get(0).toolMessage().getContentAsString())
-                .doesNotContain("not active");
-    }
-
-    @Test
-    @Tag("TC-SEC-01")
-    void unregisteredGroupResidue_doesNotRestoreVisibilityOrExecution() {
+    void unregisteredGroup_restoresUngroupedSemantics() {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "clock");
@@ -140,15 +110,14 @@ class BaseAgentToolGroupTest {
 
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
-                .containsExactly("clock");
+                .containsExactlyInAnyOrder("clock", "search");
         ToolCall residueCall =
                 ToolCall.builder().id("call-residue").name("search").arguments("{}").build();
         List<AbilityManager.ExecutionResult> residueResults =
                 agent.getAbilityManager().execute(null, residueCall, session, false);
-        assertThat(residueResults.get(0).result()).isNull();
+        assertThat(residueResults.get(0).result()).isNotNull();
         assertThat(residueResults.get(0).toolMessage().getContentAsString())
-                .contains("search")
-                .contains("not active");
+                .doesNotContain("not active");
     }
 
     @Test

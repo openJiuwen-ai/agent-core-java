@@ -25,7 +25,7 @@ agent.deactivateToolGroup("search_tools", session);
 - 未分组工具始终可见、可执行。
 - 属于显式组的工具，只有至少一个所属组在当前 session 激活时才进入 prompt。
 - 停用组中的工具即使被直连调用，也会在执行层返回不可用。
-- `unregisterToolGroup(...)` 删除组定义；注销后不再属于任何组的工具默认恢复未分组行为。若某个 session 仍残留被注销组的激活名，则该 session 中该组原独占工具按 fail-closed 拒绝，避免 stale active group 意外放行。
+- `unregisterToolGroup(...)` 只删除组定义，不撤销工具授权；注销后不再属于任何组的工具恢复未分组行为。
 - Skill 通过保留组名 `skill:<skill-name>` 联动；它不能绕过显式组的停用规则。
 
 ## 3. 主要 API
@@ -33,7 +33,7 @@ agent.deactivateToolGroup("search_tools", session);
 | 对象 | API | 说明 |
 | --- | --- | --- |
 | `ToolGroup` | `new ToolGroup(name, description, toolNames)` | 定义不可变工具组 |
-| `ToolGroupManager` | `registerToolGroup` / `unregisterToolGroup` | 注册组定义 / 删除组分类并记录组级撤销标记 |
+| `ToolGroupManager` | `registerToolGroup` / `unregisterToolGroup` | 注册组定义 / 删除组分类 |
 | `ToolGroupManager` | `getActiveToolNames` / `isToolEligibleForExecution` | 无状态 prompt/执行判定 |
 | `BaseAgent` | `activateToolGroup` / `deactivateToolGroup` | session 级启停 |
 | `BaseAgent` | `getActiveToolGroupNames` | 读取当前 session 的组状态 |
@@ -66,6 +66,6 @@ agent.deactivateToolGroup("research", session);
 - 未注册任何显式组时，所有工具保持原有 passthrough 行为。
 - 显式组和 Skill 隐式组都使用 session state，不引入全局开关。
 - 同名工具跨组采用并集语义；只要一个所属组激活即可见。
-- 需要阻止某个 session 使用组内工具时，使用 `deactivateToolGroup`；需要彻底收回工具时，应从 `AbilityManager` 移除或禁用工具。`unregisterToolGroup` 的组级撤销标记只用于堵住 stale active group 的 ungrouped 回落，不会按工具名做全局永久封禁。
+- 需要阻止某个 session 使用组内工具时，使用 `deactivateToolGroup`；需要彻底收回工具时，应从 `AbilityManager` 移除或禁用工具。不要把 `unregisterToolGroup` 当作授权撤销 API。
 - 本能力只做 prompt 过滤和执行入口拒绝，不提供组级 REST API，也不替代沙箱隔离。
 - `skill:` 前缀保留给 Skill 隐式组，不能用于手工创建显式组。
