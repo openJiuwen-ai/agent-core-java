@@ -4,6 +4,10 @@
 
 package com.openjiuwen.harness.rails.security;
 
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -23,7 +27,6 @@ import java.lang.reflect.Method;
 public class SafetyPromptRail extends BaseSecurityRail {
 
     private SystemPromptBuilder systemPromptBuilder;
-    private final PromptSection safetySection = SafetySection.buildMultilingualSection();
 
     public SafetyPromptRail() {
         setPriority(85);
@@ -33,8 +36,7 @@ public class SafetyPromptRail extends BaseSecurityRail {
     @Override
     public void init(DeepAgent agent) {
         super.init(agent);
-        systemPromptBuilder = resolveSystemPromptBuilder(agent == null ? null : agent.reactAgent(), agent);
-        prepareSafetySection();
+        systemPromptBuilder = resolveSystemPromptBuilder(agent, agent == null ? null : agent.reactAgent());
     }
 
     @Override
@@ -46,42 +48,64 @@ public class SafetyPromptRail extends BaseSecurityRail {
     }
 
     /**
-     * Prepare before the first request is rendered, including after configure replaces the builder.
+     * Updates the already prepared request as well as the builder used by later calls.
      *
-     * @param ctx outer invocation context
+     * @param context current native model callback
      */
     @Override
-    public void beforeInvoke(CallbackContext ctx) {
-        super.beforeInvoke(ctx);
-        if (ctx != null) {
-            refreshSystemPromptBuilder(ctx);
-            prepareSafetySection();
+    public void beforeModelCall(AgentCallbackContext context) {
+        CallbackContext callback = toCallbackContext(context);
+        // Let legacy hooks observe the effective model without writing their changes back.
+        if (context.getDynamicModelId() != null) {
+            callback.setDynamicModelId(context.getDynamicModelId());
+        }
+        // Only a section produced by this invocation may update the request.
+        callback.getValues().remove("safety_section");
+        callback.put("agent", context.getAgent());
+        refreshSystemPromptBuilder(callback);
+        String previousPrompt = systemPromptBuilder == null ? "" : systemPromptBuilder.build();
+        String previousSafety = systemPromptBuilder == null ? "" : systemPromptBuilder.getSection(SectionName.SAFETY)
+                .map(section -> section.render(systemPromptBuilder.getLanguage())).orElse("");
+        beforeModelCall(callback);
+        // This rail owns safety prompts, not model selection or other callback state.
+        // Applying the whole context could overwrite a previous rail's dynamic model.
+        if (systemPromptBuilder != null && context.getInputs() instanceof ModelCallInputs inputs
+                && callback.get("safety_section") instanceof PromptSection section) {
+            updateRequest(inputs, previousPrompt, previousSafety,
+                    section.render(systemPromptBuilder.getLanguage()));
         }
     }
 
-    private void prepareSafetySection() {
-        if (!getSupportedEvents().contains(BEFORE_MODEL_CALL)) {
-            removeOwnedSection();
-        } else if (systemPromptBuilder != null
-                && (!systemPromptBuilder.hasSection(SectionName.SAFETY)
-                    || systemPromptBuilder.getSection(SectionName.SAFETY).orElse(null) == safetySection)) {
-            // ReActAgent clears transient sections before each inner invocation.
-            systemPromptBuilder.addPersistentSection(safetySection);
+    private void updateRequest(ModelCallInputs inputs, String previousPrompt,
+                               String previousSafety, String safety) {
+        // Replace only the builder-owned message/section. Never rebuild the context
+        // window: another rail may already have projected messages or filtered tools.
+        for (Object value : inputs.getMessages()) {
+            if (value instanceof BaseMessage message && "system".equals(message.getRole())
+                    && message.getContent() instanceof String content) {
+                if (!previousPrompt.isBlank() && content.equals(previousPrompt)) {
+                    message.setContent(systemPromptBuilder.build());
+                    return;
+                }
+                if (!previousSafety.isBlank() && content.contains(previousSafety)) {
+                    message.setContent(content.replace(previousSafety, safety));
+                    return;
+                }
+                if (content.contains(safety)) {
+                    return;
+                }
+            }
         }
-    }
-
-    private void removeOwnedSection() {
-        if (systemPromptBuilder != null
-                && systemPromptBuilder.getSection(SectionName.SAFETY).orElse(null) == safetySection) {
-            systemPromptBuilder.removeSection(SectionName.SAFETY);
-        }
+        // A rail replaced the builder message, or the original prompt was empty.
+        // Preserve that request and add only this rail's section.
+        inputs.getMessages().add(0, new SystemMessage(safety));
     }
 
     private void refreshSystemPromptBuilder(CallbackContext ctx) {
-        SystemPromptBuilder current = resolveSystemPromptBuilder(
-                ctx.getAgent() == null ? null : ctx.getAgent().reactAgent(), ctx.getAgent(), ctx.get("agent"));
-        if (current != null && current != systemPromptBuilder) {
-            removeOwnedSection();
+        SystemPromptBuilder current = resolveSystemPromptBuilder(ctx.get("agent"),
+                ctx.getAgent() == null || systemPromptBuilder == null ? null : ctx.getAgent().reactAgent(),
+                ctx.getAgent());
+        if (current != null) {
             systemPromptBuilder = current;
         }
     }
@@ -89,14 +113,16 @@ public class SafetyPromptRail extends BaseSecurityRail {
     @Override
     protected SecurityDecision runSecurityCheck(SecurityCheckContext securityCtx) {
         CallbackContext ctx = securityCtx.callbackContext();
-        if (systemPromptBuilder == null) {
-            systemPromptBuilder = resolveSystemPromptBuilder(ctx.getAgent(), ctx.get("agent"));
-        }
+        refreshSystemPromptBuilder(ctx);
         if (systemPromptBuilder == null) {
             return allow();
         }
-        systemPromptBuilder.addPersistentSection(safetySection);
-        ctx.put("safety_section", safetySection);
+
+        String language = systemPromptBuilder.getLanguage();
+        PromptSection section = SafetySection.buildSafetySection(language);
+        systemPromptBuilder.removeSection(SectionName.SAFETY);
+        systemPromptBuilder.addSection(section);
+        ctx.put("safety_section", section);
         return allow();
     }
 
