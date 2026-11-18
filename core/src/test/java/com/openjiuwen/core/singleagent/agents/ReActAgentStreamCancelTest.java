@@ -19,6 +19,7 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -28,6 +29,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.Phaser;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -586,13 +589,72 @@ class ReActAgentStreamCancelTest {
         }
     }
 
+    private static FutureTask<?> cancellationFuture(Runnable task, Runnable cleanup) throws Exception {
+        Class<?> futureType = null;
+        for (Class<?> nestedType : ReActAgent.class.getDeclaredClasses()) {
+            if ("CancellationFuture".equals(nestedType.getSimpleName())) {
+                futureType = nestedType;
+            }
+        }
+        if (futureType == null) {
+            throw new AssertionError("Cancellation-aware worker future is missing");
+        }
+        Constructor<?> constructor = futureType.getDeclaredConstructor(Runnable.class, Runnable.class);
+        constructor.setAccessible(true);
+        Object instance = constructor.newInstance(task, cleanup);
+        if (instance instanceof FutureTask<?> future) {
+            return future;
+        }
+        throw new AssertionError("Cancellation worker must be a FutureTask");
+    }
+
+    @Test
+    void cancellationBeforeWorkerStartRunsRegistrationCleanup() throws Exception {
+        AtomicInteger taskRuns = new AtomicInteger();
+        AtomicInteger cleanups = new AtomicInteger();
+        FutureTask<?> future = cancellationFuture(taskRuns::incrementAndGet, cleanups::incrementAndGet);
+
+        assertThat(future.cancel(true)).isTrue();
+        future.run();
+
+        assertThat(taskRuns.get()).isZero();
+        assertThat(cleanups.get()).isOne();
+    }
+
+    @Test
+    void cancellationDuringWorkerRunDefersRegistrationCleanup() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch exited = new CountDownLatch(1);
+        CountDownLatch cleaned = new CountDownLatch(1);
+        Phaser release = new Phaser(2);
+        FutureTask<?> future = cancellationFuture(() -> {
+            entered.countDown();
+            try {
+                release.arriveAndAwaitAdvance();
+            } finally {
+                exited.countDown();
+            }
+        }, cleaned::countDown);
+        CompletableFuture.runAsync(future);
+        try {
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(future.cancel(true)).isTrue();
+            assertThat(cleaned.getCount()).isOne();
+        } finally {
+            release.arrive();
+        }
+        assertThat(exited.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(cleaned.await(5, TimeUnit.SECONDS)).isTrue();
+    }
+
     @Test
     void requestCancelInterruptsWorkerBeforeClosingInterruptSensitiveIterator() throws Exception {
         InterruptSensitiveClient client = new InterruptSensitiveClient();
         ReActAgent agent = newAgent("interrupt_cancel_" + UUID.randomUUID(), client);
         AgentSession session = newSession(agent, "interrupt-cancel-" + UUID.randomUUID());
         Iterator<Object> iterator = agent.stream(Map.of("query", "go"), session, List.of());
-        CompletableFuture<Void> cancellation = new CompletableFuture<>();
+        CompletableFuture<Void> cancellation = CompletableFuture.completedFuture(null);
+        assertThat(cancellation).as("an unsubmitted cancellation must not block cleanup").isDone();
         try {
             Object partial = readOne(iterator);
             assertThat(((OutputSchema) partial).getPayload())

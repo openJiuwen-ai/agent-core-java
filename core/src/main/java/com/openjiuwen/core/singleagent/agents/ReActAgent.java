@@ -135,9 +135,11 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
@@ -2905,10 +2907,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         Object cancelKey = cancelFlagKey(session);
         StreamCancellation cancellation = new StreamCancellation();
         CANCEL_STREAMS.put(cancelKey, cancellation);
-        Future<?> streamFuture;
+        CancellationFuture streamFuture = new CancellationFuture(
+                () -> runNamedStreamingInvoke(inputs, session, streamThreadName, cancellation),
+                () -> CANCEL_STREAMS.remove(cancelKey, cancellation));
         try {
-            streamFuture = STREAM_EXECUTOR.submit(
-                    () -> runNamedStreamingInvoke(inputs, session, streamThreadName, cancellation));
+            STREAM_EXECUTOR.execute(streamFuture);
         } catch (RejectedExecutionException exception) {
             CANCEL_STREAMS.remove(cancelKey, cancellation);
             writeInvokeResultToStreamInternal(buildErrorResult(exception), session);
@@ -4205,6 +4208,46 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     private static double roundMillis(double nanos) {
         return Math.round((nanos / 1_000_000.0D) * 100.0D) / 100.0D;
+    }
+
+    private static final class CancellationFuture extends FutureTask<Void> {
+        private final AtomicReference<Runnable> cleanup;
+        private volatile boolean isRunCalled;
+
+        private CancellationFuture(Runnable task, Runnable cleanup) {
+            super(task, null);
+            this.cleanup = new AtomicReference<>(cleanup);
+        }
+
+        /**
+         * Runs the worker and releases its registration after the worker exits.
+         */
+        @Override
+        public void run() {
+            isRunCalled = true;
+            try {
+                super.run();
+            } finally {
+                cleanupRegistration();
+            }
+        }
+
+        /**
+         * Releases the registration when cancellation prevents the worker from starting.
+         */
+        @Override
+        protected void done() {
+            if (!isRunCalled) {
+                cleanupRegistration();
+            }
+        }
+
+        private void cleanupRegistration() {
+            Runnable action = cleanup.getAndSet(null);
+            if (action != null) {
+                action.run();
+            }
+        }
     }
 
     private static final class StreamCancellation {

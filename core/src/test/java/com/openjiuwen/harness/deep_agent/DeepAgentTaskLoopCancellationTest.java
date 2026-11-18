@@ -182,6 +182,9 @@ class DeepAgentTaskLoopCancellationTest {
         assertThat(readOne(stream)).satisfies(chunk -> assertChunkContains(chunk, partialText(sessionId)));
         BlockingIterator iterator = client.iterator(sessionId);
         assertThat(iterator.awaitBlocked()).isTrue();
+        assertThat(iterator.hasDeliveredToolCall())
+                .as("the model must request the tool before cancellation blocks the stream")
+                .isTrue();
         CompletableFuture<List<Object>> drained = drainAsync(stream);
         agent.requestAbort(sessionId);
         boolean closed = iterator.awaitClosed();
@@ -385,30 +388,25 @@ class DeepAgentTaskLoopCancellationTest {
             if (closed) {
                 return false;
             }
-            if (position == 0) {
+            if (position < 2) {
                 return true;
             }
-            if (position == 1) {
-                blocked.countDown();
-                awaitClose();
-            }
-            return !closed && position < 3;
+            blocked.countDown();
+            awaitClose();
+            return false;
         }
 
         @Override
         public AssistantMessageChunk next() {
-            if (closed || position >= 3) {
+            if (closed || position >= 2) {
                 throw new NoSuchElementException();
             }
             position++;
             if (position == 1) {
                 return chunk(partialText(sessionId), null, null);
             }
-            if (position == 2) {
-                return chunk("", List.of(ToolCall.builder().id("call-" + sessionId)
-                        .name("blocked_tool").arguments("{}").index(0).build()), "tool_calls");
-            }
-            return chunk("uncancelled-" + sessionId, null, "stop");
+            return chunk("", List.of(ToolCall.builder().id("call-" + sessionId)
+                    .name("blocked_tool").arguments("{}").index(0).build()), "tool_calls");
         }
 
         @Override
@@ -427,6 +425,10 @@ class DeepAgentTaskLoopCancellationTest {
 
         private boolean isClosed() {
             return closed;
+        }
+
+        private boolean hasDeliveredToolCall() {
+            return position >= 2;
         }
 
         private void awaitClose() {
