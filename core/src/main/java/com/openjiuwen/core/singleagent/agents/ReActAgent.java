@@ -178,58 +178,6 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private static final Map<Object, StreamCancellation> CANCEL_STREAMS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    private static final class StreamCancellation {
-        private final AtomicBoolean cancelled = new AtomicBoolean();
-        private Future<?> worker;
-        private Iterator<?> modelIterator;
-
-        private boolean isCancelled() {
-            return cancelled.get();
-        }
-
-        private void attachWorker(Future<?> future) {
-            synchronized (this) {
-                worker = future;
-            }
-            if (isCancelled()) {
-                future.cancel(true);
-            }
-        }
-
-        private void attachModelIterator(Iterator<?> iterator) {
-            synchronized (this) {
-                modelIterator = iterator;
-            }
-            if (isCancelled()) {
-                closeIterator(iterator);
-            }
-        }
-
-        private void clearModelIterator(Iterator<?> iterator) {
-            synchronized (this) {
-                if (modelIterator == iterator) {
-                    modelIterator = null;
-                }
-            }
-        }
-
-        private void cancel() {
-            if (!cancelled.compareAndSet(false, true)) {
-                return;
-            }
-            Future<?> currentWorker;
-            Iterator<?> currentIterator;
-            synchronized (this) {
-                currentWorker = worker;
-                currentIterator = modelIterator;
-            }
-            if (currentWorker != null) {
-                currentWorker.cancel(true);
-            }
-            closeIterator(currentIterator);
-        }
-    }
-
     /** Stateless normalizer shared by all structured multimodal entry inputs. */
     private static final MultimodalContentNormalizer MULTIMODAL_NORMALIZER = new DefaultMultimodalContentNormalizer();
     private static final String EXTERNAL_TOOL_RESULT_ID_ERROR =
@@ -3384,16 +3332,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     | IllegalStateException | NullPointerException | ClassCastException
                     | UnsupportedOperationException | UncheckedIOException exception) {
                 throwIfCancelled(call.ctx());
-                boolean isClassified = exception instanceof BaseError
-                        && ModelCallClassification.of(exception).isPresent();
-                if (!isClassified && !streamAttempt.hasReceivedChunks() && hasIoCause(exception)
-                        && attempt < maxRetries) {
-                    Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
-                            + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
-                            + exception.getMessage());
-                    if (delayStreamRetry(clampStreamRetryDelayMs(call.ctx(), retryDelayMs))) {
-                        continue;
-                    }
+                if (shouldRetryStreamFailure(maxRetries, attempt, streamAttempt, exception)
+                        && delayStreamRetry(clampStreamRetryDelayMs(call.ctx(), retryDelayMs))) {
+                    continue;
                 }
                 Loggers.AGENT.error("ReAct stream error (attempt "
                         + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: "
@@ -3410,6 +3351,20 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 + " attempts, falling back to non-stream with stream wrapping");
         throwIfCancelled(call.ctx());
         return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(), call.modelInputs());
+    }
+
+    private boolean shouldRetryStreamFailure(int maxRetries, int attempt, StreamAttempt streamAttempt,
+            RuntimeException exception) {
+        boolean isClassified = exception instanceof BaseError
+                && ModelCallClassification.of(exception).isPresent();
+        if (isClassified || streamAttempt.hasReceivedChunks() || !hasIoCause(exception)
+                || attempt >= maxRetries) {
+            return false;
+        }
+        Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
+                + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
+                + exception.getMessage());
+        return true;
     }
 
     private AssistantMessage fallbackToNonStream(AgentCallbackContext ctx, Model model,
@@ -3586,7 +3541,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         private int count;
 
         private void add(AssistantMessageChunk chunk) {
-            accumulatedChunk = accumulatedChunk == null ? chunk : (AssistantMessageChunk) accumulatedChunk.merge(chunk);
+            accumulatedChunk = accumulatedChunk == null ? chunk : accumulatedChunk.merge(chunk);
             if (chunk.carriesOutputToken()) {
                 long now = System.nanoTime();
                 if (firstTokenTime == null) {
@@ -4250,5 +4205,57 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     private static double roundMillis(double nanos) {
         return Math.round((nanos / 1_000_000.0D) * 100.0D) / 100.0D;
+    }
+
+    private static final class StreamCancellation {
+        private final AtomicBoolean cancelled = new AtomicBoolean();
+        private Future<?> worker;
+        private Iterator<?> modelIterator;
+
+        private boolean isCancelled() {
+            return cancelled.get();
+        }
+
+        private void attachWorker(Future<?> future) {
+            synchronized (this) {
+                worker = future;
+            }
+            if (isCancelled()) {
+                future.cancel(true);
+            }
+        }
+
+        private void attachModelIterator(Iterator<?> iterator) {
+            synchronized (this) {
+                modelIterator = iterator;
+            }
+            if (isCancelled()) {
+                closeIterator(iterator);
+            }
+        }
+
+        private void clearModelIterator(Iterator<?> iterator) {
+            synchronized (this) {
+                if (modelIterator == iterator) {
+                    modelIterator = null;
+                }
+            }
+        }
+
+        private void cancel() {
+            if (!cancelled.compareAndSet(false, true)) {
+                return;
+            }
+            Future<?> currentWorker;
+            Iterator<?> currentIterator;
+            synchronized (this) {
+                currentWorker = worker;
+                currentIterator = modelIterator;
+            }
+            if (currentWorker != null) {
+                currentWorker.cancel(true);
+            }
+            closeIterator(currentIterator);
+        }
     }
 }
