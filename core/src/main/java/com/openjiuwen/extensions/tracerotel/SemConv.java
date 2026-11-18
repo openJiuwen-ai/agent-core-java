@@ -223,6 +223,11 @@ public final class SemConv {
     /** openjiuwen.workflow.loop.index. */
     public static final String OJ_WORKFLOW_LOOP_INDEX = "openjiuwen.workflow.loop.index";
 
+    // ===== openjiuwen.model.* — LLM model identity attributes =====
+
+    /** openjiuwen.model.id — framework model-pool key of the LLM actually invoked. */
+    public static final String OJ_MODEL_ID = "openjiuwen.model.id";
+
     // ===== openjiuwen.agent.* — Agent-level custom attributes (non-LLM types) =====
 
     /** openjiuwen.agent.invoke_type. */
