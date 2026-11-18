@@ -10,6 +10,9 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.Tag;
@@ -29,6 +32,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.NullSource;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -78,7 +82,7 @@ class SafetyPromptRailTest {
 
             // Then: each session's first model request includes safety.
             assertEquals(2, f.requests.size());
-            assertTrue(f.requests.stream().allMatch(s -> s.contains("# 安全原则")));
+            f.requests.forEach(SafetyPromptRailTest::assertOneSafetySection);
         }
     }
 
@@ -91,13 +95,13 @@ class SafetyPromptRailTest {
             f.call(true);
 
             // Then: safety reaches the streaming model boundary.
-            assertTrue(f.requests.get(0).contains("# 安全原则"));
+            assertOneSafetySection(f.requests.get(0));
         }
     }
 
     @Test
-    @DisplayName("保持语言不变，重新配置后使用新的 builder 注入安全段")
-    void callModel_whenReconfigured_usesCurrentBuilder() {
+    @DisplayName("重新配置后经外层调用准备，使用新 builder 的安全段")
+    void beforeInvoke_whenReconfigured_preparesCurrentBuilder() {
         // Given: an isolated agent with the safety rail and a recording model.
         try (Fixture f = new Fixture()) {
             f.call(false);
@@ -105,6 +109,7 @@ class SafetyPromptRailTest {
 
             // When: reconfigure without changing the prompt language.
             f.agent.configure(config());
+            f.rail.beforeInvoke(new CallbackContext(f.owner, Map.of()));
             f.call(false);
 
             // Then: injection follows the new builder, not the cached old object.
@@ -150,13 +155,13 @@ class SafetyPromptRailTest {
 
             // Then: both attempts reach the model with safety instructions.
             assertEquals(2, f.requests.size());
-            assertTrue(f.requests.stream().allMatch(s -> s.contains("# 安全原则")));
+            f.requests.forEach(SafetyPromptRailTest::assertOneSafetySection);
         }
     }
 
     @Test
-    @DisplayName("较高优先级 Rail 改写消息后，模型收到原改写内容和安全段")
-    void callModel_whenEarlierRailRewritesMessages_preservesEditsAndAddsSafety() {
+    @DisplayName("前序 Rail 整条覆盖系统消息后，保留其结果，不强行重新注入安全段")
+    void callModel_whenEarlierRailRewritesMessages_preservesEditsWithoutReinjection() {
         // Given: an isolated agent with the safety rail and a recording model.
         try (Fixture f = new Fixture()) {
             AgentRail edits = new AgentRail() {
@@ -169,13 +174,13 @@ class SafetyPromptRailTest {
             };
             edits.setPriority(100);
             f.agent.registerRail(edits).toCompletableFuture().orTimeout(5, TimeUnit.SECONDS).join();
-            // When: the earlier rail runs before safety injection.
+            // When: the earlier rail runs after the request has been prepared.
             f.call(false);
 
-            // Then: the model receives both the earlier edits and safety.
+            // Then: respect the explicit system-message replacement after preparation.
             assertTrue(f.requests.get(0).contains("projected system"));
             assertTrue(f.requests.get(0).contains("keep directive"));
-            assertTrue(f.requests.get(0).contains("# 安全原则"));
+            assertFalse(f.requests.get(0).contains("# 安全原则"));
         }
     }
 
@@ -204,6 +209,7 @@ class SafetyPromptRailTest {
             ReActAgentConfig empty = new ReActAgentConfig();
             empty.setPromptTemplate(List.of());
             f.agent.configure(empty);
+            f.rail.beforeInvoke(new CallbackContext(f.owner, Map.of()));
             // When: prepare and send two independent requests.
             f.call(false);
             f.call(false);
@@ -218,7 +224,7 @@ class SafetyPromptRailTest {
     }
 
     @Test
-    @DisplayName("直接回调：保留已改写消息的内容、角色、元数据及合法工具描述")
+    @DisplayName("注册回调：保留已改写消息的内容、角色、元数据及合法工具描述")
     void beforeModelCall_whenRequestIsProjected_preservesMessageAttributesAndTools() {
         // Given: an isolated agent with the safety rail and a recording model.
         try (Fixture f = new Fixture()) {
@@ -233,8 +239,9 @@ class SafetyPromptRailTest {
             inputs.setTools(List.of(tool));
             AgentCallbackContext callback = new AgentCallbackContext(f.agent);
             callback.setInputs(inputs);
-            // When: apply the rail to an already projected request once.
-            f.rail.beforeModelCall(callback);
+            // When: dispatch the legacy handler through the registered callback.
+            f.rail.getCallbacks().get(AgentCallbackEvent.BEFORE_MODEL_CALL)
+                    .handle(callback).toCompletableFuture().orTimeout(5, TimeUnit.SECONDS).join();
 
             // Then: inspect values, without requiring message identity or a fixed index.
             List<BaseMessage> messages = inputs.getMessages().stream()
@@ -249,14 +256,13 @@ class SafetyPromptRailTest {
             assertEquals(1, messages.stream().filter(message -> "user".equals(message.getRole())
                     && "hi".equals(message.getContentAsString())).count());
             assertEquals(List.of(tool), inputs.getTools());
-            assertOneSafetySection(messages.stream().filter(message -> "system".equals(message.getRole()))
-                    .map(BaseMessage::getContentAsString).reduce("", (left, right) -> left + "\n" + right));
+            assertEquals(2, messages.size());
         }
     }
 
     @Test
-    @DisplayName("范围保护：安全 Rail 只同步安全段，不顺带同步其他 Rail 的 builder 改动")
-    void callModel_whenEarlierRailOnlyUpdatesBuilder_limitsSynchronizationToSafety() {
+    @DisplayName("范围保护：模型前回调修改 builder 不重新生成本轮消息")
+    void callModel_whenEarlierRailOnlyUpdatesBuilder_keepsPreparedRequest() {
         // Given: an isolated agent with the safety rail and a recording model.
         try (Fixture f = new Fixture()) {
             AgentRail edits = new AgentRail() {
@@ -273,7 +279,7 @@ class SafetyPromptRailTest {
             // When: prepare the request before executing the two rails.
             f.call(false);
 
-            // Then: only safety is synchronized from the builder by this patch.
+            // Then: the prepared safety prompt remains, without rendering later builder edits.
             assertTrue(f.requests.get(0).contains("# 安全原则"));
             assertTrue(f.requests.get(0).contains("keep directive"));
             assertFalse(f.requests.get(0).contains("deferred instruction"));
@@ -316,8 +322,8 @@ class SafetyPromptRailTest {
     }
 
     @Test
-    @DisplayName("旧回调按原生有效模型定制安全段，但不回传模型选择及无关字段")
-    void beforeModelCall_whenLegacyHookCustomizesSafety_onlyWritesSafety() {
+    @DisplayName("旧回调通过原 forward 写回模型选择、工具和额外字段")
+    void beforeModelCall_whenLegacyHookChangesState_preservesWriteback() {
         SafetyPromptRail custom = new SafetyPromptRail() {
             @Override
             public void beforeModelCall(CallbackContext context) {
@@ -331,12 +337,14 @@ class SafetyPromptRailTest {
                 context.put("safety_section", section);
                 context.setDynamicModelId("model-3");
                 context.put("marker", "changed");
+                context.put("tools", List.of());
             }
         };
         try (Fixture f = new Fixture(custom)) {
             AgentCallbackContext context = new AgentCallbackContext(f.agent);
             ModelCallInputs inputs = new ModelCallInputs();
             inputs.getMessages().add(new UserMessage("hi"));
+            inputs.setTools(List.of(ToolInfo.builder().name("query_balance").build()));
             context.setInputs(inputs);
             context.setDynamicModelId("model-1");
             context.getExtra().put("target_model_id", "model-2");
@@ -344,11 +352,10 @@ class SafetyPromptRailTest {
             custom.getCallbacks().get(AgentCallbackEvent.BEFORE_MODEL_CALL)
                     .handle(context).toCompletableFuture().orTimeout(5, TimeUnit.SECONDS).join();
 
-            assertEquals("model-1", context.getDynamicModelId());
-            assertEquals("model-2", context.getExtra().get("target_model_id"));
-            assertFalse(context.getExtra().containsKey("marker"));
-            assertTrue(inputs.getMessages().stream().map(BaseMessage.class::cast)
-                    .anyMatch(message -> message.getContentAsString().contains("custom safety for model-1")));
+            assertEquals("model-3", context.getDynamicModelId());
+            assertEquals("changed", context.getExtra().get("marker"));
+            assertTrue(inputs.getTools().isEmpty());
+            assertEquals(1, inputs.getMessages().size());
         }
     }
 
@@ -386,6 +393,118 @@ class SafetyPromptRailTest {
         }
     }
 
+    @Test
+    @DisplayName("初始化即准备持久双语段，模型前检查不将其降为单语临时段")
+    void init_preparesPersistentMultilingualSection() {
+        try (Fixture f = new Fixture(new SecurityRail())) {
+            var builder = f.agent.getSystemPromptBuilder();
+            builder.clearTransient();
+            assertOneSafetySection(builder.build());
+            f.call(false);
+            builder.clearTransient();
+            builder.setLanguage("en");
+            assertTrue(builder.build().contains("# Safety"));
+            assertFalse(builder.build().contains("# 安全原则"));
+        }
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"cn", "ja", "", "EN"})
+    @DisplayName("英文切换为中文或未知语言，本轮立即使用中文安全段")
+    void callModel_whenLanguageFallsBack_usesChineseImmediately(String language) {
+        try (Fixture f = new Fixture()) {
+            f.agent.getSystemPromptBuilder().setLanguage("en");
+            f.call(false);
+            f.agent.getSystemPromptBuilder().setLanguage(language);
+            f.call(false);
+            assertTrue(f.requests.get(0).contains("# Safety"));
+            assertOneSafetySection(f.requests.get(1));
+            assertFalse(f.requests.get(1).contains("# Safety"));
+        }
+    }
+
+    @Test
+    @DisplayName("完整 DeepAgent 调用在重新配置前后首轮均包含安全段")
+    void invoke_whenDeepAgentReconfigures_preparesFirstRequest() {
+        try (Fixture f = new Fixture()) {
+            f.owner.deepConfig().setTaskLoopEnabled(true);
+            f.owner.deepConfig().setMaxIterations(1);
+            try {
+                f.owner.invoke(Map.of("query", "hi"), f.session());
+                var previous = f.agent.getSystemPromptBuilder();
+                f.agent.configure(config());
+                f.owner.invoke(Map.of("query", "hi"), f.session());
+                assertEquals(2, f.requests.size());
+                f.requests.forEach(SafetyPromptRailTest::assertOneSafetySection);
+                assertFalse(previous.hasSection(SectionName.SAFETY));
+            } finally {
+                f.owner.close();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("事件关闭时不预置安全段，重新启用和关闭在外层准备阶段生效")
+    void beforeInvoke_whenEventIsDisabled_removesOwnedSection() {
+        SafetyPromptRail rail = new SafetyPromptRail();
+        rail.setSupportedEvents(List.of());
+        try (Fixture f = new Fixture(rail)) {
+            f.call(false);
+            assertFalse(f.requests.get(0).contains("# 安全原则"));
+            rail.setSupportedEvents(List.of(BaseSecurityRail.BEFORE_MODEL_CALL));
+            rail.beforeInvoke(new CallbackContext(f.owner, Map.of()));
+            f.call(false);
+            assertOneSafetySection(f.requests.get(1));
+            rail.setSupportedEvents(List.of());
+            rail.beforeInvoke(new CallbackContext(f.owner, Map.of()));
+            f.call(false);
+            assertFalse(f.requests.get(2).contains("# 安全原则"));
+        }
+    }
+
+    @Test
+    @DisplayName("外层准备不提前覆盖业务后来替换的安全段")
+    void beforeInvoke_whenSectionWasReplaced_preservesReplacement() {
+        try (Fixture f = new Fixture()) {
+            PromptSection replacement = new PromptSection(SectionName.SAFETY,
+                    Map.of("cn", "business policy"), 20);
+            f.agent.getSystemPromptBuilder().addPersistentSection(replacement);
+            f.rail.beforeInvoke(new CallbackContext(f.owner, Map.of()));
+            assertSame(replacement, f.agent.getSystemPromptBuilder().getSection(SectionName.SAFETY).orElseThrow());
+
+        }
+    }
+
+    @Test
+    @DisplayName("真实工具往返前后的两次模型请求各包含一份安全段")
+    void invoke_whenToolReturns_preservesOneSafetySectionPerRound() {
+        AtomicInteger calls = new AtomicInteger();
+        Tool tool = new Tool(ToolCard.builder().id(UUID.randomUUID().toString())
+                .name("safety_test_lookup").description("Return a test value")
+                .inputParams(Map.of("type", "object", "properties", Map.of())).build()) {
+            @Override
+            public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+                calls.incrementAndGet();
+                return "lookup-result";
+            }
+        };
+        var resources = Runner.resourceMgr();
+        resources.addTool(tool);
+        try (Fixture f = new Fixture()) {
+            f.agent.getAbilityManager().add(tool.getCard());
+            f.firstToolCall = ToolCall.builder().id("safety-test-call")
+                    .name(tool.getCard().getName()).arguments("{}").build();
+            f.agent.invoke(Map.of("query", "hi"), f.session());
+            assertEquals(1, calls.get());
+            assertEquals(2, f.requests.size());
+            f.requests.forEach(SafetyPromptRailTest::assertOneSafetySection);
+            assertTrue(f.requests.get(1).contains("lookup-result"));
+        } finally {
+            resources.removeTool(tool.getCard().getId());
+        }
+    }
+
     private static void assertOneSafetySection(String request) {
         assertEquals(1, request.split("# 安全原则", -1).length - 1,
                 "Each request should contain exactly one safety section");
@@ -404,6 +523,7 @@ class SafetyPromptRailTest {
         final SafetyPromptRail rail;
         final List<String> requests = new ArrayList<>();
         boolean failFirst;
+        ToolCall firstToolCall;
 
         Fixture() {
             this(new SafetyPromptRail());
@@ -418,6 +538,10 @@ class SafetyPromptRailTest {
                     record(messages);
                     if (failFirst && requests.size() == 1) {
                         return CompletableFuture.failedFuture(new IllegalStateException("test retry"));
+                    }
+                    if (firstToolCall != null && requests.size() == 1) {
+                        return CompletableFuture.completedFuture(AssistantMessage.builder()
+                                .toolCalls(List.of(firstToolCall)).build());
                     }
                     return CompletableFuture.completedFuture(new AssistantMessage("ok"));
                 }

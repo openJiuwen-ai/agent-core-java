@@ -56,6 +56,16 @@ public final class SafetySection {
         );
     }
 
+    /**
+     * Build a safety section that follows the builder language at render time.
+     *
+     * @return safety section with Chinese and English content
+     */
+    public static PromptSection buildMultilingualSection() {
+        return new PromptSection(SectionName.SAFETY,
+                Map.of("cn", SAFETY_PROMPT_CN, "en", SAFETY_PROMPT_EN), PRIORITY);
+    }
+
     public static PromptSection build() {
         return buildSafetySection(DEFAULT_LANGUAGE);
     }
