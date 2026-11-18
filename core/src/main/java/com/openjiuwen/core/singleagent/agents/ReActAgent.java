@@ -2962,7 +2962,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     private static void throwIfCancelled(AgentCallbackContext ctx) {
-        if (isCancelRequested(ctx)) {
+        // The result marker remains on the context after cancellation; only an active
+        // registration may block retries or fallbacks.
+        StreamCancellation cancellation = ctx == null ? null : currentCancellation(ctx);
+        if (cancellation != null && cancellation.isCancelled()) {
             throw new CancellationException("Streaming invocation cancelled");
         }
     }
