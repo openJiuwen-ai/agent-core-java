@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -130,10 +131,12 @@ class ReActAgentStreamCancelTest {
         return new LocalFunction(card, fn);
     }
 
-    private static ReActAgent newAgent(String id, CountingClient client) {
+    private static ReActAgent newAgent(String id, Model.ModelClient client) {
         ReActAgent agent = new ReActAgent(AgentCard.builder().id(id).name(id).description("stream cancel").build());
         agent.configure(ReActAgentConfig.builder()
                 .maxIterations(4)
+                .streamMaxRetries(2)
+                .streamRetryDelayMs(0)
                 .promptTemplate(List.of(Map.of("role", "system", "content", "sys")))
                 .build());
         agent.setLlm(new Model(client));
@@ -270,6 +273,254 @@ class ReActAgentStreamCancelTest {
                 }
             }
             return null;
+        }
+    }
+
+    private static void awaitUninterruptibly(CountDownLatch latch) {
+        boolean interrupted = false;
+        while (true) {
+            try {
+                latch.await();
+                break;
+            } catch (InterruptedException exception) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static final class BlockingClient implements Model.ModelClient {
+        private final AtomicInteger streamCalls = new AtomicInteger();
+        private final AtomicInteger invokeCalls = new AtomicInteger();
+        private final AtomicInteger readAttempts = new AtomicInteger();
+        private final CountDownLatch readBlocked = new CountDownLatch(1);
+        private final CountDownLatch iteratorClosed = new CountDownLatch(1);
+        private final CountDownLatch streamEntered = new CountDownLatch(1);
+        private final CountDownLatch streamReturn = new CountDownLatch(1);
+        private final CountDownLatch reuseCalled = new CountDownLatch(1);
+        private final boolean delayIteratorReturn;
+        private volatile BlockingIterator currentIterator;
+
+        private BlockingClient(boolean delayIteratorReturn) {
+            this.delayIteratorReturn = delayIteratorReturn;
+        }
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            invokeCalls.incrementAndGet();
+            return CompletableFuture.completedFuture(textMessage("non-stream fallback"));
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            if (streamCalls.incrementAndGet() > 1) {
+                reuseCalled.countDown();
+                return List.of(chunk("reuse-complete", null, "stop")).iterator();
+            }
+            if (delayIteratorReturn) {
+                streamEntered.countDown();
+                awaitUninterruptibly(streamReturn);
+            }
+            currentIterator = new BlockingIterator();
+            return currentIterator;
+        }
+
+        private void allowIteratorReturn() {
+            streamReturn.countDown();
+        }
+
+        private void closeCurrentIterator() {
+            BlockingIterator iterator = currentIterator;
+            if (iterator != null) {
+                iterator.close();
+            }
+        }
+
+        private final class BlockingIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+            private final CountDownLatch closeSignal = new CountDownLatch(1);
+            private volatile boolean closed;
+            private int position;
+
+            @Override
+            public boolean hasNext() {
+                if (position == 0) {
+                    return true;
+                }
+                if (position == 1) {
+                    readAttempts.incrementAndGet();
+                    readBlocked.countDown();
+                    return awaitClose();
+                }
+                return position < 3;
+            }
+
+            @Override
+            public AssistantMessageChunk next() {
+                if (position == 0) {
+                    position++;
+                    return chunk("partial-token", null, null);
+                }
+                if (position == 1) {
+                    position++;
+                    return chunk("", toolCall("blocked_tool"), "tool_calls");
+                }
+                if (position == 2) {
+                    position++;
+                    return chunk("uncancelled-final", null, "stop");
+                }
+                throw new NoSuchElementException();
+            }
+
+            @Override
+            public void close() {
+                closed = true;
+                closeSignal.countDown();
+                iteratorClosed.countDown();
+            }
+
+            private boolean awaitClose() {
+                try {
+                    closeSignal.await();
+                    return !closed;
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+        }
+    }
+
+    private static AssistantMessageChunk chunk(String content, List<ToolCall> toolCalls, String finishReason) {
+        return AssistantMessageChunk.builder()
+                .content(content)
+                .toolCalls(toolCalls)
+                .finishReason(finishReason)
+                .build();
+    }
+
+    private static List<ToolCall> toolCall(String toolName) {
+        return List.of(ToolCall.builder()
+                .id("blocked_call")
+                .name(toolName)
+                .arguments("{}")
+                .index(0)
+                .build());
+    }
+
+    private static LocalFunction countingTool(String name, AtomicInteger executions) {
+        ToolCard card = ToolCard.builder()
+                .id(name)
+                .name(name)
+                .description(name)
+                .inputParams(Map.of("type", "object", "properties", Map.of(), "required", List.of()))
+                .build();
+        LocalFunction.ContextFunction function = (inputs, kwargs) -> {
+            executions.incrementAndGet();
+            return "unexpected tool result";
+        };
+        return new LocalFunction(card, function);
+    }
+
+    private static AgentSession newSession(ReActAgent agent, String conversationId) {
+        return AgentSession.createAgentSession(conversationId, null, agent.getCard());
+    }
+
+    private static Object readOne(Iterator<Object> iterator) throws Exception {
+        return CompletableFuture.supplyAsync(() -> {
+            assertThat(iterator.hasNext()).isTrue();
+            return iterator.next();
+        }).get(10, TimeUnit.SECONDS);
+    }
+
+    private static CompletableFuture<List<Object>> drainAsync(Iterator<Object> iterator) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Object> chunks = new ArrayList<>();
+            iterator.forEachRemaining(chunks::add);
+            return chunks;
+        });
+    }
+
+    private static List<Object> drain(Iterator<Object> iterator) throws Exception {
+        return drainAsync(iterator).get(10, TimeUnit.SECONDS);
+    }
+
+    private static String resultType(List<Object> chunks) {
+        return new CancelResult(0, chunks, null).lastResultType();
+    }
+
+    private static void closeStream(Iterator<Object> iterator) throws Exception {
+        if (iterator instanceof AutoCloseable closeable) {
+            closeable.close();
+        }
+    }
+
+    @Test
+    void requestCancelClosesBlockedModelStreamAndAllowsSessionReuse() throws Exception {
+        BlockingClient client = new BlockingClient(false);
+        ReActAgent agent = newAgent("blocking_cancel_" + UUID.randomUUID(), client);
+        AtomicInteger toolExecutions = new AtomicInteger();
+        registerTool(agent, countingTool("blocked_tool", toolExecutions));
+        String conversationId = "blocked-cancel-" + UUID.randomUUID();
+        AgentSession session = newSession(agent, conversationId);
+        Iterator<Object> iterator = agent.stream(Map.of("query", "go"), session, List.of());
+        try {
+            Object partial = readOne(iterator);
+            assertThat(partial).isInstanceOf(OutputSchema.class);
+            assertThat(((OutputSchema) partial).getPayload())
+                    .isEqualTo(Map.of("content", "partial-token", "result_type", "answer"));
+            assertThat(client.readBlocked.await(10, TimeUnit.SECONDS)).isTrue();
+            CompletableFuture<List<Object>> drained = drainAsync(iterator);
+            ReActAgent.requestCancel(session);
+            assertThat(client.iteratorClosed.await(5, TimeUnit.SECONDS))
+                    .as("requestCancel must close the blocked model iterator")
+                    .isTrue();
+            List<Object> cancelledChunks = drained.get(10, TimeUnit.SECONDS);
+            assertThat(resultType(cancelledChunks)).isEqualTo("cancelled");
+            assertThat(client.streamCalls.get()).isEqualTo(1);
+            assertThat(client.invokeCalls.get()).isZero();
+            assertThat(toolExecutions.get()).isZero();
+
+            Iterator<Object> reused = agent.stream(Map.of("query", "again"), session, List.of());
+            try {
+                assertThat(client.reuseCalled.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(client.streamCalls.get()).isEqualTo(2);
+                assertThat(client.invokeCalls.get()).isZero();
+            } finally {
+                closeStream(reused);
+            }
+        } finally {
+            client.closeCurrentIterator();
+            closeStream(iterator);
+        }
+    }
+
+    @Test
+    void requestCancelBeforeIteratorRegistrationClosesWithoutReading() throws Exception {
+        BlockingClient client = new BlockingClient(true);
+        ReActAgent agent = newAgent("registration_cancel_" + UUID.randomUUID(), client);
+        AtomicInteger toolExecutions = new AtomicInteger();
+        registerTool(agent, countingTool("blocked_tool", toolExecutions));
+        AgentSession session = newSession(agent, "registration-cancel-" + UUID.randomUUID());
+        Iterator<Object> iterator = agent.stream(Map.of("query", "go"), session, List.of());
+        try {
+            assertThat(client.streamEntered.await(10, TimeUnit.SECONDS)).isTrue();
+            CompletableFuture<List<Object>> drained = drainAsync(iterator);
+            ReActAgent.requestCancel(session);
+            client.allowIteratorReturn();
+            assertThat(client.iteratorClosed.await(5, TimeUnit.SECONDS))
+                    .as("an iterator returned after cancellation must be closed on registration")
+                    .isTrue();
+            assertThat(resultType(drained.get(10, TimeUnit.SECONDS))).isEqualTo("cancelled");
+            assertThat(client.readAttempts.get()).isZero();
+            assertThat(client.streamCalls.get()).isEqualTo(1);
+            assertThat(client.invokeCalls.get()).isZero();
+            assertThat(toolExecutions.get()).isZero();
+        } finally {
+            client.allowIteratorReturn();
+            client.closeCurrentIterator();
+            closeStream(iterator);
         }
     }
 }
