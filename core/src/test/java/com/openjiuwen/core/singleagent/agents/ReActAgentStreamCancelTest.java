@@ -392,6 +392,68 @@ class ReActAgentStreamCancelTest {
         }
     }
 
+    private static final class InterruptSensitiveClient implements Model.ModelClient {
+        private final AtomicInteger streamCalls = new AtomicInteger();
+        private final AtomicInteger invokeCalls = new AtomicInteger();
+        private final CountDownLatch readBlocked = new CountDownLatch(1);
+        private final CountDownLatch interruptionObserved = new CountDownLatch(1);
+        private final CountDownLatch closeCalled = new CountDownLatch(1);
+        private final CountDownLatch iteratorClosed = new CountDownLatch(1);
+        private final CountDownLatch blockRead = new CountDownLatch(1);
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            invokeCalls.incrementAndGet();
+            return CompletableFuture.completedFuture(textMessage("non-stream fallback"));
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            streamCalls.incrementAndGet();
+            return new InterruptSensitiveIterator();
+        }
+
+        private void releaseClose() {
+            interruptionObserved.countDown();
+        }
+
+        private final class InterruptSensitiveIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
+            private int position;
+
+            @Override
+            public boolean hasNext() {
+                if (position == 0) {
+                    return true;
+                }
+                readBlocked.countDown();
+                try {
+                    blockRead.await();
+                    return false;
+                } catch (InterruptedException exception) {
+                    interruptionObserved.countDown();
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+
+            @Override
+            public AssistantMessageChunk next() {
+                if (position != 0) {
+                    throw new NoSuchElementException();
+                }
+                position++;
+                return chunk("partial-token", null, null);
+            }
+
+            @Override
+            public void close() {
+                closeCalled.countDown();
+                awaitUninterruptibly(interruptionObserved);
+                iteratorClosed.countDown();
+            }
+        }
+    }
+
     private static AssistantMessageChunk chunk(String content, List<ToolCall> toolCalls, String finishReason) {
         return AssistantMessageChunk.builder()
                 .content(content)
@@ -520,6 +582,36 @@ class ReActAgentStreamCancelTest {
         } finally {
             client.allowIteratorReturn();
             client.closeCurrentIterator();
+            closeStream(iterator);
+        }
+    }
+
+    @Test
+    void requestCancelInterruptsWorkerBeforeClosingInterruptSensitiveIterator() throws Exception {
+        InterruptSensitiveClient client = new InterruptSensitiveClient();
+        ReActAgent agent = newAgent("interrupt_cancel_" + UUID.randomUUID(), client);
+        AgentSession session = newSession(agent, "interrupt-cancel-" + UUID.randomUUID());
+        Iterator<Object> iterator = agent.stream(Map.of("query", "go"), session, List.of());
+        CompletableFuture<Void> cancellation = new CompletableFuture<>();
+        try {
+            Object partial = readOne(iterator);
+            assertThat(((OutputSchema) partial).getPayload())
+                    .isEqualTo(Map.of("content", "partial-token", "result_type", "answer"));
+            assertThat(client.readBlocked.await(10, TimeUnit.SECONDS)).isTrue();
+            CompletableFuture<List<Object>> drained = drainAsync(iterator);
+            cancellation = CompletableFuture.runAsync(() -> ReActAgent.requestCancel(session));
+            assertThat(client.closeCalled.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(client.interruptionObserved.await(1, TimeUnit.SECONDS))
+                    .as("the worker must be interrupted before iterator close waits for it")
+                    .isTrue();
+            cancellation.get(5, TimeUnit.SECONDS);
+            assertThat(client.iteratorClosed.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(resultType(drained.get(10, TimeUnit.SECONDS))).isEqualTo("cancelled");
+            assertThat(client.streamCalls.get()).isEqualTo(1);
+            assertThat(client.invokeCalls.get()).isZero();
+        } finally {
+            client.releaseClose();
+            cancellation.get(5, TimeUnit.SECONDS);
             closeStream(iterator);
         }
     }

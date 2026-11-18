@@ -223,10 +223,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 currentWorker = worker;
                 currentIterator = modelIterator;
             }
-            closeIterator(currentIterator);
             if (currentWorker != null) {
                 currentWorker.cancel(true);
             }
+            closeIterator(currentIterator);
         }
     }
 
