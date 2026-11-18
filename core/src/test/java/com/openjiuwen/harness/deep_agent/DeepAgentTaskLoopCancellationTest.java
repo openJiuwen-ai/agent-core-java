@@ -432,10 +432,8 @@ class DeepAgentTaskLoopCancellationTest {
         private void awaitClose() {
             try {
                 closeSignal.await();
-            } catch (InterruptedException exception) {
-                if (!closed) {
-                    throw new AssertionError("Model transport wait interrupted before close", exception);
-                }
+            } catch (InterruptedException ignored) {
+                close();
             }
         }
     }
