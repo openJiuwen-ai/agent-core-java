@@ -6,6 +6,7 @@ package com.openjiuwen.core.session.stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -77,6 +78,38 @@ class AsyncStreamQueueTimeoutTest {
 
         assertEquals("frame-2", queue.receive(100));
         assertEquals(StreamEmitter.END_FRAME, queue.receive(100));
+    }
+
+    @Test
+    @DisplayName("sendCritical admits the frame when the caller is already interrupted")
+    void testSendCriticalWhenInterrupted() {
+        AsyncStreamQueue queue = new AsyncStreamQueue();
+        Thread.currentThread().interrupt();
+        try {
+            queue.sendCritical(StreamEmitter.END_FRAME, 1000);
+
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertSame(StreamEmitter.END_FRAME, queue.tryReceive());
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    @DisplayName("sendCritical admits the frame on a full queue when interrupted")
+    void testSendCriticalWhenInterruptedWithFullQueue() {
+        AsyncStreamQueue queue = new AsyncStreamQueue(1);
+        queue.send("frame-1");
+        Thread.currentThread().interrupt();
+        try {
+            queue.sendCritical(StreamEmitter.END_FRAME, 1000);
+
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertSame(StreamEmitter.END_FRAME, queue.tryReceive());
+            assertNull(queue.tryReceive());
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test

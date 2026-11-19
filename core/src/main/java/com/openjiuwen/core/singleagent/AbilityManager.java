@@ -9,12 +9,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.tool.ExternalTool;
+import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
@@ -996,7 +998,7 @@ public class AbilityManager {
                 return new ExecutionResult(output, null);
             }
             Object result = workflowOutput instanceof WorkflowOutput output ? output.getResult() : workflowOutput;
-            return new ExecutionResult(result, new ToolMessage(String.valueOf(result), toolCall.getId(),
+            return new ExecutionResult(result, new ToolMessage(buildToolMessageContent(result), toolCall.getId(),
                     toolCall.getName()));
         } catch (BaseError | AgentInterrupt | CompletionException
                 | IllegalArgumentException | IllegalStateException | NullPointerException
@@ -1389,8 +1391,8 @@ public class AbilityManager {
      * count, per-item type and source path, other fields truncated) instead
      * of stringifying the whole envelope: the media itself is attached once
      * by the multimodal UserMessage channel, so dumping encoded base64 into
-     * the text context would send the same payload twice. Every other result
-     * keeps the legacy {@code String.valueOf} fallback unchanged.</p>
+     * the text context would send the same payload twice. Map, Collection, and
+     * ToolOutput results are JSON; every other result keeps {@code String.valueOf}.</p>
      *
      * @param result tool result envelope; may be {@code null}
      * @return tool message text, never {@code null}
@@ -1426,7 +1428,21 @@ public class AbilityManager {
         if (data instanceof Map<?, ?> multimodalData && multimodalData.containsKey("multimodal")) {
             return summarizeMultimodalToolData(success, multimodalData);
         }
-        return String.valueOf(result);
+        return renderStructuredToolResult(result);
+    }
+
+    private static String renderStructuredToolResult(Object result) {
+        if (!(result instanceof Map<?, ?> || result instanceof Collection<?> || result instanceof ToolOutput)) {
+            return String.valueOf(result);
+        }
+        Object serializable = result instanceof ToolOutput output ? output.toMap() : result;
+        try {
+            return JsonUtils.safeJsonDumps(serializable);
+        } catch (RuntimeException exception) {
+            Loggers.TOOL.warning("Failed to JSON-serialize tool result of type {}: {}",
+                    result.getClass().getName(), exception.getMessage());
+            return String.valueOf(result);
+        }
     }
 
     private static String summarizeMultimodalToolData(Object success, Map<?, ?> dataMap) {

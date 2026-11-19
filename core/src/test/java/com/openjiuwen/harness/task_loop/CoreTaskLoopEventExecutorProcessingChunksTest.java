@@ -6,13 +6,17 @@ package com.openjiuwen.harness.task_loop;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.controller.schema.ControllerOutputPayload;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.EventType;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.util.List;
 import java.util.Map;
@@ -23,6 +27,20 @@ import java.util.Map;
  * first-chunk break drops sibling mirrors from the wire.
  */
 class CoreTaskLoopEventExecutorProcessingChunksTest {
+
+    @Test
+    void cancelUsesSessionScopedAbortWhenSessionAvailable() {
+        TaskExecutorDependencies dependencies = Mockito.mock(TaskExecutorDependencies.class);
+        DeepAgent deepAgent = Mockito.mock(DeepAgent.class);
+        AgentSessionApi session = Mockito.mock(AgentSessionApi.class);
+        Mockito.when(session.getSessionId()).thenReturn("session-A");
+        CoreTaskLoopEventExecutor executor = new CoreTaskLoopEventExecutor(dependencies, deepAgent);
+
+        assertThat(executor.cancel("task-1", session)).isTrue();
+
+        Mockito.verify(deepAgent).requestAbort("session-A");
+        Mockito.verify(deepAgent, Mockito.never()).requestAbort();
+    }
 
     @Test
     void processingChunksMergesParallelInteractionsIntoSingleTaskInteraction() {

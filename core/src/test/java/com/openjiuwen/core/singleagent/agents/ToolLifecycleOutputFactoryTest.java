@@ -57,7 +57,7 @@ class ToolLifecycleOutputFactoryTest {
                 .containsEntry("tool_call_id", "call-1")
                 .containsEntry("tool_name", "lookupEnv")
                 .containsEntry("status", "completed")
-                .containsEntry("result", "{result=prod}");
+                .containsEntry("result", "{\"result\":\"prod\"}");
     }
 
     @Test

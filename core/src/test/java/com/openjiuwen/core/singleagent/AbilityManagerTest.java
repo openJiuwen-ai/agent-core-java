@@ -373,7 +373,7 @@ class AbilityManagerTest {
         assertEquals(Map.of("echo", "hello"), results.get(0).result());
         assertEquals("call-1", results.get(0).toolMessage().getToolCallId());
         assertEquals("echoTool", results.get(0).toolMessage().getName());
-        assertEquals("{echo=hello}", results.get(0).toolMessage().getContent());
+        assertEquals("{\"echo\":\"hello\"}", results.get(0).toolMessage().getContent());
     }
 
     @Test
@@ -426,7 +426,7 @@ class AbilityManagerTest {
             assertEquals(1, results.size());
             assertEquals("hello", tool.invokedText);
             assertEquals(Map.of("echo", "hello"), results.get(0).result());
-            assertEquals("{echo=hello}", results.get(0).toolMessage().getContent());
+            assertEquals("{\"echo\":\"hello\"}", results.get(0).toolMessage().getContent());
         } finally {
             Runner.resourceMgr().removeTool(tool.getCard().getId());
         }
@@ -637,8 +637,7 @@ class AbilityManagerTest {
         contentData.put("content", null);
         assertEquals("", AbilityManager.buildToolMessageContent(Map.of("data", contentData)));
         assertEquals("boom", AbilityManager.buildToolMessageContent(Map.of("success", false, "error", "boom")));
-        // Java-idiomatic Map.toString; functional short-circuits above mirror Python.
-        assertEquals("{value=42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
+        assertEquals("{\"value\":42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
     }
 
     @Test
@@ -657,8 +656,8 @@ class AbilityManagerTest {
         assertTrue(pojoContent.contains("ReadFileResult"), "POJO 无 dict content 时用 String.valueOf：" + pojoContent);
 
         String mapContent = AbilityManager.buildToolMessageContent(Map.of("skill", "x", "echo", "y"));
-        assertTrue(mapContent.contains("skill=x") || mapContent.contains("echo=y"),
-                "Map 结果应为 Java Map.toString：" + mapContent);
+        assertTrue(mapContent.contains("\"skill\":\"x\"") && mapContent.contains("\"echo\":\"y\""),
+                "Map 结果应为 JSON：" + mapContent);
 
         assertEquals("plain text", AbilityManager.buildToolMessageContent("plain text"));
     }
@@ -699,9 +698,9 @@ class AbilityManagerTest {
         String failed = AbilityManager.buildToolMessageContent(ToolOutput.of(false, data, null));
         assertTrue(failed.contains("success=false"), failed);
 
-        assertEquals("ToolOutput(success=true, data={value=42}, error=null)",
+        assertEquals("{\"success\":true,\"data\":{\"value\":42},\"error\":null}",
                 AbilityManager.buildToolMessageContent(ToolOutput.success(Map.of("value", 42))));
-        assertEquals("{value=42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
+        assertEquals("{\"value\":42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
     }
 
     private static ToolCard tool(String id, String name) {
