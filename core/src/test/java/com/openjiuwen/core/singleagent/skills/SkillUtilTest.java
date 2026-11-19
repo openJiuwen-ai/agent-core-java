@@ -118,6 +118,59 @@ class SkillUtilTest {
     }
 
     @Test
+    void getSkillPromptWithoutFilterRendersAllRegisteredSkills() throws Exception {
+        SkillUtil util = skillUtil();
+        registerThreeSkills(util);
+
+        String prompt = util.getSkillPrompt(null);
+
+        assertThat(prompt)
+                .contains("0.Skill name: CodingSkill")
+                .contains("1.Skill name: GroupedSkill")
+                .contains("2.Skill name: SearchSkill");
+    }
+
+    @Test
+    void getSkillPromptWithEmptyFilterRendersAllRegisteredSkills() throws Exception {
+        SkillUtil util = skillUtil();
+        registerThreeSkills(util);
+
+        String prompt = util.getSkillPrompt(List.of());
+
+        assertThat(prompt)
+                .contains("Skill name: CodingSkill")
+                .contains("Skill name: GroupedSkill")
+                .contains("Skill name: SearchSkill");
+    }
+
+    @Test
+    void getSkillPromptWithEffectiveSkillNamesRendersOnlySelectedSkills() throws Exception {
+        SkillUtil util = skillUtil();
+        registerThreeSkills(util);
+
+        String prompt = util.getSkillPrompt(List.of("GroupedSkill"));
+
+        assertThat(prompt)
+                .contains("Skill name: GroupedSkill")
+                .contains("Skill description: Grouped skill")
+                .doesNotContain("Skill name: CodingSkill")
+                .doesNotContain("Skill name: SearchSkill");
+    }
+
+    @Test
+    void getSkillPromptFilteringPreservesSkillRegistrationOrder() throws Exception {
+        SkillUtil util = skillUtil();
+        registerThreeSkills(util);
+
+        String prompt = util.getSkillPrompt(List.of("SearchSkill", "GroupedSkill"));
+
+        assertThat(prompt)
+                .contains("0.Skill name: GroupedSkill")
+                .contains("1.Skill name: SearchSkill")
+                .doesNotContain("Skill name: CodingSkill");
+    }
+
+    @Test
     @Tag("TC-SKL-04")
     void getSkillPromptKeepsLegacyReadFileInstructionWhenOnDemandDisabled() throws Exception {
         SkillUtil util = skillUtil();
@@ -163,6 +216,22 @@ class SkillUtilTest {
                 ignored -> fs
         );
         return new SkillUtil(manager, remote);
+    }
+
+    private void registerThreeSkills(SkillUtil util) throws Exception {
+        String codingSkillMd = "/virtual/skills/coding/SKILL.md";
+        String groupedSkillMd = "/virtual/skills/grouped/SKILL.md";
+        String searchSkillMd = "/virtual/skills/search/SKILL.md";
+        fs.addDirectory("/virtual/skills/coding");
+        fs.addDirectory("/virtual/skills/grouped");
+        fs.addDirectory("/virtual/skills/search");
+        fs.addFile("/virtual/skills/coding", codingSkillMd,
+                "---\nname: CodingSkill\ndescription: Coding skill\n---\nbody\n");
+        fs.addFile("/virtual/skills/grouped", groupedSkillMd,
+                "---\nname: GroupedSkill\ndescription: Grouped skill\n---\nbody\n");
+        fs.addFile("/virtual/skills/search", searchSkillMd,
+                "---\nname: SearchSkill\ndescription: Search skill\n---\nbody\n");
+        util.registerSkills(List.of(codingSkillMd, groupedSkillMd, searchSkillMd), null, null, true);
     }
 
     private static final class RecordingFsOperation extends BaseFsOperation {

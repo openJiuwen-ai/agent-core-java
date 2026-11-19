@@ -644,10 +644,10 @@ public String getSkillPrompt() {
 
 **验收标准：**
 
-- [ ] 无参 `getSkillPrompt()` 行为不变（渲染全部）
-- [ ] `getSkillPrompt(["git-helper"])` 只渲染 git-helper 的元数据
-- [ ] `getSkillPrompt(empty)` 渲染全部
-- [ ] prompt 中 skill 顺序稳定（按注册顺序）
+- [x] 无参 `getSkillPrompt()` 行为不变（渲染全部）
+- [x] `getSkillPrompt(["git-helper"])` 只渲染 git-helper 的元数据
+- [x] `getSkillPrompt(empty)` 渲染全部
+- [x] prompt 中 skill 顺序稳定（按注册顺序）
 
 **预估规模：** 40–80 行（含测试）
 

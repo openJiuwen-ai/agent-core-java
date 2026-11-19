@@ -11,10 +11,13 @@ import java.io.IOException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -154,6 +157,20 @@ public class SkillUtil {
     }
 
     public String getSkillPrompt() {
+        return getSkillPrompt((Collection<String>) null);
+    }
+
+    /**
+     * Generates skill metadata for the effective skill names calculated by the caller.
+     *
+     * <p>The caller owns group activation and ungrouped-skill passthrough decisions. This
+     * method only filters against registered Skills and preserves their registration order.
+     *
+     * @param effectiveSkillNames skill names to render; null or empty renders all Skills
+     * @return the filtered Skill prompt
+     * @since 0.1.19
+     */
+    public String getSkillPrompt(Collection<String> effectiveSkillNames) {
         String loadingInstruction;
         String templateContent;
         if (skillConfig.isOnDemandLoading()) {
@@ -167,16 +184,34 @@ public class SkillUtil {
         }
         String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
                 + loadingInstruction;
-        List<String> skillsInfo = new ArrayList<>();
         List<Skill> skills = skillManager.getAll();
-        for (int i = 0; i < skills.size(); i++) {
-            Skill skill = skills.get(i);
-            skillsInfo.add(SkillPromptRenderer.renderPromptLine(i, skill, skillConfig.isOnDemandLoading()));
+        Set<String> selectedSkillNames = normalizeSkillNames(effectiveSkillNames);
+        List<String> skillsInfo = new ArrayList<>(skills.size());
+        for (Skill skill : skills) {
+            if (selectedSkillNames != null
+                    && (skill == null || !selectedSkillNames.contains(skill.getName()))) {
+                continue;
+            }
+            skillsInfo.add(SkillPromptRenderer.renderPromptLine(
+                    skillsInfo.size(), skill, skillConfig.isOnDemandLoading()));
         }
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("skills", skillsInfo.stream().collect(Collectors.joining("\n")));
         PromptTemplate template = PromptTemplate.builder().content(templateContent).build();
         return systemPrompt + "\n" + template.format(values).getContent();
+    }
+
+    private static Set<String> normalizeSkillNames(Collection<String> skillNames) {
+        if (skillNames == null || skillNames.isEmpty()) {
+            return null;
+        }
+        Set<String> normalizedSkillNames = new LinkedHashSet<>();
+        for (String skillName : skillNames) {
+            if (skillName != null && !skillName.isBlank()) {
+                normalizedSkillNames.add(skillName.trim());
+            }
+        }
+        return normalizedSkillNames;
     }
 
     /**

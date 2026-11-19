@@ -25,8 +25,10 @@ public class SkillUtil
 | `public void registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token)` | 委托 `RemoteSkillUtil.uploadSkillFromGitHub(...)` 下载并注册远程技能目录。 |
 | `public boolean hasSkill()` | 当 `SkillManager.count() > 0` 时返回 `true`。 |
 | `public String getSkillPrompt()` | 生成包含系统提示和已注册技能列表的提示词文本。 |
+| `public String getSkillPrompt(Collection<String> effectiveSkillNames)` | 按调用方计算出的 effective skill names 过滤渲染；`null` 或空集合渲染全部技能。 |
 
 ## 说明
 
 - `getSkillPrompt()` 输出英文系统提示，并把每个技能的名称、描述和目录拼接到技能列表中。
+- `getSkillPrompt(Collection<String>)` 保留注册顺序；分组激活、组去重和 ungrouped passthrough 由调用方先统一计算。
 - `SkillUtilTest` 验证了初始状态、`setSysOperationId(...)` 同步更新以及提示词文本包含 `skill` 关键词。
