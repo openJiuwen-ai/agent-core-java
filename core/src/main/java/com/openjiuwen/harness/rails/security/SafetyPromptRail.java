@@ -62,7 +62,9 @@ public class SafetyPromptRail extends BaseSecurityRail {
     private void prepareSafetySection() {
         if (!getSupportedEvents().contains(BEFORE_MODEL_CALL)) {
             removeOwnedSection();
-        } else if (systemPromptBuilder != null
+            return;
+        }
+        if (systemPromptBuilder != null
                 && (!systemPromptBuilder.hasSection(SectionName.SAFETY)
                     || systemPromptBuilder.getSection(SectionName.SAFETY).orElse(null) == safetySection)) {
             // ReActAgent clears transient sections before each inner invocation.
