@@ -49,7 +49,7 @@ public final class ToolGroupManager {
                 throw new IllegalArgumentException(
                         "Duplicate tool group name: " + toolGroup.name());
             }
-            if (toolGroup.toolNames().isEmpty()) {
+            if (toolGroup.members().isEmpty()) {
                 Loggers.TOOL.warning("Registered empty tool group: {}", toolGroup.name());
             }
             toolGroupsByName.put(toolGroup.name(), toolGroup);
@@ -240,5 +240,53 @@ public final class ToolGroupManager {
             }
         }
         return normalizedNames;
+    }
+
+    /**
+     * Returns the skill names referenced by SKILL members of the given
+     * active groups.
+     *
+     * @param activeGroupNames groups enabled for this session
+     * @return immutable sorted set of skill names from active groups
+     * @since 0.1.19
+     */
+    public Set<String> getActiveSkillNames(Collection<String> activeGroupNames) {
+        Set<String> normalizedActiveGroupNames = normalizeNames(activeGroupNames);
+        Set<String> skillNames = new LinkedHashSet<>();
+        synchronized (toolGroupsByName) {
+            for (ToolGroup toolGroup : toolGroupsByName.values()) {
+                if (!normalizedActiveGroupNames.contains(toolGroup.name())) {
+                    continue;
+                }
+                skillNames.addAll(toolGroup.skillNames());
+            }
+        }
+        return Collections.unmodifiableSet(skillNames);
+    }
+
+    /**
+     * Returns the skill names that are not referenced by SKILL members of
+     * any registered group.
+     *
+     * @param registeredSkillNames all skill names currently registered in
+     *     the SkillManager
+     * @return immutable sorted set of ungrouped skill names
+     * @since 0.1.19
+     */
+    public Set<String> getUngroupedSkillNames(Collection<String> registeredSkillNames) {
+        Set<String> groupedSkillNames = new LinkedHashSet<>();
+        synchronized (toolGroupsByName) {
+            for (ToolGroup toolGroup : toolGroupsByName.values()) {
+                groupedSkillNames.addAll(toolGroup.skillNames());
+            }
+        }
+        Set<String> ungrouped = new LinkedHashSet<>();
+        for (String skillName : registeredSkillNames) {
+            if (skillName != null && !skillName.isBlank()
+                    && !groupedSkillNames.contains(skillName.trim())) {
+                ungrouped.add(skillName.trim());
+            }
+        }
+        return Collections.unmodifiableSet(ungrouped);
     }
 }

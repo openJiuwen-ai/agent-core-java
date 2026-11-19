@@ -216,4 +216,67 @@ class ToolGroupManagerTest {
         assertThat(toolGroupManager.isToolEligibleForExecution("search", List.of()))
                 .isFalse();
     }
+
+    @Test
+    void getActiveSkillNames_returnsSkillRefsFromActiveGroups() {
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("research", "Research", List.of(
+                        new GroupMemberRef(GroupMemberType.TOOL, "bash"),
+                        new GroupMemberRef(GroupMemberType.SKILL, "git-helper"))));
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("analysis", "Analysis", List.of(
+                        new GroupMemberRef(GroupMemberType.SKILL, "data-viz"))));
+
+        var active = toolGroupManager.getActiveSkillNames(List.of("research"));
+
+        assertThat(active).containsExactly("git-helper");
+    }
+
+    @Test
+    void getActiveSkillNames_whenNoGroupsActive_returnsEmpty() {
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("research", "Research", List.of(
+                        new GroupMemberRef(GroupMemberType.SKILL, "git-helper"))));
+
+        assertThat(toolGroupManager.getActiveSkillNames(List.of())).isEmpty();
+    }
+
+    @Test
+    void getActiveSkillNames_whenGroupHasNoSkillMembers_returnsEmpty() {
+        toolGroupManager.registerToolGroup(
+                ToolGroup.ofToolNames("research", "Research", List.of("bash")));
+
+        assertThat(toolGroupManager.getActiveSkillNames(List.of("research"))).isEmpty();
+    }
+
+    @Test
+    void getUngroupedSkillNames_returnsSkillsNotInAnyGroup() {
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("research", "Research", List.of(
+                        new GroupMemberRef(GroupMemberType.SKILL, "git-helper"))));
+
+        var ungrouped = toolGroupManager.getUngroupedSkillNames(
+                List.of("git-helper", "search", "data-viz"));
+
+        assertThat(ungrouped).containsExactly("search", "data-viz");
+    }
+
+    @Test
+    void getUngroupedSkillNames_whenAllSkillsGrouped_returnsEmpty() {
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("research", "Research", List.of(
+                        new GroupMemberRef(GroupMemberType.SKILL, "git-helper"))));
+
+        assertThat(toolGroupManager.getUngroupedSkillNames(List.of("git-helper"))).isEmpty();
+    }
+
+    @Test
+    void registerToolGroup_whenGroupHasOnlySkillMembers_doesNotWarn() {
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("skill_only", "Only skills", List.of(
+                        new GroupMemberRef(GroupMemberType.SKILL, "git-helper"))));
+
+        assertThat(toolGroupManager.getGroups()).hasSize(1);
+        assertThat(toolGroupManager.getGroups().get(0).skillNames()).containsExactly("git-helper");
+    }
 }
