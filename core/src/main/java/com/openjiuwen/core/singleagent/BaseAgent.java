@@ -864,6 +864,25 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     }
 
     /**
+     * Returns skill names that are effective for prompt rendering in this session.
+     *
+     * <p>When no explicit tool group is registered, all registered Skills are returned so the
+     * legacy prompt behavior remains unchanged. Otherwise, the result contains direct
+     * {@code active_skill_names}, SKILL members of active groups, and ungrouped Skills.
+     *
+     * @param session session whose state should be inspected
+     * @return immutable prompt-effective skill names
+     * @since 0.1.19
+     */
+    public List<String> getEffectiveSkillNames(AgentSessionApi session) {
+        if (!toolGroupManager.hasExplicitToolGroups()) {
+            return registeredSkillNames();
+        }
+        return resolveEffectiveSkillNames(
+                getActiveSkillNames(session), getActiveToolGroupNames(session));
+    }
+
+    /**
      * Registers an explicit tool group on this agent.
      *
      * @param group tool group to register

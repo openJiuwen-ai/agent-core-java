@@ -680,10 +680,10 @@ public void updateSkillPromptBuilderSection(
 
 **验收标准：**
 
-- [ ] 激活组含 SKILL 成员后，prompt 中只出现该 skill（其他被组覆盖的 skill 隐藏）
-- [ ] 停用组后，prompt 中该 skill 消失
-- [ ] 不同 session 的 prompt 互不影响
-- [ ] 无组模式下 prompt 渲染全部 skill（向后兼容）
+- [x] 激活组含 SKILL 成员后，prompt 中只出现该 skill（其他被组覆盖的 skill 隐藏）
+- [x] 停用组后，prompt 中该 skill 消失
+- [x] 不同 session 的 prompt 互不影响
+- [x] 无组模式下 prompt 渲染全部 skill（向后兼容）
 
 **预估规模：** 40–60 行（含测试）
 

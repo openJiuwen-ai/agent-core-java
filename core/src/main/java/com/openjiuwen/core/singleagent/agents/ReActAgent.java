@@ -420,6 +420,19 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     public void updateSkillPromptBuilderSection(String renderedSystemPrompt) {
+        updateSkillPromptBuilderSection(renderedSystemPrompt, null);
+    }
+
+    /**
+     * Updates the Skill prompt section for a session.
+     *
+     * @param renderedSystemPrompt currently rendered identity/system prompt
+     * @param session session used to calculate prompt-effective Skills; null preserves the
+     *     legacy behavior of rendering all registered Skills
+     * @since 0.1.19
+     */
+    public void updateSkillPromptBuilderSection(
+            String renderedSystemPrompt, AgentSessionApi session) {
         SkillUtil skillUtil = getSkillUtil();
         if (renderedSystemPrompt == null || renderedSystemPrompt.isBlank() || skillUtil == null
                 || !skillUtil.hasSkill()) {
@@ -427,7 +440,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             return;
         }
         warnMissingSkillReadFileTool();
-        addPersistentPromptBuilderSection(SKILLS_SECTION, skillUtil.getSkillPrompt(), SKILLS_SECTION_PRIORITY);
+        addPersistentPromptBuilderSection(
+                SKILLS_SECTION,
+                skillUtil.getSkillPrompt(session == null ? null : getEffectiveSkillNames(session)),
+                SKILLS_SECTION_PRIORITY);
     }
 
     public List<BaseMessage> buildPreviewMessages(ModelContext context) {
@@ -2293,7 +2309,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     stringStringMap(ctx.getExtra().get("memory_variables"))
             );
             addPersistentPromptBuilderSection(IDENTITY_SECTION, renderedSystemPrompt, IDENTITY_SECTION_PRIORITY);
-            updateSkillPromptBuilderSection(renderedSystemPrompt);
+            updateSkillPromptBuilderSection(renderedSystemPrompt, session);
 
             int startIteration = 0;
             if (externalResume) {
