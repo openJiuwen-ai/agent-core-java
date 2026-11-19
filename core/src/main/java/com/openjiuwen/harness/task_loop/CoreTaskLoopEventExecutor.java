@@ -149,7 +149,11 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
     @Override
     public boolean cancel(String taskId, AgentSessionApi session) {
         if (deepAgent != null) {
-            deepAgent.requestAbort();
+            if (session != null) {
+                deepAgent.requestAbort(session.getSessionId());
+            } else {
+                deepAgent.requestAbort();
+            }
         }
         return true;
     }
@@ -172,7 +176,8 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
         }
         try {
             Map<String, Object> result = invokeTask(effective, session);
-            if (!isInterruptResult(result) && getPlanTask(loadPlanState(session), taskId) != null) {
+            if (!isInterruptResult(result) && !isCancelledResult(result)
+                    && getPlanTask(loadPlanState(session), taskId) != null) {
                 DeepAgentState completedState = loadPlanState(session);
                 String summary = String.valueOf(result == null ? "" : result.getOrDefault("output", ""));
                 if (summary.length() > 200) {
@@ -471,6 +476,17 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
      */
     private static boolean isInterruptResult(Map<String, Object> result) {
         return result != null && "interrupt".equals(String.valueOf(result.get("result_type")));
+    }
+
+    /**
+     * isCancelledResult.
+     *
+     * @param result result
+     * @return true when the invocation was cancelled
+     * @since 0.1.7
+     */
+    private static boolean isCancelledResult(Map<String, Object> result) {
+        return result != null && "cancelled".equals(String.valueOf(result.get("result_type")));
     }
 
     /**

@@ -237,6 +237,7 @@ public class DeepAgent implements AutoCloseable {
     private TmpFileCleaner tmpFileCleaner;
     private LoopCoordinator loopCoordinator;
     private final Map<String, LoopCoordinator> sessionLoopCoordinators = new ConcurrentHashMap<>();
+    private final Map<String, AgentSessionApi> activeInnerStreamingSessions = new ConcurrentHashMap<>();
     private TaskLoopController loopController;
     private TaskManager taskManager;
     private TaskScheduler taskScheduler;
@@ -1980,7 +1981,7 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Requests abortion of every active task loop and inner streaming invocation.
      */
     public void requestAbort() {
         if (loopCoordinator != null) {
@@ -1989,10 +1990,13 @@ public class DeepAgent implements AutoCloseable {
         for (LoopCoordinator coordinator : sessionLoopCoordinators.values()) {
             coordinator.requestAbort();
         }
+        for (AgentSessionApi innerSession : activeInnerStreamingSessions.values()) {
+            ReActAgent.requestCancel(innerSession);
+        }
     }
 
     /**
-     * Abort the task loop of a specific session.
+     * Abort the task loop and inner streaming invocation of a specific session.
      *
      * @param sessionId session id; blank values abort all sessions
      */
@@ -2004,6 +2008,10 @@ public class DeepAgent implements AutoCloseable {
         LoopCoordinator coordinator = sessionLoopCoordinators.get(sessionId);
         if (coordinator != null) {
             coordinator.requestAbort();
+        }
+        AgentSessionApi innerSession = activeInnerStreamingSessions.get(sessionId);
+        if (innerSession != null) {
+            ReActAgent.requestCancel(innerSession);
         }
     }
 
@@ -2357,6 +2365,7 @@ public class DeepAgent implements AutoCloseable {
         }
         activeTaskLoopSessions.clear();
         sessionLoopCoordinators.clear();
+        activeInnerStreamingSessions.clear();
         if (taskManager != null) {
             taskManager.clearState();
         }
@@ -2533,6 +2542,7 @@ public class DeepAgent implements AutoCloseable {
         }
         String sessionId = session.getSessionId();
         activeTaskLoopSessions.remove(sessionId);
+        activeInnerStreamingSessions.remove(sessionId);
         eventQueue.unsubscribe(card.getId(), sessionId);
         taskScheduler.getSessions().remove(sessionId);
         if (sessionId != null && !TaskLoopController.DEFAULT_SESSION_ID.equals(sessionId)) {
@@ -2793,20 +2803,35 @@ public class DeepAgent implements AutoCloseable {
             AgentSessionApi innerSession,
             AgentSessionApi session
     ) {
-        List<Object> streamItems = new ArrayList<>();
-        agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT)).forEachRemaining(chunk -> {
-            streamItems.add(chunk);
-            if (chunk instanceof OutputSchema outputSchema) {
-                session.writeStream(outputSchema);
+        String sessionId = innerSession.getSessionId();
+        activeInnerStreamingSessions.put(sessionId, innerSession);
+        try {
+            java.util.Iterator<Object> stream = agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT));
+            cancelInnerStreamIfAborted(innerSession);
+            List<Object> streamItems = new ArrayList<>();
+            stream.forEachRemaining(chunk -> {
+                streamItems.add(chunk);
+                if (chunk instanceof OutputSchema outputSchema) {
+                    session.writeStream(outputSchema);
+                }
+            });
+            replaceSessionState(innerSession, session);
+            Map<String, Object> result = extractFinalStreamResult(streamItems);
+            List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
+            if (!normalizedChunks.isEmpty()) {
+                result.put("stream_chunks", normalizedChunks);
             }
-        });
-        replaceSessionState(innerSession, session);
-        Map<String, Object> result = extractFinalStreamResult(streamItems);
-        List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
-        if (!normalizedChunks.isEmpty()) {
-            result.put("stream_chunks", normalizedChunks);
+            return result;
+        } finally {
+            activeInnerStreamingSessions.remove(sessionId, innerSession);
         }
-        return result;
+    }
+
+    private void cancelInnerStreamIfAborted(AgentSessionApi innerSession) {
+        LoopCoordinator coordinator = sessionLoopCoordinators.get(innerSession.getSessionId());
+        if (coordinator != null && coordinator.isAborted()) {
+            ReActAgent.requestCancel(innerSession);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -2926,16 +2951,19 @@ public class DeepAgent implements AutoCloseable {
             }
             return;
         }
+        String resultType = result != null && "cancelled".equals(String.valueOf(result.get("result_type")))
+                ? "cancelled" : "answer";
         session.writeStream(new OutputSchema("answer", index, Map.of(
                 "output", result,
-                "result_type", "answer"
+                "result_type", resultType
         )));
     }
 
     private Map<String, Object> normalizeInnerRoundResult(Map<String, Object> rawResult, Map<String, Object> inputs) {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> source = rawResult == null ? Map.of() : rawResult;
-        result.put("status", "completed");
+        String status = "cancelled".equals(String.valueOf(source.get("result_type"))) ? "cancelled" : "completed";
+        result.put("status", status);
         result.put("round", resolveInnerRound(inputs));
         result.put("is_follow_up", Boolean.TRUE.equals(inputs.get("is_follow_up")));
         result.put("output", resolveOutput(source));
@@ -4165,9 +4193,9 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Record one DeepAgent task-loop round boundary: the round result type
-     * decides the step status - interrupt stays RUNNING (awaiting resume),
-     * error becomes FAILED (evidence record, never a resume point), anything
+     * Record one successful DeepAgent task-loop round boundary: cancelled
+     * rounds are skipped, interrupt stays RUNNING (awaiting resume), error
+     * becomes FAILED (evidence record, never a resume point), and anything
      * else is COMPLETED; the trigger handles policy, cursor persistence, and
      * audit.
      *
@@ -4177,10 +4205,10 @@ public class DeepAgent implements AutoCloseable {
      */
     private void recordTaskLoopStepBoundary(AgentSessionApi session, Map<String, Object> roundResult,
                                             String stepName) {
-        if (session == null) {
+        Object resultType = roundResult == null ? null : roundResult.get("result_type");
+        if (session == null || "cancelled".equals(String.valueOf(resultType))) {
             return;
         }
-        Object resultType = roundResult == null ? null : roundResult.get("result_type");
         boolean hasInterrupt = "interrupt".equals(String.valueOf(resultType));
         // Task-failed rounds resolve with only an "error" key (no result_type),
         // so the error evidence must be derived from both shapes.

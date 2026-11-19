@@ -130,13 +130,16 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
@@ -173,8 +176,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     /** Extra key that marks a cancellation requested through the stream close hook. */
     private static final String CANCEL_REQUESTED_KEY = "_cancel_requested";
 
-    /** Cancel flags for background streams, keyed weakly by session identity. */
-    private static final Map<Object, AtomicBoolean> CANCEL_FLAGS =
+    /** Cancellation state for background streams, keyed weakly by session identity. */
+    private static final Map<Object, StreamCancellation> CANCEL_STREAMS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Stateless normalizer shared by all structured multimodal entry inputs. */
@@ -2902,42 +2905,40 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     private Iterator<Object> startBackgroundStream(Object inputs, AgentSessionApi session) {
         String streamThreadName = resolveStreamWorkerThreadName(inputs);
         Object cancelKey = cancelFlagKey(session);
-        AtomicBoolean cancelFlag = new AtomicBoolean(false);
-        CANCEL_FLAGS.put(cancelKey, cancelFlag);
-        Future<?> streamFuture;
+        StreamCancellation cancellation = new StreamCancellation();
+        CANCEL_STREAMS.put(cancelKey, cancellation);
+        CancellationFuture streamFuture = new CancellationFuture(
+                () -> runNamedStreamingInvoke(inputs, session, streamThreadName, cancellation),
+                () -> CANCEL_STREAMS.remove(cancelKey, cancellation));
         try {
-            streamFuture = STREAM_EXECUTOR.submit(() -> runNamedStreamingInvoke(inputs, session, streamThreadName));
+            STREAM_EXECUTOR.execute(streamFuture);
         } catch (RejectedExecutionException exception) {
-            CANCEL_FLAGS.remove(cancelKey);
+            CANCEL_STREAMS.remove(cancelKey, cancellation);
             writeInvokeResultToStreamInternal(buildErrorResult(exception), session);
             closeStreamAndCommit(session);
             return session.streamIterator();
         }
-        return OperatorStream.wrap(session.streamIterator(), () -> {
-            cancelFlag.set(true);
-            streamFuture.cancel(true);
-        });
+        cancellation.attachWorker(streamFuture);
+        return OperatorStream.wrap(session.streamIterator(), cancellation::cancel);
     }
 
     /**
-     * Requests cancellation of the invocation running on the given session so the
-     * ReAct loop stops before the next model or tool call.
+     * Requests cancellation of the invocation running on the given session.
      *
-     * <p>The cancel flag is registered when a background stream is started via
-     * {@link #stream(Object, AgentSessionApi, List)} for sessions that run in
-     * the background. Calling this method before the stream has been started is
-     * a no-op because no flag has been registered yet.</p>
+     * <p>The background worker is cancelled and the current model iterator is
+     * closed so a blocked streaming read can terminate. Cancellation is
+     * idempotent. Calling this method before a background stream starts is a
+     * no-op.</p>
      *
-     * @param session invocation session carrying the cancel flag; must be a
-     *                session whose background stream is already in flight
+     * @param session invocation session whose background stream should stop
      */
     public static void requestCancel(AgentSessionApi session) {
         if (session == null) {
             return;
         }
-        AtomicBoolean flag = CANCEL_FLAGS.get(cancelFlagKey(session));
-        if (flag != null) {
-            flag.set(true);
+        StreamCancellation cancellation = CANCEL_STREAMS.get(cancelFlagKey(session));
+        if (cancellation != null) {
+            cancellation.cancel();
         }
     }
 
@@ -2952,9 +2953,21 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         if (Boolean.TRUE.equals(ctx.getExtra().get(CANCEL_REQUESTED_KEY))) {
             return true;
         }
-        AgentSessionApi session = ctx.getSession();
-        AtomicBoolean flag = session == null ? null : CANCEL_FLAGS.get(cancelFlagKey(session));
-        return flag != null && flag.get();
+        StreamCancellation cancellation = currentCancellation(ctx);
+        return cancellation != null && cancellation.isCancelled();
+    }
+
+    private static StreamCancellation currentCancellation(AgentCallbackContext ctx) {
+        return CANCEL_STREAMS.get(cancelFlagKey(ctx.getSession()));
+    }
+
+    private static void throwIfCancelled(AgentCallbackContext ctx) {
+        // The result marker remains on the context after cancellation; only an active
+        // registration may block retries or fallbacks.
+        StreamCancellation cancellation = ctx == null ? null : currentCancellation(ctx);
+        if (cancellation != null && cancellation.isCancelled()) {
+            throw new CancellationException("Streaming invocation cancelled");
+        }
     }
 
     private static void markCancelled(AgentCallbackContext ctx) {
@@ -3028,7 +3041,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return PauseRequestRegistry.consumePauseRequest(session.getSessionId());
     }
 
-    private void runNamedStreamingInvoke(Object inputs, AgentSessionApi session, String streamThreadName) {
+    private void runNamedStreamingInvoke(Object inputs, AgentSessionApi session, String streamThreadName,
+            StreamCancellation cancellation) {
         Thread worker = Thread.currentThread();
         String previousName = worker.getName();
         worker.setName(streamThreadName);
@@ -3036,7 +3050,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             runStreamingInvoke(inputs, session, false);
         } finally {
             worker.setName(previousName);
-            CANCEL_FLAGS.remove(cancelFlagKey(session));
+            CANCEL_STREAMS.remove(cancelFlagKey(session), cancellation);
         }
     }
 
@@ -3297,10 +3311,12 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     private AssistantMessage streamWithRetry(StreamModelCall call, int maxRetries, long retryDelayMs) {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            throwIfCancelled(call.ctx());
             StreamAttempt streamAttempt = new StreamAttempt();
             try {
                 AssistantMessage aiMessage = streamModelResponse(call.ctx(), call.model(), call.messages(),
                         call.options(), streamAttempt);
+                throwIfCancelled(call.ctx());
                 call.modelInputs().setResponse(aiMessage);
                 if (!isEmptyStreamResult(aiMessage)) {
                     return aiMessage;
@@ -3321,16 +3337,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
                     | IllegalStateException | NullPointerException | ClassCastException
                     | UnsupportedOperationException | UncheckedIOException exception) {
-                boolean isClassified = exception instanceof BaseError
-                        && ModelCallClassification.of(exception).isPresent();
-                if (!isClassified && !streamAttempt.hasReceivedChunks() && hasIoCause(exception)
-                        && attempt < maxRetries) {
-                    Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
-                            + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
-                            + exception.getMessage());
-                    if (delayStreamRetry(clampStreamRetryDelayMs(call.ctx(), retryDelayMs))) {
-                        continue;
-                    }
+                throwIfCancelled(call.ctx());
+                if (shouldRetryStreamFailure(maxRetries, attempt, streamAttempt, exception)
+                        && delayStreamRetry(clampStreamRetryDelayMs(call.ctx(), retryDelayMs))) {
+                    continue;
                 }
                 Loggers.AGENT.error("ReAct stream error (attempt "
                         + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: "
@@ -3345,12 +3355,28 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
         Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
                 + " attempts, falling back to non-stream with stream wrapping");
+        throwIfCancelled(call.ctx());
         return fallbackToNonStream(call.ctx(), call.model(), call.messages(), call.options(), call.modelInputs());
+    }
+
+    private boolean shouldRetryStreamFailure(int maxRetries, int attempt, StreamAttempt streamAttempt,
+            RuntimeException exception) {
+        boolean isClassified = exception instanceof BaseError
+                && ModelCallClassification.of(exception).isPresent();
+        if (isClassified || streamAttempt.hasReceivedChunks() || !hasIoCause(exception)
+                || attempt >= maxRetries) {
+            return false;
+        }
+        Loggers.AGENT.warning("ReAct stream transport failed before the first chunk (attempt "
+                + (attempt + 1) + "/" + (maxRetries + 1) + "), retrying: "
+                + exception.getMessage());
+        return true;
     }
 
     private AssistantMessage fallbackToNonStream(AgentCallbackContext ctx, Model model,
                                                   List<BaseMessage> messages, ModelInvokeOptions options,
                                                   ModelCallInputs modelInputs) {
+        throwIfCancelled(ctx);
         logModelCallStarted(ctx, messages, options == null ? List.of() : options.getTools(), false);
         long callStartTime = System.nanoTime();
         AssistantMessage aiMessage;
@@ -3376,127 +3402,161 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                                  ModelInvokeOptions options, StreamAttempt streamAttempt) {
         logModelCallStarted(ctx, messages, options == null ? List.of() : options.getTools(), true);
         long callStartTime = System.nanoTime();
-        Iterator<AssistantMessageChunk> iterator = null;
-        AssistantMessageChunk accumulatedChunk = null;
-        Long firstTokenTime = null;
-        Long lastTokenTime = null;
-        int chunkCount = 0;
         ctx.getExtra().put("_stream_chunks_emitted", 0);
         try {
-            iterator = model.stream(messages, options);
-            while (iterator.hasNext()) {
-                AssistantMessageChunk chunk = iterator.next();
-                streamAttempt.markChunkReceived();
-                accumulatedChunk = accumulatedChunk == null ? chunk : (AssistantMessageChunk) accumulatedChunk.merge(chunk);
-                // Only chunks that actually carry model output advance the latency
-                // window: role-only deltas, heartbeats, and usage-only or finish-only
-                // frames would otherwise inflate both TTFT and inter-token latency.
-                if (chunk.carriesOutputToken()) {
-                    long now = System.nanoTime();
-                    if (firstTokenTime == null) {
-                        firstTokenTime = now;
-                    }
-                    lastTokenTime = now;
-                }
-                chunkCount++;
-                ctx.getExtra().put("_stream_chunks_emitted", chunkCount);
-                AgentSessionApi session = ctx.getSession();
-                if (session != null && chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
-                    session.writeStream(new OutputSchema("llm_reasoning", nextStreamIndex(ctx),
-                            new LinkedHashMap<>(Map.of("content", chunk.getReasoningContent(), "result_type", "answer"))));
-                }
-                if (session != null && chunk.getContent() != null && !String.valueOf(chunk.getContent()).isEmpty()) {
-                    session.writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx),
-                            new LinkedHashMap<>(Map.of("content", chunk.getContent(), "result_type", "answer"))));
-                }
+            StreamChunks chunks = readModelChunks(ctx, model, messages, options, streamAttempt);
+            AssistantMessage aiMessage = buildStreamMessage(chunks.accumulatedChunk);
+            if (isEmptyStreamResult(aiMessage)) {
+                logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
+                return aiMessage;
             }
+            logModelResponse(ctx, aiMessage);
+            logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
+            writeStreamToolCalls(ctx, aiMessage);
+            writeStreamUsage(ctx, aiMessage, callStartTime, chunks);
+            return aiMessage;
         } catch (RuntimeException exception) {
             logModelCallCompleted(ctx, true, callStartTime, null, exception);
             throw exception;
+        }
+    }
+
+    private StreamChunks readModelChunks(AgentCallbackContext ctx, Model model, List<BaseMessage> messages,
+            ModelInvokeOptions options, StreamAttempt streamAttempt) {
+        Iterator<AssistantMessageChunk> iterator = null;
+        StreamCancellation cancellation = currentCancellation(ctx);
+        StreamChunks chunks = new StreamChunks();
+        try {
+            iterator = model.stream(messages, options);
+            if (cancellation != null) {
+                cancellation.attachModelIterator(iterator);
+            }
+            while (true) {
+                throwIfCancelled(ctx);
+                if (!iterator.hasNext()) {
+                    break;
+                }
+                throwIfCancelled(ctx);
+                AssistantMessageChunk chunk = iterator.next();
+                streamAttempt.markChunkReceived();
+                chunks.add(chunk);
+                ctx.getExtra().put("_stream_chunks_emitted", chunks.count);
+                writeModelChunk(ctx, chunk);
+            }
+            return chunks;
         } finally {
+            if (cancellation != null) {
+                cancellation.clearModelIterator(iterator);
+            }
             closeIterator(iterator);
         }
-        AssistantMessage aiMessage;
-        if (accumulatedChunk == null) {
-            aiMessage = AssistantMessage.builder().content("").toolCalls(List.of()).build();
+    }
+
+    private void writeModelChunk(AgentCallbackContext ctx, AssistantMessageChunk chunk) {
+        AgentSessionApi session = ctx.getSession();
+        if (session != null && chunk.getReasoningContent() != null && !chunk.getReasoningContent().isEmpty()) {
+            session.writeStream(new OutputSchema("llm_reasoning", nextStreamIndex(ctx),
+                    new LinkedHashMap<>(Map.of("content", chunk.getReasoningContent(), "result_type", "answer"))));
+        }
+        if (session != null && chunk.getContent() != null && !String.valueOf(chunk.getContent()).isEmpty()) {
+            session.writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx),
+                    new LinkedHashMap<>(Map.of("content", chunk.getContent(), "result_type", "answer"))));
+        }
+    }
+
+    private static AssistantMessage buildStreamMessage(AssistantMessageChunk chunk) {
+        if (chunk == null) {
+            return AssistantMessage.builder().content("").toolCalls(List.of()).build();
+        }
+        return AssistantMessage.builder()
+                .content(chunk.getContent() == null ? "" : chunk.getContent())
+                .toolCalls(chunk.getToolCalls() == null ? List.of() : chunk.getToolCalls())
+                .finishReason(chunk.getFinishReason())
+                .usageMetadata(chunk.getUsageMetadata())
+                .responseModel(chunk.getResponseModel())
+                .reasoningContent(chunk.getReasoningContent())
+                .promptTokenIds(chunk.getPromptTokenIds())
+                .completionTokenIds(chunk.getCompletionTokenIds())
+                .logprobs(chunk.getLogprobs())
+                .build();
+    }
+
+    private void writeStreamToolCalls(AgentCallbackContext ctx, AssistantMessage aiMessage) {
+        if (ctx.getSession() == null || aiMessage.getToolCalls() == null || aiMessage.getToolCalls().isEmpty()) {
+            return;
+        }
+        Map<String, Object> toolPayload = new LinkedHashMap<>();
+        toolPayload.put("tool_calls", aiMessage.getToolCalls());
+        ctx.getSession().writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx), toolPayload));
+    }
+
+    private void writeStreamUsage(AgentCallbackContext ctx, AssistantMessage aiMessage, long callStartTime,
+            StreamChunks chunks) {
+        if (ctx.getSession() == null || aiMessage.getUsageMetadata() == null) {
+            return;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
+        payload.put("result_type", "answer");
+        double usageTotalLatency = aiMessage.getUsageMetadata().getTotalLatency();
+        if (usageTotalLatency > 0.0d) {
+            payload.put("total_latency_ms", roundMillis(BigDecimal.valueOf(usageTotalLatency)
+                    .multiply(BigDecimal.valueOf(1_000_000_000L)).doubleValue()));
         } else {
-            aiMessage = AssistantMessage.builder()
-                    .content(accumulatedChunk.getContent() == null ? "" : accumulatedChunk.getContent())
-                    .toolCalls(accumulatedChunk.getToolCalls() == null ? List.of() : accumulatedChunk.getToolCalls())
-                    .finishReason(accumulatedChunk.getFinishReason())
-                    .usageMetadata(accumulatedChunk.getUsageMetadata())
-                    .responseModel(accumulatedChunk.getResponseModel())
-                    .reasoningContent(accumulatedChunk.getReasoningContent())
-                    .promptTokenIds(accumulatedChunk.getPromptTokenIds())
-                    .completionTokenIds(accumulatedChunk.getCompletionTokenIds())
-                    .logprobs(accumulatedChunk.getLogprobs())
-                    .build();
+            payload.put("total_latency_ms", roundMillis(System.nanoTime() - callStartTime));
         }
-        if (isEmptyStreamResult(aiMessage)) {
-            logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
-            return aiMessage;
+        addFirstTokenLatency(aiMessage, callStartTime, chunks, payload);
+        addInterTokenLatency(aiMessage, chunks, payload);
+        ctx.getSession().writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), payload));
+    }
+
+    private static void addFirstTokenLatency(AssistantMessage aiMessage, long callStartTime,
+            StreamChunks chunks, Map<String, Object> payload) {
+        Double ttftSeconds = aiMessage.getUsageMetadata().getTtftSeconds();
+        if (ttftSeconds != null) {
+            payload.put("ttft_ms", roundMillis(BigDecimal.valueOf(ttftSeconds)
+                    .multiply(BigDecimal.valueOf(1_000_000_000L)).doubleValue()));
+        } else if (chunks.firstTokenTime != null) {
+            payload.put("ttft_ms", roundMillis(chunks.firstTokenTime - callStartTime));
+        } else {
+            Loggers.AGENT.debug("No TTFT measurement available from either source.");
         }
-        logModelResponse(ctx, aiMessage);
-        logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
-        // In streaming mode, tool_calls are accumulated but not yet written
-        // to the stream as an llm_output chunk (content chunks were written
-        // incrementally above). Emit the accumulated tool_calls here so the
-        // stream contains a llm_output chunk with tool_calls, matching the
-        // non-streaming path (writeNonStreamAsStreamChunks).
-        if (ctx.getSession() != null && aiMessage.getToolCalls() != null
-                && !aiMessage.getToolCalls().isEmpty()) {
-            Map<String, Object> toolPayload = new LinkedHashMap<>();
-            toolPayload.put("tool_calls", aiMessage.getToolCalls());
-            ctx.getSession().writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx), toolPayload));
+    }
+
+    private static void addInterTokenLatency(AssistantMessage aiMessage, StreamChunks chunks,
+            Map<String, Object> payload) {
+        Double interTokenMs = aiMessage.getUsageMetadata().getInterTokenLatencyMs();
+        if (interTokenMs != null) {
+            payload.put("tpot_ms", roundMillis(BigDecimal.valueOf(interTokenMs)
+                    .multiply(BigDecimal.valueOf(1_000_000L)).doubleValue()));
+            return;
         }
-        if (ctx.getSession() != null && aiMessage.getUsageMetadata() != null) {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
-            payload.put("result_type", "answer");
-            // Prefer the model layer's whole-call measurement so this frame and the
-            // OTel span report the same window; the local clock starts after the
-            // request is dispatched and would come out slightly short.
-            double usageTotalLatency = aiMessage.getUsageMetadata().getTotalLatency();
-            if (usageTotalLatency > 0.0d) {
-                payload.put("total_latency_ms", roundMillis(
-                        BigDecimal.valueOf(usageTotalLatency)
-                                .multiply(BigDecimal.valueOf(1_000_000_000L))
-                                .doubleValue()));
-            } else {
-                payload.put("total_latency_ms", roundMillis(System.nanoTime() - callStartTime));
+        if (chunks.firstTokenTime != null && chunks.lastTokenTime != null
+                && aiMessage.getUsageMetadata().getOutputTokens() > 1) {
+            payload.put("tpot_ms", roundMillis((chunks.lastTokenTime - chunks.firstTokenTime)
+                    / (double) (aiMessage.getUsageMetadata().getOutputTokens() - 1)));
+            return;
+        }
+        Loggers.AGENT.debug("No inter-token measurement available from either source.");
+    }
+
+    private static final class StreamChunks {
+        private AssistantMessageChunk accumulatedChunk;
+        private Long firstTokenTime;
+        private Long lastTokenTime;
+        private int count;
+
+        private void add(AssistantMessageChunk chunk) {
+            accumulatedChunk = accumulatedChunk == null ? chunk : accumulatedChunk.merge(chunk);
+            if (chunk.carriesOutputToken()) {
+                long now = System.nanoTime();
+                if (firstTokenTime == null) {
+                    firstTokenTime = now;
+                }
+                lastTokenTime = now;
             }
-            // TTFT / inter-token latency are computed centrally by the model layer
-            // and carried on usage metadata; fall back to the local window only when
-            // the model layer did not run (e.g. an undecorated client).
-            Double ttftSeconds = aiMessage.getUsageMetadata().getTtftSeconds();
-            if (ttftSeconds != null) {
-                payload.put("ttft_ms", roundMillis(
-                        BigDecimal.valueOf(ttftSeconds)
-                                .multiply(BigDecimal.valueOf(1_000_000_000L))
-                                .doubleValue()));
-            } else if (firstTokenTime != null) {
-                payload.put("ttft_ms", roundMillis(firstTokenTime - callStartTime));
-            } else {
-                Loggers.AGENT.debug("No TTFT measurement available from either source.");
-            }
-            Double interTokenMs = aiMessage.getUsageMetadata().getInterTokenLatencyMs();
-            if (interTokenMs != null) {
-                payload.put("tpot_ms", roundMillis(
-                        BigDecimal.valueOf(interTokenMs)
-                                .multiply(BigDecimal.valueOf(1_000_000L))
-                                .doubleValue()));
-            } else if (firstTokenTime != null && lastTokenTime != null
-                    && aiMessage.getUsageMetadata().getOutputTokens() > 1) {
-                // Denominator is the provider-reported output token count, not the
-                // chunk count: a single chunk may carry several tokens.
-                payload.put("tpot_ms", roundMillis((lastTokenTime - firstTokenTime)
-                        / (double) (aiMessage.getUsageMetadata().getOutputTokens() - 1)));
-            } else {
-                Loggers.AGENT.debug("No inter-token measurement available from either source.");
-            }
-            ctx.getSession().writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), payload));
+            count++;
         }
-        return aiMessage;
     }
 
     static boolean isEmptyStreamResult(AssistantMessage message) {
@@ -4151,5 +4211,97 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     private static double roundMillis(double nanos) {
         return Math.round((nanos / 1_000_000.0D) * 100.0D) / 100.0D;
+    }
+
+    private static final class CancellationFuture extends FutureTask<Void> {
+        private final AtomicReference<Runnable> cleanup;
+        private volatile boolean isRunCalled;
+
+        private CancellationFuture(Runnable task, Runnable cleanup) {
+            super(task, null);
+            this.cleanup = new AtomicReference<>(cleanup);
+        }
+
+        /**
+         * Runs the worker and releases its registration after the worker exits.
+         */
+        @Override
+        public void run() {
+            isRunCalled = true;
+            try {
+                super.run();
+            } finally {
+                cleanupRegistration();
+            }
+        }
+
+        /**
+         * Releases the registration when cancellation prevents the worker from starting.
+         */
+        @Override
+        protected void done() {
+            if (!isRunCalled) {
+                cleanupRegistration();
+            }
+        }
+
+        private void cleanupRegistration() {
+            Runnable action = cleanup.getAndSet(null);
+            if (action != null) {
+                action.run();
+            }
+        }
+    }
+
+    private static final class StreamCancellation {
+        private final AtomicBoolean cancelled = new AtomicBoolean();
+        private Future<?> worker;
+        private Iterator<?> modelIterator;
+
+        private boolean isCancelled() {
+            return cancelled.get();
+        }
+
+        private void attachWorker(Future<?> future) {
+            synchronized (this) {
+                worker = future;
+            }
+            if (isCancelled()) {
+                future.cancel(true);
+            }
+        }
+
+        private void attachModelIterator(Iterator<?> iterator) {
+            synchronized (this) {
+                modelIterator = iterator;
+            }
+            if (isCancelled()) {
+                closeIterator(iterator);
+            }
+        }
+
+        private void clearModelIterator(Iterator<?> iterator) {
+            synchronized (this) {
+                if (modelIterator == iterator) {
+                    modelIterator = null;
+                }
+            }
+        }
+
+        private void cancel() {
+            if (!cancelled.compareAndSet(false, true)) {
+                return;
+            }
+            Future<?> currentWorker;
+            Iterator<?> currentIterator;
+            synchronized (this) {
+                currentWorker = worker;
+                currentIterator = modelIterator;
+            }
+            if (currentWorker != null) {
+                currentWorker.cancel(true);
+            }
+            closeIterator(currentIterator);
+        }
     }
 }

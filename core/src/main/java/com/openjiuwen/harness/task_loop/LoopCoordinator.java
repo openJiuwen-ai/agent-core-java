@@ -28,7 +28,7 @@ public final class LoopCoordinator {
     private final List<StopConditionEvaluator> evaluators;
     private int iteration;
     private int tokenUsage;
-    private boolean aborted;
+    private volatile boolean isAborted;
     private long startNanoTime;
     private String stopReason;
     private Map<String, Object> lastResult;
@@ -46,7 +46,7 @@ public final class LoopCoordinator {
     }
 
     public boolean isAborted() {
-        return aborted;
+        return isAborted;
     }
 
     public String getStopReason() {
@@ -56,7 +56,7 @@ public final class LoopCoordinator {
     public void reset() {
         iteration = 0;
         tokenUsage = 0;
-        aborted = false;
+        isAborted = false;
         startNanoTime = System.nanoTime();
         stopReason = null;
         lastResult = null;
@@ -80,11 +80,11 @@ public final class LoopCoordinator {
     }
 
     public void requestAbort() {
-        aborted = true;
+        isAborted = true;
     }
 
     public boolean shouldContinue() {
-        if (aborted) {
+        if (isAborted) {
             stopReason = "Aborted";
             return false;
         }

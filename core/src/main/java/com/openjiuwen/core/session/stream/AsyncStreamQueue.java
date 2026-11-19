@@ -163,6 +163,7 @@ public class AsyncStreamQueue {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 unfinishedTasks.decrementAndGet();
+                forceCriticalAfterTimeout(data, totalTimeoutMs);
                 return;
             }
             if (System.nanoTime() >= deadlineNanos) {
