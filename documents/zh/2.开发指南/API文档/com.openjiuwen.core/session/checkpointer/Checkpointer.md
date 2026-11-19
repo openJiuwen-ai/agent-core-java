@@ -40,4 +40,4 @@ public abstract class Checkpointer
 
 - 相关测试：`InMemoryCheckpointerTest`、`StepPauseResumeTest`。
 - 内部辅助逻辑会优先识别 `WorkflowSession` 与 `NodeSession`，因此 workflow 与节点场景共享同一套键规则。
-- 暂停/恢复族方法在 `InMemoryCheckpointer`、`PersistenceCheckpointer` 与 Redis 扩展三后端行为一致：恢复按会话身份精确定位、异常抛裸 `IllegalStateException`、恢复写回读取时的原始 blob 键。语义细节见[检查点机制：用户暂停](../../../高阶用法/Checkpointer检查点机制.md#断点续跑与用户暂停paused0117)。
+- 暂停/恢复族方法在 `InMemoryCheckpointer`、`PersistenceCheckpointer` 与 Redis 扩展三后端行为一致：恢复按会话身份精确定位、异常抛裸 `IllegalStateException`、恢复写回读取时的原始 blob 键。语义细节见[检查点机制：用户暂停](../../../../高阶用法/Checkpointer检查点机制.md#断点续跑与用户暂停paused0117)。
