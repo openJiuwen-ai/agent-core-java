@@ -231,7 +231,14 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private ToolAvailabilityChecker createDefaultToolAvailabilityChecker() {
         return (toolName, session) -> {
             List<String> activeGroupNames = new ArrayList<>(getActiveToolGroupNames(session));
-            for (String skillName : registeredActiveSkillNames(getActiveSkillNames(session))) {
+            List<String> effectiveSkillNames;
+            if (!toolGroupManager.hasExplicitToolGroups()) {
+                effectiveSkillNames = registeredActiveSkillNames(getActiveSkillNames(session));
+            } else {
+                effectiveSkillNames = resolveEffectiveSkillNames(
+                        getActiveSkillNames(session), getActiveToolGroupNames(session));
+            }
+            for (String skillName : effectiveSkillNames) {
                 activeGroupNames.add("skill:" + skillName);
             }
             boolean isToolInRegisteredGroup =
@@ -884,7 +891,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     public List<ToolInfo> listEffectiveToolInfo(AgentSessionApi session) {
         List<String> activeSkillNames = getActiveSkillNames(session);
-        if (toolGroupManager.getGroups().isEmpty()) {
+        if (!toolGroupManager.hasExplicitToolGroups()) {
             return listEffectiveToolInfo(activeSkillNames);
         }
         return listEffectiveToolInfoWithGroups(activeSkillNames, getActiveToolGroupNames(session));
@@ -998,10 +1005,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     private List<ToolInfo> listEffectiveToolInfoWithGroups(
             List<String> activeSkillNames, List<String> activeToolGroupNames) {
-        List<String> registeredSkillNames = registeredActiveSkillNames(activeSkillNames);
-        List<ToolInfo> merged = listEffectiveToolInfo(registeredSkillNames);
+        List<String> effectiveSkillNames =
+                resolveEffectiveSkillNames(activeSkillNames, activeToolGroupNames);
+        List<ToolInfo> merged = listEffectiveToolInfo(effectiveSkillNames);
         List<String> allActiveGroupNames = new ArrayList<>(activeToolGroupNames);
-        for (String skillName : registeredSkillNames) {
+        for (String skillName : effectiveSkillNames) {
             allActiveGroupNames.add("skill:" + skillName);
         }
         List<String> visibleToolNames =
@@ -1017,6 +1025,27 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                 visibleTools.size(),
                 activeToolGroupNames);
         return visibleTools;
+    }
+
+    private List<String> resolveEffectiveSkillNames(
+            List<String> activeSkillNames, List<String> activeToolGroupNames) {
+        Set<String> effectiveSkillNames = new LinkedHashSet<>();
+        effectiveSkillNames.addAll(registeredActiveSkillNames(activeSkillNames));
+        effectiveSkillNames.addAll(registeredActiveSkillNames(
+                List.copyOf(toolGroupManager.getActiveSkillNames(activeToolGroupNames))));
+        effectiveSkillNames.addAll(
+                toolGroupManager.getUngroupedSkillNames(registeredSkillNames()));
+        return List.copyOf(effectiveSkillNames);
+    }
+
+    private List<String> registeredSkillNames() {
+        if (skillUtil == null) {
+            return List.of();
+        }
+        return skillUtil.getSkillManager().getAll().stream()
+                .map(Skill::getName)
+                .filter(skillName -> skillName != null && !skillName.isBlank())
+                .toList();
     }
 
     private void validateEffectiveToolNames(List<String> activeSkillNames) {

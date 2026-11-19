@@ -145,6 +145,22 @@ public final class ToolGroupManager {
     }
 
     /**
+     * Returns whether any caller-created, non-{@code skill:} group exists.
+     *
+     * <p>Implicit Skill groups are not counted because they back the legacy
+     * direct skill activation path and must not turn on ungrouped-skill
+     * passthrough by themselves.
+     *
+     * @return true when at least one explicit tool group is registered
+     */
+    public boolean hasExplicitToolGroups() {
+        synchronized (toolGroupsByName) {
+            return toolGroupsByName.values().stream()
+                    .anyMatch(toolGroup -> !toolGroup.name().startsWith(SKILL_GROUP_PREFIX));
+        }
+    }
+
+    /**
      * Filters registered tool names using the session's active group names.
      *
      * @param activeGroupNames groups enabled for this session

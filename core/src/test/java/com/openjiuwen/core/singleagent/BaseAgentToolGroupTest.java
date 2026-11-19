@@ -13,6 +13,8 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberRef;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberType;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -315,6 +317,7 @@ class BaseAgentToolGroupTest {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("session-a");
         Tool envLookup = skillTool("envLookup");
+        registerGlobalTool(agent, "clock");
         registerSkill(agent, "EnvSkill");
         agent.registerSkillTools(
                         SkillToolBinding.builder()
@@ -329,6 +332,114 @@ class BaseAgentToolGroupTest {
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
                 .contains("envLookup", "skill_tool");
+    }
+
+    @Test
+    @Tag("TC-TG-04")
+    void activeGroupSkillMember_exposesAndExecutesBoundTools() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("session-a");
+        registerGlobalTool(agent, "clock");
+        Tool envLookup = skillTool("envLookup");
+        registerSkill(agent, "EnvSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("EnvSkill")
+                                .tools(List.of(envLookup))
+                                .build())
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "environment",
+                        "Environment tools",
+                        List.of(
+                                new GroupMemberRef(GroupMemberType.TOOL, "clock"),
+                                new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .doesNotContain("envLookup");
+
+        agent.activateToolGroup("environment", session);
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .contains("envLookup", "clock", "skill_tool");
+        ToolCall activeCall =
+                ToolCall.builder().id("call-1").name("envLookup").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> activeResults =
+                agent.getAbilityManager().execute(null, activeCall, session, false);
+        assertThat(activeResults.get(0).toolMessage().getContentAsString())
+                .doesNotContain("not active");
+    }
+
+    @Test
+    @Tag("TC-TG-04")
+    @Tag("TC-SEC-01")
+    void inactiveGroupSkillMember_staysHiddenWhileUngroupedSkillRemainsVisible() {
+        TestAgent agent = new TestAgent();
+        Tool envLookup = skillTool("envLookup");
+        Tool cleanup = skillTool("cleanup");
+        registerSkill(agent, "EnvSkill");
+        registerSkill(agent, "CleanupSkill");
+        agent.registerSkillTools(List.of(
+                        SkillToolBinding.builder()
+                                .skillName("EnvSkill")
+                                .tools(List.of(envLookup))
+                                .build(),
+                        SkillToolBinding.builder()
+                                .skillName("CleanupSkill")
+                                .tools(List.of(cleanup))
+                                .build()))
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "environment",
+                        "Environment tools",
+                        List.of(new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+        MemorySession session = new MemorySession("session-a");
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .contains("cleanup", "skill_tool")
+                .doesNotContain("envLookup");
+        ToolCall hiddenCall =
+                ToolCall.builder().id("call-hidden").name("envLookup").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> hiddenResults =
+                agent.getAbilityManager().execute(null, hiddenCall, session, false);
+        assertThat(hiddenResults.get(0).result()).isNull();
+        assertThat(hiddenResults.get(0).toolMessage().getContentAsString())
+                .contains("envLookup")
+                .contains("not active");
+    }
+
+    @Test
+    @Tag("TC-LNK-01")
+    void activeSkillAndActiveGroupSkillMember_deduplicateEffectiveSkills() {
+        TestAgent agent = new TestAgent();
+        Tool envLookup = skillTool("envLookup");
+        registerSkill(agent, "EnvSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("EnvSkill")
+                                .tools(List.of(envLookup))
+                                .build())
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "environment",
+                        "Environment tools",
+                        List.of(new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+        MemorySession session = new MemorySession("session-a");
+        agent.activateSkill("EnvSkill", session);
+        agent.activateToolGroup("environment", session);
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .containsOnlyOnce("envLookup");
     }
 
     @Test

@@ -607,10 +607,10 @@ allActiveGroupNames = activeToolGroupNames
 
 **验收标准：**
 
-- [ ] 注册 ToolGroup 含 SKILL("git-helper") + 激活该组 → `getSkillManager().has("git-helper")` 且 `skillToolRegistry` 返回其绑定工具
-- [ ] 不激活任何组 → effectiveSkills 只含 ungrouped skills（等价于旧行为）
-- [ ] `activateSkill("x")` + ToolGroup 含 SKILL("x") → effectiveSkills 去重后只含一个 "x"
-- [ ] 现有 BaseAgentToolGroupTest 全部通过
+- [x] 注册 ToolGroup 含 SKILL("git-helper") + 激活该组 → `getSkillManager().has("git-helper")` 且 `skillToolRegistry` 返回其绑定工具
+- [x] 不激活任何组 → effectiveSkills 只含 ungrouped skills（等价于旧行为）
+- [x] `activateSkill("x")` + ToolGroup 含 SKILL("x") → effectiveSkills 去重后只含一个 "x"
+- [x] 现有 BaseAgentToolGroupTest 全部通过
 
 **预估规模：** 80–120 行（含测试）
 
