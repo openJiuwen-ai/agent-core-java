@@ -162,4 +162,58 @@ class ToolGroupManagerTest {
         assertThat(toolGroupManager.isToolEligibleForExecution("", List.of())).isFalse();
         assertThat(toolGroupManager.isToolEligibleForExecution("   ", List.of())).isFalse();
     }
+
+    @Test
+    void unregisterToolGroup_withoutRemainingOwner_restoresUngroupedSemantics() {
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("research", "Research", List.of("search")));
+
+        toolGroupManager.unregisterToolGroup("research");
+
+        assertThat(toolGroupManager.getActiveToolNames(
+                List.of("research"), List.of("search", "clock")))
+                .containsExactlyInAnyOrder("clock", "search");
+        assertThat(toolGroupManager.isToolEligibleForExecution(
+                "search", List.of("research")))
+                .isTrue();
+    }
+
+    @Test
+    void unregisterToolGroup_whenToolHasOtherOwner_usesRemainingGroup() {
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("research", "Research", List.of("search")));
+        toolGroupManager.registerToolGroup(
+                new ToolGroup("analysis", "Analysis", List.of("search", "chart")));
+
+        toolGroupManager.unregisterToolGroup("research");
+
+        assertThat(toolGroupManager.getActiveToolNames(
+                List.of("analysis"), List.of("search", "chart")))
+                .containsExactlyInAnyOrder("chart", "search");
+        assertThat(toolGroupManager.isToolEligibleForExecution(
+                "search", List.of("analysis")))
+                .isTrue();
+        assertThat(toolGroupManager.isToolEligibleForExecution(
+                "search", List.of("research", "missing")))
+                .isFalse();
+    }
+
+    @Test
+    void reRegisterToolGroup_afterUnregister_restoresGroupAuthorization() {
+        ToolGroup researchGroup =
+                new ToolGroup("research", "Research", List.of("search"));
+
+        toolGroupManager.registerToolGroup(researchGroup);
+        toolGroupManager.unregisterToolGroup("research");
+        assertThat(toolGroupManager.isToolEligibleForExecution(
+                "search", List.of("research")))
+                .isTrue();
+
+        toolGroupManager.registerToolGroup(researchGroup);
+        assertThat(toolGroupManager.isToolEligibleForExecution(
+                "search", List.of("research")))
+                .isTrue();
+        assertThat(toolGroupManager.isToolEligibleForExecution("search", List.of()))
+                .isFalse();
+    }
 }

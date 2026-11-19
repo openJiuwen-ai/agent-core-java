@@ -92,7 +92,7 @@ class BaseAgentToolGroupTest {
 
     @Test
     @Tag("TC-SEC-01")
-    void unregisteredGroupResidue_doesNotRestoreVisibilityOrExecution() {
+    void unregisteredGroup_restoresUngroupedSemantics() {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "clock");
@@ -110,27 +110,67 @@ class BaseAgentToolGroupTest {
 
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
-                .containsExactly("clock");
+                .containsExactlyInAnyOrder("clock", "search");
         ToolCall residueCall =
                 ToolCall.builder().id("call-residue").name("search").arguments("{}").build();
         List<AbilityManager.ExecutionResult> residueResults =
                 agent.getAbilityManager().execute(null, residueCall, session, false);
-        assertThat(residueResults.get(0).result()).isNull();
+        assertThat(residueResults.get(0).result()).isNotNull();
         assertThat(residueResults.get(0).toolMessage().getContentAsString())
-                .contains("search")
-                .contains("not active");
+                .doesNotContain("not active");
+    }
 
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
+    @Test
+    @Tag("TC-TG-04")
+    void deactivatedAndUnregisteredGroup_restoresUngroupedSemantics() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("session-a");
+        registerGlobalTool(agent, "clock");
+        registerGlobalTool(agent, "search");
+        agent.registerToolGroup(new ToolGroup("temporary", "Temporary tools", List.of("search")));
+
+        agent.activateToolGroup("temporary", session);
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .containsExactlyInAnyOrder("clock", "search");
+
+        agent.deactivateToolGroup("temporary", session);
+        agent.unregisterToolGroup("temporary");
 
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
                 .containsExactlyInAnyOrder("clock", "search");
-        ToolCall restoredCall =
-                ToolCall.builder().id("call-restored").name("search").arguments("{}").build();
-        List<AbilityManager.ExecutionResult> restoredResults =
-                agent.getAbilityManager().execute(null, restoredCall, session, false);
-        assertThat(restoredResults.get(0).toolMessage().getContentAsString())
+        ToolCall toolCall =
+                ToolCall.builder().id("call-search").name("search").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> results =
+                agent.getAbilityManager().execute(null, toolCall, session, false);
+        assertThat(results.get(0).result()).isNotNull();
+        assertThat(results.get(0).toolMessage().getContentAsString())
                 .doesNotContain("not active");
+    }
+
+    @Test
+    void unregisterGroup_staleActiveGroupNameGrantsNothing() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("session-a");
+        registerGlobalTool(agent, "clock");
+        registerGlobalTool(agent, "search");
+        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(new ToolGroup("admin", "Admin tools", List.of("search")));
+
+        agent.activateToolGroup("research", session);
+        agent.unregisterToolGroup("research");
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .containsExactly("clock");
+        ToolCall toolCall =
+                ToolCall.builder().id("call-search").name("search").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> results =
+                agent.getAbilityManager().execute(null, toolCall, session, false);
+        assertThat(results.get(0).result()).isNull();
+        assertThat(results.get(0).toolMessage().getContentAsString())
+                .contains("not active");
     }
 
     @Test

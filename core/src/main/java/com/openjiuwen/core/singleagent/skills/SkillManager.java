@@ -33,6 +33,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -58,6 +59,7 @@ public class SkillManager {
     private volatile List<SkillRepository> injectedRepositories;
     private volatile boolean isProtectedOverrideBlocked = true;
     private volatile SkillConfig skillConfig = SkillConfig.fromEnvironment();
+    private volatile SkillLifecycleListener lifecycleListener;
     private String sysOperationId;
     private String description = "";
 
@@ -96,6 +98,10 @@ public class SkillManager {
      */
     public List<SkillRepository> getRepositories() {
         return injectedRepositories == null ? List.of() : injectedRepositories;
+    }
+
+    public void setSkillLifecycleListener(SkillLifecycleListener listener) {
+        this.lifecycleListener = listener;
     }
 
     public void setProtectedOverrideBlocked(boolean isBlocked) {
@@ -270,7 +276,9 @@ public class SkillManager {
     }
 
     public void unregister(String name) {
-        registry.remove(name);
+        if (registry.remove(name) != null) {
+            notifySkillsRemoved(List.of(name));
+        }
     }
 
     public Skill get(String name) {
@@ -461,6 +469,12 @@ public class SkillManager {
                     repository.source() == null ? "unknown" : repository.source().value();
             mergeRepositorySkills(merged, repository, repositorySource);
         }
+        Set<String> previousNames = Set.copyOf(registry.keySet());
+        Set<String> refreshedNames = Set.copyOf(merged.keySet());
+        Set<String> removedNames = new LinkedHashSet<>(previousNames);
+        removedNames.removeAll(refreshedNames);
+        Set<String> addedNames = new LinkedHashSet<>(refreshedNames);
+        addedNames.removeAll(previousNames);
         registry.clear();
         updateAtCache.clear();
         skillOrder.clear();
@@ -468,6 +482,8 @@ public class SkillManager {
             registry.put(skill.getName(), skill);
             skillOrder.add(skill.getName());
         }
+        notifySkillsRemoved(removedNames);
+        notifySkillsAdded(addedNames);
         Loggers.AGENT.debug("refreshFromRepositories completed, skills count: {}", registry.size());
     }
 
@@ -535,6 +551,7 @@ public class SkillManager {
                 Skill registered = skill.get();
                 registered.setUpdateAt(mtime);
                 Skill existing = registry.get(registered.getName());
+                boolean isAdded = existing == null;
                 if (existing == null
                         || (existing.getDirectory() != null
                                 && existing.getDirectory()
@@ -545,6 +562,9 @@ public class SkillManager {
                     registry.put(registered.getName(), registered);
                 }
                 updateAtCache.put(key, mtime);
+                if (isAdded) {
+                    notifySkillsAdded(List.of(registered.getName()));
+                }
             }
         } catch (IOException | RuntimeException error) {
             Loggers.AGENT.warning("Failed to refresh skill at {}: {}", key, error.getMessage());
@@ -639,13 +659,50 @@ public class SkillManager {
     }
 
     public void clear() {
+        Set<String> removedNames = Set.copyOf(registry.keySet());
         registry.clear();
         updateAtCache.clear();
         skillOrder.clear();
+        notifySkillsRemoved(removedNames);
     }
 
     public int count() {
         return registry.size();
+    }
+
+    /**
+     * Observes the lifecycle changes of skills managed by {@link SkillManager}.
+     */
+    public interface SkillLifecycleListener {
+        /**
+         * Called after one or more skills become available.
+         *
+         * @param skillNames names of the added skills
+         */
+        default void onSkillsAdded(Collection<String> skillNames) {
+        }
+
+        /**
+         * Called after one or more skills stop being available.
+         *
+         * @param skillNames names of the removed skills
+         */
+        default void onSkillsRemoved(Collection<String> skillNames) {
+        }
+    }
+
+    private void notifySkillsAdded(Collection<String> skillNames) {
+        SkillLifecycleListener listener = lifecycleListener;
+        if (listener != null && skillNames != null && !skillNames.isEmpty()) {
+            listener.onSkillsAdded(skillNames.stream().filter(Objects::nonNull).toList());
+        }
+    }
+
+    private void notifySkillsRemoved(Collection<String> skillNames) {
+        SkillLifecycleListener listener = lifecycleListener;
+        if (listener != null && skillNames != null && !skillNames.isEmpty()) {
+            listener.onSkillsRemoved(skillNames.stream().filter(Objects::nonNull).toList());
+        }
     }
 
     public String getSysOperationId() {
@@ -827,19 +884,27 @@ public class SkillManager {
         if (!shouldOverwrite && registry.containsKey(skill.getName())) {
             throw new IllegalArgumentException("Skill already exists: " + skill.getName());
         }
+        boolean isAdded = registry.get(skill.getName()) == null;
         registry.put(skill.getName(), skill);
+        if (isAdded) {
+            notifySkillsAdded(List.of(skill.getName()));
+        }
     }
 
     private void removeStaleSkills(Set<String> discoveredKeys) {
         Set<String> staleKeys = new LinkedHashSet<>(updateAtCache.keySet());
         staleKeys.removeAll(discoveredKeys);
+        Set<String> removedNames = new LinkedHashSet<>();
         for (String key : staleKeys) {
             Skill stale = findSkillByDirectory(key);
             if (stale != null) {
-                registry.remove(stale.getName());
+                if (registry.remove(stale.getName()) != null) {
+                    removedNames.add(stale.getName());
+                }
             }
             updateAtCache.remove(key);
         }
+        notifySkillsRemoved(removedNames);
     }
 
     private List<DiscoveredSkill> discoverSkillDirs(BaseFsOperation fs, Path root) {
