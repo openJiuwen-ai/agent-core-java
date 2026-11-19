@@ -507,7 +507,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         String implicitGroupName = "skill:" + binding.getSkillName();
         toolGroupManager.unregisterSkillToolGroup(implicitGroupName);
         ToolGroup implicitGroup =
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         implicitGroupName,
                         "Implicit group for skill " + binding.getSkillName(),
                         toolNames);

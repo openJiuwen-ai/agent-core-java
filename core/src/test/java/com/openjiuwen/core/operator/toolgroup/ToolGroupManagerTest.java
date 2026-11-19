@@ -23,12 +23,12 @@ class ToolGroupManagerTest {
     @Test
     void registerToolGroup_whenNameIsDuplicate_rejectsSecondGroup() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("research", "Research", List.of("search")));
+                ToolGroup.ofToolNames("research", "Research", List.of("search")));
 
         assertThatThrownBy(
                         () ->
                                 toolGroupManager.registerToolGroup(
-                                        new ToolGroup("research", "Duplicate", List.of("browser"))))
+                                        ToolGroup.ofToolNames("research", "Duplicate", List.of("browser"))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Duplicate tool group name");
         assertThat(toolGroupManager.getGroups()).hasSize(1);
@@ -39,7 +39,7 @@ class ToolGroupManagerTest {
         assertThatThrownBy(
                         () ->
                                 toolGroupManager.registerToolGroup(
-                                        new ToolGroup(
+                                        ToolGroup.ofToolNames(
                                                 "skill:cleanup",
                                                 "Reserved skill group",
                                                 List.of("delete_file"))))
@@ -51,9 +51,9 @@ class ToolGroupManagerTest {
     @Test
     void registerSkillToolGroup_skillPrefix_replacesImplicitGroup() {
         toolGroupManager.registerSkillToolGroup(
-                new ToolGroup("skill:cleanup", "Initial", List.of("delete_file")));
+                ToolGroup.ofToolNames("skill:cleanup", "Initial", List.of("delete_file")));
         ToolGroup updated =
-                new ToolGroup("skill:cleanup", "Updated", List.of("delete_file", "cleanup"));
+                ToolGroup.ofToolNames("skill:cleanup", "Updated", List.of("delete_file", "cleanup"));
 
         toolGroupManager.registerSkillToolGroup(updated);
 
@@ -63,8 +63,8 @@ class ToolGroupManagerTest {
 
     @Test
     void groupRegistry_afterUnregister_exposesStableSnapshot() {
-        ToolGroup researchGroup = new ToolGroup("research", null, List.of("search"));
-        ToolGroup analysisGroup = new ToolGroup("analysis", "Analysis", List.of("chart"));
+        ToolGroup researchGroup = ToolGroup.ofToolNames("research", null, List.of("search"));
+        ToolGroup analysisGroup = ToolGroup.ofToolNames("analysis", "Analysis", List.of("chart"));
         toolGroupManager.registerToolGroup(researchGroup);
         toolGroupManager.registerToolGroup(analysisGroup);
 
@@ -81,7 +81,7 @@ class ToolGroupManagerTest {
     @Tag("TC-TG-02")
     void getActiveToolNames_forEmptyOrUnknownGroups_returnsUngroupedTools() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("research", "Research", List.of("search")));
+                ToolGroup.ofToolNames("research", "Research", List.of("search")));
 
         assertThat(toolGroupManager.getActiveToolNames(List.of(), List.of("search", "clock")))
                 .containsExactly("clock");
@@ -95,9 +95,9 @@ class ToolGroupManagerTest {
     @Tag("TC-TG-03")
     void getActiveToolNames_whenSameToolIsInTwoGroups_returnsOneName() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("research", "Research", List.of("search")));
+                ToolGroup.ofToolNames("research", "Research", List.of("search")));
         toolGroupManager.registerToolGroup(
-                new ToolGroup("analysis", "Analysis", List.of("search", "chart")));
+                ToolGroup.ofToolNames("analysis", "Analysis", List.of("search", "chart")));
 
         assertThat(
                         toolGroupManager.getActiveToolNames(
@@ -115,7 +115,7 @@ class ToolGroupManagerTest {
 
     @Test
     void registerToolGroup_whenGroupIsEmpty_acceptsRegistration() {
-        toolGroupManager.registerToolGroup(new ToolGroup("empty", "Empty group", List.of()));
+        toolGroupManager.registerToolGroup(ToolGroup.ofToolNames("empty", "Empty group", List.of()));
 
         assertThat(toolGroupManager.getToolGroup("empty")).isPresent();
         assertThat(toolGroupManager.getActiveToolNames(List.of("empty"), List.of("clock")))
@@ -125,7 +125,7 @@ class ToolGroupManagerTest {
     @Test
     void isToolEligibleForExecution_inActiveExplicitGroup_returnsTrue() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("research", "Research", List.of("search")));
+                ToolGroup.ofToolNames("research", "Research", List.of("search")));
 
         assertThat(toolGroupManager.isToolEligibleForExecution("search", List.of("research")))
                 .isTrue();
@@ -134,7 +134,7 @@ class ToolGroupManagerTest {
     @Test
     void isToolEligibleForExecution_inactiveGroup_skillCannotOverride() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("danger_tools", "Danger tools", List.of("delete_file")));
+                ToolGroup.ofToolNames("danger_tools", "Danger tools", List.of("delete_file")));
 
         assertThat(
                         toolGroupManager.isToolEligibleForExecution(
@@ -146,7 +146,7 @@ class ToolGroupManagerTest {
     @Test
     void isToolEligibleForExecution_whenToolIsUngrouped_returnsTrue() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("research", "Research", List.of("search")));
+                ToolGroup.ofToolNames("research", "Research", List.of("search")));
 
         assertThat(toolGroupManager.isToolEligibleForExecution("clock", List.of())).isTrue();
         assertThat(toolGroupManager.isToolEligibleForExecution("clock", List.of("research")))
@@ -156,7 +156,7 @@ class ToolGroupManagerTest {
     @Test
     void isToolEligibleForExecution_unknownOrBlankTool_returnsExpected() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("research", "Research", List.of("search")));
+                ToolGroup.ofToolNames("research", "Research", List.of("search")));
 
         assertThat(toolGroupManager.isToolEligibleForExecution("missing", List.of())).isTrue();
         assertThat(toolGroupManager.isToolEligibleForExecution("", List.of())).isFalse();
@@ -166,7 +166,7 @@ class ToolGroupManagerTest {
     @Test
     void unregisterToolGroup_withoutRemainingOwner_restoresUngroupedSemantics() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("research", "Research", List.of("search")));
+                ToolGroup.ofToolNames("research", "Research", List.of("search")));
 
         toolGroupManager.unregisterToolGroup("research");
 
@@ -181,9 +181,9 @@ class ToolGroupManagerTest {
     @Test
     void unregisterToolGroup_whenToolHasOtherOwner_usesRemainingGroup() {
         toolGroupManager.registerToolGroup(
-                new ToolGroup("research", "Research", List.of("search")));
+                ToolGroup.ofToolNames("research", "Research", List.of("search")));
         toolGroupManager.registerToolGroup(
-                new ToolGroup("analysis", "Analysis", List.of("search", "chart")));
+                ToolGroup.ofToolNames("analysis", "Analysis", List.of("search", "chart")));
 
         toolGroupManager.unregisterToolGroup("research");
 
@@ -201,7 +201,7 @@ class ToolGroupManagerTest {
     @Test
     void reRegisterToolGroup_afterUnregister_restoresGroupAuthorization() {
         ToolGroup researchGroup =
-                new ToolGroup("research", "Research", List.of("search"));
+                ToolGroup.ofToolNames("research", "Research", List.of("search"));
 
         toolGroupManager.registerToolGroup(researchGroup);
         toolGroupManager.unregisterToolGroup("research");

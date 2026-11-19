@@ -154,7 +154,7 @@ class ReActAgentExternalToolPendingTest {
     void resumeRejectsExternalToolResultsWhenToolGroupIsInactive() {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
-        agent.registerToolGroup(new ToolGroup(
+        agent.registerToolGroup(ToolGroup.ofToolNames(
                 "external_tools", "External tools", List.of(EXTERNAL_TOOL_NAME)));
         MemorySession session = new MemorySession("inactive-external-resume-session");
         agent.invoke(Map.of("query", "read frontend"), session);

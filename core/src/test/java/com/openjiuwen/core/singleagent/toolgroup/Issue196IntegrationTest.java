@@ -63,10 +63,10 @@ class Issue196IntegrationTest {
         registerGlobalTool(agent, "search");
         registerGlobalTool(agent, "chart");
         registerGlobalTool(agent, "delete_file");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
-        agent.registerToolGroup(new ToolGroup("analysis", "Analysis tools", List.of("chart")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("analysis", "Analysis tools", List.of("chart")));
         agent.registerToolGroup(
-                new ToolGroup("danger_tools", "Dangerous tools", List.of("delete_file")));
+                ToolGroup.ofToolNames("danger_tools", "Dangerous tools", List.of("delete_file")));
 
         Tool skillTool = skillTool("envLookup");
         agent.registerSkillTools(
@@ -170,7 +170,7 @@ class Issue196IntegrationTest {
         abilityManager.add(
                 McpServerConfig.builder().serverName("weather").serverId("mcp-weather").build());
         agent.registerToolGroup(
-                new ToolGroup("mcp_tools", "MCP tools", List.of("mcp_weather_forecast")));
+                ToolGroup.ofToolNames("mcp_tools", "MCP tools", List.of("mcp_weather_forecast")));
 
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)

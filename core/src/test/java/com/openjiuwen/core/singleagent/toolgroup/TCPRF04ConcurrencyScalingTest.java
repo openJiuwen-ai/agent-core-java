@@ -51,12 +51,12 @@ class TCPRF04ConcurrencyScalingTest {
             registerGlobalTool(agent, "tool_" + i);
         }
         agent.registerToolGroup(
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         "group_a",
                         "Group A",
                         List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
         agent.registerToolGroup(
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         "group_b",
                         "Group B",
                         List.of("tool_5", "tool_6", "tool_7", "tool_8", "tool_9")));

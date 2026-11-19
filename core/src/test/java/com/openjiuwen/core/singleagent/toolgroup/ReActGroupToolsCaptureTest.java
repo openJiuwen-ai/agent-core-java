@@ -40,7 +40,7 @@ class ReActGroupToolsCaptureTest {
         registerTools(filteredAgent, 0, TOOL_COUNT / 2);
 
         filteredAgent.registerToolGroup(
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         "focused",
                         "Focused tools",
                         List.of("tool_0", "tool_1", "tool_2", "tool_3")));
