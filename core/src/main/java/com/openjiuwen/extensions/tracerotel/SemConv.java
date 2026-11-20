@@ -248,6 +248,32 @@ public final class SemConv {
     /** openjiuwen.sandbox.error_message — Sandbox operation error message. */
     public static final String OJ_SANDBOX_ERROR_MESSAGE = "openjiuwen.sandbox.error_message";
 
+    // ===== openjiuwen.multimodal.* — 多模态核心摘要（additive） =====
+
+    /** openjiuwen.multimodal.request.has_media — whether the request contains media. */
+    public static final String OJ_MM_REQUEST_HAS_MEDIA = "openjiuwen.multimodal.request.has_media";
+
+    /** openjiuwen.multimodal.request.count — input media count. */
+    public static final String OJ_MM_REQUEST_COUNT = "openjiuwen.multimodal.request.count";
+
+    /** openjiuwen.multimodal.request.types — input media types (JSON array). */
+    public static final String OJ_MM_REQUEST_TYPES = "openjiuwen.multimodal.request.types";
+
+    /** openjiuwen.multimodal.request.bytes — input media total bytes. */
+    public static final String OJ_MM_REQUEST_BYTES = "openjiuwen.multimodal.request.bytes";
+
+    /** openjiuwen.multimodal.output.count — output media count. */
+    public static final String OJ_MM_OUTPUT_COUNT = "openjiuwen.multimodal.output.count";
+
+    /** openjiuwen.multimodal.output.types — output media types (JSON array). */
+    public static final String OJ_MM_OUTPUT_TYPES = "openjiuwen.multimodal.output.types";
+
+    /** openjiuwen.multimodal.output.bytes — output media total bytes. */
+    public static final String OJ_MM_OUTPUT_BYTES = "openjiuwen.multimodal.output.bytes";
+
+    /** openjiuwen.multimodal.error.count — media parse/load/preprocess failure count. */
+    public static final String OJ_MM_ERROR_COUNT = "openjiuwen.multimodal.error.count";
+
     /**
      * Context key for sandbox ID propagation.
      * Singleton instance ensures same key is used across all Context operations.
