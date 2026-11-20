@@ -134,14 +134,14 @@ public final class ShellProcessRegistry {
         return true;
     }
 
-    private static void destroyProcessTree(Process process, List<ProcessHandle> descendants, boolean forcibly) {
-        destroyDescendants(descendants, forcibly);
-        destroyHandle(process.toHandle(), forcibly);
+    private static void destroyProcessTree(Process process, List<ProcessHandle> descendants, boolean isForcible) {
+        destroyDescendants(descendants, isForcible);
+        destroyHandle(process.toHandle(), isForcible);
     }
 
-    private static void destroyDescendants(List<ProcessHandle> descendants, boolean forcibly) {
+    private static void destroyDescendants(List<ProcessHandle> descendants, boolean isForcible) {
         for (int index = descendants.size() - 1; index >= 0; index -= 1) {
-            destroyHandle(descendants.get(index), forcibly);
+            destroyHandle(descendants.get(index), isForcible);
         }
     }
 
@@ -155,11 +155,11 @@ public final class ShellProcessRegistry {
         }
     }
 
-    private static void destroyHandle(ProcessHandle handle, boolean forcibly) {
+    private static void destroyHandle(ProcessHandle handle, boolean isForcible) {
         if (!handle.isAlive()) {
             return;
         }
-        if (forcibly) {
+        if (isForcible) {
             handle.destroyForcibly();
             return;
         }

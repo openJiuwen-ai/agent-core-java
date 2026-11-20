@@ -245,12 +245,10 @@ class ShellProcessRegistryTest {
 
     private static void destroyProcess(ProcessHandle process) {
         process.destroyForcibly();
-        process.onExit().orTimeout(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS).join();
     }
 
     private static void destroyProcess(Process process) {
         process.destroyForcibly();
-        process.onExit().orTimeout(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS).join();
     }
 
     private static boolean isWindows() {
