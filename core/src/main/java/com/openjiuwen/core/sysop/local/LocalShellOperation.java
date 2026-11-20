@@ -152,6 +152,7 @@ public class LocalShellOperation extends BaseShellOperation {
             }
         }
         Path callerCwd = capturedCwd;
+        String callerSessionId = ShellProcessRegistry.resolveShellSessionId();
         return CompletableFuture.supplyAsync(() -> {
             if (command == null || command.isBlank()) {
                 return shellError("execute_cmd", "command can not be empty", ExecuteCmdResult.class, null);
@@ -167,7 +168,7 @@ public class LocalShellOperation extends BaseShellOperation {
                 int effectiveTimeout = effectiveTimeout(timeout);
                 ProcessBuilder builder = createProcessBuilder(command, actualCwd, environment, shellType, false, false);
                 process = builder.start();
-                sessionId = registerProcess(process);
+                sessionId = registerProcess(process, callerSessionId);
                 String encoding = stringOption(options, "encoding", detectShellEncoding());
                 InvokeData invokeData = OperationUtils.createHandler(process, encoding, effectiveTimeout)
                         .invoke()
@@ -999,7 +1000,10 @@ public class LocalShellOperation extends BaseShellOperation {
     }
 
     private String registerProcess(Process process) {
-        String sessionId = ShellProcessRegistry.resolveShellSessionId();
+        return registerProcess(process, ShellProcessRegistry.resolveShellSessionId());
+    }
+
+    private String registerProcess(Process process, String sessionId) {
         if (sessionId != null) {
             ShellProcessRegistry.registerShellProcess(sessionId, process);
         }

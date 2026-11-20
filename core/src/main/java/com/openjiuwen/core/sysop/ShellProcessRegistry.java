@@ -72,7 +72,14 @@ public final class ShellProcessRegistry {
     }
 
     public static void registerShellProcess(String sessionId, Process proc) {
+        if (proc == null || trimToNull(sessionId) == null) {
+            return;
+        }
         SHELL_PROCESS_REGISTRY.register(sessionId, proc);
+        if (consumeShellSessionCancelled(sessionId)) {
+            SHELL_PROCESS_REGISTRY.unregister(sessionId, proc);
+            terminateShellProcess(proc);
+        }
     }
 
     public static void unregisterShellProcess(String sessionId, Process proc) {
@@ -95,13 +102,8 @@ public final class ShellProcessRegistry {
         if (proc == null || !proc.isAlive()) {
             return false;
         }
-        boolean windows = isWindows();
         try {
-            if (windows) {
-                proc.destroy();
-            } else {
-                destroyProcessTree(proc, false);
-            }
+            destroyProcessTree(proc, false);
         } catch (RuntimeException exception) {
             proc.destroy();
         }
@@ -110,11 +112,7 @@ public final class ShellProcessRegistry {
         }
 
         try {
-            if (windows) {
-                proc.destroyForcibly();
-            } else {
-                destroyProcessTree(proc, true);
-            }
+            destroyProcessTree(proc, true);
         } catch (RuntimeException exception) {
             proc.destroyForcibly();
             Loggers.SYS_OPERATION.warning(
@@ -155,10 +153,6 @@ public final class ShellProcessRegistry {
             Thread.currentThread().interrupt();
             return false;
         }
-    }
-
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
     private static String trimToNull(String value) {

@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.BaseShellOperation;
 import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.ShellProcessRegistry;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
@@ -17,12 +18,18 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,6 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code openjiuwen/core/sys_operation/local/shell_operation.py}.
  */
 class LocalShellOperationTest {
+
+    private static final long PROCESS_WAIT_SECONDS = 5L;
 
     @TempDir
     private Path tempDir;
@@ -59,6 +68,43 @@ class LocalShellOperationTest {
         assertThat(result.getData().getStderr()).contains("warn");
         assertThat(result.getData().getExitCode()).isEqualTo(7);
         assertThat(Path.of(result.getData().getCwd())).isEqualTo(tempDir.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void executeCmdCancellationUsesCallerSessionAcrossAsyncBoundary() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        CompletableFuture.supplyAsync(() -> Boolean.TRUE).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        LocalShellOperation operation = operation();
+        Path pidFile = tempDir.resolve("command.pid");
+        ShellProcessRegistry.ContextToken<String> token = ShellProcessRegistry.setShellSessionId("caller_session");
+        CompletableFuture<ExecuteCmdResult> execution = null;
+        ProcessHandle commandProcess = null;
+        try {
+            execution = operation.executeCmd(longRunningCommand(pidFile), null, 30, null, null, shellType());
+            ShellProcessRegistry.resetShellSessionId(token);
+            commandProcess = ProcessHandle.of(awaitPid(pidFile)).orElseThrow();
+            assertThat(commandProcess.isAlive()).isTrue();
+
+            int killed = CompletableFuture.supplyAsync(
+                    () -> ShellProcessRegistry.killShellProcessesForSession("caller_session")
+            ).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(killed).isEqualTo(1);
+            commandProcess.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            assertThat(commandProcess.isAlive()).isFalse();
+        } finally {
+            ShellProcessRegistry.resetShellSessionId(token);
+            if (commandProcess != null) {
+                destroyProcess(commandProcess);
+            } else {
+                readPid(pidFile).ifPresent(pid -> ProcessHandle.of(pid)
+                        .ifPresent(LocalShellOperationTest::destroyProcess));
+            }
+            if (execution != null) {
+                execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            }
+        }
     }
 
     @Test
@@ -160,6 +206,42 @@ class LocalShellOperationTest {
 
     private static String sleepCommand() {
         return isWindows() ? "Start-Sleep -Seconds 2" : "sleep 2";
+    }
+
+    private static String longRunningCommand(Path pidFile) {
+        if (isWindows()) {
+            String quotedPath = "'" + pidFile.toString().replace("'", "''") + "'";
+            return "Write-Output $PID | Set-Content -LiteralPath " + quotedPath + "; Start-Sleep -Seconds 60";
+        }
+        String quotedPath = "'" + pidFile.toString().replace("'", "'\"'\"'") + "'";
+        return "printf '%s' $$ > " + quotedPath + "; exec sleep 60";
+    }
+
+    private static long awaitPid(Path pidFile) {
+        awaitCondition(() -> readPid(pidFile).isPresent());
+        return readPid(pidFile).orElseThrow();
+    }
+
+    private static OptionalLong readPid(Path pidFile) {
+        try {
+            String value = Files.readString(pidFile, StandardCharsets.UTF_8).trim();
+            return value.isEmpty() ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(value));
+        } catch (IOException | NumberFormatException exception) {
+            return OptionalLong.empty();
+        }
+    }
+
+    private static void awaitCondition(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PROCESS_WAIT_SECONDS);
+        while (!condition.getAsBoolean() && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10L));
+        }
+        assertThat(condition.getAsBoolean()).isTrue();
+    }
+
+    private static void destroyProcess(ProcessHandle process) {
+        process.destroyForcibly();
+        process.onExit().orTimeout(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS).join();
     }
 
     private static boolean isWindows() {
