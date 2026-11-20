@@ -14,6 +14,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Track in-flight shell processes so callers can cancel them by session id.
@@ -102,17 +104,21 @@ public final class ShellProcessRegistry {
         if (proc == null || !proc.isAlive()) {
             return false;
         }
+        List<ProcessHandle> descendants = new ArrayList<>();
         try {
-            destroyProcessTree(proc, false);
+            descendants.addAll(proc.toHandle().descendants().toList());
+            destroyProcessTree(proc, descendants, false);
         } catch (RuntimeException exception) {
             proc.destroy();
         }
         if (waitFor(proc, TERMINATE_TIMEOUT)) {
+            destroyDescendants(descendants, true);
+            waitForDescendants(descendants);
             return true;
         }
 
         try {
-            destroyProcessTree(proc, true);
+            destroyProcessTree(proc, descendants, true);
         } catch (RuntimeException exception) {
             proc.destroyForcibly();
             Loggers.SYS_OPERATION.warning(
@@ -124,15 +130,29 @@ public final class ShellProcessRegistry {
                     "Timeout expired waiting for shell process " + safePid(proc) + " termination"
             );
         }
+        waitForDescendants(descendants);
         return true;
     }
 
-    private static void destroyProcessTree(Process process, boolean forcibly) {
-        List<ProcessHandle> descendants = new ArrayList<>(process.toHandle().descendants().toList());
+    private static void destroyProcessTree(Process process, List<ProcessHandle> descendants, boolean forcibly) {
+        destroyDescendants(descendants, forcibly);
+        destroyHandle(process.toHandle(), forcibly);
+    }
+
+    private static void destroyDescendants(List<ProcessHandle> descendants, boolean forcibly) {
         for (int index = descendants.size() - 1; index >= 0; index -= 1) {
             destroyHandle(descendants.get(index), forcibly);
         }
-        destroyHandle(process.toHandle(), forcibly);
+    }
+
+    private static void waitForDescendants(List<ProcessHandle> descendants) {
+        for (ProcessHandle descendant : descendants) {
+            if (!waitFor(descendant, KILL_TIMEOUT)) {
+                Loggers.SYS_OPERATION.warning(
+                        "Timeout expired waiting for shell descendant " + descendant.pid() + " termination"
+                );
+            }
+        }
     }
 
     private static void destroyHandle(ProcessHandle handle, boolean forcibly) {
@@ -151,6 +171,15 @@ public final class ShellProcessRegistry {
             return proc.waitFor(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private static boolean waitFor(ProcessHandle proc, Duration timeout) {
+        try {
+            proc.onExit().get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            return true;
+        } catch (InterruptedException | ExecutionException | TimeoutException exception) {
             return false;
         }
     }

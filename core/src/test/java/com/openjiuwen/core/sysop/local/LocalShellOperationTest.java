@@ -25,8 +25,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalLong;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
@@ -73,20 +76,25 @@ class LocalShellOperationTest {
     @Test
     void executeCmdCancellationUsesCallerSessionAcrossAsyncBoundary() throws Exception {
         Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
-        CompletableFuture.supplyAsync(() -> Boolean.TRUE).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
         LocalShellOperation operation = operation();
         Path pidFile = tempDir.resolve("command.pid");
-        ShellProcessRegistry.ContextToken<String> token = ShellProcessRegistry.setShellSessionId("caller_session");
+        String sessionId = "caller_session_" + UUID.randomUUID();
+        CountDownLatch workersStarted = new CountDownLatch(ForkJoinPool.commonPool().getParallelism());
+        CountDownLatch releaseWorkers = new CountDownLatch(1);
+        List<CompletableFuture<Void>> workers = occupyCommonPool(workersStarted, releaseWorkers);
+        ShellProcessRegistry.ContextToken<String> token = null;
         CompletableFuture<ExecuteCmdResult> execution = null;
         ProcessHandle commandProcess = null;
         try {
+            token = ShellProcessRegistry.setShellSessionId(sessionId);
+            releaseWorkers.countDown();
             execution = operation.executeCmd(longRunningCommand(pidFile), null, 30, null, null, shellType());
             ShellProcessRegistry.resetShellSessionId(token);
             commandProcess = ProcessHandle.of(awaitPid(pidFile)).orElseThrow();
             assertThat(commandProcess.isAlive()).isTrue();
 
             int killed = CompletableFuture.supplyAsync(
-                    () -> ShellProcessRegistry.killShellProcessesForSession("caller_session")
+                    () -> ShellProcessRegistry.killShellProcessesForSession(sessionId)
             ).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
 
             assertThat(killed).isEqualTo(1);
@@ -94,7 +102,10 @@ class LocalShellOperationTest {
             execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
             assertThat(commandProcess.isAlive()).isFalse();
         } finally {
-            ShellProcessRegistry.resetShellSessionId(token);
+            releaseWorkers.countDown();
+            if (token != null) {
+                ShellProcessRegistry.resetShellSessionId(token);
+            }
             if (commandProcess != null) {
                 destroyProcess(commandProcess);
             } else {
@@ -104,6 +115,8 @@ class LocalShellOperationTest {
             if (execution != null) {
                 execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
             }
+            CompletableFuture.allOf(workers.toArray(CompletableFuture[]::new))
+                    .get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
         }
     }
 
@@ -176,6 +189,33 @@ class LocalShellOperationTest {
         assertThat(result.getCode()).isEqualTo(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode());
         assertThat(result.getMessage()).contains("command rejected for safety");
         assertThat(result.getData().getExitCode()).isEqualTo(-1);
+    }
+
+    private static List<CompletableFuture<Void>> occupyCommonPool(CountDownLatch started, CountDownLatch release)
+            throws InterruptedException {
+        List<CompletableFuture<Void>> workers = new ArrayList<>();
+        for (int index = 0; index < ForkJoinPool.commonPool().getParallelism(); index += 1) {
+            workers.add(CompletableFuture.runAsync(() -> {
+                started.countDown();
+                awaitLatch(release);
+            }));
+        }
+        boolean allStarted = started.await(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        if (!allStarted) {
+            release.countDown();
+        }
+        assertThat(allStarted).isTrue();
+        return workers;
+    }
+
+    private static void awaitLatch(CountDownLatch latch) {
+        try {
+            if (!latch.await(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting for common-pool worker release");
+            }
+        } catch (InterruptedException exception) {
+            throw new IllegalStateException("Interrupted while occupying a common-pool worker", exception);
+        }
     }
 
     private LocalShellOperation operation() {

@@ -7,6 +7,8 @@ package com.openjiuwen.core.sysop;
 import com.openjiuwen.core.common.logging.LoggingUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -132,6 +134,28 @@ class ShellProcessRegistryTest {
         }
     }
 
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void terminateShellProcessKillsTermResistantDescendant() throws Exception {
+        Process shell = startTermResistantProcessTree();
+        long descendantPid = -1L;
+        try {
+            descendantPid = awaitPid(tempDir.resolve("resistant.pid"));
+            ProcessHandle descendant = ProcessHandle.of(descendantPid).orElseThrow();
+            assertThat(shell.isAlive()).isTrue();
+            assertThat(descendant.isAlive()).isTrue();
+
+            assertThat(ShellProcessRegistry.terminateShellProcess(shell)).isTrue();
+
+            assertThat(shell.waitFor(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            descendant.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            assertThat(descendant.isAlive()).isFalse();
+        } finally {
+            destroyProcessTree(descendantPid);
+            destroyProcess(shell);
+        }
+    }
+
     private Process startLongRunningProcess() throws IOException {
         if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
             return new ProcessBuilder("powershell", "-NoProfile", "-Command", "Start-Sleep -Seconds 30")
@@ -151,6 +175,17 @@ class ShellProcessRegistryTest {
                 ? List.of("cmd.exe", "/d", "/c", script.toString())
                 : List.of("/bin/sh", script.toString());
         return new ProcessBuilder(shellCommand)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+    }
+
+    private Process startTermResistantProcessTree() throws IOException {
+        Path script = tempDir.resolve("resistant-tree.sh");
+        String pidFile = shellQuote(tempDir.resolve("resistant.pid").toString());
+        String childCommand = "trap '' TERM; printf '%s' $$ > " + pidFile + "; while :; do sleep 60; done";
+        Files.writeString(script, "/bin/sh -c " + shellQuote(childCommand) + " &\nwait\n", StandardCharsets.UTF_8);
+        return new ProcessBuilder("/bin/sh", script.toString())
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start();
@@ -196,6 +231,16 @@ class ShellProcessRegistryTest {
         if (pid > 0L) {
             ProcessHandle.of(pid).ifPresent(ShellProcessRegistryTest::destroyProcess);
         }
+    }
+
+    private static void destroyProcessTree(long pid) {
+        if (pid <= 0L) {
+            return;
+        }
+        ProcessHandle.of(pid).ifPresent(process -> {
+            process.descendants().toList().forEach(ShellProcessRegistryTest::destroyProcess);
+            destroyProcess(process);
+        });
     }
 
     private static void destroyProcess(ProcessHandle process) {
