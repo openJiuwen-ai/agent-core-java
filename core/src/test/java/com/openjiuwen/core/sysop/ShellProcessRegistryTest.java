@@ -14,11 +14,13 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 
@@ -148,8 +150,8 @@ class ShellProcessRegistryTest {
             assertThat(ShellProcessRegistry.terminateShellProcess(shell)).isTrue();
 
             assertThat(shell.waitFor(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
-            child.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
-            grandchild.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            awaitDescendantTermination(child);
+            awaitDescendantTermination(grandchild);
         } finally {
             destroyProcess(grandchildPid);
             destroyProcess(childPid);
@@ -171,8 +173,7 @@ class ShellProcessRegistryTest {
             assertThat(ShellProcessRegistry.terminateShellProcess(shell)).isTrue();
 
             assertThat(shell.waitFor(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
-            descendant.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
-            assertThat(descendant.isAlive()).isFalse();
+            awaitDescendantTermination(descendant);
         } finally {
             destroyProcessTree(descendantPid);
             destroyProcess(shell);
@@ -248,6 +249,55 @@ class ShellProcessRegistryTest {
             LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10L));
         }
         assertThat(condition.getAsBoolean()).isTrue();
+    }
+
+    private static void awaitDescendantTermination(ProcessHandle process) throws Exception {
+        try {
+            process.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException exception) {
+            assertZombieAfterTimeout(process, exception);
+        }
+    }
+
+    private static void assertZombieAfterTimeout(ProcessHandle process, TimeoutException timeout) {
+        long pid = process.pid();
+        if (!OS.LINUX.isCurrentOs()) {
+            throw new AssertionError("Descendant process " + pid + " did not terminate within "
+                    + PROCESS_WAIT_SECONDS + " seconds; zombie state cannot be verified on this OS", timeout);
+        }
+        Path procRoot = Path.of("/proc");
+        final char state;
+        try {
+            state = readLinuxProcessState(procRoot, pid);
+        } catch (NoSuchFileException exception) {
+            if (process.isAlive()) {
+                throw new AssertionError("Descendant process " + pid
+                        + " is still alive although its /proc entry has disappeared", exception);
+            }
+            if (Files.isDirectory(procRoot)) {
+                return;
+            }
+            throw new AssertionError("Cannot verify termination of descendant process " + pid
+                    + " because /proc is unavailable", exception);
+        } catch (IOException exception) {
+            throw new AssertionError("Cannot verify termination of descendant process " + pid
+                    + " because its /proc stat could not be read", exception);
+        }
+        // A zombie executes no code; an external reaper owns the remaining process-table entry.
+        if (state != 'Z') {
+            throw new AssertionError("Descendant process " + pid + " is still running after "
+                    + PROCESS_WAIT_SECONDS + " seconds in /proc state " + state, timeout);
+        }
+    }
+
+    private static char readLinuxProcessState(Path procRoot, long pid) throws IOException {
+        Path statPath = procRoot.resolve(Long.toString(pid)).resolve("stat");
+        String stat = Files.readString(statPath, StandardCharsets.UTF_8);
+        int commandEnd = stat.lastIndexOf(')');
+        if (commandEnd < 0 || commandEnd + 3 > stat.length() || stat.charAt(commandEnd + 1) != ' ') {
+            throw new IOException("Malformed /proc stat for descendant process " + pid);
+        }
+        return stat.charAt(commandEnd + 2);
     }
 
     private static void destroyProcess(long pid) {
