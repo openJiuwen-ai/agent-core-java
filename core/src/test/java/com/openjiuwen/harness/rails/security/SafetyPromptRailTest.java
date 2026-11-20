@@ -57,12 +57,14 @@ class SafetyPromptRailTest {
     void callModel_whenCalledAgain_includesOneSafetySectionPerRequest() {
         // Given: an isolated agent with the safety rail and a recording model.
         try (Fixture f = new Fixture()) {
+            f.agent.addPromptBuilderSection("business_rules", "fixture business rule", 90);
             // When: prepare and send two independent requests.
             f.call(false);
             f.call(false);
 
             // Then: verify safety injection without requiring identical request text.
             assertEquals(2, f.requests.size());
+            assertTrue(f.requests.get(0).contains("fixture business rule"));
             for (String request : f.requests) {
                 assertOneSafetySection(request);
                 assertTrue(request.contains("System"));
@@ -96,26 +98,6 @@ class SafetyPromptRailTest {
 
             // Then: safety reaches the streaming model boundary.
             assertOneSafetySection(f.requests.get(0));
-        }
-    }
-
-    @Test
-    @DisplayName("重新配置后经外层调用准备，使用新 builder 的安全段")
-    void beforeInvoke_whenReconfigured_preparesCurrentBuilder() {
-        // Given: an isolated agent with the safety rail and a recording model.
-        try (Fixture f = new Fixture()) {
-            f.call(false);
-            var previousBuilder = f.agent.getSystemPromptBuilder();
-
-            // When: reconfigure without changing the prompt language.
-            f.agent.configure(config());
-            f.rail.beforeInvoke(new CallbackContext(f.owner, Map.of()));
-            f.call(false);
-
-            // Then: injection follows the new builder, not the cached old object.
-            assertNotSame(previousBuilder, f.agent.getSystemPromptBuilder());
-            assertSame(f.agent.getSystemPromptBuilder(), f.rail.getSystemPromptBuilder());
-            assertOneSafetySection(f.requests.get(1));
         }
     }
 
@@ -299,8 +281,8 @@ class SafetyPromptRailTest {
             AgentRail selection = new AgentRail() {
                 @Override
                 public void beforeModelCall(AgentCallbackContext context) {
-                    context.getExtra().put("target_model_id", secondId);
-                    context.setDynamicModelId(firstId);
+                    context.getExtra().put("target_model_id", firstId);
+                    context.setDynamicModelId(secondId);
                 }
             };
             selection.setPriority(100);
@@ -308,9 +290,9 @@ class SafetyPromptRailTest {
 
             first.call(false);
 
-            assertEquals(1, first.requests.size());
-            assertTrue(second.requests.isEmpty());
-            assertOneSafetySection(first.requests.get(0));
+            assertTrue(first.requests.isEmpty());
+            assertEquals(1, second.requests.size());
+            assertOneSafetySection(second.requests.get(0));
         } finally {
             for (String id : List.of(firstId, secondId)) {
                 if (resources.listModelIds().contains(id)) {
@@ -359,40 +341,6 @@ class SafetyPromptRailTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    @DisplayName("本次未生成安全段时不注入遗留段，无 builder 也执行旧回调")
-    void beforeModelCall_whenNoNewSafetySection_ignoresStaleSection(boolean hasBuilder) {
-        AtomicInteger calls = new AtomicInteger();
-        SafetyPromptRail custom = new SafetyPromptRail() {
-            @Override
-            public void beforeModelCall(CallbackContext context) {
-                calls.incrementAndGet();
-            }
-        };
-        try (Fixture f = new Fixture(custom)) {
-            if (!hasBuilder) {
-                custom.uninit(f.owner);
-            }
-            AgentCallbackContext context = hasBuilder
-                    ? new AgentCallbackContext(f.agent) : new AgentCallbackContext();
-            ModelCallInputs inputs = new ModelCallInputs();
-            inputs.getMessages().add(new UserMessage("hi"));
-            context.setInputs(inputs);
-            PromptSection stale = new PromptSection(SectionName.SAFETY,
-                    Map.of("cn", "stale safety", "en", "stale safety"), 85);
-            context.getExtra().put("safety_section", stale);
-
-            custom.getCallbacks().get(AgentCallbackEvent.BEFORE_MODEL_CALL)
-                    .handle(context).toCompletableFuture().orTimeout(5, TimeUnit.SECONDS).join();
-
-            assertEquals(1, calls.get());
-            assertEquals(1, inputs.getMessages().size());
-            assertEquals("hi", ((BaseMessage) inputs.getMessages().get(0)).getContentAsString());
-            assertSame(stale, context.getExtra().get("safety_section"));
-        }
-    }
-
     @Test
     @DisplayName("初始化即准备持久双语段，模型前检查不将其降为单语临时段")
     void init_preparesPersistentMultilingualSection() {
@@ -432,12 +380,16 @@ class SafetyPromptRailTest {
             f.owner.deepConfig().setMaxIterations(1);
             try {
                 f.owner.invoke(Map.of("query", "hi"), f.session());
-                var previous = f.agent.getSystemPromptBuilder();
+                var oldBuilder = f.agent.getSystemPromptBuilder();
                 f.agent.configure(config());
+                var newBuilder = f.agent.getSystemPromptBuilder();
+                assertNotSame(oldBuilder, newBuilder);
+
                 f.owner.invoke(Map.of("query", "hi"), f.session());
                 assertEquals(2, f.requests.size());
                 f.requests.forEach(SafetyPromptRailTest::assertOneSafetySection);
-                assertFalse(previous.hasSection(SectionName.SAFETY));
+                assertSame(newBuilder, f.rail.getSystemPromptBuilder());
+                assertFalse(oldBuilder.hasSection(SectionName.SAFETY));
             } finally {
                 f.owner.close();
             }

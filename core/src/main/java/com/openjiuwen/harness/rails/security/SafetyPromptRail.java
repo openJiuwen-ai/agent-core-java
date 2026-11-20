@@ -33,7 +33,7 @@ public class SafetyPromptRail extends BaseSecurityRail {
     @Override
     public void init(DeepAgent agent) {
         super.init(agent);
-        systemPromptBuilder = resolveSystemPromptBuilder(agent == null ? null : agent.reactAgent(), agent);
+        systemPromptBuilder = resolveSystemPromptBuilder(agent, agent == null ? null : agent.reactAgent());
         prepareSafetySection();
     }
 
