@@ -146,6 +146,100 @@ class LocalShellOperationTest {
     }
 
     @Test
+    void executeCmdStreamCancellationUsesCallerSession() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+        Path pidFile = tempDir.resolve("stream.pid");
+        String sessionId = "stream_caller_" + UUID.randomUUID();
+        CountDownLatch workersStarted = new CountDownLatch(ForkJoinPool.commonPool().getParallelism());
+        CountDownLatch releaseWorkers = new CountDownLatch(1);
+        List<CompletableFuture<Void>> workers = occupyCommonPool(workersStarted, releaseWorkers);
+        ShellProcessRegistry.ContextToken<String> token = null;
+        CapturingSubscriber<ExecuteCmdStreamResult> subscriber = null;
+        ProcessHandle commandProcess = null;
+        try {
+            token = ShellProcessRegistry.setShellSessionId(sessionId);
+            Flow.Publisher<ExecuteCmdStreamResult> publisher = operation.executeCmdStream(
+                    longRunningCommand(pidFile), null, 30, null, null, shellType());
+            ShellProcessRegistry.resetShellSessionId(token);
+            token = null;
+            releaseWorkers.countDown();
+            subscriber = new CapturingSubscriber<>();
+            publisher.subscribe(subscriber);
+            commandProcess = ProcessHandle.of(awaitPid(pidFile)).orElseThrow();
+            assertThat(commandProcess.isAlive()).isTrue();
+
+            int killed = CompletableFuture.supplyAsync(
+                    () -> ShellProcessRegistry.killShellProcessesForSession(sessionId)
+            ).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(killed).isEqualTo(1);
+            commandProcess.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            subscriber.await();
+            assertThat(commandProcess.isAlive()).isFalse();
+        } finally {
+            releaseWorkers.countDown();
+            if (token != null) {
+                ShellProcessRegistry.resetShellSessionId(token);
+            }
+            destroyProcess(commandProcess, pidFile);
+            if (subscriber != null) {
+                subscriber.cancel();
+            }
+            ShellProcessRegistry.consumeShellSessionCancelled(sessionId);
+            CompletableFuture.allOf(workers.toArray(CompletableFuture[]::new))
+                    .get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void executeCmdBackgroundCancellationUsesCallerSession() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+        Path pidFile = tempDir.resolve("background.pid");
+        String sessionId = "background_caller_" + UUID.randomUUID();
+        CountDownLatch workersStarted = new CountDownLatch(ForkJoinPool.commonPool().getParallelism());
+        CountDownLatch releaseWorkers = new CountDownLatch(1);
+        List<CompletableFuture<Void>> workers = occupyCommonPool(workersStarted, releaseWorkers);
+        ShellProcessRegistry.ContextToken<String> token = null;
+        CompletableFuture<ExecuteCmdBackgroundResult> execution = null;
+        ProcessHandle commandProcess = null;
+        try {
+            token = ShellProcessRegistry.setShellSessionId(sessionId);
+            execution = operation.executeCmdBackground(
+                    longRunningCommand(pidFile), System.getProperty("java.io.tmpdir"), null, 0.1d,
+                    shellType());
+            ShellProcessRegistry.resetShellSessionId(token);
+            token = null;
+            releaseWorkers.countDown();
+            assertThat(execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS).getCode())
+                    .isEqualTo(StatusCode.SUCCESS.getCode());
+            commandProcess = ProcessHandle.of(awaitPid(pidFile)).orElseThrow();
+            assertThat(commandProcess.isAlive()).isTrue();
+
+            int killed = CompletableFuture.supplyAsync(
+                    () -> ShellProcessRegistry.killShellProcessesForSession(sessionId)
+            ).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(killed).isEqualTo(1);
+            commandProcess.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            assertThat(commandProcess.isAlive()).isFalse();
+        } finally {
+            releaseWorkers.countDown();
+            if (token != null) {
+                ShellProcessRegistry.resetShellSessionId(token);
+            }
+            destroyProcess(commandProcess, pidFile);
+            ShellProcessRegistry.consumeShellSessionCancelled(sessionId);
+            if (execution != null) {
+                execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            }
+            CompletableFuture.allOf(workers.toArray(CompletableFuture[]::new))
+                    .get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     @Disabled
     void executeCmdBackgroundReturnsProcessIdWhenStillRunning() throws Exception {
         Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
@@ -279,9 +373,16 @@ class LocalShellOperationTest {
         assertThat(condition.getAsBoolean()).isTrue();
     }
 
+    private static void destroyProcess(ProcessHandle process, Path pidFile) {
+        if (process != null) {
+            destroyProcess(process);
+            return;
+        }
+        readPid(pidFile).ifPresent(pid -> ProcessHandle.of(pid).ifPresent(LocalShellOperationTest::destroyProcess));
+    }
+
     private static void destroyProcess(ProcessHandle process) {
         process.destroyForcibly();
-        process.onExit().orTimeout(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS).join();
     }
 
     private static boolean isWindows() {
@@ -325,9 +426,13 @@ class LocalShellOperationTest {
             try {
                 return done.get(10, TimeUnit.SECONDS);
             } finally {
-                if (subscription != null) {
-                    subscription.cancel();
-                }
+                cancel();
+            }
+        }
+
+        private void cancel() {
+            if (subscription != null) {
+                subscription.cancel();
             }
         }
     }

@@ -102,9 +102,32 @@ class ShellProcessRegistryTest {
             ShellProcessRegistry.registerShellProcess("late_registration", process);
 
             assertThat(process.waitFor(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            assertThat(ShellProcessRegistry.consumeShellSessionCancelled("late_registration")).isTrue();
             assertThat(ShellProcessRegistry.consumeShellSessionCancelled("late_registration")).isFalse();
         } finally {
             destroyProcess(process);
+        }
+    }
+
+    @Test
+    void cancelledSessionKillsEveryProcessRegisteredLater() throws Exception {
+        Process first = startLongRunningProcess();
+        Process second = startLongRunningProcess();
+        try {
+            assertThat(ShellProcessRegistry.killShellProcessesForSession("multiple_late_registrations")).isZero();
+
+            ShellProcessRegistry.registerShellProcess("multiple_late_registrations", first);
+            ShellProcessRegistry.registerShellProcess("multiple_late_registrations", second);
+
+            assertThat(first.waitFor(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            assertThat(second.waitFor(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            assertThat(ShellProcessRegistry.consumeShellSessionCancelled("multiple_late_registrations"))
+                    .isTrue();
+            assertThat(ShellProcessRegistry.consumeShellSessionCancelled("multiple_late_registrations"))
+                    .isFalse();
+        } finally {
+            destroyProcess(first);
+            destroyProcess(second);
         }
     }
 

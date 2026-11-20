@@ -220,6 +220,7 @@ public class LocalShellOperation extends BaseShellOperation {
         }
         Path callerCwd = capturedCwd;
         RuntimeException callerCwdFailure = cwdFailure;
+        String callerSessionId = ShellProcessRegistry.resolveShellSessionId();
         return asyncPublisher(publisher -> {
             int chunkIndex = 0;
             if (command == null || command.isBlank()) {
@@ -252,7 +253,7 @@ public class LocalShellOperation extends BaseShellOperation {
                 String encoding = stringOption(options, "encoding", detectShellEncoding());
                 ProcessBuilder builder = createProcessBuilder(command, actualCwd, environment, shellType, false, true);
                 process = builder.start();
-                sessionId = registerProcess(process);
+                sessionId = registerProcess(process, callerSessionId);
                 BlockingQueue<StreamEvent> queue = OperationUtils.createHandler(
                         process,
                         Math.max(1, chunkSize),
@@ -319,6 +320,7 @@ public class LocalShellOperation extends BaseShellOperation {
             }
         }
         Path callerCwd = capturedCwd;
+        String callerSessionId = ShellProcessRegistry.resolveShellSessionId();
         return CompletableFuture.supplyAsync(() -> {
             if (command == null || command.isBlank()) {
                 return shellError("execute_cmd_background", "command can not be empty",
@@ -334,7 +336,7 @@ public class LocalShellOperation extends BaseShellOperation {
                 }
                 ProcessBuilder builder = createProcessBuilder(command, actualCwd, environment, shellType, true, false);
                 process = builder.start();
-                sessionId = registerProcess(process);
+                sessionId = registerProcess(process, callerSessionId);
                 AsyncProcessHandler.BackgroundLaunchResult launchResult = OperationUtils.createHandler(process)
                         .background(grace)
                         .join();
@@ -997,10 +999,6 @@ public class LocalShellOperation extends BaseShellOperation {
                         .type(type)
                         .chunkIndex(chunkIndex)
                         .build());
-    }
-
-    private String registerProcess(Process process) {
-        return registerProcess(process, ShellProcessRegistry.resolveShellSessionId());
     }
 
     private String registerProcess(Process process, String sessionId) {

@@ -78,7 +78,7 @@ public final class ShellProcessRegistry {
             return;
         }
         SHELL_PROCESS_REGISTRY.register(sessionId, proc);
-        if (consumeShellSessionCancelled(sessionId)) {
+        if (SHELL_PROCESS_REGISTRY.isCancelled(sessionId)) {
             SHELL_PROCESS_REGISTRY.unregister(sessionId, proc);
             terminateShellProcess(proc);
         }
@@ -146,8 +146,10 @@ public final class ShellProcessRegistry {
     }
 
     private static void waitForDescendants(List<ProcessHandle> descendants) {
+        long deadline = System.nanoTime() + KILL_TIMEOUT.toNanos();
         for (ProcessHandle descendant : descendants) {
-            if (!waitFor(descendant, KILL_TIMEOUT)) {
+            long remainingNanos = Math.max(0L, deadline - System.nanoTime());
+            if (!waitFor(descendant, Duration.ofNanos(remainingNanos))) {
                 Loggers.SYS_OPERATION.warning(
                         "Timeout expired waiting for shell descendant " + descendant.pid() + " termination"
                 );
@@ -179,7 +181,10 @@ public final class ShellProcessRegistry {
         try {
             proc.onExit().get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
             return true;
-        } catch (InterruptedException | ExecutionException | TimeoutException exception) {
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (ExecutionException | TimeoutException exception) {
             return false;
         }
     }
@@ -289,6 +294,16 @@ public final class ShellProcessRegistry {
                 }
                 cancelledSessions.remove(sid);
                 return true;
+            }
+        }
+
+        private boolean isCancelled(String sessionId) {
+            String sid = trimToNull(sessionId);
+            if (sid == null) {
+                return false;
+            }
+            synchronized (lock) {
+                return cancelledSessions.contains(sid);
             }
         }
 
