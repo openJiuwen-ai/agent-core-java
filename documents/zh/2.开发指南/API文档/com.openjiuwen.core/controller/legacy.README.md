@@ -6,19 +6,19 @@
 
 | 模块 | 说明 |
 |---|---|
-| [`config`](./config.README.md) | 旧版意图检测、Planner、Reflector 和组合式 reasoner 配置。 |
-| [`constants`](./constants.README.md) | 旧版意图检测使用的字段常量与角色映射。 |
-| [`event`](./event.README.md) | 兼容事件模型与工厂方法。 |
-| [`reasoner`](./reasoner.README.md) | 旧版意图检测器、Planner 以及组合式 reasoner。 |
-| [`task`](./task.README.md) | 兼容任务模型、依赖关系和结果对象。 |
-| [`utils`](./utils.README.md) | 旧版消息处理与 reasoner 辅助函数。 |
+| [`config`](./legacy/config.README.md) | 旧版意图检测、Planner、Reflector 和组合式 reasoner 配置。 |
+| [`constants`](./legacy/constants.README.md) | 旧版意图检测使用的字段常量与角色映射。 |
+| [`event`](./legacy/event.README.md) | 兼容事件模型与工厂方法。 |
+| [`reasoner`](./legacy/reasoner.README.md) | 旧版意图检测器、Planner 以及组合式 reasoner。 |
+| [`task`](./legacy/task.README.md) | 兼容任务模型、依赖关系和结果对象。 |
+| [`utils`](./legacy/utils.README.md) | 旧版消息处理与 reasoner 辅助函数。 |
 
 ## Types
 
 | 类型 | 说明 |
 |---|---|
-| [`BaseController`](./BaseController.md) | 基于内存消息队列的旧版控制器基类。 |
-| [`IntentDetectionController`](./IntentDetectionController.md) | 支持实时打断的旧版意图检测控制器。 |
+| [`BaseController`](./legacy/BaseController.md) | 基于内存消息队列的旧版控制器基类。 |
+| [`IntentDetectionController`](./legacy/IntentDetectionController.md) | 支持实时打断的旧版意图检测控制器。 |
 
 ## Notes
 
