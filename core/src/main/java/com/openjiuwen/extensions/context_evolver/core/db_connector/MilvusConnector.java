@@ -92,7 +92,16 @@ public class MilvusConnector {
         );
     }
 
+    private static void requireSdk() {
+        try {
+            Class.forName("io.milvus.v2.client.MilvusClientV2", false, MilvusConnector.class.getClassLoader());
+        } catch (ClassNotFoundException exception) {
+            throw new IllegalStateException("Milvus persistence requires io.milvus:milvus-sdk-java", exception);
+        }
+    }
+
     private void connect() {
+        requireSdk();
         try {
             ConnectConfig config = ConnectConfig.builder()
                     .uri("http://" + host + ":" + port)
