@@ -5,6 +5,7 @@
 package com.openjiuwen.memory.lite;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.sysop.BaseFsOperation;
 import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
 import com.openjiuwen.harness.workspace.Workspace;
 
@@ -239,7 +240,7 @@ public final class MemoryToolOps {
                 String resolvedPath = validation.value();
                 Object sysOperation = ctx.getSysOperation();
                 if (sysOperation != null) {
-                    String currentContent = readFile(sysOperation, resolvedPath, null);
+                    String currentContent = readFile(sysOperation, resolvedPath);
                     if (!currentContent.contains(oldText)) {
                         return mapOf(
                                 "success", false,
@@ -297,8 +298,7 @@ public final class MemoryToolOps {
                     return mapOf("success", false, "path", path,
                             "error", "Read failed, no available sys_operation.");
                 }
-                BaseFsProtocal.LineRange lineRange = lineRangeToFsRead(offset, limit);
-                String content = readFile(sysOperation, fullPath, lineRange);
+                String content = readFile(sysOperation, fullPath);
                 String[] rows = content.split("\\n", -1);
                 ViewResult view = viewLines(rows, offset, limit);
                 return mapOf(
@@ -306,9 +306,9 @@ public final class MemoryToolOps {
                         "path", fullPath,
                         "content", view.text(),
                         "totalLines", view.total(),
-                        "start_line", view.startIdx() + 1,
-                        "end_line", view.endIdx(),
-                        "truncated", view.truncated()
+                        "start_line", view.startLine(),
+                        "end_line", view.endLine(),
+                        "truncated", view.isTruncated()
                 );
             } catch (Exception exception) {
                 Loggers.MEMORY.error("Read failed: {}", rootMessage(exception), exception);
@@ -317,17 +317,7 @@ public final class MemoryToolOps {
         });
     }
 
-    private static BaseFsProtocal.LineRange lineRangeToFsRead(Integer firstLine, Integer lineCap) {
-        if (firstLine == null) {
-            return null;
-        }
-        if (lineCap != null) {
-            return new BaseFsProtocal.LineRange(firstLine, firstLine + lineCap - 1);
-        }
-        return new BaseFsProtocal.LineRange(firstLine, -1);
-    }
-
-    private static ViewResult viewLines(String[] allLines, Integer firstLine, Integer lineCap) {
+    static ViewResult viewLines(String[] allLines, Integer firstLine, Integer lineCap) {
         int total = allLines.length;
         int startIdx = firstLine == null ? 0 : Math.max(0, firstLine - 1);
         int endIdx = lineCap == null ? total : Math.min(startIdx + lineCap, total);
@@ -338,8 +328,11 @@ public final class MemoryToolOps {
             }
             text.append(allLines[index]);
         }
-        boolean truncated = lineCap != null && endIdx < total;
-        return new ViewResult(text.toString(), total, startIdx, endIdx, truncated);
+        boolean isTruncated = lineCap != null && endIdx < total;
+        if (endIdx <= startIdx) {
+            return new ViewResult(text.toString(), total, 0, 0, isTruncated);
+        }
+        return new ViewResult(text.toString(), total, startIdx + 1, endIdx, isTruncated);
     }
 
     private static boolean ensureManager(MemoryToolContext ctx) {
@@ -446,48 +439,60 @@ public final class MemoryToolOps {
         }
     }
 
-    private static String readFile(Object sysOperation, String path, BaseFsProtocal.LineRange lineRange) {
+    static String readFile(Object sysOperation, String path) {
         Object fs = invokeNoArg(sysOperation, "fs");
-        RuntimeException lineRangeFailure = null;
-        if (lineRange != null) {
+        String[] names = new String[]{"readFile", "read_file"};
+        Class<?>[] operationSignature = readSignature(BaseFsOperation.FileMode.class);
+        Class<?>[] protocalSignature = readSignature(String.class);
+        Object resolved;
+        if (declaresMethod(fs, names, operationSignature)) {
+            resolved = readWithSignature(fs, names, operationSignature, BaseFsOperation.FileMode.TEXT, path);
+        } else if (declaresMethod(fs, names, protocalSignature)) {
+            resolved = readWithSignature(fs, names, protocalSignature, BaseFsProtocal.MODE_TEXT, path);
+        } else {
+            resolved = await(invokeFirst(fs, names, new Class<?>[]{String.class}, path));
+        }
+        Object content = property(property(resolved, "data"), "content");
+        if (content == null) {
+            Object message = property(resolved, "message");
+            throw new IllegalStateException(
+                    message == null ? "readFile returned no content" : String.valueOf(message));
+        }
+        return String.valueOf(content);
+    }
+
+    /**
+     * Builds the declared readFile parameter list; both supported shapes differ only in the
+     * declared type of the mode parameter.
+     *
+     * @param modeType declared mode parameter type, either {@code FileMode} or {@code String}
+     * @return the parameter types shared by both read signatures
+     */
+    private static Class<?>[] readSignature(Class<?> modeType) {
+        return new Class<?>[]{
+                String.class, modeType, Integer.class, Integer.class,
+                BaseFsProtocal.LineRange.class, String.class, int.class, Map.class
+        };
+    }
+
+    private static Object readWithSignature(Object fs, String[] names, Class<?>[] signature,
+            Object mode, String path) {
+        return await(invokeFirst(fs, names, signature,
+                path, mode, null, null, null,
+                BaseFsProtocal.DEFAULT_ENCODING, BaseFsProtocal.DEFAULT_READ_CHUNK_SIZE,
+                Collections.emptyMap()));
+    }
+
+    private static boolean declaresMethod(Object target, String[] methodNames, Class<?>... parameterTypes) {
+        for (String methodName : methodNames) {
             try {
-                Object result = await(invokeFirst(fs, new String[]{"readFile", "read_file"},
-                        new Class<?>[]{
-                                String.class,
-                                String.class,
-                                Integer.class,
-                                Integer.class,
-                                BaseFsProtocal.LineRange.class,
-                                String.class,
-                                int.class,
-                                Map.class
-                        },
-                        path,
-                        BaseFsProtocal.MODE_TEXT,
-                        null,
-                        null,
-                        lineRange,
-                        BaseFsProtocal.DEFAULT_ENCODING,
-                        BaseFsProtocal.DEFAULT_READ_CHUNK_SIZE,
-                        Collections.emptyMap()));
-                return asString(property(property(result, "data"), "content"));
-            } catch (RuntimeException exception) {
-                lineRangeFailure = exception;
-                if (lineRange.endLine() > 0) {
-                    throw exception;
-                }
+                target.getClass().getMethod(methodName, parameterTypes);
+                return true;
+            } catch (NoSuchMethodException ignored) {
+                // Try the next method spelling.
             }
         }
-        try {
-            Object result = await(invokeFirst(fs, new String[]{"readFile", "read_file"},
-                    new Class<?>[]{String.class}, path));
-            return asString(property(property(result, "data"), "content"));
-        } catch (RuntimeException exception) {
-            if (lineRangeFailure != null) {
-                throw lineRangeFailure;
-            }
-            throw exception;
-        }
+        return false;
     }
 
     private static Object invokeNoArg(Object target, String methodName) {
@@ -665,6 +670,6 @@ public final class MemoryToolOps {
      * <p>Mirrors Python's {@code _view_lines} tuple return in
      * {@code openjiuwen/core/memory/lite/memory_tool_ops.py}.</p>
      */
-    private record ViewResult(String text, int total, int startIdx, int endIdx, boolean truncated) {
+    record ViewResult(String text, int total, int startLine, int endLine, boolean isTruncated) {
     }
 }
