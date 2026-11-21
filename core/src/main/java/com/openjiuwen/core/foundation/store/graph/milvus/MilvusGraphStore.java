@@ -267,7 +267,8 @@ public class MilvusGraphStore implements GraphStore {
         }, IO_EXECUTOR).thenCompose(filter -> {
             List<String> fields = outputFields(collection, kwargs);
             CompletableFuture<List<Map<String, Object>>> result =
-                    CompletableFuture.supplyAsync(() -> client.query(collection, ids, filter, fields, kwargs), IO_EXECUTOR);
+                    CompletableFuture.supplyAsync(
+                            () -> client.query(collection, ids, filter, fields, kwargs), IO_EXECUTOR);
             return silenceErrors ? result.exceptionally(failure -> {
                 if (failure.getCause() instanceof RuntimeException) {
                     return List.of();
@@ -735,7 +736,7 @@ public class MilvusGraphStore implements GraphStore {
     private void retryBatchedInsert(String collection,
                                     List<BaseGraphObject> graphObjects,
                                     List<Map<String, Object>> rows,
-                                    boolean upsert) {
+                                    boolean shouldUpsert) {
         STORE_LOGGER.info("Milvus data addition failed, try batching with size of {}", config.getEmbedBatchSize());
         try {
             client.delete(collection, String.valueOf(QueryExpressions.inList(
@@ -746,7 +747,7 @@ public class MilvusGraphStore implements GraphStore {
             STORE_LOGGER.warning("Milvus data addition failure clean up failed: {}", cleanupException);
         }
         for (List<Map<String, Object>> batch : GraphStoreUtils.batched(rows, config.getEmbedBatchSize())) {
-            client.write(collection, batch, upsert);
+            client.write(collection, batch, shouldUpsert);
         }
     }
 
