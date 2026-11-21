@@ -23,6 +23,7 @@ import java.lang.reflect.Method;
 public class SafetyPromptRail extends BaseSecurityRail {
 
     private SystemPromptBuilder systemPromptBuilder;
+    private final PromptSection safetySection = SafetySection.buildMultilingualSection();
 
     public SafetyPromptRail() {
         setPriority(85);
@@ -33,6 +34,7 @@ public class SafetyPromptRail extends BaseSecurityRail {
     public void init(DeepAgent agent) {
         super.init(agent);
         systemPromptBuilder = resolveSystemPromptBuilder(agent, agent == null ? null : agent.reactAgent());
+        prepareSafetySection();
     }
 
     @Override
@@ -41,6 +43,49 @@ public class SafetyPromptRail extends BaseSecurityRail {
             systemPromptBuilder.removeSection(SectionName.SAFETY);
         }
         systemPromptBuilder = null;
+    }
+
+    /**
+     * Prepare before the first request is rendered, including after configure replaces the builder.
+     *
+     * @param ctx outer invocation context
+     */
+    @Override
+    public void beforeInvoke(CallbackContext ctx) {
+        super.beforeInvoke(ctx);
+        if (ctx != null) {
+            refreshSystemPromptBuilder(ctx);
+            prepareSafetySection();
+        }
+    }
+
+    private void prepareSafetySection() {
+        if (!getSupportedEvents().contains(BEFORE_MODEL_CALL)) {
+            removeOwnedSection();
+            return;
+        }
+        if (systemPromptBuilder != null
+                && (!systemPromptBuilder.hasSection(SectionName.SAFETY)
+                    || systemPromptBuilder.getSection(SectionName.SAFETY).orElse(null) == safetySection)) {
+            // ReActAgent clears transient sections before each inner invocation.
+            systemPromptBuilder.addPersistentSection(safetySection);
+        }
+    }
+
+    private void removeOwnedSection() {
+        if (systemPromptBuilder != null
+                && systemPromptBuilder.getSection(SectionName.SAFETY).orElse(null) == safetySection) {
+            systemPromptBuilder.removeSection(SectionName.SAFETY);
+        }
+    }
+
+    private void refreshSystemPromptBuilder(CallbackContext ctx) {
+        SystemPromptBuilder current = resolveSystemPromptBuilder(
+                ctx.getAgent() == null ? null : ctx.getAgent().reactAgent(), ctx.getAgent(), ctx.get("agent"));
+        if (current != null && current != systemPromptBuilder) {
+            removeOwnedSection();
+            systemPromptBuilder = current;
+        }
     }
 
     @Override
@@ -52,12 +97,8 @@ public class SafetyPromptRail extends BaseSecurityRail {
         if (systemPromptBuilder == null) {
             return allow();
         }
-
-        String language = systemPromptBuilder.getLanguage();
-        PromptSection section = SafetySection.buildSafetySection(language);
-        systemPromptBuilder.removeSection(SectionName.SAFETY);
-        systemPromptBuilder.addSection(section);
-        ctx.put("safety_section", section);
+        systemPromptBuilder.addPersistentSection(safetySection);
+        ctx.put("safety_section", safetySection);
         return allow();
     }
 
