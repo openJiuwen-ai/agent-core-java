@@ -114,7 +114,16 @@ public class MilvusGraphStore implements GraphStore {
     }
 
     public MilvusGraphStore(GraphConfig config) {
-        this(config, new DefaultMilvusClientAdapter(config));
+        this(config, createMilvusClient(config));
+    }
+
+    private static MilvusClientAdapter createMilvusClient(GraphConfig config) {
+        try {
+            Class.forName("io.milvus.v2.client.MilvusClientV2", false, MilvusGraphStore.class.getClassLoader());
+        } catch (ClassNotFoundException exception) {
+            throw new IllegalStateException("Milvus graph storage requires io.milvus:milvus-sdk-java", exception);
+        }
+        return new DefaultMilvusClientAdapter(config);
     }
 
     MilvusGraphStore(GraphConfig config, MilvusClientAdapter client) {
@@ -259,11 +268,6 @@ public class MilvusGraphStore implements GraphStore {
             List<String> outputFields = outputFields(collection, kwargs);
             try {
                 return client.query(collection, ids, exprString, outputFields, kwargs);
-            } catch (MilvusClientException exception) {
-                if (silenceErrors) {
-                    return List.of();
-                }
-                throw exception;
             } catch (RuntimeException exception) {
                 if (silenceErrors) {
                     return List.of();
@@ -368,7 +372,10 @@ public class MilvusGraphStore implements GraphStore {
                 try {
                     client.loadCollection(collection);
                     continue;
-                } catch (MilvusClientException exception) {
+                } catch (RuntimeException exception) {
+                    if (!DefaultMilvusClientAdapter.isClientException(exception)) {
+                        throw exception;
+                    }
                     STORE_LOGGER.error("Milvus graph store failed to load collection ({}/{}): {}",
                             config.getName(), collection, exception);
                     rebuild();
@@ -693,7 +700,10 @@ public class MilvusGraphStore implements GraphStore {
                         .collect(Collectors.toCollection(ArrayList::new));
                 try {
                     client.write(collection, rows, upsert);
-                } catch (MilvusClientException exception) {
+                } catch (RuntimeException exception) {
+                    if (!DefaultMilvusClientAdapter.isClientException(exception)) {
+                        throw exception;
+                    }
                     retryBatchedInsert(collection, graphObjects, rows, upsert, exception);
                 }
             }
@@ -1063,6 +1073,10 @@ public class MilvusGraphStore implements GraphStore {
 
         private final GraphConfig config;
         private final MilvusClientV2 client;
+
+        private static boolean isClientException(RuntimeException exception) {
+            return exception instanceof MilvusClientException;
+        }
 
         DefaultMilvusClientAdapter(GraphConfig config) {
             this.config = config;

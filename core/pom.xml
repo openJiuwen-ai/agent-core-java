@@ -42,14 +42,10 @@
         <jedis.version>7.0.0</jedis.version>
         <milvus.version>2.6.22</milvus.version>
         <protobuf.version>4.33.2</protobuf.version>
-        <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.12</postgresql.version>
         <sqlite.jdbc.version>3.53.2.1</sqlite.jdbc.version>
         <testcontainers.version>1.21.4</testcontainers.version>
-        <dashscope.version>2.22.17</dashscope.version>
         <pulsar.version>4.2.3</pulsar.version>
-        <pdfbox.version>2.0.37</pdfbox.version>
-        <poi.version>5.5.1</poi.version>
         <reactor.version>3.8.6</reactor.version>
         <h2.version>2.2.224</h2.version>
 
@@ -68,7 +64,7 @@
     </properties>
 
     <!--
-      Pin transitive versions so pulsar / milvus / dashscope cannot reintroduce
+      Pin transitive versions so backend SDKs and Pulsar cannot reintroduce
       vulnerable or split versions of shared dependency families.
     -->
     <dependencyManagement>
@@ -249,6 +245,12 @@
         </dependency>
 
         <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version>
+        </dependency>
+
+        <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
             <version>2.25.0</version>
@@ -258,17 +260,13 @@
             <groupId>io.milvus</groupId>
             <artifactId>milvus-sdk-java</artifactId>
             <version>${milvus.version}</version>
+            <optional>true</optional>
             <exclusions>
                 <exclusion>
                     <groupId>org.jetbrains.kotlin</groupId>
                     <artifactId>kotlin-stdlib-common</artifactId>
                 </exclusion>
             </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>com.pgvector</groupId>
-            <artifactId>pgvector</artifactId>
-            <version>${pgvector.version}</version>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -281,32 +279,11 @@
             <version>${sqlite.jdbc.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.pdfbox</groupId>
-            <artifactId>pdfbox</artifactId>
-            <version>${pdfbox.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.poi</groupId>
-            <artifactId>poi-ooxml</artifactId>
-            <version>${poi.version}</version>
-        </dependency>
-        <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <version>1.17.2</version>
         </dependency>
 
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>dashscope-sdk-java</artifactId>
-            <version>${dashscope.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-simple</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-client</artifactId>
