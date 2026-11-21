@@ -16,7 +16,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -224,5 +226,140 @@ class DeepAgentTenantTest {
         assertThat(session.getTenantContext()).isEqualTo(ctx);
         assertThat(TenantContextHolder.getCurrentTenant()).isNull();
         assertThat(CwdContext.getTenantRoot()).isNull();
+    }
+
+    @Test
+    @DisplayName("workspace resolver uses the locator configured on DeepAgentConfig")
+    void testWorkspaceResolver_usesLocatorFromConfig() {
+        Path customRoot = baseDir.resolve("branch_01").resolve("dept_07").resolve("u_locator");
+        DeepAgentConfig config = DeepAgentConfig.builder()
+                .enableTenantIsolation(true)
+                .tenantDataRoot(baseDir.toString())
+                .allowedTenantRoots(List.of(baseDir.toString()))
+                .tenantWorkspaceLocator(ctx -> Optional.of(customRoot))
+                .workspacePath(baseDir.toString())
+                .build();
+        AgentCard card = AgentCard.builder().name("locator_agent").description("test").build();
+        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        TenantContext ctx = TenantContext.builder().tenantId("u_locator").build();
+        DeepAgentSession session = new DeepAgentSession("deep-agent-locator-session").withTenantContext(ctx);
+
+        try (DeepAgent agent = new DeepAgent(card, config, workspace)) {
+            assertThat(agent.getWorkspaceResolver()).isNotNull();
+            assertThat(agent.getWorkspaceResolver().resolveTenantRoot(ctx))
+                    .isEqualTo(customRoot.toAbsolutePath().normalize());
+            assertThat(agent.getWorkspaceResolver().resolveSkillRoot(ctx))
+                    .isEqualTo(customRoot.resolve("skills").toAbsolutePath().normalize());
+
+            TenantWorkspaceResolver before = agent.getWorkspaceResolver();
+            Map<String, Object> result = agent.invoke(
+                    Map.of("query", "test", "conversation_id", "s-locator"), session);
+
+            assertThat(result).isNotNull();
+            assertThat(agent.getWorkspaceResolver()).isSameAs(before);
+        }
+    }
+
+    @Test
+    @DisplayName("invoke with locator creates the custom tenant directory tree")
+    void testInvoke_withLocator_createsCustomTenantDirectory() {
+        Path customRoot = baseDir.resolve("branch_01").resolve("dept_07").resolve("u_invoke");
+        DeepAgentConfig config = DeepAgentConfig.builder()
+                .enableTenantIsolation(true)
+                .tenantDataRoot(baseDir.toString())
+                .allowedTenantRoots(List.of(baseDir.toString()))
+                .tenantWorkspaceLocator(ctx -> Optional.of(customRoot))
+                .workspacePath(baseDir.toString())
+                .build();
+        AgentCard card = AgentCard.builder().name("locator_invoke_agent").description("test").build();
+        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        TenantContext ctx = TenantContext.builder().tenantId("u_invoke").workspaceRoot(null).build();
+        DeepAgentSession session = new DeepAgentSession("deep-agent-invoke-session").withTenantContext(ctx);
+
+        try (DeepAgent agent = new DeepAgent(card, config, workspace)) {
+            Map<String, Object> result = agent.invoke(
+                    Map.of("query", "test", "conversation_id", "s-invoke"), session);
+            assertThat(result).isNotNull();
+        }
+
+        assertThat(customRoot.resolve("skills")).isDirectory();
+        assertThat(customRoot.resolve("tmp")).isDirectory();
+        assertThat(customRoot.resolve("checkpoints")).isDirectory();
+        assertThat(customRoot.resolve("team_memory")).isDirectory();
+        assertThat(customRoot.resolve("todo")).isDirectory();
+        assertThat(baseDir.resolve("tenants")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("resolveWorkspaceRootForTenant returns the locator tenant path")
+    void testResolveWorkspaceRootForTenant_withLocator() {
+        Path customRoot = baseDir.resolve("branch_02").resolve("dept_08").resolve("u_direct");
+        DeepAgentConfig config = DeepAgentConfig.builder()
+                .enableTenantIsolation(true)
+                .tenantDataRoot(baseDir.toString())
+                .allowedTenantRoots(List.of(baseDir.toString()))
+                .tenantWorkspaceLocator(ctx -> Optional.of(customRoot))
+                .workspacePath(baseDir.toString())
+                .build();
+        AgentCard card = AgentCard.builder().name("direct_resolve_agent").description("test").build();
+        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        TenantContext ctx = TenantContext.builder().tenantId("u_direct").build();
+
+        try (DeepAgent agent = new DeepAgent(card, config, workspace)) {
+            assertThat(agent.resolveWorkspaceRootForTenant(ctx))
+                    .isEqualTo(customRoot.toAbsolutePath().normalize());
+        }
+    }
+
+    @Test
+    @DisplayName("resolveWorkspaceRootForTenant falls back to the static workspace root")
+    void testResolveWorkspaceRootForTenant_withoutTenantOrIsolation_returnsStaticRoot() {
+        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        AgentCard disabledCard = AgentCard.builder().name("disabled_tenant_agent").description("test").build();
+        DeepAgentConfig disabledConfig = DeepAgentConfig.builder()
+                .workspacePath(baseDir.toString())
+                .build();
+        TenantContext ctx = TenantContext.builder().tenantId("tenant_ignored").build();
+
+        try (DeepAgent agent = new DeepAgent(disabledCard, disabledConfig, workspace)) {
+            assertThat(agent.resolveWorkspaceRootForTenant(null)).isEqualTo(workspace.root());
+            assertThat(agent.resolveWorkspaceRootForTenant(ctx)).isEqualTo(workspace.root());
+        }
+
+        AgentCard enabledCard = AgentCard.builder().name("enabled_tenant_agent").description("test").build();
+        DeepAgentConfig enabledConfig = DeepAgentConfig.builder()
+                .enableTenantIsolation(true)
+                .tenantDataRoot(baseDir.toString())
+                .workspacePath(baseDir.toString())
+                .build();
+        try (DeepAgent agent = new DeepAgent(enabledCard, enabledConfig, workspace)) {
+            assertThat(agent.resolveWorkspaceRootForTenant(null)).isEqualTo(workspace.root());
+            assertThat(agent.resolveWorkspaceRootForTenant(TenantContext.builder().tenantId(null).build()))
+                    .isEqualTo(workspace.root());
+        }
+    }
+
+    @Test
+    @DisplayName("resolveWorkspaceRootForCurrentTenant follows the bound tenant context")
+    void testResolveWorkspaceRootForCurrentTenant_withBoundTenant() {
+        Path customRoot = baseDir.resolve("branch_03").resolve("dept_09").resolve("u_current");
+        DeepAgentConfig config = DeepAgentConfig.builder()
+                .enableTenantIsolation(true)
+                .tenantDataRoot(baseDir.toString())
+                .allowedTenantRoots(List.of(baseDir.toString()))
+                .tenantWorkspaceLocator(ctx -> Optional.of(customRoot))
+                .workspacePath(baseDir.toString())
+                .build();
+        AgentCard card = AgentCard.builder().name("current_resolve_agent").description("test").build();
+        Workspace workspace = new Workspace(baseDir.toString(), "cn");
+        TenantContext ctx = TenantContext.builder().tenantId("u_current").build();
+
+        try (DeepAgent agent = new DeepAgent(card, config, workspace)) {
+            assertThat(agent.resolveWorkspaceRootForCurrentTenant()).isEqualTo(workspace.root());
+
+            TenantContextHolder.setCurrentTenant(ctx);
+            assertThat(agent.resolveWorkspaceRootForCurrentTenant())
+                    .isEqualTo(customRoot.toAbsolutePath().normalize());
+        }
     }
 }

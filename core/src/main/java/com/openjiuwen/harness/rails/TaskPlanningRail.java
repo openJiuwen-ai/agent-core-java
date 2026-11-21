@@ -84,7 +84,8 @@ public class TaskPlanningRail extends DeepAgentRail {
         } else if (agent.getWorkspace() != null && agent.getWorkspace().root() != null) {
             // Default: use file-based todo storage so externally injected todos
             // (e.g. by tests via TodoTool) are visible to the rail.
-            TodoStorage storage = new FileTodoStorage(agent.getWorkspace().root().resolve(".todo"));
+            TodoStorage storage = new FileTodoStorage(agent.getWorkspace().root().resolve(".todo"),
+                    agent.getWorkspaceResolver());
             todoStorage = storage;
             todoStore = new TodoStorageStoreAdapter(storage);
         } else {
@@ -115,7 +116,8 @@ public class TaskPlanningRail extends DeepAgentRail {
             Loggers.TOOL.warning("todoStorageType is 'kv' but no provider registered, "
                     + "falling back to file storage");
         }
-        return new FileTodoStorage(deepAgent.getWorkspace().root().resolve(".todo"));
+        return new FileTodoStorage(deepAgent.getWorkspace().root().resolve(".todo"),
+                deepAgent.getWorkspaceResolver());
     }
 
     private static Map<String, Object> buildTodoStorageConfig(
@@ -125,7 +127,7 @@ public class TaskPlanningRail extends DeepAgentRail {
             conf.putAll(deepAgent.getConfig().getTodoStorageConfig());
         }
         if (!"kv".equals(todoStorageType)) {
-            conf.put("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
+            conf.put("basePath", deepAgent.resolveWorkspaceRootForCurrentTenant().resolve(".todo").toString());
             return conf;
         }
         BaseKVStore kvStore = deepAgent.getKvStore();

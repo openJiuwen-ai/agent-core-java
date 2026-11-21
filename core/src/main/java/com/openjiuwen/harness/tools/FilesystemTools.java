@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -226,7 +227,7 @@ public final class FilesystemTools {
      * Mirrors Python's read_file tool in {@code openjiuwen/harness/tools/filesystem.py}.
      */
     public static class ReadFileTool extends AbstractHarnessTool {
-        private final String workspaceRoot;
+        private final Supplier<String> workspaceRootSupplier;
         private final boolean enableImageMultimodal;
 
         public ReadFileTool(String workspaceRoot) {
@@ -235,8 +236,20 @@ public final class FilesystemTools {
 
         public ReadFileTool(String workspaceRoot, boolean enableImageMultimodal) {
             super(toolCard("read_file", "ReadFileTool", "Read a UTF-8 file from the workspace."));
-            this.workspaceRoot = workspaceRoot;
+            this.workspaceRootSupplier = () -> workspaceRoot;
             this.enableImageMultimodal = enableImageMultimodal;
+        }
+
+        /**
+         * Create a tool that resolves its workspace root on every invocation.
+         *
+         * @param workspaceRootSupplier supplier of the workspace root, evaluated per invocation
+         * @since 0.1.17
+         */
+        public ReadFileTool(Supplier<String> workspaceRootSupplier) {
+            super(toolCard("read_file", "ReadFileTool", "Read a UTF-8 file from the workspace."));
+            this.workspaceRootSupplier = workspaceRootSupplier;
+            this.enableImageMultimodal = true;
         }
 
         public boolean isEnableImageMultimodal() {
@@ -245,7 +258,7 @@ public final class FilesystemTools {
 
         @Override
         protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) throws IOException {
-            Path path = resolveWorkspacePath(workspaceRoot, requiredString(inputs, "file_path"));
+            Path path = resolveWorkspacePath(workspaceRootSupplier.get(), requiredString(inputs, "file_path"));
             String content = Files.readString(path, StandardCharsets.UTF_8);
             return ToolOutput.success(Map.of("file_path", path.toString(), "content", content));
         }

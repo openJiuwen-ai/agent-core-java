@@ -3,6 +3,7 @@ package com.openjiuwen.core.multitenant.workspace;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
+import com.openjiuwen.core.multitenant.TenantWorkspacePolicy;
 import com.openjiuwen.core.multitenant.workspace.store.LocalWorkspaceStore;
 import com.openjiuwen.core.multitenant.workspace.store.ObjectStorageWorkspaceStore;
 
@@ -21,6 +22,9 @@ class TieredWorkspaceManagerTest {
 
     @TempDir
     Path baseDir;
+
+    @TempDir
+    Path externalDir;
 
     TieredWorkspaceManager manager;
     TieredWorkspaceManager managerWithRemote;
@@ -99,6 +103,33 @@ class TieredWorkspaceManagerTest {
     @Test
     void testDefaultNamespaceFactory_backwardCompat() {
         assertThat(manager.getNamespaceFactory()).isEqualTo(TenantNamespaceFactories.PATH_DEFAULT);
+    }
+
+    @Test
+    void testPolicyExternalTenantRoot_skipsNamespaceAndRemoteTiers() {
+        Path externalRoot = externalDir.resolve("big_tenant");
+        TenantWorkspacePolicy policy = TenantWorkspacePolicy.builder()
+                .baseWorkspacePath(baseDir.toString())
+                .allowedTenantRoots(List.of(externalDir.toString()))
+                .build();
+        TenantContext externalTenant = TenantContext.builder()
+                .tenantId("big_tenant")
+                .workspaceRoot(externalRoot.toString())
+                .build();
+        LocalWorkspaceStore localStore = new LocalWorkspaceStore(baseDir.toString());
+        ObjectStorageWorkspaceStore obsStore =
+                new ObjectStorageWorkspaceStore("obs", "deepagent-workspace", "https://obs.example.com");
+        TieredWorkspaceManager policyManager = new TieredWorkspaceManager(localStore, List.of(obsStore), policy);
+
+        WorkspaceResolution result = policyManager.resolve(externalTenant, WorkspaceType.SKILLS);
+
+        assertThat(result.getLocalPath())
+                .isEqualTo(externalRoot.resolve("skills").toAbsolutePath().normalize());
+        assertThat(result.hasRemoteStore("obs")).isFalse();
+
+        policyManager.initializeTenantSpace(externalTenant);
+        assertThat(baseDir.resolve("tenants")).doesNotExist();
+        assertThat(externalRoot).doesNotExist();
     }
 
     @Test
