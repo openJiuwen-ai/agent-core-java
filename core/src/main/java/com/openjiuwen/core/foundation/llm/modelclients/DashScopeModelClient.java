@@ -606,6 +606,8 @@ public class DashScopeModelClient extends BaseModelClient {
 
     static HttpClient createDashScopeHttpClient(ModelClientConfig clientConfig) {
         return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
+                .withSsl()
+                .withExplicitPortProxy()
                 .build();
     }
 
