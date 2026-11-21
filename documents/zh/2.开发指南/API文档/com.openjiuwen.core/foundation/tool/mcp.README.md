@@ -6,7 +6,7 @@
 
 | 子包 | 说明 |
 | --- | --- |
-| [`client`](tool/mcp/client.README.md) | 提供基于 HTTP JSON-RPC、SSE、stdio、OpenAPI 文件等形式的客户端实现。 |
+| [`client`](mcp/client.README.md) | 提供基于 HTTP JSON-RPC、SSE、stdio、OpenAPI 文件等形式的客户端实现。 |
 
 ## 类型
 
