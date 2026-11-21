@@ -106,6 +106,74 @@ class ReActAgentTest {
         }
     }
 
+    // 同步和流式重试都应先采用恢复后的历史，再让 Rail 注入本次正文；正文不能进入持久上下文。
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void retryPreservesRailDirectiveAndUsesRecoveredContext(boolean streaming) {
+        List<List<String>> modelRequests = new ArrayList<>();
+        List<List<String>> beforeRequests = new ArrayList<>();
+        AtomicInteger modelCalls = new AtomicInteger();
+        java.util.function.Function<List<BaseMessage>, AssistantMessage> respond = messages -> {
+            modelRequests.add(messages.stream().map(BaseMessage::getContentAsString).toList());
+            if (modelCalls.getAndIncrement() == 0) {
+                throw new IllegalStateException("first attempt failed");
+            }
+            return new AssistantMessage("done");
+        };
+        Model model = new Model(new Model.ModelClient() {
+            @Override
+            public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+                return CompletableFuture.completedFuture(respond.apply(messages));
+            }
+
+            @Override
+            public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+                AssistantMessage response = respond.apply(messages);
+                return List.of(AssistantMessageChunk.builder().content(response.getContentAsString()).build()).iterator();
+            }
+        });
+        ReActAgent agent = configuredAgent("rail-retry-" + streaming, model);
+        RecordingModelContext modelContext = new RecordingModelContext("rail-retry-" + streaming);
+        modelContext.setMessages(List.of(new UserMessage("initial history")), true);
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
+                beforeRequests.add(inputs.getMessages().stream().map(BaseMessage.class::cast)
+                        .map(BaseMessage::getContentAsString).toList());
+                inputs.getMessages().add(0, new SystemMessage("selected skill body"));
+            }
+
+            @Override
+            public void onModelException(AgentCallbackContext context) {
+                if (context.getRetryAttempt() == 0) {
+                    // 模拟超窗恢复更新了会话历史，重试既要采用新历史，也必须重新保留 Rail 正文。
+                    modelContext.setMessages(List.of(new UserMessage("recovered history")), true);
+                    context.requestRetry(0);
+                }
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            AgentCallbackContext context = new AgentCallbackContext(agent);
+            context.setSession(new MemorySession("rail-retry-" + streaming));
+            context.setContext(modelContext);
+            context.getExtra().put("_streaming", streaming);
+            agent.callModel(context, modelContext, List.of());
+
+            assertEquals(List.of(
+                    List.of("selected skill body", "System", "initial history"),
+                    List.of("selected skill body", "System", "recovered history")), modelRequests);
+            assertEquals(List.of(List.of("System", "initial history"),
+                    List.of("System", "recovered history")), beforeRequests);
+            assertEquals(List.of("recovered history"), modelContext.getMessages().stream()
+                    .map(BaseMessage::getContentAsString).toList());
+            assertEquals("System", agent.getPromptBuilder().build());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
     private static SessionModelContext processedContext(AtomicInteger preparations) {
         SessionModelContext.ContextProcessorPort processor = new SessionModelContext.ContextProcessorPort() {
             @Override
