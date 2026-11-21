@@ -25,6 +25,7 @@ import java.util.Map;
  *   <tr><td>{@code redis}</td><td>Todo 与 Checkpointer 共享同一 Redis 连接</td><td>是</td><td>是</td></tr>
  *   <tr><td>{@code guardrail}</td><td>工具护栏（ALLOW/ASK/DENY/file_guard）端到端，使用 fake LLM</td><td>否</td><td>否</td></tr>
  *   <tr><td>{@code offload}</td><td>Context Offload 卸载/装载端到端：DeepAgent + Runner 真实触发，大输出工具触发卸载、reload 工具装载回注</td><td>是</td><td>可选</td></tr>
+ *   <tr><td>{@code steering}</td><td>引导模式（steering）：invoke 期间外部注入引导消息，不打断当前轮次，下一轮模型请求可见，使用 fake LLM</td><td>否</td><td>否</td></tr>
  *   <tr><td>{@code list}</td><td>列出所有可选示例</td><td>—</td><td>—</td></tr>
  * </table>
  *
@@ -40,6 +41,7 @@ public final class DeepAgentExamples {
         EXAMPLES.put("redis", "Todo 与 Checkpointer 共享同一 Redis 连接（需要 LLM + Redis）");
         EXAMPLES.put("guardrail", "工具护栏 ALLOW/ASK/DENY/file_guard 端到端（fake LLM，无需 API Key）");
         EXAMPLES.put("offload", "Context Offload 卸载/装载端到端：DeepAgent + Runner 真实触发（需要 LLM；Redis 可选）");
+        EXAMPLES.put("steering", "引导模式（steering）：invoke 期间注入引导消息，不打断当前轮次，下一轮模型请求可见（fake LLM，无需 API Key）");
     }
 
     private DeepAgentExamples() {
@@ -63,6 +65,7 @@ public final class DeepAgentExamples {
                 case "redis" -> DeepAgentRedisExample.run(rest);
                 case "guardrail" -> DeepAgentToolGuardrailExample.run(rest);
                 case "offload" -> ContextOffloadExample.run(rest);
+                case "steering" -> DeepAgentSteeringExample.run(rest);
                 default -> {
                     System.err.println("未知示例: " + name);
                     System.err.println();
