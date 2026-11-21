@@ -117,15 +117,6 @@ public class MilvusGraphStore implements GraphStore {
         this(config, createMilvusClient(config));
     }
 
-    private static MilvusClientAdapter createMilvusClient(GraphConfig config) {
-        try {
-            Class.forName("io.milvus.v2.client.MilvusClientV2", false, MilvusGraphStore.class.getClassLoader());
-        } catch (ClassNotFoundException exception) {
-            throw new IllegalStateException("Milvus graph storage requires io.milvus:milvus-sdk-java", exception);
-        }
-        return new DefaultMilvusClientAdapter(config);
-    }
-
     MilvusGraphStore(GraphConfig config, MilvusClientAdapter client) {
         this.config = Objects.requireNonNull(config, "config");
         this.client = Objects.requireNonNull(client, "client");
@@ -140,6 +131,15 @@ public class MilvusGraphStore implements GraphStore {
         this.fieldDef = Collections.unmodifiableMap(buildFieldDef());
         ensureDatabaseReady();
         buildIndices();
+    }
+
+    private static MilvusClientAdapter createMilvusClient(GraphConfig config) {
+        try {
+            Class.forName("io.milvus.v2.client.MilvusClientV2", false, MilvusGraphStore.class.getClassLoader());
+        } catch (ClassNotFoundException exception) {
+            throw new IllegalStateException("Milvus graph storage requires io.milvus:milvus-sdk-java", exception);
+        }
+        return new DefaultMilvusClientAdapter(config);
     }
 
     public static MilvusGraphStore fromConfig(GraphConfig config) {
@@ -257,24 +257,24 @@ public class MilvusGraphStore implements GraphStore {
                                                               boolean silenceErrors,
                                                               Map<String, Object> kwargs) {
         return CompletableFuture.supplyAsync(() -> {
-            String exprString;
             if (expr != null) {
-                exprString = String.valueOf(expr.toExpr("milvus"));
-            } else if ((ids == null || ids.isEmpty()) && !kwargs.containsKey("limit")) {
-                throw graphParamInvalid("Argument \"limit\" must be set to positive integer when \"expr\" and \"ids\" are None");
-            } else {
-                exprString = null;
+                return String.valueOf(expr.toExpr("milvus"));
             }
-            List<String> outputFields = outputFields(collection, kwargs);
-            try {
-                return client.query(collection, ids, exprString, outputFields, kwargs);
-            } catch (RuntimeException exception) {
-                if (silenceErrors) {
+            if ((ids == null || ids.isEmpty()) && !kwargs.containsKey("limit")) {
+                throw graphParamInvalid("Argument \"limit\" must be set to positive integer when \"expr\" and \"ids\" are None");
+            }
+            return null;
+        }, IO_EXECUTOR).thenCompose(filter -> {
+            List<String> fields = outputFields(collection, kwargs);
+            CompletableFuture<List<Map<String, Object>>> result =
+                    CompletableFuture.supplyAsync(() -> client.query(collection, ids, filter, fields, kwargs), IO_EXECUTOR);
+            return silenceErrors ? result.exceptionally(failure -> {
+                if (failure.getCause() instanceof RuntimeException) {
                     return List.of();
                 }
-                throw exception;
-            }
-        }, IO_EXECUTOR);
+                throw new java.util.concurrent.CompletionException(failure);
+            }) : result;
+        });
     }
 
     @Override
@@ -372,10 +372,7 @@ public class MilvusGraphStore implements GraphStore {
                 try {
                     client.loadCollection(collection);
                     continue;
-                } catch (RuntimeException exception) {
-                    if (!DefaultMilvusClientAdapter.isClientException(exception)) {
-                        throw exception;
-                    }
+                } catch (MilvusOperationFailure exception) {
                     STORE_LOGGER.error("Milvus graph store failed to load collection ({}/{}): {}",
                             config.getName(), collection, exception);
                     rebuild();
@@ -700,11 +697,8 @@ public class MilvusGraphStore implements GraphStore {
                         .collect(Collectors.toCollection(ArrayList::new));
                 try {
                     client.write(collection, rows, upsert);
-                } catch (RuntimeException exception) {
-                    if (!DefaultMilvusClientAdapter.isClientException(exception)) {
-                        throw exception;
-                    }
-                    retryBatchedInsert(collection, graphObjects, rows, upsert, exception);
+                } catch (MilvusOperationFailure exception) {
+                    retryBatchedInsert(collection, graphObjects, rows, upsert);
                 }
             }
             if (flush) {
@@ -741,8 +735,7 @@ public class MilvusGraphStore implements GraphStore {
     private void retryBatchedInsert(String collection,
                                     List<BaseGraphObject> graphObjects,
                                     List<Map<String, Object>> rows,
-                                    boolean upsert,
-                                    RuntimeException original) {
+                                    boolean upsert) {
         STORE_LOGGER.info("Milvus data addition failed, try batching with size of {}", config.getEmbedBatchSize());
         try {
             client.delete(collection, String.valueOf(QueryExpressions.inList(
@@ -1017,6 +1010,12 @@ public class MilvusGraphStore implements GraphStore {
      * Mirrors Python's {@code pymilvus.MilvusClient} boundary in
      * {@code openjiuwen/core/foundation/store/graph/milvus/milvus_support.py}.
      */
+    private static final class MilvusOperationFailure extends RuntimeException {
+        private MilvusOperationFailure(RuntimeException cause) {
+            super(cause);
+        }
+    }
+
     interface MilvusClientAdapter extends AutoCloseable {
 
         List<String> listDatabases();
@@ -1073,10 +1072,6 @@ public class MilvusGraphStore implements GraphStore {
 
         private final GraphConfig config;
         private final MilvusClientV2 client;
-
-        private static boolean isClientException(RuntimeException exception) {
-            return exception instanceof MilvusClientException;
-        }
 
         DefaultMilvusClientAdapter(GraphConfig config) {
             this.config = config;
@@ -1159,12 +1154,16 @@ public class MilvusGraphStore implements GraphStore {
 
         @Override
         public void loadCollection(String collection) {
-            client.loadCollection(LoadCollectionReq.builder()
-                    .databaseName(config.getName())
-                    .collectionName(collection)
-                    .sync(true)
-                    .timeout(Math.round(config.getTimeout() * 1000.0d))
-                    .build());
+            try {
+                client.loadCollection(LoadCollectionReq.builder()
+                        .databaseName(config.getName())
+                        .collectionName(collection)
+                        .sync(true)
+                        .timeout(Math.round(config.getTimeout() * 1000.0d))
+                        .build());
+            } catch (MilvusClientException exception) {
+                throw new MilvusOperationFailure(exception);
+            }
         }
 
         @Override
@@ -1207,19 +1206,23 @@ public class MilvusGraphStore implements GraphStore {
             List<JsonObject> data = rows.stream()
                     .map(row -> GSON.toJsonTree(row).getAsJsonObject())
                     .collect(Collectors.toList());
-            if (upsert) {
-                client.upsert(UpsertReq.builder()
+            try {
+                if (upsert) {
+                    client.upsert(UpsertReq.builder()
+                            .databaseName(config.getName())
+                            .collectionName(collection)
+                            .data(data)
+                            .build());
+                    return;
+                }
+                client.insert(InsertReq.builder()
                         .databaseName(config.getName())
                         .collectionName(collection)
                         .data(data)
                         .build());
-                return;
+            } catch (MilvusClientException exception) {
+                throw new MilvusOperationFailure(exception);
             }
-            client.insert(InsertReq.builder()
-                    .databaseName(config.getName())
-                    .collectionName(collection)
-                    .data(data)
-                    .build());
         }
 
         @Override
