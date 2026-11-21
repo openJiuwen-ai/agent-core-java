@@ -14,6 +14,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Track in-flight shell processes so callers can cancel them by session id.
@@ -72,7 +74,14 @@ public final class ShellProcessRegistry {
     }
 
     public static void registerShellProcess(String sessionId, Process proc) {
+        if (proc == null || trimToNull(sessionId) == null) {
+            return;
+        }
         SHELL_PROCESS_REGISTRY.register(sessionId, proc);
+        if (SHELL_PROCESS_REGISTRY.isCancelled(sessionId)) {
+            SHELL_PROCESS_REGISTRY.unregister(sessionId, proc);
+            terminateShellProcess(proc);
+        }
     }
 
     public static void unregisterShellProcess(String sessionId, Process proc) {
@@ -95,26 +104,21 @@ public final class ShellProcessRegistry {
         if (proc == null || !proc.isAlive()) {
             return false;
         }
-        boolean windows = isWindows();
+        List<ProcessHandle> descendants = new ArrayList<>();
         try {
-            if (windows) {
-                proc.destroy();
-            } else {
-                destroyProcessTree(proc, false);
-            }
+            descendants.addAll(proc.toHandle().descendants().toList());
+            destroyProcessTree(proc, descendants, false);
         } catch (RuntimeException exception) {
             proc.destroy();
         }
         if (waitFor(proc, TERMINATE_TIMEOUT)) {
+            destroyDescendants(descendants, true);
+            waitForDescendants(descendants);
             return true;
         }
 
         try {
-            if (windows) {
-                proc.destroyForcibly();
-            } else {
-                destroyProcessTree(proc, true);
-            }
+            destroyProcessTree(proc, descendants, true);
         } catch (RuntimeException exception) {
             proc.destroyForcibly();
             Loggers.SYS_OPERATION.warning(
@@ -126,22 +130,38 @@ public final class ShellProcessRegistry {
                     "Timeout expired waiting for shell process " + safePid(proc) + " termination"
             );
         }
+        waitForDescendants(descendants);
         return true;
     }
 
-    private static void destroyProcessTree(Process process, boolean forcibly) {
-        List<ProcessHandle> descendants = new ArrayList<>(process.toHandle().descendants().toList());
-        for (int index = descendants.size() - 1; index >= 0; index -= 1) {
-            destroyHandle(descendants.get(index), forcibly);
-        }
-        destroyHandle(process.toHandle(), forcibly);
+    private static void destroyProcessTree(Process process, List<ProcessHandle> descendants, boolean isForcible) {
+        destroyDescendants(descendants, isForcible);
+        destroyHandle(process.toHandle(), isForcible);
     }
 
-    private static void destroyHandle(ProcessHandle handle, boolean forcibly) {
+    private static void destroyDescendants(List<ProcessHandle> descendants, boolean isForcible) {
+        for (int index = descendants.size() - 1; index >= 0; index -= 1) {
+            destroyHandle(descendants.get(index), isForcible);
+        }
+    }
+
+    private static void waitForDescendants(List<ProcessHandle> descendants) {
+        long deadline = System.nanoTime() + KILL_TIMEOUT.toNanos();
+        for (ProcessHandle descendant : descendants) {
+            long remainingNanos = Math.max(0L, deadline - System.nanoTime());
+            if (!waitFor(descendant, Duration.ofNanos(remainingNanos))) {
+                Loggers.SYS_OPERATION.warning(
+                        "Timeout expired waiting for shell descendant " + descendant.pid() + " termination"
+                );
+            }
+        }
+    }
+
+    private static void destroyHandle(ProcessHandle handle, boolean isForcible) {
         if (!handle.isAlive()) {
             return;
         }
-        if (forcibly) {
+        if (isForcible) {
             handle.destroyForcibly();
             return;
         }
@@ -157,8 +177,16 @@ public final class ShellProcessRegistry {
         }
     }
 
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase().contains("win");
+    private static boolean waitFor(ProcessHandle proc, Duration timeout) {
+        try {
+            proc.onExit().get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            return true;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (ExecutionException | TimeoutException exception) {
+            return false;
+        }
     }
 
     private static String trimToNull(String value) {
@@ -266,6 +294,16 @@ public final class ShellProcessRegistry {
                 }
                 cancelledSessions.remove(sid);
                 return true;
+            }
+        }
+
+        private boolean isCancelled(String sessionId) {
+            String sid = trimToNull(sessionId);
+            if (sid == null) {
+                return false;
+            }
+            synchronized (lock) {
+                return cancelledSessions.contains(sid);
             }
         }
 
