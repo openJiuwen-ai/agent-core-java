@@ -722,13 +722,14 @@ public void updateSkillPromptBuilderSection(
 |---|---|---|
 | `ToolGroupSkillExample.java` | 修改 | 4 处工具组迁移到 `GroupMemberRef` 构造器 |
 | `BaseAgent.java` | 修改 | 隐式组注册改为使用新构造器（TOOL 类型 GroupMemberRef） |
+| `Issue196IntegrationTest.java` | 修改 | 端到端 Skill 停用链路迁移到显式 SKILL 分组 |
 | 各测试文件 | 可选 | 逐步迁移到新构造器（非阻塞，兼容构造器已保证编译） |
 
 **验收标准：**
 
 - [x] 全量编译通过（`mvn clean compile`）
 - [ ] 全量测试通过（`mvn clean test`：core 14472 个测试中 43 个 Python/sandbox/shell 环境失败；Issue196 相关链路已迁移并通过）
-- [x] ToolGroup 相关回归通过（96/96，含 ToolGroupManager、BaseAgent、Skill prompt 和端到端场景）
+- [x] ToolGroup 相关回归通过（105/105，含 GroupMemberRef/Type、ToolGroupManager、ToolGroup、BaseAgent、SkillUtil、ReAct prompt 和端到端场景）
 - [ ] `@Deprecated` 警告数量 = 0（存量测试仍保留 `ofToolNames` 兼容 API 用例；生产代码和示例已迁移）
 - [x] 文档更新（`documents/zh/2.开发指南/.../ToolGroup.md`）
 
