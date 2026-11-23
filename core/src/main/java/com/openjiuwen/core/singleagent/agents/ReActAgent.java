@@ -2252,7 +2252,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
                     Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
                     if (streaming && result instanceof Map<?, ?> map) {
-                        writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx));
+                        writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx), ctx);
                     }
                     return result;
                 }
@@ -2263,7 +2263,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 ctx.fire(AgentCallbackEvent.AFTER_INVOKE);
                 Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
                 if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && result instanceof Map<?, ?> map) {
-                    writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx));
+                    writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx), ctx);
                 }
                 return result;
             }
@@ -2491,7 +2491,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
             if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
                 if (result instanceof Map<?, ?> map) {
-                    writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx));
+                    writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx), ctx);
                 } else if (result instanceof List<?> list) {
                     for (Object schema : list) {
                         session.writeStream(schema);
@@ -2513,8 +2513,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 }
                 if (initializationComplete && streaming) {
                     try {
-                        Map<String, Object> cancelResult = cancelledInvokeResult();
-                        writeInvokeResultToStreamInternal(cancelResult, session, streamIndexRef(ctx));
+                    Map<String, Object> cancelResult = cancelledInvokeResult();
+                    writeInvokeResultToStreamInternal(cancelResult, session, streamIndexRef(ctx), ctx);
                         return cancelResult;
                     } catch (RuntimeException streamingCancelFailure) {
                         Loggers.AGENT.exception(
@@ -2539,7 +2539,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             if (initializationComplete && streaming) {
                 try {
                     Map<String, Object> errorResult = buildErrorResult(exception);
-                    writeInvokeResultToStreamInternal(errorResult, session, streamIndexRef(ctx));
+                    writeInvokeResultToStreamInternal(errorResult, session, streamIndexRef(ctx), ctx);
                     return errorResult;
                 } catch (RuntimeException streamingErrorHandlingFailure) {
                     Loggers.AGENT.exception(
@@ -2810,13 +2810,22 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     private void writeInvokeResultToStreamInternal(Map<String, Object> result, AgentSessionApi session) {
-        writeInvokeResultToStreamInternal(result, session, null);
+        writeInvokeResultToStreamInternal(result, session, null, null);
     }
 
     private void writeInvokeResultToStreamInternal(
             Map<String, Object> result,
             AgentSessionApi session,
             int[] streamIndexRef
+    ) {
+        writeInvokeResultToStreamInternal(result, session, streamIndexRef, null);
+    }
+
+    private void writeInvokeResultToStreamInternal(
+            Map<String, Object> result,
+            AgentSessionApi session,
+            int[] streamIndexRef,
+            AgentCallbackContext ctx
     ) {
         if (result == null || session == null) {
             return;
@@ -2859,7 +2868,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         session.writeStream(new OutputSchema(
                 "answer",
                 0,
-                toAnswerPayload(result)
+                toAnswerPayload(result, ctx == null ? null : ctx.getTerminationReason())
         ));
     }
 
@@ -2872,10 +2881,32 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
      * @since 0.1.17
      */
     static Map<String, Object> toAnswerPayload(Map<String, Object> result) {
+        return toAnswerPayload(result, null);
+    }
+
+    /**
+     * Builds the wire payload for a final answer chunk, preserving the structured failure
+     * descriptor when the invoke result carries one, and exposing the terminal outcome so
+     * stream consumers can distinguish error-style endings without parsing the output text.
+     *
+     * @param result invoke result map
+     * @param terminationReason recorded terminal outcome, may be {@code null}
+     * @return answer payload with output, result type, an optional termination reason, and an
+     *         optional failure entry
+     * @since 0.1.18
+     */
+    static Map<String, Object> toAnswerPayload(Map<String, Object> result,
+            AgentTerminationReason terminationReason) {
         Map<String, Object> payload = new LinkedHashMap<>(Map.of(
                 "output", Objects.toString(result.get("output"), ""),
                 "result_type", Objects.toString(result.get("result_type"), "")
         ));
+        // Error-style terminal frames carry the enumerated outcome so stream
+        // consumers can distinguish failure causes; plain answer frames keep
+        // the legacy key set for wire compatibility.
+        if (terminationReason != null && !"answer".equals(result.get("result_type"))) {
+            payload.put("termination_reason", terminationReason.name());
+        }
         if (result.get("failure") instanceof Map<?, ?> failure) {
             payload.put("failure", failure);
         }
