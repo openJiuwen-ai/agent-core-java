@@ -292,7 +292,42 @@ public class LLMTripleExtractor extends Extractor {
     }
 
     private static String repairJson(String json) {
-        return json == null ? "" : json.replaceAll(",\\s*([}\\]])", "$1");
+        if (json == null) {
+            return "";
+        }
+        StringBuilder result = new StringBuilder(json.length());
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = 0; i < json.length(); i++) {
+            char current = json.charAt(i);
+            if (inString) {
+                result.append(current);
+                if (escaped) {
+                    escaped = false;
+                } else if (current == '\\') {
+                    escaped = true;
+                } else if (current == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (current == '"') {
+                inString = true;
+                result.append(current);
+                continue;
+            }
+            if (current == ',') {
+                int next = i + 1;
+                while (next < json.length() && Character.isWhitespace(json.charAt(next))) {
+                    next++;
+                }
+                if (next < json.length() && (json.charAt(next) == '}' || json.charAt(next) == ']')) {
+                    continue;
+                }
+            }
+            result.append(current);
+        }
+        return result.toString();
     }
 
     record ParseResult(List<Triple> triples, boolean isSuccess) {
