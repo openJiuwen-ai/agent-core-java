@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.BaseShellOperation;
 import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.ShellProcessRegistry;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
@@ -17,12 +18,21 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalLong;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,6 +41,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code openjiuwen/core/sys_operation/local/shell_operation.py}.
  */
 class LocalShellOperationTest {
+
+    private static final long PROCESS_WAIT_SECONDS = 5L;
 
     @TempDir
     private Path tempDir;
@@ -62,6 +74,53 @@ class LocalShellOperationTest {
     }
 
     @Test
+    void executeCmdCancellationUsesCallerSessionAcrossAsyncBoundary() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+        Path pidFile = tempDir.resolve("command.pid");
+        String sessionId = "caller_session_" + UUID.randomUUID();
+        CountDownLatch workersStarted = new CountDownLatch(ForkJoinPool.commonPool().getParallelism());
+        CountDownLatch releaseWorkers = new CountDownLatch(1);
+        List<CompletableFuture<Void>> workers = occupyCommonPool(workersStarted, releaseWorkers);
+        ShellProcessRegistry.ContextToken<String> token = null;
+        CompletableFuture<ExecuteCmdResult> execution = null;
+        ProcessHandle commandProcess = null;
+        try {
+            token = ShellProcessRegistry.setShellSessionId(sessionId);
+            releaseWorkers.countDown();
+            execution = operation.executeCmd(longRunningCommand(pidFile), null, 30, null, null, shellType());
+            ShellProcessRegistry.resetShellSessionId(token);
+            commandProcess = ProcessHandle.of(awaitPid(pidFile)).orElseThrow();
+            assertThat(commandProcess.isAlive()).isTrue();
+
+            int killed = CompletableFuture.supplyAsync(
+                    () -> ShellProcessRegistry.killShellProcessesForSession(sessionId)
+            ).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(killed).isEqualTo(1);
+            commandProcess.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            assertThat(commandProcess.isAlive()).isFalse();
+        } finally {
+            releaseWorkers.countDown();
+            if (token != null) {
+                ShellProcessRegistry.resetShellSessionId(token);
+            }
+            if (commandProcess != null) {
+                destroyProcess(commandProcess);
+            } else {
+                readPid(pidFile).ifPresent(pid -> ProcessHandle.of(pid)
+                        .ifPresent(LocalShellOperationTest::destroyProcess));
+            }
+            if (execution != null) {
+                execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            }
+            CompletableFuture.allOf(workers.toArray(CompletableFuture[]::new))
+                    .get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     void executeCmdStreamEmitsOutputAndExitChunks() throws Exception {
         Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
         LocalShellOperation operation = operation();
@@ -84,6 +143,100 @@ class LocalShellOperationTest {
             assertThat(chunk.getData().getText()).contains("warn");
         });
         assertThat(chunks.get(chunks.size() - 1).getData().getExitCode()).isEqualTo(3);
+    }
+
+    @Test
+    void executeCmdStreamCancellationUsesCallerSession() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+        Path pidFile = tempDir.resolve("stream.pid");
+        String sessionId = "stream_caller_" + UUID.randomUUID();
+        CountDownLatch workersStarted = new CountDownLatch(ForkJoinPool.commonPool().getParallelism());
+        CountDownLatch releaseWorkers = new CountDownLatch(1);
+        List<CompletableFuture<Void>> workers = occupyCommonPool(workersStarted, releaseWorkers);
+        ShellProcessRegistry.ContextToken<String> token = null;
+        CapturingSubscriber<ExecuteCmdStreamResult> subscriber = null;
+        ProcessHandle commandProcess = null;
+        try {
+            token = ShellProcessRegistry.setShellSessionId(sessionId);
+            Flow.Publisher<ExecuteCmdStreamResult> publisher = operation.executeCmdStream(
+                    longRunningCommand(pidFile), null, 30, null, null, shellType());
+            ShellProcessRegistry.resetShellSessionId(token);
+            token = null;
+            releaseWorkers.countDown();
+            subscriber = new CapturingSubscriber<>();
+            publisher.subscribe(subscriber);
+            commandProcess = ProcessHandle.of(awaitPid(pidFile)).orElseThrow();
+            assertThat(commandProcess.isAlive()).isTrue();
+
+            int killed = CompletableFuture.supplyAsync(
+                    () -> ShellProcessRegistry.killShellProcessesForSession(sessionId)
+            ).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(killed).isEqualTo(1);
+            commandProcess.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            subscriber.await();
+            assertThat(commandProcess.isAlive()).isFalse();
+        } finally {
+            releaseWorkers.countDown();
+            if (token != null) {
+                ShellProcessRegistry.resetShellSessionId(token);
+            }
+            destroyProcess(commandProcess, pidFile);
+            if (subscriber != null) {
+                subscriber.cancel();
+            }
+            ShellProcessRegistry.consumeShellSessionCancelled(sessionId);
+            CompletableFuture.allOf(workers.toArray(CompletableFuture[]::new))
+                    .get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void executeCmdBackgroundCancellationUsesCallerSession() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+        Path pidFile = tempDir.resolve("background.pid");
+        String sessionId = "background_caller_" + UUID.randomUUID();
+        CountDownLatch workersStarted = new CountDownLatch(ForkJoinPool.commonPool().getParallelism());
+        CountDownLatch releaseWorkers = new CountDownLatch(1);
+        List<CompletableFuture<Void>> workers = occupyCommonPool(workersStarted, releaseWorkers);
+        ShellProcessRegistry.ContextToken<String> token = null;
+        CompletableFuture<ExecuteCmdBackgroundResult> execution = null;
+        ProcessHandle commandProcess = null;
+        try {
+            token = ShellProcessRegistry.setShellSessionId(sessionId);
+            execution = operation.executeCmdBackground(
+                    longRunningCommand(pidFile), System.getProperty("java.io.tmpdir"), null, 0.1d,
+                    shellType());
+            ShellProcessRegistry.resetShellSessionId(token);
+            token = null;
+            releaseWorkers.countDown();
+            assertThat(execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS).getCode())
+                    .isEqualTo(StatusCode.SUCCESS.getCode());
+            commandProcess = ProcessHandle.of(awaitPid(pidFile)).orElseThrow();
+            assertThat(commandProcess.isAlive()).isTrue();
+
+            int killed = CompletableFuture.supplyAsync(
+                    () -> ShellProcessRegistry.killShellProcessesForSession(sessionId)
+            ).get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(killed).isEqualTo(1);
+            commandProcess.onExit().get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            assertThat(commandProcess.isAlive()).isFalse();
+        } finally {
+            releaseWorkers.countDown();
+            if (token != null) {
+                ShellProcessRegistry.resetShellSessionId(token);
+            }
+            destroyProcess(commandProcess, pidFile);
+            ShellProcessRegistry.consumeShellSessionCancelled(sessionId);
+            if (execution != null) {
+                execution.get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+            }
+            CompletableFuture.allOf(workers.toArray(CompletableFuture[]::new))
+                    .get(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        }
     }
 
     @Test
@@ -132,6 +285,33 @@ class LocalShellOperationTest {
         assertThat(result.getData().getExitCode()).isEqualTo(-1);
     }
 
+    private static List<CompletableFuture<Void>> occupyCommonPool(CountDownLatch started, CountDownLatch release)
+            throws InterruptedException {
+        List<CompletableFuture<Void>> workers = new ArrayList<>();
+        for (int index = 0; index < ForkJoinPool.commonPool().getParallelism(); index += 1) {
+            workers.add(CompletableFuture.runAsync(() -> {
+                started.countDown();
+                awaitLatch(release);
+            }));
+        }
+        boolean allStarted = started.await(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS);
+        if (!allStarted) {
+            release.countDown();
+        }
+        assertThat(allStarted).isTrue();
+        return workers;
+    }
+
+    private static void awaitLatch(CountDownLatch latch) {
+        try {
+            if (!latch.await(PROCESS_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting for common-pool worker release");
+            }
+        } catch (InterruptedException exception) {
+            throw new IllegalStateException("Interrupted while occupying a common-pool worker", exception);
+        }
+    }
+
     private LocalShellOperation operation() {
         LocalWorkConfig config = LocalWorkConfig.builder()
                 .shellAllowlist(List.of(
@@ -160,6 +340,49 @@ class LocalShellOperationTest {
 
     private static String sleepCommand() {
         return isWindows() ? "Start-Sleep -Seconds 2" : "sleep 2";
+    }
+
+    private static String longRunningCommand(Path pidFile) {
+        if (isWindows()) {
+            String quotedPath = "'" + pidFile.toString().replace("'", "''") + "'";
+            return "Write-Output $PID | Set-Content -LiteralPath " + quotedPath + "; Start-Sleep -Seconds 60";
+        }
+        String quotedPath = "'" + pidFile.toString().replace("'", "'\"'\"'") + "'";
+        return "printf '%s' $$ > " + quotedPath + "; exec sleep 60";
+    }
+
+    private static long awaitPid(Path pidFile) {
+        awaitCondition(() -> readPid(pidFile).isPresent());
+        return readPid(pidFile).orElseThrow();
+    }
+
+    private static OptionalLong readPid(Path pidFile) {
+        try {
+            String value = Files.readString(pidFile, StandardCharsets.UTF_8).trim();
+            return value.isEmpty() ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(value));
+        } catch (IOException | NumberFormatException exception) {
+            return OptionalLong.empty();
+        }
+    }
+
+    private static void awaitCondition(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PROCESS_WAIT_SECONDS);
+        while (!condition.getAsBoolean() && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10L));
+        }
+        assertThat(condition.getAsBoolean()).isTrue();
+    }
+
+    private static void destroyProcess(ProcessHandle process, Path pidFile) {
+        if (process != null) {
+            destroyProcess(process);
+            return;
+        }
+        readPid(pidFile).ifPresent(pid -> ProcessHandle.of(pid).ifPresent(LocalShellOperationTest::destroyProcess));
+    }
+
+    private static void destroyProcess(ProcessHandle process) {
+        process.destroyForcibly();
     }
 
     private static boolean isWindows() {
@@ -203,9 +426,13 @@ class LocalShellOperationTest {
             try {
                 return done.get(10, TimeUnit.SECONDS);
             } finally {
-                if (subscription != null) {
-                    subscription.cancel();
-                }
+                cancel();
+            }
+        }
+
+        private void cancel() {
+            if (subscription != null) {
+                subscription.cancel();
             }
         }
     }
