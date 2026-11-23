@@ -185,10 +185,12 @@ public class SkillUtil {
         String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
                 + loadingInstruction;
         List<Skill> skills = skillManager.getAll();
+        boolean renderAllSkills =
+                effectiveSkillNames == null || effectiveSkillNames.isEmpty();
         Set<String> selectedSkillNames = normalizeSkillNames(effectiveSkillNames);
         List<String> skillsInfo = new ArrayList<>(skills.size());
         for (Skill skill : skills) {
-            if (selectedSkillNames != null
+            if (!renderAllSkills
                     && (skill == null || !selectedSkillNames.contains(skill.getName()))) {
                 continue;
             }
@@ -203,7 +205,7 @@ public class SkillUtil {
 
     private static Set<String> normalizeSkillNames(Collection<String> skillNames) {
         if (skillNames == null || skillNames.isEmpty()) {
-            return null;
+            return Set.of();
         }
         Set<String> normalizedSkillNames = new LinkedHashSet<>();
         for (String skillName : skillNames) {
