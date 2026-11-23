@@ -82,6 +82,17 @@ class ToolGroupTest {
     }
 
     @Test
+    void toolGroup_listConstructor_convertsLegacyToolNames() {
+        ToolGroup group = new ToolGroup("research", "Research tools", List.of("bash", "grep"));
+
+        assertThat(group.members()).hasSize(2);
+        assertThat(group.members()).allSatisfy(
+                member -> assertThat(member.type()).isEqualTo(GroupMemberType.TOOL));
+        assertThat(group.toolNames()).containsExactly("bash", "grep");
+        assertThat(group.skillNames()).isEmpty();
+    }
+
+    @Test
     void toolGroup_whenDuplicateMembers_deduplicatesPreservingOrder() {
         ToolGroup group = ToolGroup.ofToolNames("research", "Research", List.of("bash", "bash", "grep"));
 

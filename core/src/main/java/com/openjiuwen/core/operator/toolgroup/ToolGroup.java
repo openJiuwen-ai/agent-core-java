@@ -52,6 +52,27 @@ public record ToolGroup(String name, String description, Collection<GroupMemberR
     }
 
     /**
+     * Creates a group from plain tool names, preserving the common
+     * {@code List.of} call shape from the 0.1.17 API.
+     *
+     * <p>This overload delegates to {@link #ofToolNames(String, String,
+     * Collection)} so callers that have not migrated to {@link GroupMemberRef}
+     * continue to compile.
+     *
+     * @param name unique group name
+     * @param description optional human-readable description
+     * @param toolNames ordered tool names in this group
+     * @throws IllegalArgumentException when name or tool names are invalid
+     * @since 0.1.19
+     * @deprecated Use the canonical constructor with
+     *     {@link GroupMemberRef} instances.
+     */
+    @Deprecated(since = "0.1.19")
+    public ToolGroup(String name, String description, List<String> toolNames) {
+        this(name, description, toToolMembers(name, toolNames));
+    }
+
+    /**
      * Creates a group from plain tool names, converting each name to a
      * {@link GroupMemberRef} of type {@link GroupMemberType#TOOL}.
      *
