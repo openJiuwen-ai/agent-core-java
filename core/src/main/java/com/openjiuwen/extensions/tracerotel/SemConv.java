@@ -262,17 +262,17 @@ public final class SemConv {
     /** openjiuwen.multimodal.request.bytes — input media total bytes. */
     public static final String OJ_MM_REQUEST_BYTES = "openjiuwen.multimodal.request.bytes";
 
+    /** openjiuwen.multimodal.output.has_media — whether the output contains media. */
+    public static final String OJ_MM_OUTPUT_HAS_MEDIA = "openjiuwen.multimodal.output.has_media";
+
     /** openjiuwen.multimodal.output.count — output media count. */
     public static final String OJ_MM_OUTPUT_COUNT = "openjiuwen.multimodal.output.count";
 
-    /** openjiuwen.multimodal.output.types — output media types (JSON array). */
+    /** openjiuwen.multimodal.output.types — output media type declarations (JSON array). */
     public static final String OJ_MM_OUTPUT_TYPES = "openjiuwen.multimodal.output.types";
 
     /** openjiuwen.multimodal.output.bytes — output media total bytes. */
     public static final String OJ_MM_OUTPUT_BYTES = "openjiuwen.multimodal.output.bytes";
-
-    /** openjiuwen.multimodal.error.count — media parse/load/preprocess failure count. */
-    public static final String OJ_MM_ERROR_COUNT = "openjiuwen.multimodal.error.count";
 
     /**
      * Context key for sandbox ID propagation.

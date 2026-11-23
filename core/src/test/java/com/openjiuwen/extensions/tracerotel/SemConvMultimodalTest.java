@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test;
 /**
  * SemConv 多模态摘要常量（openjiuwen.multimodal.*）的语义契约测试。
  *
- * <p>对应 issue agent-solution#851 / agent-core-java#316：8 个常量值必须与
- * 多模态 OTel 核心指标上报 Spec v1.0 §4.1 完全一致，禁止漂移。</p>
+ * <p>对应多模态可观测性 L2 设计文档 §4.1：request/output 两个方向共 8 个键常量
+ * （has_media/count/types/bytes × 2），常量值必须与契约完全一致，禁止漂移。</p>
  */
 class SemConvMultimodalTest {
 
@@ -41,6 +41,12 @@ class SemConvMultimodalTest {
     }
 
     @Test
+    void multimodalOutputHasMedia_constantMatchesContract() {
+        assertThat(SemConv.OJ_MM_OUTPUT_HAS_MEDIA)
+                .isEqualTo("openjiuwen.multimodal.output.has_media");
+    }
+
+    @Test
     void multimodalOutputCount_constantMatchesContract() {
         assertThat(SemConv.OJ_MM_OUTPUT_COUNT)
                 .isEqualTo("openjiuwen.multimodal.output.count");
@@ -56,11 +62,5 @@ class SemConvMultimodalTest {
     void multimodalOutputBytes_constantMatchesContract() {
         assertThat(SemConv.OJ_MM_OUTPUT_BYTES)
                 .isEqualTo("openjiuwen.multimodal.output.bytes");
-    }
-
-    @Test
-    void multimodalErrorCount_constantMatchesContract() {
-        assertThat(SemConv.OJ_MM_ERROR_COUNT)
-                .isEqualTo("openjiuwen.multimodal.error.count");
     }
 }
