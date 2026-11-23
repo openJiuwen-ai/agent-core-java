@@ -115,6 +115,8 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -4128,7 +4130,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 "output", describeStreamThrowable(exception),
                 "result_type", "error"
         ));
-        findBaseError(exception).ifPresent(baseError -> result.put("failure", buildFailurePayload(baseError)));
+        findBaseError(exception).ifPresent(baseError -> result.put(
+                "failure", buildFailurePayload(baseError, exception)));
         return result;
     }
 
@@ -4152,12 +4155,37 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return Optional.empty();
     }
 
-    private static Map<String, Object> buildFailurePayload(BaseError baseError) {
+    private static Map<String, Object> buildFailurePayload(BaseError baseError, RuntimeException exception) {
         Map<String, Object> failure = new LinkedHashMap<>();
         failure.put("code", baseError.getStatus() == null ? "AGENT_CORE_ERROR" : baseError.getStatus().name());
         failure.put("numericCode", baseError.getCode());
         failure.put("retryable", baseError.isRecoverable());
+        addHttpStatus(failure, baseError);
+        findTransportDiagnostic(exception).ifPresent(transport -> failure.put("transport", transport));
         return failure;
+    }
+
+    private static void addHttpStatus(Map<String, Object> failure, BaseError baseError) {
+        if (baseError.getDetails() instanceof Map<?, ?> details
+                && details.get(ModelCallClassification.DETAIL_HTTP_STATUS) instanceof Number httpStatus) {
+            failure.put("httpStatus", httpStatus);
+        }
+    }
+
+    private static Optional<String> findTransportDiagnostic(RuntimeException exception) {
+        Throwable current = exception;
+        int depth = 0;
+        while (current != null && depth < MAX_CAUSE_CHAIN_DEPTH) {
+            if (current instanceof ConnectException) {
+                return Optional.of("connect");
+            }
+            if (current instanceof UnknownHostException) {
+                return Optional.of("unknown_host");
+            }
+            current = current.getCause();
+            depth++;
+        }
+        return Optional.empty();
     }
 
     private static String exceptionMessage(RuntimeException exception) {

@@ -5,13 +5,17 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ModelError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
 
 import org.junit.jupiter.api.Test;
 
+import java.net.ConnectException;
+import java.net.UnknownHostException;
 import java.util.Map;
 import java.util.Optional;
 
@@ -31,6 +35,37 @@ class ReActAgentBuildErrorResultTest {
         assertThat(readFailureField(failure, "code")).isEqualTo("MODEL_CALL_TIMEOUT");
         assertThat(readFailureField(failure, "numericCode")).isEqualTo(181008);
         assertThat(readFailureField(failure, "retryable")).isEqualTo(true);
+        assertFailureKeys(failure, "code", "numericCode", "retryable");
+    }
+
+    @Test
+    void httpStatusUsesOnlyWhitelistedDetail() {
+        Map<String, Object> details = Map.of(
+                ModelCallClassification.DETAIL_HTTP_STATUS, 404,
+                "request_metadata", "not-forwarded"
+        );
+        ModelError error = new ModelError(StatusCode.MODEL_CALL_FAILED, null, details, null, Map.of());
+        Map<String, Object> result = ReActAgent.buildErrorResult(error);
+        assertThat(readFailureField(result.get("failure"), "httpStatus")).isEqualTo(404);
+        assertFailureKeys(result.get("failure"), "code", "numericCode", "retryable", "httpStatus");
+    }
+
+    @Test
+    void connectCauseAddsTransportDiagnostic() {
+        ModelError error = new ModelError(
+                StatusCode.MODEL_CALL_FAILED, null, null, new ConnectException("socket unavailable"), Map.of());
+        Map<String, Object> result = ReActAgent.buildErrorResult(error);
+        assertThat(readFailureField(result.get("failure"), "transport")).isEqualTo("connect");
+        assertFailureKeys(result.get("failure"), "code", "numericCode", "retryable", "transport");
+    }
+
+    @Test
+    void unknownHostCauseAddsTransportDiagnostic() {
+        ModelError error = new ModelError(
+                StatusCode.MODEL_CALL_FAILED, null, null, new UnknownHostException("name unresolved"), Map.of());
+        Map<String, Object> result = ReActAgent.buildErrorResult(error);
+        assertThat(readFailureField(result.get("failure"), "transport")).isEqualTo("unknown_host");
+        assertFailureKeys(result.get("failure"), "code", "numericCode", "retryable", "transport");
     }
 
     @Test
@@ -83,8 +118,15 @@ class ReActAgentBuildErrorResultTest {
     }
 
     private static Object readFailureField(Object failure, String key) {
-        assertThat(failure).isInstanceOf(Map.class);
-        Map<?, ?> failureMap = (Map<?, ?>) failure;
-        return failureMap.get(key);
+        return readFailureMap(failure).get(key);
+    }
+
+    private static Map<?, ?> readFailureMap(Object failure) {
+        return assertInstanceOf(Map.class, failure);
+    }
+
+    private static void assertFailureKeys(Object failure, String... keys) {
+        assertThat(readFailureMap(failure).keySet().stream().map(String::valueOf))
+                .containsExactlyInAnyOrder(keys);
     }
 }
