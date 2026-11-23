@@ -13,6 +13,8 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberRef;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberType;
 import com.openjiuwen.core.operator.toolgroup.ToolAvailabilityChecker;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
 import com.openjiuwen.core.operator.toolgroup.ToolGroupManager;
@@ -243,7 +245,9 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             }
             boolean isToolInRegisteredGroup =
                     toolGroupManager.getGroups().stream()
-                            .anyMatch(group -> group.toolNames().contains(toolName));
+                            .anyMatch(group -> group.members().stream()
+                                    .anyMatch(member -> member.type() == GroupMemberType.TOOL
+                                            && member.id().equals(toolName)));
             if (isToolInRegisteredGroup) {
                 return toolGroupManager.isToolEligibleForExecution(toolName, activeGroupNames);
             }
@@ -495,7 +499,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                 || binding.getSkillName().isBlank()) {
             return;
         }
-        List<String> toolNames = new ArrayList<>();
+        List<GroupMemberRef> members = new ArrayList<>();
         List<Tool> skillTools =
                 skillToolRegistry
                         .listToolsByActiveSkill(List.of(binding.getSkillName()))
@@ -505,19 +509,20 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                     && tool.getCard() != null
                     && tool.getCard().getName() != null
                     && !tool.getCard().getName().isBlank()) {
-                toolNames.add(tool.getCard().getName());
+                members.add(new GroupMemberRef(
+                        GroupMemberType.TOOL, tool.getCard().getName()));
             }
         }
-        if (toolNames.isEmpty()) {
+        if (members.isEmpty()) {
             return;
         }
         String implicitGroupName = "skill:" + binding.getSkillName();
         toolGroupManager.unregisterSkillToolGroup(implicitGroupName);
         ToolGroup implicitGroup =
-                ToolGroup.ofToolNames(
+                new ToolGroup(
                         implicitGroupName,
                         "Implicit group for skill " + binding.getSkillName(),
-                        toolNames);
+                        members);
         toolGroupManager.registerSkillToolGroup(implicitGroup);
     }
 

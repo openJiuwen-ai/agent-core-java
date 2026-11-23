@@ -64,7 +64,10 @@ public record ToolGroup(String name, String description, Collection<GroupMemberR
      * @return validated immutable tool group
      * @throws IllegalArgumentException when name or tool names are invalid
      * @since 0.1.19
+     * @deprecated Use the canonical constructor with
+     *     {@link GroupMemberRef} instances.
      */
+    @Deprecated(since = "0.1.19")
     public static ToolGroup ofToolNames(
             String name, String description, Collection<String> toolNames) {
         return new ToolGroup(name, description, toToolMembers(name, toolNames));
@@ -78,7 +81,10 @@ public record ToolGroup(String name, String description, Collection<GroupMemberR
      *
      * @return unmodifiable ordered list of tool names in this group
      * @since 0.1.19
+     * @deprecated Iterate {@link #members()} and filter
+     *     {@link GroupMemberType#TOOL} instead.
      */
+    @Deprecated(since = "0.1.19")
     public List<String> toolNames() {
         return members.stream()
                 .filter(member -> member.type() == GroupMemberType.TOOL)

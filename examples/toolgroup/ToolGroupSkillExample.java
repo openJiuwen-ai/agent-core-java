@@ -9,6 +9,8 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberRef;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberType;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.singleagent.AbilityManager;
@@ -53,11 +55,24 @@ public final class ToolGroupSkillExample {
                                 .build());
 
         agent.registerToolGroup(
-                ToolGroup.ofToolNames("research", "Research tools", List.of("skill_search")));
-        agent.registerToolGroup(ToolGroup.ofToolNames("analysis", "Analysis tools", List.of("chart")));
-        agent.registerToolGroup(ToolGroup.ofToolNames("danger", "Dangerous tools", List.of("delete_file")));
+                new ToolGroup(
+                        "research",
+                        "Research tools",
+                        List.of(new GroupMemberRef(GroupMemberType.TOOL, "skill_search"))));
+        agent.registerToolGroup(new ToolGroup(
+                "analysis",
+                "Analysis tools",
+                List.of(new GroupMemberRef(GroupMemberType.TOOL, "chart"))));
+        agent.registerToolGroup(new ToolGroup(
+                "danger",
+                "Dangerous tools",
+                List.of(new GroupMemberRef(GroupMemberType.TOOL, "delete_file"))));
         agent.registerToolGroup(
-                ToolGroup.ofToolNames("mcp_tools", "Mock MCP tools", List.of("mcp_weather_forecast")));
+                new ToolGroup(
+                        "mcp_tools",
+                        "Mock MCP tools",
+                        List.of(new GroupMemberRef(
+                                GroupMemberType.TOOL, "mcp_weather_forecast"))));
 
         Path skillsRoot = Path.of("examples", "toolgroup", "skills").toAbsolutePath().normalize();
         agent.getSkillUtil()

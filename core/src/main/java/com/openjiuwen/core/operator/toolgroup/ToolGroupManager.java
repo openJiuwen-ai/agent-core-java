@@ -174,13 +174,6 @@ public final class ToolGroupManager {
         List<String> activeToolNames = new ArrayList<>();
         synchronized (toolGroupsByName) {
             Map<String, List<ToolGroup>> owningGroupsByToolName = findOwningGroupsByToolName();
-            for (ToolGroup toolGroup : toolGroupsByName.values()) {
-                for (String toolName : toolGroup.toolNames()) {
-                    owningGroupsByToolName
-                            .computeIfAbsent(toolName, ignored -> new ArrayList<>())
-                            .add(toolGroup);
-                }
-            }
             for (String toolName : normalizedRegisteredToolNames) {
                 if (isToolEligible(
                         toolName,
@@ -210,7 +203,8 @@ public final class ToolGroupManager {
         synchronized (toolGroupsByName) {
             List<ToolGroup> owningGroups =
                     toolGroupsByName.values().stream()
-                            .filter(toolGroup -> toolGroup.toolNames().contains(normalizedToolName))
+                            .filter(toolGroup -> hasMember(toolGroup, GroupMemberType.TOOL,
+                                    normalizedToolName))
                             .toList();
             return isToolEligible(normalizedToolName, owningGroups, normalizedActiveGroupNames);
         }
@@ -219,13 +213,21 @@ public final class ToolGroupManager {
     private Map<String, List<ToolGroup>> findOwningGroupsByToolName() {
         Map<String, List<ToolGroup>> owningGroupsByToolName = new HashMap<>();
         for (ToolGroup toolGroup : toolGroupsByName.values()) {
-            for (String toolName : toolGroup.toolNames()) {
-                owningGroupsByToolName
-                        .computeIfAbsent(toolName, ignored -> new ArrayList<>())
-                        .add(toolGroup);
+            for (GroupMemberRef member : toolGroup.members()) {
+                if (member.type() == GroupMemberType.TOOL) {
+                    owningGroupsByToolName
+                            .computeIfAbsent(member.id(), ignored -> new ArrayList<>())
+                            .add(toolGroup);
+                }
             }
         }
         return owningGroupsByToolName;
+    }
+
+    private static boolean hasMember(
+            ToolGroup toolGroup, GroupMemberType type, String id) {
+        return toolGroup.members().stream()
+                .anyMatch(member -> member.type() == type && member.id().equals(id));
     }
 
     private static boolean isToolEligible(
@@ -274,7 +276,11 @@ public final class ToolGroupManager {
                 if (!normalizedActiveGroupNames.contains(toolGroup.name())) {
                     continue;
                 }
-                skillNames.addAll(toolGroup.skillNames());
+                for (GroupMemberRef member : toolGroup.members()) {
+                    if (member.type() == GroupMemberType.SKILL) {
+                        skillNames.add(member.id());
+                    }
+                }
             }
         }
         return Collections.unmodifiableSet(skillNames);
@@ -293,7 +299,11 @@ public final class ToolGroupManager {
         Set<String> groupedSkillNames = new LinkedHashSet<>();
         synchronized (toolGroupsByName) {
             for (ToolGroup toolGroup : toolGroupsByName.values()) {
-                groupedSkillNames.addAll(toolGroup.skillNames());
+                for (GroupMemberRef member : toolGroup.members()) {
+                    if (member.type() == GroupMemberType.SKILL) {
+                        groupedSkillNames.add(member.id());
+                    }
+                }
             }
         }
         Set<String> ungrouped = new LinkedHashSet<>();
