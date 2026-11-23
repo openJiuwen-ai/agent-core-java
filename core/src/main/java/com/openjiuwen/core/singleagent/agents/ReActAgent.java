@@ -4119,7 +4119,13 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
      * Builds the error result written to the stream when a streaming invoke fails. When the
      * failure chain carries a {@link BaseError}, its stable code, numeric code, and recoverable
      * flag are attached as a structured failure entry so remote adapters can reconstruct a
-     * programmatic failure descriptor instead of parsing the flattened output text.
+     * programmatic failure descriptor instead of parsing the flattened output text. A numeric
+     * {@code http_status} detail is exposed as optional {@code httpStatus}. Only a
+     * {@link StatusCode#MODEL_CALL_FAILED} error can expose an optional {@code transport}
+     * diagnostic from its cause chain.
+     *
+     * <p>The failure entry is a whitelist: raw details, URLs, exception text, {@code params},
+     * and credentials are never forwarded.</p>
      *
      * @param exception streaming failure
      * @return error result map with output, result type, and an optional failure entry
@@ -4130,8 +4136,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 "output", describeStreamThrowable(exception),
                 "result_type", "error"
         ));
-        findBaseError(exception).ifPresent(baseError -> result.put(
-                "failure", buildFailurePayload(baseError, exception)));
+        findBaseError(exception).ifPresent(baseError -> result.put("failure", buildFailurePayload(baseError)));
         return result;
     }
 
@@ -4155,13 +4160,15 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return Optional.empty();
     }
 
-    private static Map<String, Object> buildFailurePayload(BaseError baseError, RuntimeException exception) {
+    private static Map<String, Object> buildFailurePayload(BaseError baseError) {
         Map<String, Object> failure = new LinkedHashMap<>();
         failure.put("code", baseError.getStatus() == null ? "AGENT_CORE_ERROR" : baseError.getStatus().name());
         failure.put("numericCode", baseError.getCode());
         failure.put("retryable", baseError.isRecoverable());
         addHttpStatus(failure, baseError);
-        findTransportDiagnostic(exception).ifPresent(transport -> failure.put("transport", transport));
+        if (baseError.getStatus() == StatusCode.MODEL_CALL_FAILED) {
+            findTransportDiagnostic(baseError).ifPresent(transport -> failure.put("transport", transport));
+        }
         return failure;
     }
 
@@ -4172,8 +4179,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         }
     }
 
-    private static Optional<String> findTransportDiagnostic(RuntimeException exception) {
-        Throwable current = exception;
+    private static Optional<String> findTransportDiagnostic(BaseError baseError) {
+        Throwable current = baseError;
         int depth = 0;
         while (current != null && depth < MAX_CAUSE_CHAIN_DEPTH) {
             if (current instanceof ConnectException) {

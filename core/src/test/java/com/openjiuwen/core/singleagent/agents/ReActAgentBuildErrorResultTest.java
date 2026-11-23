@@ -51,6 +51,15 @@ class ReActAgentBuildErrorResultTest {
     }
 
     @Test
+    void stringHttpStatusIsNotForwarded() {
+        Map<String, Object> details = Map.of(ModelCallClassification.DETAIL_HTTP_STATUS, "404");
+        ModelError error = new ModelError(StatusCode.MODEL_CALL_FAILED, null, details, null, Map.of());
+        Map<String, Object> result = ReActAgent.buildErrorResult(error);
+        assertThat(readFailureField(result.get("failure"), "httpStatus")).isNull();
+        assertFailureKeys(result.get("failure"), "code", "numericCode", "retryable");
+    }
+
+    @Test
     void connectCauseAddsTransportDiagnostic() {
         ModelError error = new ModelError(
                 StatusCode.MODEL_CALL_FAILED, null, null, new ConnectException("socket unavailable"), Map.of());
@@ -66,6 +75,15 @@ class ReActAgentBuildErrorResultTest {
         Map<String, Object> result = ReActAgent.buildErrorResult(error);
         assertThat(readFailureField(result.get("failure"), "transport")).isEqualTo("unknown_host");
         assertFailureKeys(result.get("failure"), "code", "numericCode", "retryable", "transport");
+    }
+
+    @Test
+    void nonModelErrorDoesNotExposeTransportDiagnostic() {
+        BaseError error = new BaseError(
+                StatusCode.WORKFLOW_EXECUTION_ERROR, null, null, new ConnectException("socket unavailable"), Map.of());
+        Map<String, Object> result = ReActAgent.buildErrorResult(error);
+        assertThat(readFailureField(result.get("failure"), "transport")).isNull();
+        assertFailureKeys(result.get("failure"), "code", "numericCode", "retryable");
     }
 
     @Test
