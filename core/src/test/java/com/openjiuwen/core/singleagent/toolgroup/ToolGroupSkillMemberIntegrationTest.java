@@ -140,7 +140,8 @@ class ToolGroupSkillMemberIntegrationTest {
         assertAnswer(result);
         ModelCall modelCall = assertOnlyModelCall(agent);
         assertThat(modelCall.toolNames())
-                .contains("searchTool", "skill_tool")
+                .contains("skill_tool")
+                .doesNotContain("searchTool")
                 .doesNotContain("bash");
         assertOnlyModelCall(agent)
                 .systemPrompt()

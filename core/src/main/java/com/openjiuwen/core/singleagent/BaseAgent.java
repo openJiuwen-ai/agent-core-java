@@ -237,7 +237,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
             if (!toolGroupManager.hasExplicitToolGroups()) {
                 effectiveSkillNames = registeredActiveSkillNames(getActiveSkillNames(session));
             } else {
-                effectiveSkillNames = resolveEffectiveSkillNames(
+                effectiveSkillNames = resolveToolSkillNames(
                         getActiveSkillNames(session), getActiveToolGroupNames(session));
             }
             for (String skillName : effectiveSkillNames) {
@@ -1030,7 +1030,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private List<ToolInfo> listEffectiveToolInfoWithGroups(
             List<String> activeSkillNames, List<String> activeToolGroupNames) {
         List<String> effectiveSkillNames =
-                resolveEffectiveSkillNames(activeSkillNames, activeToolGroupNames);
+                resolveToolSkillNames(activeSkillNames, activeToolGroupNames);
         List<ToolInfo> merged = listEffectiveToolInfo(effectiveSkillNames);
         List<String> allActiveGroupNames = new ArrayList<>(activeToolGroupNames);
         for (String skillName : effectiveSkillNames) {
@@ -1053,12 +1053,19 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     private List<String> resolveEffectiveSkillNames(
             List<String> activeSkillNames, List<String> activeToolGroupNames) {
+        Set<String> effectiveSkillNames = new LinkedHashSet<>(
+                resolveToolSkillNames(activeSkillNames, activeToolGroupNames));
+        effectiveSkillNames.addAll(
+                toolGroupManager.getUngroupedSkillNames(registeredSkillNames()));
+        return List.copyOf(effectiveSkillNames);
+    }
+
+    private List<String> resolveToolSkillNames(
+            List<String> activeSkillNames, List<String> activeToolGroupNames) {
         Set<String> effectiveSkillNames = new LinkedHashSet<>();
         effectiveSkillNames.addAll(registeredActiveSkillNames(activeSkillNames));
         effectiveSkillNames.addAll(registeredActiveSkillNames(
                 List.copyOf(toolGroupManager.getActiveSkillNames(activeToolGroupNames))));
-        effectiveSkillNames.addAll(
-                toolGroupManager.getUngroupedSkillNames(registeredSkillNames()));
         return List.copyOf(effectiveSkillNames);
     }
 

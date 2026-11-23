@@ -403,8 +403,8 @@ class BaseAgentToolGroupTest {
 
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
-                .contains("cleanup", "skill_tool")
-                .doesNotContain("envLookup");
+                .contains("skill_tool")
+                .doesNotContain("cleanup", "envLookup");
         ToolCall hiddenCall =
                 ToolCall.builder().id("call-hidden").name("envLookup").arguments("{}").build();
         List<AbilityManager.ExecutionResult> hiddenResults =
@@ -474,6 +474,46 @@ class BaseAgentToolGroupTest {
         assertThat(deactivatedResults.get(0).result()).isNull();
         assertThat(deactivatedResults.get(0).toolMessage()).isNotNull();
         assertThat(deactivatedResults.get(0).toolMessage().getContentAsString())
+                .contains("not active");
+    }
+
+    @Test
+    @Tag("TC-LNK-01")
+    @Tag("TC-LNK-05")
+    void deactivatedSkillTool_remainsHiddenWithExplicitGroupRegistered() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("session-a");
+        Tool envLookup = skillTool("envLookup");
+        registerSkill(agent, "EnvSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("EnvSkill")
+                                .tools(List.of(envLookup))
+                                .build())
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "environment",
+                        "Environment tools",
+                        List.of(new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+
+        agent.activateSkill("EnvSkill", session);
+        agent.deactivateSkill("EnvSkill", session);
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .contains("skill_tool")
+                .doesNotContain("envLookup");
+        ToolCall deactivatedCall =
+                ToolCall.builder().id("call-deactivated").name("envLookup")
+                        .arguments("{}").build();
+        List<AbilityManager.ExecutionResult> deactivatedResults =
+                agent.getAbilityManager().execute(null, deactivatedCall, session, false);
+        assertThat(deactivatedResults.get(0).result()).isNull();
+        assertThat(deactivatedResults.get(0).toolMessage()).isNotNull();
+        assertThat(deactivatedResults.get(0).toolMessage().getContentAsString())
+                .contains("envLookup")
                 .contains("not active");
     }
 
