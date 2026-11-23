@@ -708,6 +708,7 @@ public void updateSkillPromptBuilderSection(
 | 5 | 两个 session：session A 激活 research，session B 不激活 | A 可见，B 不可见；互不干扰 |
 | 6 | 未注册任何 ToolGroup | 行为与 0.1.17 完全一致（回归验证） |
 | 7 | 旧构造器 `new ToolGroup(name, desc, toolNames)` 创建组并激活 | tool 过滤正常，skill 集为空 |
+| 验收 | `ToolGroupSkillMemberIntegrationTest` 集成测试 | 7/7 通过；分组回归 76/76 通过 |
 
 **预估规模：** 150–250 行
 
