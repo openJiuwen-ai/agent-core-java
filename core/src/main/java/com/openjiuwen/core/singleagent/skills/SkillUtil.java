@@ -185,12 +185,12 @@ public class SkillUtil {
         String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
                 + loadingInstruction;
         List<Skill> skills = skillManager.getAll();
-        boolean renderAllSkills =
+        boolean shouldRenderAllSkills =
                 effectiveSkillNames == null || effectiveSkillNames.isEmpty();
         Set<String> selectedSkillNames = normalizeSkillNames(effectiveSkillNames);
         List<String> skillsInfo = new ArrayList<>(skills.size());
         for (Skill skill : skills) {
-            if (!renderAllSkills
+            if (!shouldRenderAllSkills
                     && (skill == null || !selectedSkillNames.contains(skill.getName()))) {
                 continue;
             }
