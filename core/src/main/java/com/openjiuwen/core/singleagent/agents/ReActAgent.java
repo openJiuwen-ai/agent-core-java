@@ -115,6 +115,8 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -4117,7 +4119,13 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
      * Builds the error result written to the stream when a streaming invoke fails. When the
      * failure chain carries a {@link BaseError}, its stable code, numeric code, and recoverable
      * flag are attached as a structured failure entry so remote adapters can reconstruct a
-     * programmatic failure descriptor instead of parsing the flattened output text.
+     * programmatic failure descriptor instead of parsing the flattened output text. A numeric
+     * {@code http_status} detail is exposed as optional {@code httpStatus}. Only a
+     * {@link StatusCode#MODEL_CALL_FAILED} error can expose an optional {@code transport}
+     * diagnostic from its cause chain.
+     *
+     * <p>The failure entry is a whitelist: raw details, URLs, exception text, {@code params},
+     * and credentials are never forwarded.</p>
      *
      * @param exception streaming failure
      * @return error result map with output, result type, and an optional failure entry
@@ -4157,7 +4165,34 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         failure.put("code", baseError.getStatus() == null ? "AGENT_CORE_ERROR" : baseError.getStatus().name());
         failure.put("numericCode", baseError.getCode());
         failure.put("retryable", baseError.isRecoverable());
+        addHttpStatus(failure, baseError);
+        if (baseError.getStatus() == StatusCode.MODEL_CALL_FAILED) {
+            findTransportDiagnostic(baseError).ifPresent(transport -> failure.put("transport", transport));
+        }
         return failure;
+    }
+
+    private static void addHttpStatus(Map<String, Object> failure, BaseError baseError) {
+        if (baseError.getDetails() instanceof Map<?, ?> details
+                && details.get(ModelCallClassification.DETAIL_HTTP_STATUS) instanceof Number httpStatus) {
+            failure.put("httpStatus", httpStatus);
+        }
+    }
+
+    private static Optional<String> findTransportDiagnostic(BaseError baseError) {
+        Throwable current = baseError;
+        int depth = 0;
+        while (current != null && depth < MAX_CAUSE_CHAIN_DEPTH) {
+            if (current instanceof ConnectException) {
+                return Optional.of("connect");
+            }
+            if (current instanceof UnknownHostException) {
+                return Optional.of("unknown_host");
+            }
+            current = current.getCause();
+            depth++;
+        }
+        return Optional.empty();
     }
 
     private static String exceptionMessage(RuntimeException exception) {
