@@ -50,6 +50,9 @@ import java.util.concurrent.CompletionStage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ReActAgentToolLifecycleStreamTest {
 
@@ -387,6 +390,29 @@ class ReActAgentToolLifecycleStreamTest {
 
         assertThatThrownBy(() -> agent.invoke(Map.of("query", "lookup"), new MemorySession(unique("batch"))))
                 .hasMessageContaining("duplicate tool_call_id");
+        assertThat(tool.invokeCount).isZero();
+    }
+
+    @Test
+    void duplicateIdsAtDifferentStreamIndexesRejectTheWholeBatch() {
+        CountingTool tool = new CountingTool(unique("duplicate-stream-tool"), "lookupEnv", "prod");
+        ToolCall first = ToolCall.builder().id("duplicate-id").index(0).name("lookupEnv").arguments("{}").build();
+        ToolCall second = ToolCall.builder().id("duplicate-id").index(1).name("lookupEnv").arguments("{}").build();
+        AssistantMessageChunk prefix = AssistantMessageChunk.builder().content("Checking").build();
+        AssistantMessageChunk batch = multiToolChunk(List.of(first, second));
+        Model.ModelClient client = mock(Model.ModelClient.class);
+        when(client.stream(any(), any())).thenAnswer(invocation -> List.of(prefix, batch).iterator())
+                .thenAnswer(invocation -> List.of(answerChunk("unexpected second response")).iterator());
+        ReActAgent agent = new ReActAgent(agentCard("duplicate-stream-agent"));
+        agent.setLlm(new Model(client));
+        registerGlobalTool(agent, tool);
+
+        List<OutputSchema> outputs = collectOutput(agent.stream(Map.of("query", "lookup"),
+                new MemorySession(unique("duplicate-stream")), List.of()));
+
+        Map<String, Object> answer = payload(singleOutput(outputs, "answer"));
+        assertThat(answer).containsEntry("result_type", "error");
+        assertThat(answer.toString()).contains("duplicate tool_call_id");
         assertThat(tool.invokeCount).isZero();
     }
 
