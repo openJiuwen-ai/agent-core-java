@@ -143,8 +143,7 @@ class ToolGroupSkillMemberIntegrationTest {
                 .contains("skill_tool")
                 .doesNotContain("searchTool")
                 .doesNotContain("bash");
-        assertOnlyModelCall(agent)
-                .systemPrompt()
+        assertThat(modelCall.systemPrompt())
                 .contains("Skill name: SearchSkill");
     }
 
