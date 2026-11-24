@@ -827,13 +827,14 @@ public class AbilityManager {
             if (request == null) {
                 continue;
             }
+            if (firstResult != null && toolFailures.isEmpty()) {
+                continue;
+            }
             Map<String, Object> result = request.getResult();
             if (firstResult == null) {
                 firstResult = result;
-                toolFailures.addAll(toolFailureOutcomes(result));
-            } else if (!toolFailures.isEmpty()) {
-                toolFailures.addAll(toolFailureOutcomes(result));
             }
+            toolFailures.addAll(toolFailureOutcomes(result));
         }
         if (firstResult == null) {
             return;
