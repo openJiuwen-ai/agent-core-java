@@ -31,9 +31,9 @@
         <bouncy-castle.version>1.85</bouncy-castle.version>
         <commons-codec.version>1.20.0</commons-codec.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
-        <failureaccess.version>1.0.2</failureaccess.version>
+        <failureaccess.version>1.0.3</failureaccess.version>
         <grpc.version>1.82.1</grpc.version>
-        <guava.version>33.0.0-jre</guava.version>
+        <guava.version>33.7.2-jre</guava.version>
         <jsr305.version>3.0.2</jsr305.version>
         <jna.version>5.19.1</jna.version>
         <jsonschema.version>4.38.0</jsonschema.version>
@@ -293,7 +293,7 @@
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.17.2</version>
+            <version>1.23.2</version>
         </dependency>
 
         <dependency>

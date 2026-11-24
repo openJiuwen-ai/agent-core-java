@@ -28,7 +28,7 @@
         <testcontainers.version>1.21.4</testcontainers.version>
         <lombok.version>1.18.32</lombok.version>
         <reactor.version>3.8.6</reactor.version>
-        <jsoup.version>1.17.2</jsoup.version>
+        <jsoup.version>1.23.2</jsoup.version>
 
         <junit.version>6.0.3</junit.version>
         <mockito.version>5.14.2</mockito.version>
@@ -63,6 +63,12 @@
             <groupId>com.openjiuwen</groupId>
             <artifactId>agent-core-java</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <!-- Keep consumers on the version required by Core's Guava when Milvus brings an older one. -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>failureaccess</artifactId>
+            <version>1.0.3</version>
         </dependency>
         <dependency>
             <groupId>io.milvus</groupId>
