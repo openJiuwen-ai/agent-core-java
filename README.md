@@ -34,14 +34,50 @@ cd agent-core-java
 mvn clean install -DskipTests
 ```
 
-Then add agent-core-java as a dependency to your Maven project:
+Import the published Core POM in your application's `dependencyManagement` and
+declare the Core JAR as a dependency. Use the same Core version in both entries.
+The published POM expands the managed versions, including versions from upstream BOMs.
+The import aligns shared library versions such as Jackson, OpenTelemetry,
+Bouncy Castle, and Protobuf with Core's build.
+
 ```xml
-<dependency>
-    <groupId>com.openjiuwen</groupId>
-    <artifactId>agent-core-java</artifactId>
-    <version>0.1.12</version>
-</dependency>
+<properties>
+    <agent-core.version>0.1.18</agent-core.version>
+</properties>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-java</artifactId>
+            <version>${agent-core.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+<dependencies>
+    <dependency>
+        <groupId>com.openjiuwen</groupId>
+        <artifactId>agent-core-java</artifactId>
+        <version>${agent-core.version}</version>
+    </dependency>
+</dependencies>
 ```
+
+When using Runtime, import the matching Runtime POM for its application and
+service constraints. For a Spring Boot application that imports Boot's BOM,
+put the OpenJiuwen imports before it. If you inherit a Boot parent, check
+`mvn help:effective-pom` and `mvn dependency:tree -Dscope=runtime` for
+inherited management and any explicit application overrides.
+
+### Optional storage backends
+
+Applications using the Core Milvus graph store or Context Evolver's Milvus
+persistence must add `io.milvus:milvus-sdk-java:2.6.22` alongside Core.
+Context Evolver falls back to JSON in auto mode when the SDK is absent.
+Core retains the AWS SDK dependency for the public `AioBotoClient` API. Core's Retrieval module
+continues to supply its own vector store and document parser dependencies.
+
 
 ### Examples
 
