@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
@@ -12,19 +13,27 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.stream.Stream;
 
 /**
  * Verifies that stream answer frames expose the agent termination reason.
@@ -66,6 +75,51 @@ class ReActAgentStreamTerminationReasonTest {
         assertThat(payload.get("tool_outcomes")).isEqualTo(List.of(Map.of(
                 "tool_name", "missing-tool", "tool_call_id", "call-missing-tool",
                 "status", "failed", "error", payload.get("output"))));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void terminalAnswerCarriesEveryToolFailureInCallOrder(boolean parallelToolCalls) {
+        ReActAgent agent = newAgent();
+        agent.configure(ReActAgentConfig.builder().parallelToolCalls(parallelToolCalls).build());
+        agent.getAbilityManager().add(Stream.of("missing-a", "missing-b")
+                .map(name -> ToolCard.builder().id(UUID.randomUUID().toString()).name(name).parallelSafe(true).build())
+                .toList());
+        agent.setLlm(toolCallModel("missing-a", "missing-b"));
+
+        List<Object> frames = drainStream(agent, "stream-batch-tool-error");
+        Map<String, Object> payload = answerPayload(frames);
+
+        assertThat(payload).containsEntry("result_type", "error");
+        assertThat(frames.stream().filter(frame -> frame instanceof OutputSchema output
+                && "tool_output".equals(output.getType()))).hasSize(2);
+        List<?> outcomes = assertInstanceOf(List.class, payload.get("tool_outcomes"));
+        assertThat(outcomes.stream()
+                .map(outcome -> String.valueOf(assertInstanceOf(Map.class, outcome).get("tool_call_id"))).toList())
+                .containsExactly("call-missing-a", "call-missing-b");
+    }
+
+    @Test
+    void firstRailFinishKeepsItsOwnTerminalResult() {
+        ReActAgent agent = newAgent();
+        agent.setLlm(toolCallModel("rail-stop", "missing-tool"));
+        AgentRail rail = new AgentRail() {
+            @Override
+            public void beforeToolCall(AgentCallbackContext context) {
+                if (context.getInputs() instanceof ToolCallInputs inputs
+                        && "rail-stop".equals(inputs.getToolName())) {
+                    context.requestForceFinish(Map.of("result_type", "error", "output", "rail termination"));
+                }
+            }
+        };
+        agent.registerRail(rail).toCompletableFuture().join();
+        try {
+            Map<String, Object> payload = answerPayload(drainStream(agent, "stream-rail-finish"));
+            assertThat(payload).containsEntry("result_type", "error").containsEntry("output", "rail termination");
+            assertThat(payload).doesNotContainKey("tool_outcomes");
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
     }
 
     @Test
@@ -118,13 +172,14 @@ class ReActAgentStreamTerminationReasonTest {
         });
     }
 
-    private static Model toolCallModel(String toolName) {
+    private static Model toolCallModel(String... toolNames) {
         return new Model(new Model.ModelClient() {
             @Override
             public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
                 return CompletableFuture.completedFuture(AssistantMessage.builder()
-                        .toolCalls(List.of(ToolCall.builder().id("call-" + toolName)
-                                .name(toolName).arguments("{}").build()))
+                        .toolCalls(Stream.of(toolNames)
+                                .map(name -> ToolCall.builder().id("call-" + name).name(name).arguments("{}").build())
+                                .toList())
                         .build());
             }
 

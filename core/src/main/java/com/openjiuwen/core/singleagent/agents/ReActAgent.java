@@ -2910,7 +2910,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             payload.put("failure", failure);
         }
         if ("error".equals(result.get("result_type")) && result.get("tool_outcomes") instanceof List<?> outcomes) {
-            payload.put("tool_outcomes", outcomes);
+            payload.put("tool_outcomes", new ArrayList<>(outcomes));
         }
         if (result.get("finish_reason") != null) {
             payload.put("finish_reason", result.get("finish_reason"));
