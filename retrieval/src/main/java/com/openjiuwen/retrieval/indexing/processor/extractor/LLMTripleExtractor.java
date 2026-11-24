@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -35,6 +37,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class LLMTripleExtractor extends Extractor {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
 
     private final BaseModelClient llmClient;
     private final String modelName;
@@ -296,23 +299,25 @@ public class LLMTripleExtractor extends Extractor {
             return "";
         }
         StringBuilder result = new StringBuilder(json.length());
-        boolean inString = false;
-        boolean escaped = false;
+        boolean isInString = false;
+        boolean isEscaped = false;
         for (int i = 0; i < json.length(); i++) {
             char current = json.charAt(i);
-            if (inString) {
+            if (isInString) {
                 result.append(current);
-                if (escaped) {
-                    escaped = false;
+                if (isEscaped) {
+                    isEscaped = false;
                 } else if (current == '\\') {
-                    escaped = true;
+                    isEscaped = true;
                 } else if (current == '"') {
-                    inString = false;
+                    isInString = false;
+                } else {
+                    LOGGER.debug("Character kept inside string literal at index {}", i);
                 }
                 continue;
             }
             if (current == '"') {
-                inString = true;
+                isInString = true;
                 result.append(current);
                 continue;
             }

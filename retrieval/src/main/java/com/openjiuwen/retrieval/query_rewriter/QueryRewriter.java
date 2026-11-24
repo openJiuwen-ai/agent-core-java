@@ -555,23 +555,25 @@ public class QueryRewriter {
             return null;
         }
         StringBuilder result = new StringBuilder(json.length());
-        boolean inString = false;
-        boolean escaped = false;
+        boolean isInString = false;
+        boolean isEscaped = false;
         for (int i = 0; i < json.length(); i++) {
             char current = json.charAt(i);
-            if (inString) {
+            if (isInString) {
                 result.append(current);
-                if (escaped) {
-                    escaped = false;
+                if (isEscaped) {
+                    isEscaped = false;
                 } else if (current == '\\') {
-                    escaped = true;
+                    isEscaped = true;
                 } else if (current == '"') {
-                    inString = false;
+                    isInString = false;
+                } else {
+                    LOGGER.debug("Character kept inside string literal at index {}", i);
                 }
                 continue;
             }
             if (current == '"') {
-                inString = true;
+                isInString = true;
                 result.append(current);
                 continue;
             }
