@@ -131,16 +131,16 @@ class SkillUtilTest {
     }
 
     @Test
-    void getSkillPromptWithEmptyFilterRendersAllRegisteredSkills() throws Exception {
+    void getSkillPromptWithEmptyFilterRendersNoRegisteredSkills() throws Exception {
         SkillUtil util = skillUtil();
         registerThreeSkills(util);
 
         String prompt = util.getSkillPrompt(List.of());
 
         assertThat(prompt)
-                .contains("Skill name: CodingSkill")
-                .contains("Skill name: GroupedSkill")
-                .contains("Skill name: SearchSkill");
+                .doesNotContain("Skill name: CodingSkill")
+                .doesNotContain("Skill name: GroupedSkill")
+                .doesNotContain("Skill name: SearchSkill");
     }
 
     @Test

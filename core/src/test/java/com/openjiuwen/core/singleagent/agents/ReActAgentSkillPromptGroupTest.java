@@ -82,6 +82,18 @@ class ReActAgentSkillPromptGroupTest {
                 .doesNotContain("Skill name: CodingSkill");
     }
 
+    @Test
+    void inactiveGroups_whenAllSkillsGrouped_renderNoSkills() throws IOException {
+        ReActAgent agent = agentWithSkills();
+        registerAllSkillGroups(agent);
+        MemorySession session = new MemorySession("all-grouped-inactive-session");
+
+        agent.updateSkillPromptBuilderSection("System", session);
+
+        assertThat(agent.getPromptBuilder().build())
+                .doesNotContain("Skill name:");
+    }
+
     private ReActAgent agentWithSkills() throws IOException {
         Path codingSkill = createSkill("CodingSkill", "Coding skill");
         Path groupedSkill = createSkill("GroupedSkill", "Grouped skill");
@@ -132,6 +144,19 @@ class ReActAgentSkillPromptGroupTest {
                 "coding",
                 "Coding capabilities",
                 List.of(new GroupMemberRef(GroupMemberType.SKILL, "CodingSkill"))));
+    }
+
+    private static void registerAllSkillGroups(ReActAgent agent) {
+        registerPromptGroups(agent);
+        registerSkillGroup(agent, "search", "SearchSkill");
+    }
+
+    private static void registerSkillGroup(
+            ReActAgent agent, String groupName, String skillName) {
+        agent.registerToolGroup(new ToolGroup(
+                groupName,
+                groupName + " capabilities",
+                List.of(new GroupMemberRef(GroupMemberType.SKILL, skillName))));
     }
 
     private static final class MemorySession implements AgentSessionApi {

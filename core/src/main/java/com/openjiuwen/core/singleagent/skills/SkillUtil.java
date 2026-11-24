@@ -166,7 +166,8 @@ public class SkillUtil {
      * <p>The caller owns group activation and ungrouped-skill passthrough decisions. This
      * method only filters against registered Skills and preserves their registration order.
      *
-     * @param effectiveSkillNames skill names to render; null or empty renders all Skills
+     * @param effectiveSkillNames skill names to render; {@code null} renders all Skills and
+     *     an empty collection renders no Skills
      * @return the filtered Skill prompt
      * @since 0.1.19
      */
@@ -186,7 +187,7 @@ public class SkillUtil {
                 + loadingInstruction;
         List<Skill> skills = skillManager.getAll();
         boolean shouldRenderAllSkills =
-                effectiveSkillNames == null || effectiveSkillNames.isEmpty();
+                effectiveSkillNames == null;
         Set<String> selectedSkillNames = normalizeSkillNames(effectiveSkillNames);
         List<String> skillsInfo = new ArrayList<>(skills.size());
         for (Skill skill : skills) {
