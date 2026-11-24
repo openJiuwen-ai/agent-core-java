@@ -100,7 +100,10 @@ class WorkflowStreamSpanConcurrencyTest {
     void emptyAndAbsentStreamFieldsKeepTheirJsonRepresentations() {
         TraceWorkflowSpan span = new TraceWorkflowSpan();
         span.update(Map.of("stream_inputs", List.of(), "streamOutputs", List.of()));
-        JsonNode empty = MAPPER.valueToTree(span);
+        TraceWorkflowSpan emptySnapshot = span.snapshot();
+        assertThat(emptySnapshot.getStreamInputs()).isEmpty();
+        assertThat(emptySnapshot.getStreamOutputs()).isEmpty();
+        JsonNode empty = MAPPER.valueToTree(emptySnapshot);
         assertThat(empty.get("streamInputs").isArray()).isTrue();
         assertThat(empty.get("streamOutputs").isArray()).isTrue();
         span.appendStreamInput("in");
@@ -108,7 +111,10 @@ class WorkflowStreamSpanConcurrencyTest {
 
         span.setStreamInputs(null);
         span.setStreamOutputs(null);
-        JsonNode absent = MAPPER.valueToTree(span.snapshot());
+        TraceWorkflowSpan clearedSnapshot = span.snapshot();
+        assertThat(clearedSnapshot.getStreamInputs()).isNull();
+        assertThat(clearedSnapshot.getStreamOutputs()).isNull();
+        JsonNode absent = MAPPER.valueToTree(clearedSnapshot);
         assertThat(absent.has("streamInputs")).isFalse();
         assertThat(absent.has("streamOutputs")).isFalse();
     }

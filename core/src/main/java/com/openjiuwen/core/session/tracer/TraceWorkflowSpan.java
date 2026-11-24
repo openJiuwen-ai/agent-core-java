@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import javax.annotation.Nullable;
+
 /**
  * Mirrors Python's {@code TraceWorkflowSpan} in
  * {@code openjiuwen/core/session/tracer/span.py}.
@@ -250,7 +252,14 @@ public class TraceWorkflowSpan extends Span {
         copy.streamOutputs = deepCopyList(outputs);
     }
 
-    private static List<Object> copyChunks(List<Object> chunks) {
+    /**
+     * Copies a recorded frame list. An absent list stays absent in the serialized trace.
+     *
+     * @param chunks recorded frames, or {@code null} for an absent field
+     * @return a detached list, or {@code null} for an absent field
+     */
+    @Nullable
+    private static List<Object> copyChunks(@Nullable List<Object> chunks) {
         return chunks == null ? null : new ArrayList<>(chunks);
     }
 
@@ -355,6 +364,7 @@ public class TraceWorkflowSpan extends Span {
      *
      * @return a detached list, or null when the field is absent
      */
+    @Nullable
     public List<Object> getStreamInputs() {
         synchronized (streamChunksLock) {
             return copyChunks(streamInputs);
@@ -366,7 +376,7 @@ public class TraceWorkflowSpan extends Span {
      *
      * @param streamInputs input frames, or null to clear the field
      */
-    public void setStreamInputs(List<Object> streamInputs) {
+    public void setStreamInputs(@Nullable List<Object> streamInputs) {
         synchronized (streamChunksLock) {
             this.streamInputs = copyChunks(streamInputs);
         }
@@ -377,6 +387,7 @@ public class TraceWorkflowSpan extends Span {
      *
      * @return a detached list, or null when the field is absent
      */
+    @Nullable
     public List<Object> getStreamOutputs() {
         synchronized (streamChunksLock) {
             return copyChunks(streamOutputs);
@@ -388,7 +399,7 @@ public class TraceWorkflowSpan extends Span {
      *
      * @param streamOutputs output frames, or null to clear the field
      */
-    public void setStreamOutputs(List<Object> streamOutputs) {
+    public void setStreamOutputs(@Nullable List<Object> streamOutputs) {
         synchronized (streamChunksLock) {
             this.streamOutputs = copyChunks(streamOutputs);
         }
