@@ -551,7 +551,44 @@ public class QueryRewriter {
     }
 
     private static String repairJson(String json) {
-        return json == null ? null : json.replaceAll(",\\s*([}\\]])", "$1");
+        if (json == null) {
+            return null;
+        }
+        StringBuilder result = new StringBuilder(json.length());
+        boolean isInString = false;
+        boolean isEscaped = false;
+        for (int i = 0; i < json.length(); i++) {
+            char current = json.charAt(i);
+            if (isInString) {
+                result.append(current);
+                if (isEscaped) {
+                    isEscaped = false;
+                } else if (current == '\\') {
+                    isEscaped = true;
+                } else if (current == '"') {
+                    isInString = false;
+                } else {
+                    LOGGER.debug("Character kept inside string literal at index {}", i);
+                }
+                continue;
+            }
+            if (current == '"') {
+                isInString = true;
+                result.append(current);
+                continue;
+            }
+            if (current == ',') {
+                int next = i + 1;
+                while (next < json.length() && Character.isWhitespace(json.charAt(next))) {
+                    next++;
+                }
+                if (next < json.length() && (json.charAt(next) == '}' || json.charAt(next) == ']')) {
+                    continue;
+                }
+            }
+            result.append(current);
+        }
+        return result.toString();
     }
 
     private static Map<String, Object> normalizeMap(Map<?, ?> rawMap) {

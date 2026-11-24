@@ -107,6 +107,19 @@ class LLMTripleExtractorTest {
     }
 
     @Test
+    void parseTriplesShouldKeepCommasInsideStringLiterals() {
+        LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient("[]"), "test-model");
+        TextChunk chunk = new TextChunk("chunk-1", "Alice knows Bob", "doc-1");
+
+        List<Triple> triples = extractor.parseTriples(
+                "{\"triples\": [[\"a, ] b\", \"c\", \"d\"]],}",
+                chunk).triples();
+
+        assertEquals(1, triples.size());
+        assertEquals("a, ] b", triples.get(0).getSubject());
+    }
+
+    @Test
     void buildPromptShouldExposePythonPromptShape() {
         LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient("[]"), "test-model");
 

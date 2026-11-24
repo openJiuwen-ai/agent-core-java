@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.llm.modelclients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.modelclients.ModelTimeoutResolver;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -35,6 +37,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class LLMTripleExtractor extends Extractor {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
 
     private final BaseModelClient llmClient;
     private final String modelName;
@@ -292,7 +295,44 @@ public class LLMTripleExtractor extends Extractor {
     }
 
     private static String repairJson(String json) {
-        return json == null ? "" : json.replaceAll(",\\s*([}\\]])", "$1");
+        if (json == null) {
+            return "";
+        }
+        StringBuilder result = new StringBuilder(json.length());
+        boolean isInString = false;
+        boolean isEscaped = false;
+        for (int i = 0; i < json.length(); i++) {
+            char current = json.charAt(i);
+            if (isInString) {
+                result.append(current);
+                if (isEscaped) {
+                    isEscaped = false;
+                } else if (current == '\\') {
+                    isEscaped = true;
+                } else if (current == '"') {
+                    isInString = false;
+                } else {
+                    LOGGER.debug("Character kept inside string literal at index {}", i);
+                }
+                continue;
+            }
+            if (current == '"') {
+                isInString = true;
+                result.append(current);
+                continue;
+            }
+            if (current == ',') {
+                int next = i + 1;
+                while (next < json.length() && Character.isWhitespace(json.charAt(next))) {
+                    next++;
+                }
+                if (next < json.length() && (json.charAt(next) == '}' || json.charAt(next) == ']')) {
+                    continue;
+                }
+            }
+            result.append(current);
+        }
+        return result.toString();
     }
 
     record ParseResult(List<Triple> triples, boolean isSuccess) {
