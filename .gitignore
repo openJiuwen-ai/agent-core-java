@@ -48,3 +48,6 @@ logs/
 images/
 memory_files/
 .auto_harness/
+
+# Generated consumer POM
+.flattened-pom.xml

@@ -36,6 +36,7 @@ mvn clean install -DskipTests
 
 Import the published Core POM in your application's `dependencyManagement` and
 declare the Core JAR as a dependency. Use the same Core version in both entries.
+The published POM expands the managed versions, including versions from upstream BOMs.
 The import aligns shared library versions such as Jackson, OpenTelemetry,
 Bouncy Castle, and Protobuf with Core's build.
 
