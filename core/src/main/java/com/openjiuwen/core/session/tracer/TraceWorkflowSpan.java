@@ -18,6 +18,9 @@ import java.util.Map;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TraceWorkflowSpan extends Span {
+    @JsonIgnore
+    private final Object streamChunksLock = new Object();
+
     @JsonProperty("executionId")
     private String executionId;
 
@@ -75,18 +78,32 @@ public class TraceWorkflowSpan extends Span {
         this.executionId = traceId;
     }
 
+    /**
+     * Records an output frame from a component.
+     *
+     * @param chunk emitted frame
+     */
     public void appendStreamOutput(Object chunk) {
-        if (streamOutputs == null) {
-            streamOutputs = new ArrayList<>();
+        synchronized (streamChunksLock) {
+            if (streamOutputs == null) {
+                streamOutputs = new ArrayList<>();
+            }
+            streamOutputs.add(chunk);
         }
-        streamOutputs.add(chunk);
     }
 
+    /**
+     * Records an input frame from a component.
+     *
+     * @param chunk received frame
+     */
     public void appendStreamInputs(Object chunk) {
-        if (streamInputs == null) {
-            streamInputs = new ArrayList<>();
+        synchronized (streamChunksLock) {
+            if (streamInputs == null) {
+                streamInputs = new ArrayList<>();
+            }
+            streamInputs.add(chunk);
         }
-        streamInputs.add(chunk);
     }
 
     public void appendStreamInput(Object chunk) {
@@ -172,13 +189,13 @@ public class TraceWorkflowSpan extends Span {
             case "stream_inputs":
             case "streamInputs":
                 if (value instanceof List<?>) {
-                    streamInputs = (List<Object>) value;
+                    setStreamInputs((List<Object>) value);
                 }
                 break;
             case "stream_outputs":
             case "streamOutputs":
                 if (value instanceof List<?>) {
-                    streamOutputs = (List<Object>) value;
+                    setStreamOutputs((List<Object>) value);
                 }
                 break;
             case "interactive_inputs":
@@ -214,11 +231,27 @@ public class TraceWorkflowSpan extends Span {
         copy.llmInvokeData = llmInvokeData == null ? null
                 : (Map<String, Map<String, Object>>) (Map<?, ?>) deepCopyMap(llmInvokeData);
         copy.parentNodeId = parentNodeId;
-        copy.streamInputs = streamInputs == null ? null : deepCopyList(streamInputs);
-        copy.streamOutputs = streamOutputs == null ? null : deepCopyList(streamOutputs);
+        copyStreamChunksTo(copy);
         copy.interactiveInputs = deepCopyValue(interactiveInputs);
         copy.innerError = deepCopyMap(innerError);
         return copy;
+    }
+
+    private void copyStreamChunksTo(TraceWorkflowSpan copy) {
+        List<Object> inputs;
+        List<Object> outputs;
+        synchronized (streamChunksLock) {
+            inputs = copyChunks(streamInputs);
+            outputs = copyChunks(streamOutputs);
+        }
+
+        // A frame may contain another span. Traverse its payload after releasing this span's lock.
+        copy.streamInputs = deepCopyList(inputs);
+        copy.streamOutputs = deepCopyList(outputs);
+    }
+
+    private static List<Object> copyChunks(List<Object> chunks) {
+        return chunks == null ? null : new ArrayList<>(chunks);
     }
 
     public String getExecutionId() {
@@ -317,20 +350,48 @@ public class TraceWorkflowSpan extends Span {
         this.parentNodeId = parentNodeId;
     }
 
+    /**
+     * Returns the input frames in append order.
+     *
+     * @return a detached list, or null when the field is absent
+     */
     public List<Object> getStreamInputs() {
-        return streamInputs;
+        synchronized (streamChunksLock) {
+            return copyChunks(streamInputs);
+        }
     }
 
+    /**
+     * Replaces the input frame list.
+     *
+     * @param streamInputs input frames, or null to clear the field
+     */
     public void setStreamInputs(List<Object> streamInputs) {
-        this.streamInputs = streamInputs;
+        synchronized (streamChunksLock) {
+            this.streamInputs = copyChunks(streamInputs);
+        }
     }
 
+    /**
+     * Returns the output frames in append order.
+     *
+     * @return a detached list, or null when the field is absent
+     */
     public List<Object> getStreamOutputs() {
-        return streamOutputs;
+        synchronized (streamChunksLock) {
+            return copyChunks(streamOutputs);
+        }
     }
 
+    /**
+     * Replaces the output frame list.
+     *
+     * @param streamOutputs output frames, or null to clear the field
+     */
     public void setStreamOutputs(List<Object> streamOutputs) {
-        this.streamOutputs = streamOutputs;
+        synchronized (streamChunksLock) {
+            this.streamOutputs = copyChunks(streamOutputs);
+        }
     }
 
     public Object getInteractiveInputs() {
