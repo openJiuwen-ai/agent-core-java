@@ -55,6 +55,20 @@ class ReActAgentStreamTerminationReasonTest {
     }
 
     @Test
+    void toolFailureFrameCarriesOriginalCallAndError() {
+        ReActAgent agent = newAgent();
+        agent.setLlm(toolCallModel("missing-tool"));
+
+        Map<String, Object> payload = answerPayload(drainStream(agent, "stream-tool-error"));
+
+        assertThat(payload).containsEntry("result_type", "error");
+        assertThat(payload.get("output")).isInstanceOf(String.class);
+        assertThat(payload.get("tool_outcomes")).isEqualTo(List.of(Map.of(
+                "tool_name", "missing-tool", "tool_call_id", "call-missing-tool",
+                "status", "failed", "error", payload.get("output"))));
+    }
+
+    @Test
     void modelErrorFrameCarriesTerminationReason() {
         ReActAgent agent = newAgent();
         agent.setLlm(failingModel("model unavailable"));
@@ -63,6 +77,7 @@ class ReActAgentStreamTerminationReasonTest {
 
         assertThat(payload).containsEntry("result_type", "error");
         assertThat(payload).containsEntry("termination_reason", "MODEL_ERROR");
+        assertThat(payload).doesNotContainKey("tool_outcomes");
     }
 
     private static ReActAgent newAgent() {

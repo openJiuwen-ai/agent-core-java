@@ -2891,8 +2891,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
      *
      * @param result invoke result map
      * @param terminationReason recorded terminal outcome, may be {@code null}
-     * @return answer payload with output, result type, an optional termination reason, and an
-     *         optional failure entry
+     * @return answer payload with output, result type, and optional termination reason, failure and tool outcomes
      * @since 0.1.18
      */
     static Map<String, Object> toAnswerPayload(Map<String, Object> result,
@@ -2909,6 +2908,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         }
         if (result.get("failure") instanceof Map<?, ?> failure) {
             payload.put("failure", failure);
+        }
+        if ("error".equals(result.get("result_type")) && result.get("tool_outcomes") instanceof List<?> outcomes) {
+            payload.put("tool_outcomes", outcomes);
         }
         if (result.get("finish_reason") != null) {
             payload.put("finish_reason", result.get("finish_reason"));
