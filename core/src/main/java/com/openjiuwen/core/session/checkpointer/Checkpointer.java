@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -39,6 +40,9 @@ public abstract class Checkpointer implements AutoCloseable {
     public static final String SESSION_NAMESPACE_AGENT_TEAM = "agent-team";
     public static final String SESSION_NAMESPACE_WORKFLOW = "workflow";
     public static final String WORKFLOW_NAMESPACE_GRAPH = "workflow-graph";
+
+    /** Suffix shared by persisted agent-state blob keys. */
+    public static final String AGENT_STATE_BLOBS_SUFFIX = ":agent_state_blobs";
 
     /**
      * Session state key under which pause metadata (operator, reason, timestamps)
@@ -61,9 +65,6 @@ public abstract class Checkpointer implements AutoCloseable {
         return stringIdentity(session, "agentId");
     }
 
-    /** Suffix shared by persisted agent-state blob keys. */
-    public static final String AGENT_STATE_BLOBS_SUFFIX = ":agent_state_blobs";
-
     /**
      * Stamp a cursor with the ownership of the session that is persisting it.
      * Caller-provided ownership is replaced so a cursor cannot redirect a save
@@ -71,12 +72,12 @@ public abstract class Checkpointer implements AutoCloseable {
      *
      * @param session session performing the checkpoint
      * @param cursor cursor to stamp
-     * @return owned cursor, or null when either input is null
+     * @return cursor carrying the session ownership
+     * @throws NullPointerException when the session or cursor is null
      */
     public static StepCursor withOwner(BaseSession session, StepCursor cursor) {
-        if (session == null || cursor == null) {
-            return null;
-        }
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(cursor, "cursor");
         return cursor.withOwner(tenantId(session), session.sessionId(), agentId(session));
     }
 
@@ -89,28 +90,28 @@ public abstract class Checkpointer implements AutoCloseable {
      * @param cursor cursor read from the blob
      * @param storageKey exact persisted blob key
      * @param scanPrefix prefix used for the scan, empty for an unbound scan
-     * @return owned cursor, or null when the key is malformed or ambiguous
+     * @return the owned cursor, or empty when the key is malformed or ambiguous
      */
-    public static StepCursor restoreOwner(StepCursor cursor, String storageKey, String scanPrefix) {
+    public static Optional<StepCursor> restoreOwner(StepCursor cursor, String storageKey, String scanPrefix) {
         if (cursor == null || storageKey == null || !storageKey.endsWith(AGENT_STATE_BLOBS_SUFFIX)) {
-            return null;
+            return Optional.empty();
         }
         String rawKey = storageKey;
         if (scanPrefix != null && !scanPrefix.isEmpty()) {
             if (!rawKey.startsWith(scanPrefix)) {
-                return null;
+                return Optional.empty();
             }
             rawKey = rawKey.substring(scanPrefix.length());
         }
         if (!rawKey.endsWith(AGENT_STATE_BLOBS_SUFFIX)) {
-            return null;
+            return Optional.empty();
         }
         rawKey = rawKey.substring(0, rawKey.length() - AGENT_STATE_BLOBS_SUFFIX.length());
         if ((scanPrefix == null || scanPrefix.isEmpty()) && !cursor.getTenantId().isEmpty()) {
             TenantContext owner = TenantContext.builder().tenantId(cursor.getTenantId()).build();
             String ownerPrefix = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(owner, "");
             if (!rawKey.startsWith(ownerPrefix)) {
-                return null;
+                return Optional.empty();
             }
             rawKey = rawKey.substring(ownerPrefix.length());
         }
@@ -119,39 +120,40 @@ public abstract class Checkpointer implements AutoCloseable {
         while (marker >= 0) {
             String sessionId = rawKey.substring(0, marker);
             String agentId = rawKey.substring(marker + ":agent:".length());
-            addOwnerCandidates(candidates, cursor, storageKey, rawKey, sessionId, agentId, scanPrefix);
+            addOwnerCandidates(candidates, cursor,
+                    new OwnerLocation(storageKey, sessionId, agentId, scanPrefix));
             marker = rawKey.indexOf(":agent:", marker + 1);
         }
-        return candidates.size() == 1 ? candidates.get(0) : null;
+        return candidates.size() == 1 ? Optional.of(candidates.get(0)) : Optional.empty();
     }
 
-    private static void addOwnerCandidates(List<StepCursor> candidates, StepCursor cursor, String storageKey,
-                                           String rawKey, String sessionId, String agentId, String scanPrefix) {
-        if (scanPrefix != null && !scanPrefix.isEmpty()) {
+    private static void addOwnerCandidates(List<StepCursor> candidates, StepCursor cursor,
+            OwnerLocation location) {
+        if (location.scanPrefix() != null && !location.scanPrefix().isEmpty()) {
             TenantContext ctx = TenantContextHolder.getCurrentTenant();
             String tenantId = ctx == null ? "" : ctx.getTenantId();
-            if (matchesOwner(cursor, tenantId, sessionId, agentId)) {
-                String restoredKey = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx, rawKey)
-                        + AGENT_STATE_BLOBS_SUFFIX;
-                if (storageKey.equals(restoredKey)) {
-                    candidates.add(cursor.withOwner(tenantId, sessionId, agentId));
+            if (matchesOwner(cursor, tenantId, location.sessionId(), location.agentId())) {
+                String restoredKey = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx,
+                        location.rawKey()) + AGENT_STATE_BLOBS_SUFFIX;
+                if (location.storageKey().equals(restoredKey)) {
+                    candidates.add(cursor.withOwner(tenantId, location.sessionId(), location.agentId()));
                 }
             }
             return;
         }
-        if (matchesOwner(cursor, "", sessionId, agentId)
-                && storageKey.equals(rawKey + AGENT_STATE_BLOBS_SUFFIX)) {
-            candidates.add(cursor.withOwner("", sessionId, agentId));
+        if (matchesOwner(cursor, "", location.sessionId(), location.agentId())
+                && location.storageKey().equals(location.rawKey() + AGENT_STATE_BLOBS_SUFFIX)) {
+            candidates.add(cursor.withOwner("", location.sessionId(), location.agentId()));
         }
         if (!cursor.getTenantId().isEmpty()) {
-            addTenantCandidate(candidates, cursor, storageKey, sessionId, agentId, cursor.getTenantId());
+            addTenantCandidate(candidates, cursor, location, cursor.getTenantId());
             return;
         }
-        int colon = sessionId.indexOf(':');
+        int colon = location.sessionId().indexOf(':');
         while (colon >= 0) {
-            addLegacyTenantCandidate(candidates, cursor, storageKey, sessionId, agentId,
-                    sessionId.substring(0, colon));
-            colon = sessionId.indexOf(':', colon + 1);
+            addLegacyTenantCandidate(candidates, cursor, location, location.sessionId(),
+                    location.sessionId().substring(0, colon));
+            colon = location.sessionId().indexOf(':', colon + 1);
         }
     }
 
@@ -161,29 +163,31 @@ public abstract class Checkpointer implements AutoCloseable {
                 && (cursor.getAgentId().isEmpty() || cursor.getAgentId().equals(agentId));
     }
 
-    private static void addTenantCandidate(List<StepCursor> candidates, StepCursor cursor, String storageKey,
-                                           String sessionId, String agentId, String tenantId) {
-        if (!matchesOwner(cursor, tenantId, sessionId, agentId)) {
+    private static void addTenantCandidate(List<StepCursor> candidates, StepCursor cursor,
+            OwnerLocation location, String tenantId) {
+        if (!matchesOwner(cursor, tenantId, location.sessionId(), location.agentId())) {
             return;
         }
         TenantContext ctx = TenantContext.builder().tenantId(tenantId).build();
-        String raw = sessionId + ":agent:" + agentId;
-        String restoredKey = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx, raw)
-                + AGENT_STATE_BLOBS_SUFFIX;
-        if (storageKey.equals(restoredKey)) {
-            candidates.add(cursor.withOwner(tenantId, sessionId, agentId));
+        String restoredKey = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx,
+                location.rawKey()) + AGENT_STATE_BLOBS_SUFFIX;
+        if (location.storageKey().equals(restoredKey)) {
+            candidates.add(cursor.withOwner(tenantId, location.sessionId(), location.agentId()));
         }
     }
 
-    private static void addLegacyTenantCandidate(List<StepCursor> candidates, StepCursor cursor, String storageKey,
-                                                 String storedSessionId, String agentId, String tenantId) {
+    private static void addLegacyTenantCandidate(List<StepCursor> candidates, StepCursor cursor,
+            OwnerLocation location, String storedSessionId,
+            String tenantId) {
         TenantContext ctx = TenantContext.builder().tenantId(tenantId).build();
         String tenantPrefix = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx, "");
         if (!storedSessionId.startsWith(tenantPrefix)) {
             return;
         }
         String sessionId = storedSessionId.substring(tenantPrefix.length());
-        addTenantCandidate(candidates, cursor, storageKey, sessionId, agentId, tenantId);
+        addTenantCandidate(candidates, cursor,
+                new OwnerLocation(location.storageKey(), sessionId, location.agentId(), location.scanPrefix()),
+                tenantId);
     }
 
     /**
@@ -219,14 +223,24 @@ public abstract class Checkpointer implements AutoCloseable {
         }
     }
 
-    /** Whether two cursors belong to the same tenant and session. */
+    /**
+     * Check whether two cursors belong to the same tenant and session.
+     *
+     * @param first first cursor, may be null
+     * @param second second cursor, may be null
+     * @return true when both cursors have the same tenant and session identity
+     */
     public static boolean sameSession(StepCursor first, StepCursor second) {
         return first != null && second != null
                 && Objects.equals(first.getTenantId(), second.getTenantId())
                 && Objects.equals(first.getSessionId(), second.getSessionId());
     }
 
-    /** Current tenant id, or an empty string when no tenant is bound. */
+    /**
+     * Read the tenant bound to the current thread.
+     *
+     * @return current tenant id, or an empty string when no tenant is bound
+     */
     public static String currentTenantId() {
         TenantContext ctx = TenantContextHolder.getCurrentTenant();
         return ctx == null || ctx.getTenantId() == null ? "" : ctx.getTenantId();
@@ -783,5 +797,11 @@ public abstract class Checkpointer implements AutoCloseable {
     @Override
     public void close() {
         // Default no-op for checkpointers without external resources.
+    }
+
+    private record OwnerLocation(String storageKey, String sessionId, String agentId, String scanPrefix) {
+        private String rawKey() {
+            return sessionId + ":agent:" + agentId;
+        }
     }
 }

@@ -308,11 +308,11 @@ public class PersistenceCheckpointer extends Checkpointer {
             if (paused == null) {
                 continue;
             }
-            StepCursor ownedPaused = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
-            if (ownedPaused == null) {
+            Optional<StepCursor> restored = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
+            if (restored.isEmpty()) {
                 continue;
             }
-            Checkpointer.applyResumeToState(normalized, ownedPaused);
+            Checkpointer.applyResumeToState(normalized, restored.get());
             persistResumedState(normalized, entry.getKey(), entry.getValue());
             hasResumedOne = true;
         }
@@ -365,9 +365,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             Map<String, Object> normalized = new LinkedHashMap<>();
             stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
             StepCursor paused = StepCursor.pausedFromState(normalized);
-            StepCursor owned = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
-            if (owned != null && owned.getStatus() == StepStatus.PAUSED) {
-                return owned;
+            Optional<StepCursor> restored = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
+            if (restored.isPresent() && restored.get().getStatus() == StepStatus.PAUSED) {
+                return restored.get();
             }
         }
         return null;
@@ -407,8 +407,8 @@ public class PersistenceCheckpointer extends Checkpointer {
             StepCursor cursor = expected == StepStatus.PAUSED
                     ? StepCursor.pausedFromState(normalized)
                     : StepCursor.fromState(normalized);
-            StepCursor owned = Checkpointer.restoreOwner(cursor, entry.getKey(), scanPrefix);
-            if (owned == null || owned.getStatus() != expected) {
+            Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor, entry.getKey(), scanPrefix);
+            if (restored.isEmpty() || restored.get().getStatus() != expected) {
                 continue;
             }
             if (expected == StepStatus.RUNNING && StepCursor.pausedFromState(normalized) != null) {
@@ -417,7 +417,7 @@ public class PersistenceCheckpointer extends Checkpointer {
                 // would mark them lost against the documented pause contract.
                 continue;
             }
-            matched.add(owned);
+            matched.add(restored.get());
         }
         return matched;
     }

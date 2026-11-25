@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -204,9 +205,9 @@ public class AgentStorage extends BaseRedisStorage {
                 Map<String, Object> normalized = new LinkedHashMap<>();
                 stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
                 StepCursor cursor = StepCursor.pausedFromState(normalized);
-                StepCursor owned = Checkpointer.restoreOwner(cursor, entry.getKey(), scanPrefix);
-                if (owned != null && owned.getStatus() == StepStatus.PAUSED) {
-                    return CompletableFuture.completedFuture(owned);
+                Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor, entry.getKey(), scanPrefix);
+                if (restored.isPresent() && restored.get().getStatus() == StepStatus.PAUSED) {
+                    return CompletableFuture.completedFuture(restored.get());
                 }
             }
             return CompletableFuture.completedFuture(null);
@@ -251,11 +252,11 @@ public class AgentStorage extends BaseRedisStorage {
                     if (paused == null) {
                         continue;
                     }
-                    StepCursor ownedPaused = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
-                    if (ownedPaused == null) {
+                    Optional<StepCursor> restored = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
+                    if (restored.isEmpty()) {
                         continue;
                     }
-                    Checkpointer.applyResumeToState(normalized, ownedPaused);
+                    Checkpointer.applyResumeToState(normalized, restored.get());
                     // Write back through the exact keys the blob was read from:
                     // re-deriving them from the session id would miss the agent
                     // segment (agentId may differ) and the tenant prefix.
@@ -299,8 +300,8 @@ public class AgentStorage extends BaseRedisStorage {
                 StepCursor cursor = expected == StepStatus.PAUSED
                         ? StepCursor.pausedFromState(normalized)
                         : StepCursor.fromState(normalized);
-                StepCursor owned = Checkpointer.restoreOwner(cursor, entry.getKey(), scanPrefix);
-                if (owned == null || owned.getStatus() != expected) {
+                Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor, entry.getKey(), scanPrefix);
+                if (restored.isEmpty() || restored.get().getStatus() != expected) {
                     continue;
                 }
                 if (expected == StepStatus.RUNNING && StepCursor.pausedFromState(normalized) != null) {
@@ -310,7 +311,7 @@ public class AgentStorage extends BaseRedisStorage {
                     // pause contract.
                     continue;
                 }
-                matched.add(owned);
+                matched.add(restored.get());
             }
             return CompletableFuture.completedFuture(matched);
         } catch (Throwable throwable) {

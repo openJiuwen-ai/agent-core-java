@@ -35,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -656,26 +657,30 @@ public class InMemoryCheckpointer extends Checkpointer {
          * The mutated snapshot replaces the stored one instead of being
          * edited in place, so a concurrent recover deep-copying the blob
          * never iterates a map that changes under it.
+         *
+         * @param sessionKey tenant-aware key of the session being resumed
+         * @param scanPrefix tenant prefix used to interpret persisted blob keys
+         * @return true when at least one paused state blob was resumed
          */
         boolean applyResume(String sessionKey, String scanPrefix) {
-            boolean resumed = false;
+            boolean isResumed = false;
             for (Map.Entry<String, Map<String, Object>> entry : stateBlobs.entrySet()) {
                 Map<String, Object> state = entry.getValue();
                 StepCursor paused = StepCursor.pausedFromState(state);
                 if (paused == null) {
                     continue;
                 }
-                StepCursor owned = Checkpointer.restoreOwner(paused,
+                Optional<StepCursor> restored = Checkpointer.restoreOwner(paused,
                         sessionKey + ":agent:" + entry.getKey() + AGENT_STATE_BLOBS_SUFFIX, scanPrefix);
-                if (owned == null) {
+                if (restored.isEmpty()) {
                     continue;
                 }
                 Map<String, Object> resumedState = deepCopyMap(state);
-                Checkpointer.applyResumeToState(resumedState, owned);
+                Checkpointer.applyResumeToState(resumedState, restored.get());
                 stateBlobs.replace(entry.getKey(), state, resumedState);
-                resumed = true;
+                isResumed = true;
             }
-            return resumed;
+            return isResumed;
         }
     }
 
@@ -691,10 +696,10 @@ public class InMemoryCheckpointer extends Checkpointer {
             for (Map.Entry<String, Map<String, Object>> entry : snapshots()) {
                 StepCursor cursor = StepCursor.fromState(entry.getValue());
                 if (isRunningCursor(cursor) && StepCursor.pausedFromState(entry.getValue()) == null) {
-                    StepCursor owned = Checkpointer.restoreOwner(cursor,
+                    Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor,
                             sessionKey + ":agent:" + entry.getKey() + AGENT_STATE_BLOBS_SUFFIX, scanPrefix);
-                    if (owned != null) {
-                        cursors.add(owned);
+                    if (restored.isPresent()) {
+                        cursors.add(restored.get());
                     }
                 }
             }
@@ -706,10 +711,10 @@ public class InMemoryCheckpointer extends Checkpointer {
             for (Map.Entry<String, Map<String, Object>> entry : snapshots()) {
                 StepCursor cursor = StepCursor.pausedFromState(entry.getValue());
                 if (cursor != null && cursor.getStatus() == StepStatus.PAUSED) {
-                    StepCursor owned = Checkpointer.restoreOwner(cursor,
+                    Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor,
                             sessionKey + ":agent:" + entry.getKey() + AGENT_STATE_BLOBS_SUFFIX, scanPrefix);
-                    if (owned != null) {
-                        cursors.add(owned);
+                    if (restored.isPresent()) {
+                        cursors.add(restored.get());
                     }
                 }
             }

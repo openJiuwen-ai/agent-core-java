@@ -285,8 +285,7 @@ public class StepCheckpointRecoveryService {
                 cursor.getSeq(), legacyKey);
     }
 
-    private record ProcessedMarker(String tenantId, String sessionId, String agentId, long seq,
-                                   String legacyKey) {
+    private record ProcessedMarker(String tenantId, String sessionId, String agentId, long seq, String legacyKey) {
     }
 
     /** Action taken for one leftover session. */
