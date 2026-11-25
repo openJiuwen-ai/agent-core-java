@@ -5,6 +5,7 @@
 package com.openjiuwen.core.sysop.sandbox;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.BaseFsOperation;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.OperationDef;
@@ -29,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Sandbox file-system operation.
@@ -44,6 +46,19 @@ public class SandboxFsOperation extends BaseFsOperation {
             "fs",
             OperationMode.SANDBOX
     );
+
+    /**
+     * Tools whose {@code localPath} is resolved on the agent host rather than inside the sandbox.
+     *
+     * <p>Exposing them to the model would let it read or overwrite arbitrary host files and bypass
+     * sandbox isolation, so they are withheld from {@link #listTools()}. The Java API methods remain
+     * available to trusted callers that control the host path themselves.</p>
+     */
+    static final Set<String> HOST_TRANSFER_TOOL_NAMES = Set.of(
+            "upload_file",
+            "upload_file_stream",
+            "download_file",
+            "download_file_stream");
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -66,6 +81,18 @@ public class SandboxFsOperation extends BaseFsOperation {
         super(name, mode, description, runConfig);
         SandboxRunConfig sandboxRunConfig = toSandboxRunConfig(runConfig);
         sandboxClient.initClientContext(sandboxRunConfig, "fs");
+    }
+
+    /**
+     * Lists the model-callable file tools, excluding host-side transfer tools.
+     *
+     * @return tool cards without {@link #HOST_TRANSFER_TOOL_NAMES}
+     */
+    @Override
+    public List<ToolCard> listTools() {
+        return super.listTools().stream()
+                .filter(card -> !HOST_TRANSFER_TOOL_NAMES.contains(card.getName()))
+                .toList();
     }
 
     @Override

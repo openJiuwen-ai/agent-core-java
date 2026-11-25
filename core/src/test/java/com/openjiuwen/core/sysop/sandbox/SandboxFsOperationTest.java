@@ -5,8 +5,12 @@
 package com.openjiuwen.core.sysop.sandbox;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.BaseFsOperation;
 import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.SysOperationToolAdapter;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
@@ -19,6 +23,8 @@ import com.openjiuwen.core.sysop.result.ReadFileResult;
 import com.openjiuwen.core.sysop.result.ReadFileStreamResult;
 import com.openjiuwen.core.sysop.result.SearchFilesData;
 import com.openjiuwen.core.sysop.result.SearchFilesResult;
+import com.openjiuwen.core.sysop.result.UploadFileData;
+import com.openjiuwen.core.sysop.result.UploadFileResult;
 import com.openjiuwen.core.sysop.result.WriteFileData;
 import com.openjiuwen.core.sysop.result.WriteFileResult;
 import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
@@ -151,6 +157,61 @@ class SandboxFsOperationTest {
         assertThat(listed.getData().getMaxDepth()).isEqualTo(2);
         assertThat(searched.getData().getSearchPath()).isEqualTo("/workspace");
         assertThat(searched.getData().getExcludePatterns()).containsExactly("target/*");
+    }
+
+    @Test
+    void listTools_sandboxMode_excludesHostTransferTools() {
+        SandboxFsOperation operation = operation();
+
+        List<ToolCard> tools = operation.listTools();
+
+        assertThat(tools).extracting(ToolCard::getName)
+                .containsExactly(
+                        "read_file",
+                        "read_file_stream",
+                        "write_file",
+                        "list_files",
+                        "list_directories",
+                        "search_files");
+    }
+
+    @Test
+    void extractTools_sandboxSysOperation_bindsNoHostTransferTool() {
+        SandboxGatewayConfig gatewayConfig = SandboxGatewayConfig.builder()
+                .launcherConfig(SandboxLauncherConfig.builder()
+                        .launcherType("pre_deploy")
+                        .sandboxType("fs-operation-test-sandbox")
+                        .baseUrl("http://sandbox-fs")
+                        .build())
+                .build();
+        SysOperationCard card = SysOperationCard.builder()
+                .id("sandbox_fs_tools")
+                .mode(OperationMode.SANDBOX)
+                .gatewayConfig(gatewayConfig)
+                .build();
+
+        List<SysOperationToolAdapter.ToolBinding> bindings =
+                SysOperationToolAdapter.extractTools(card, new SysOperation(card));
+
+        List<String> toolIds = bindings.stream().map(SysOperationToolAdapter.ToolBinding::toolId).toList();
+        assertThat(toolIds).contains("sandbox_fs_tools.fs.read_file");
+        for (String hostTransferTool : SandboxFsOperation.HOST_TRANSFER_TOOL_NAMES) {
+            assertThat(toolIds).doesNotContain("sandbox_fs_tools.fs." + hostTransferTool);
+        }
+    }
+
+    @Test
+    void uploadFile_directApiCall_stillRoutesToProvider() {
+        SandboxRegistry.registerLauncher("fs-operation-test-launcher", TestLauncher.class);
+        SandboxRegistry.registerProvider("fs-operation-test-sandbox", "fs", TestFsProvider.class);
+        SandboxFsOperation operation = operation();
+
+        UploadFileResult result = operation.uploadFile(
+                "/host/skills.zip", "/workspace/skills.zip", true, true, false, 0, null).join();
+
+        assertThat(result.getCode()).isEqualTo(StatusCode.SUCCESS.getCode());
+        assertThat(result.getData().getLocalPath()).isEqualTo("/host/skills.zip");
+        assertThat(result.getData().getTargetPath()).isEqualTo("/workspace/skills.zip");
     }
 
     private static SandboxFsOperation operation() {
@@ -295,6 +356,15 @@ class SandboxFsOperationTest {
                     .excludePatterns(excludePatterns)
                     .build());
             return CompletableFuture.completedFuture(result);
+        }
+
+        public CompletableFuture<UploadFileResult> uploadFile(String localPath, String targetPath, boolean overwrite,
+                                                              boolean createParentDirs, boolean preservePermissions,
+                                                              int chunkSize, Map<String, Object> options) {
+            return CompletableFuture.completedFuture(new UploadFileResult(
+                    StatusCode.SUCCESS.getCode(),
+                    StatusCode.SUCCESS.getErrmsg(),
+                    UploadFileData.builder().localPath(localPath).targetPath(targetPath).size(0).build()));
         }
 
         private static ReadFileStreamResult streamChunk(String path, String content, int index, boolean last) {
