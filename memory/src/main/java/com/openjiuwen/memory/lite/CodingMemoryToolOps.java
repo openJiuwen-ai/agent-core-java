@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -423,9 +424,12 @@ public final class CodingMemoryToolOps {
         if (ctx == null || memoryDir == null || memoryDir.isBlank() || ctx.getSysOperation() == null) {
             return Set.of();
         }
-        List<FileItemView> files = listFiles(ctx.getSysOperation(), memoryDir);
+        Optional<List<FileItemView>> files = listFiles(ctx.getSysOperation(), memoryDir);
+        if (files.isEmpty()) {
+            return Set.of();
+        }
         Set<String> names = new LinkedHashSet<>();
-        for (FileItemView file : files) {
+        for (FileItemView file : files.get()) {
             if (!file.directory()
                     && file.name().toLowerCase(Locale.ROOT).endsWith(".md")
                     && !MEMORY_INDEX_FILE.equalsIgnoreCase(file.name())) {
@@ -491,6 +495,8 @@ public final class CodingMemoryToolOps {
                 String.class, String.class, boolean.class)) {
             resolved = invokeFirst(fs, names,
                     new Class<?>[]{String.class, String.class, boolean.class}, path, content, append);
+        } else if (append) {
+            throw new IllegalArgumentException("writeFile signature does not support append");
         } else {
             resolved = invokeFirst(fs, names, new Class<?>[]{String.class, String.class}, path, content);
         }
@@ -512,7 +518,7 @@ public final class CodingMemoryToolOps {
         };
     }
 
-    private static List<FileItemView> listFiles(Object sysOperation, String directory) {
+    private static Optional<List<FileItemView>> listFiles(Object sysOperation, String directory) {
         Object fs = invokeNoArg(sysOperation, "fs");
         String[] names = new String[]{"listFiles", "list_files"};
         Class<?>[] operationSignature = {
@@ -535,6 +541,9 @@ public final class CodingMemoryToolOps {
                     new Class<?>[]{String.class, boolean.class}, directory, false);
         }
         resolved = await(resolved);
+        if (isMissingDirectory(resolved)) {
+            return Optional.empty();
+        }
         ensureSuccess(resolved, "listFiles");
         Object data = property(resolved, "data");
         Object listItems = property(data, "listItems");
@@ -542,13 +551,29 @@ public final class CodingMemoryToolOps {
             listItems = property(data, "list_items");
         }
         if (!(listItems instanceof Iterable<?> iterable)) {
-            return List.of();
+            return Optional.of(List.of());
         }
         List<FileItemView> files = new ArrayList<>();
         for (Object item : iterable) {
             files.add(new FileItemView(asString(property(item, "name")), asBoolean(property(item, "directory"))));
         }
-        return files;
+        return Optional.of(files);
+    }
+
+    private static boolean isMissingDirectory(Object result) {
+        if (result == null) {
+            return false;
+        }
+        Object code = property(result, "code");
+        boolean isFailed = code instanceof Number number && number.intValue() != 0
+                || code instanceof String text && !text.isBlank() && !"0".equals(text);
+        if (!isFailed) {
+            return false;
+        }
+        String message = String.valueOf(property(result, "message")).toLowerCase(Locale.ROOT);
+        return message.contains("no such file or directory")
+                || message.contains("not a directory")
+                || message.contains("does not exist");
     }
 
     @SuppressWarnings("unchecked")
@@ -627,9 +652,9 @@ public final class CodingMemoryToolOps {
             throw new IllegalStateException(operation + " returned no result");
         }
         Object code = property(result, "code");
-        boolean failed = code instanceof Number number && number.intValue() != 0
+        boolean isFailed = code instanceof Number number && number.intValue() != 0
                 || code instanceof String text && !text.isBlank() && !"0".equals(text);
-        if (failed) {
+        if (isFailed) {
             Object message = property(result, "message");
             throw new IllegalStateException(message == null
                     ? operation + " failed with code " + code
@@ -714,13 +739,13 @@ public final class CodingMemoryToolOps {
 
     private static String toCamelCase(String name) {
         StringBuilder builder = new StringBuilder();
-        boolean upper = false;
+        boolean shouldUppercase = false;
         for (char ch : name.toCharArray()) {
             if (ch == '_') {
-                upper = true;
-            } else if (upper) {
+                shouldUppercase = true;
+            } else if (shouldUppercase) {
                 builder.append(Character.toUpperCase(ch));
-                upper = false;
+                shouldUppercase = false;
             } else {
                 builder.append(ch);
             }

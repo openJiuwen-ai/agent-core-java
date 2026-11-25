@@ -286,12 +286,12 @@ class MemoryReadRangeTest {
     void viewLinesHandlesExtremeOffsetAndLimitWithoutOverflow() {
         String[] lines = {"one", "two", "three"};
 
-        assertThat(MemoryToolOps.viewLines(lines, 1, Integer.MAX_VALUE))
-                .extracting(MemoryToolOps.ViewResult::text, MemoryToolOps.ViewResult::endLine)
-                .containsExactly("one\ntwo\nthree", 3);
-        assertThat(MemoryToolOps.viewLines(lines, Integer.MAX_VALUE, Integer.MAX_VALUE))
-                .extracting(MemoryToolOps.ViewResult::text, MemoryToolOps.ViewResult::startLine)
-                .containsExactly("", 0);
+        MemoryToolOps.ViewResult whole = MemoryToolOps.viewLines(lines, 1, Integer.MAX_VALUE);
+        assertThat(whole.text()).isEqualTo("one\ntwo\nthree");
+        assertThat(whole.endLine()).isEqualTo(3);
+        MemoryToolOps.ViewResult beyond = MemoryToolOps.viewLines(lines, Integer.MAX_VALUE, Integer.MAX_VALUE);
+        assertThat(beyond.text()).isEmpty();
+        assertThat(beyond.startLine()).isZero();
     }
 
     @Test
@@ -326,6 +326,67 @@ class MemoryReadRangeTest {
                 .containsEntry("end_line", 2);
         assertThat(readCodingMemory("one\ntwo\n")).containsEntry("totalLines", 2)
                 .containsEntry("end_line", 2);
+    }
+
+    @Test
+    void crlfFilesRemainEditableUsingReadContent() throws IOException {
+        String content = "alpha\r\nbeta\r\n";
+        String displayedContent = "alpha\r\nbeta\r";
+        MemoryToolContext memoryContext = memoryContext("MEMORY.md", content, localFs());
+        CodingMemoryToolContext codingContext = codingContext("readme.md", content, localFs());
+
+        Map<String, Object> memoryRead = MemoryToolOps.readMemoryWithContext(memoryContext, "MEMORY.md", null, null)
+                .toCompletableFuture()
+                .join();
+        Map<String, Object> memoryEdit = MemoryToolOps.editMemoryWithContext(
+                memoryContext, "MEMORY.md", "beta", "delta").toCompletableFuture().join();
+        Map<String, Object> codingRead = CodingMemoryToolOps
+                .codingMemoryReadWithContext(codingContext, "readme.md", null, null).join();
+        Map<String, Object> codingEdit = CodingMemoryToolOps
+                .codingMemoryEditWithContext(codingContext, "readme.md", "beta", "delta").join();
+
+        assertThat(memoryRead).containsEntry("content", displayedContent).containsEntry("totalLines", 2);
+        assertThat(memoryEdit).containsEntry("success", true);
+        assertThat(codingRead).containsEntry("content", displayedContent).containsEntry("totalLines", 2);
+        assertThat(codingEdit).containsEntry("success", true);
+    }
+
+    @Test
+    void appendDoesNotFallBackToOverwriteWhenSignatureLacksAppend() throws IOException {
+        TwoArgWriteFs fs = new TwoArgWriteFs("alpha\nbeta");
+        MemoryToolContext context = memoryContext("MEMORY.md", fs.content, fs);
+
+        Map<String, Object> result = MemoryToolOps.writeMemoryWithContext(context, "MEMORY.md", "gamma", true)
+                .toCompletableFuture()
+                .join();
+
+        assertThat(result).containsEntry("success", false);
+        assertThat(result.get("error").toString()).contains("does not support append");
+        assertThat(fs.content).isEqualTo("alpha\nbeta");
+    }
+
+    @Test
+    void codingMemoryWriteCreatesMissingDirectory() {
+        CodingMemoryToolContext context = new CodingMemoryToolContext();
+        context.setWorkspace(workspace());
+        context.setCodingMemoryDir(workspace().getNodePath("coding_memory").normalize().toString());
+        context.setSysOperation(new SysOperationShim(localFs()));
+        String content = """
+                ---
+                name: New Note
+                description: Created with its directory
+                type: project
+                ---
+
+                Body.
+                """;
+
+        Map<String, Object> result = CodingMemoryToolOps
+                .codingMemoryWriteWithContext(context, "new.md", content)
+                .join();
+
+        assertThat(result).containsEntry("success", true).containsEntry("mode", "create");
+        assertThat(root.resolve("coding_memory").resolve("new.md")).exists();
     }
 
     @Test
@@ -457,6 +518,19 @@ class MemoryReadRangeTest {
 
         public Object fs() {
             return fs;
+        }
+    }
+
+    private static final class TwoArgWriteFs {
+        private String content;
+
+        private TwoArgWriteFs(String content) {
+            this.content = content;
+        }
+
+        public CompletableFuture<WriteFileResult> writeFile(String path, String content) {
+            this.content = content;
+            return CompletableFuture.completedFuture(new WriteFileResult());
         }
     }
 

@@ -14,6 +14,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -317,7 +318,11 @@ public final class MemoryToolOps {
     }
 
     static String[] lines(String content) {
-        return content.lines().toArray(String[]::new);
+        if (content.isEmpty()) {
+            return new String[0];
+        }
+        String[] rows = content.split("\\n", -1);
+        return content.endsWith("\n") ? Arrays.copyOf(rows, rows.length - 1) : rows;
     }
 
     static ViewResult viewLines(String[] allLines, Integer firstLine, Integer lineCap) {
@@ -427,6 +432,8 @@ public final class MemoryToolOps {
             resolved = invokeFirst(fs, names,
                     new Class<?>[]{String.class, String.class, boolean.class, boolean.class},
                     path, content, createIfNotExist, append);
+        } else if (append) {
+            throw new IllegalArgumentException("writeFile signature does not support append");
         } else {
             resolved = invokeFirst(fs, names, new Class<?>[]{String.class, String.class}, path, content);
         }
@@ -478,9 +485,9 @@ public final class MemoryToolOps {
             throw new IllegalStateException(operation + " returned no result");
         }
         Object code = property(result, "code");
-        boolean failed = code instanceof Number number && number.intValue() != 0
+        boolean isFailed = code instanceof Number number && number.intValue() != 0
                 || code instanceof String text && !text.isBlank() && !"0".equals(text);
-        if (failed) {
+        if (isFailed) {
             Object message = property(result, "message");
             throw new IllegalStateException(message == null
                     ? operation + " failed with code " + code
@@ -614,13 +621,13 @@ public final class MemoryToolOps {
 
     private static String toCamelCase(String name) {
         StringBuilder builder = new StringBuilder();
-        boolean upper = false;
+        boolean shouldUppercase = false;
         for (char ch : name.toCharArray()) {
             if (ch == '_') {
-                upper = true;
-            } else if (upper) {
+                shouldUppercase = true;
+            } else if (shouldUppercase) {
                 builder.append(Character.toUpperCase(ch));
-                upper = false;
+                shouldUppercase = false;
             } else {
                 builder.append(ch);
             }
