@@ -1221,7 +1221,7 @@ public class AbilityManager {
         }
         try {
             if (session instanceof AgentSessionApi agentSession) {
-                try (AutoCloseable ignored = ReActAgent.bindToolCancellation(agentSession, Thread.currentThread())) {
+                try (AutoCloseable ignored = ReActAgent.bindToolCancellation(agentSession)) {
                     return tool.invoke(inputs, invokeKwargs(session));
                 }
             }

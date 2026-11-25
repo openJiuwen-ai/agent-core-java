@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -2987,25 +2988,20 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
      * Binds the current tool thread to the stream cancellation of its session.
      *
      * @param session stream session owning the tool invocation
-     * @param worker thread executing the tool body
      * @return a scope that detaches the completed execution, or null when this
      *         session has no cancellable background stream
      */
-    public static AutoCloseable bindToolCancellation(AgentSessionApi session, Thread worker) {
-        if (session == null || worker == null) {
+    public static AutoCloseable bindToolCancellation(AgentSessionApi session) {
+        if (session == null) {
             return null;
         }
         StreamCancellation cancellation = CANCEL_STREAMS.get(cancelFlagKey(session));
         if (cancellation == null) {
             return null;
         }
-        ToolExecution execution = mayInterrupt -> {
-            if (mayInterrupt) {
-                worker.interrupt();
-            }
-        };
-        cancellation.attachToolExecution(execution);
-        return () -> cancellation.detachToolExecution(execution);
+        Runnable interruption = InterruptSignals.captureCurrentThread();
+        cancellation.attachToolExecution(interruption);
+        return () -> cancellation.detachToolExecution(interruption);
     }
 
     /**
@@ -4381,15 +4377,10 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         }
     }
 
-    @FunctionalInterface
-    private interface ToolExecution {
-        void interrupt(boolean mayInterruptIfRunning);
-    }
-
     private static final class StreamCancellation {
         private final AtomicBoolean cancelled = new AtomicBoolean();
         private final AtomicBoolean completed = new AtomicBoolean();
-        private final Set<ToolExecution> toolExecutions = ConcurrentHashMap.newKeySet();
+        private final Set<Runnable> toolExecutions = ConcurrentHashMap.newKeySet();
         private Future<?> worker;
         private Iterator<?> modelIterator;
 
@@ -4441,8 +4432,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 currentWorker = worker;
                 currentIterator = modelIterator;
             }
-            for (ToolExecution execution : toolExecutions) {
-                execution.interrupt(true);
+            for (Runnable interruption : toolExecutions) {
+                interruption.run();
             }
             if (currentWorker != null) {
                 currentWorker.cancel(true);
@@ -4450,19 +4441,19 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             closeIterator(currentIterator);
         }
 
-        private void attachToolExecution(ToolExecution execution) {
+        private void attachToolExecution(Runnable interruption) {
             if (isCancelled()) {
-                execution.interrupt(true);
+                interruption.run();
                 return;
             }
-            toolExecutions.add(execution);
+            toolExecutions.add(interruption);
             if (isCancelled()) {
-                execution.interrupt(true);
+                interruption.run();
             }
         }
 
-        private void detachToolExecution(ToolExecution execution) {
-            toolExecutions.remove(execution);
+        private void detachToolExecution(Runnable interruption) {
+            toolExecutions.remove(interruption);
         }
     }
 }
