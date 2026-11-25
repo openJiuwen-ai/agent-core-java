@@ -820,21 +820,39 @@ public class AbilityManager {
         if (parent == null || parent.hasForceFinishRequest() || toolContexts == null) {
             return;
         }
-        Map<Integer, Map<String, Object>> forceFinishRequests = new LinkedHashMap<>();
-        for (int i = 0; i < toolContexts.size(); i++) {
-            AgentCallbackContext toolCtx = toolContexts.get(i);
-            if (toolCtx == null || !toolCtx.hasForceFinishRequest()) {
+        Map<String, Object> firstResult = null;
+        List<Object> toolFailures = new ArrayList<>();
+        for (AgentCallbackContext toolCtx : toolContexts) {
+            ForceFinishRequest request = toolCtx == null ? null : toolCtx.consumeForceFinish();
+            if (request == null) {
                 continue;
             }
-            ForceFinishRequest request = toolCtx.consumeForceFinish();
-            if (request != null) {
-                forceFinishRequests.put(i, request.getResult());
+            if (firstResult != null && toolFailures.isEmpty()) {
+                continue;
             }
+            Map<String, Object> result = request.getResult();
+            if (firstResult == null) {
+                firstResult = result;
+            }
+            toolFailures.addAll(toolFailureOutcomes(result));
         }
-        if (forceFinishRequests.isEmpty()) {
+        if (firstResult == null) {
             return;
         }
-        parent.requestForceFinish(forceFinishRequests.get(forceFinishRequests.keySet().iterator().next()));
+        // The first request still decides how to end the turn. When it is a tool failure,
+        // carry the other tool failures in call order without changing its error summary.
+        if (!toolFailures.isEmpty()) {
+            firstResult = new LinkedHashMap<>(firstResult);
+            firstResult.put("tool_outcomes", toolFailures);
+        }
+        parent.requestForceFinish(firstResult);
+    }
+
+    private static List<?> toolFailureOutcomes(Map<String, Object> result) {
+        if ("error".equals(result.get("result_type")) && result.get("tool_outcomes") instanceof List<?> outcomes) {
+            return outcomes;
+        }
+        return List.of();
     }
 
     private ExecutionResult safeExecuteOne(ToolCall toolCall, ToolResolver resolver, Object session, Object tag) {

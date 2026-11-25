@@ -29,4 +29,5 @@ public class ReActAgent extends BaseAgent
 - 相关测试：`AgentCallbackManagerTest`、`ReActAgentConfigTest`、`ReActAgentEvolveTest`、`ReActAgentTest`、`BaseAgentTest`。
 - 调用流程按“推理 -> 行动 -> 观察 -> 重复”循环执行，直到模型不再返回 `toolCalls` 或达到 `maxIterations`。
 - 输入支持 `Map`（读取 `query` 与可选 `conversation_id`）或 `String`；`invoke` 返回包含 `output` 和 `result_type` 的结果 `Map`。
+- 工具错误导致任务终止时，流式 `answer` 的 `payload` 可携带 `tool_outcomes`，其中每项包含 `tool_name`、`tool_call_id`、`status` 和 `error`。
 - `ReActAgentConfig` 保持可变以兼容现有用法。通过 `getConfig()` 原地修改上下文配置后，下一次读取上下文引擎或执行请求时会自动应用新配置；请勿在正在执行的请求中修改配置。
