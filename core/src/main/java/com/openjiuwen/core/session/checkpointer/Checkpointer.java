@@ -6,20 +6,24 @@ package com.openjiuwen.core.session.checkpointer;
 
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.state.State;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * Base checkpointer for agent, team, workflow, and graph state.
@@ -57,6 +61,197 @@ public abstract class Checkpointer implements AutoCloseable {
         return stringIdentity(session, "agentId");
     }
 
+    /** Suffix shared by persisted agent-state blob keys. */
+    public static final String AGENT_STATE_BLOBS_SUFFIX = ":agent_state_blobs";
+
+    /**
+     * Stamp a cursor with the ownership of the session that is persisting it.
+     * Caller-provided ownership is replaced so a cursor cannot redirect a save
+     * or a later recovery to another session.
+     *
+     * @param session session performing the checkpoint
+     * @param cursor cursor to stamp
+     * @return owned cursor, or null when either input is null
+     */
+    public static StepCursor withOwner(BaseSession session, StepCursor cursor) {
+        if (session == null || cursor == null) {
+            return null;
+        }
+        return cursor.withOwner(tenantId(session), session.sessionId(), agentId(session));
+    }
+
+    /**
+     * Restore cursor ownership from a persisted blob key. Legacy cursors are
+     * accepted only when the key has one unambiguous owner interpretation;
+     * tenant-prefixed keys without stored identity are skipped rather than
+     * exposing a synthetic {@code tenant:session} id to recovery hooks.
+     *
+     * @param cursor cursor read from the blob
+     * @param storageKey exact persisted blob key
+     * @param scanPrefix prefix used for the scan, empty for an unbound scan
+     * @return owned cursor, or null when the key is malformed or ambiguous
+     */
+    public static StepCursor restoreOwner(StepCursor cursor, String storageKey, String scanPrefix) {
+        if (cursor == null || storageKey == null || !storageKey.endsWith(AGENT_STATE_BLOBS_SUFFIX)) {
+            return null;
+        }
+        String rawKey = storageKey;
+        if (scanPrefix != null && !scanPrefix.isEmpty()) {
+            if (!rawKey.startsWith(scanPrefix)) {
+                return null;
+            }
+            rawKey = rawKey.substring(scanPrefix.length());
+        }
+        if (!rawKey.endsWith(AGENT_STATE_BLOBS_SUFFIX)) {
+            return null;
+        }
+        rawKey = rawKey.substring(0, rawKey.length() - AGENT_STATE_BLOBS_SUFFIX.length());
+        if ((scanPrefix == null || scanPrefix.isEmpty()) && !cursor.getTenantId().isEmpty()) {
+            TenantContext owner = TenantContext.builder().tenantId(cursor.getTenantId()).build();
+            String ownerPrefix = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(owner, "");
+            if (!rawKey.startsWith(ownerPrefix)) {
+                return null;
+            }
+            rawKey = rawKey.substring(ownerPrefix.length());
+        }
+        List<StepCursor> candidates = new ArrayList<>();
+        int marker = rawKey.indexOf(":agent:");
+        while (marker >= 0) {
+            String sessionId = rawKey.substring(0, marker);
+            String agentId = rawKey.substring(marker + ":agent:".length());
+            addOwnerCandidates(candidates, cursor, storageKey, rawKey, sessionId, agentId, scanPrefix);
+            marker = rawKey.indexOf(":agent:", marker + 1);
+        }
+        return candidates.size() == 1 ? candidates.get(0) : null;
+    }
+
+    private static void addOwnerCandidates(List<StepCursor> candidates, StepCursor cursor, String storageKey,
+                                           String rawKey, String sessionId, String agentId, String scanPrefix) {
+        if (scanPrefix != null && !scanPrefix.isEmpty()) {
+            TenantContext ctx = TenantContextHolder.getCurrentTenant();
+            String tenantId = ctx == null ? "" : ctx.getTenantId();
+            if (matchesOwner(cursor, tenantId, sessionId, agentId)) {
+                String restoredKey = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx, rawKey)
+                        + AGENT_STATE_BLOBS_SUFFIX;
+                if (storageKey.equals(restoredKey)) {
+                    candidates.add(cursor.withOwner(tenantId, sessionId, agentId));
+                }
+            }
+            return;
+        }
+        if (matchesOwner(cursor, "", sessionId, agentId)
+                && storageKey.equals(rawKey + AGENT_STATE_BLOBS_SUFFIX)) {
+            candidates.add(cursor.withOwner("", sessionId, agentId));
+        }
+        if (!cursor.getTenantId().isEmpty()) {
+            addTenantCandidate(candidates, cursor, storageKey, sessionId, agentId, cursor.getTenantId());
+            return;
+        }
+        int colon = sessionId.indexOf(':');
+        while (colon >= 0) {
+            addLegacyTenantCandidate(candidates, cursor, storageKey, sessionId, agentId,
+                    sessionId.substring(0, colon));
+            colon = sessionId.indexOf(':', colon + 1);
+        }
+    }
+
+    private static boolean matchesOwner(StepCursor cursor, String tenantId, String sessionId, String agentId) {
+        return (cursor.getTenantId().isEmpty() || cursor.getTenantId().equals(tenantId))
+                && (cursor.getSessionId().isEmpty() || cursor.getSessionId().equals(sessionId))
+                && (cursor.getAgentId().isEmpty() || cursor.getAgentId().equals(agentId));
+    }
+
+    private static void addTenantCandidate(List<StepCursor> candidates, StepCursor cursor, String storageKey,
+                                           String sessionId, String agentId, String tenantId) {
+        if (!matchesOwner(cursor, tenantId, sessionId, agentId)) {
+            return;
+        }
+        TenantContext ctx = TenantContext.builder().tenantId(tenantId).build();
+        String raw = sessionId + ":agent:" + agentId;
+        String restoredKey = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx, raw)
+                + AGENT_STATE_BLOBS_SUFFIX;
+        if (storageKey.equals(restoredKey)) {
+            candidates.add(cursor.withOwner(tenantId, sessionId, agentId));
+        }
+    }
+
+    private static void addLegacyTenantCandidate(List<StepCursor> candidates, StepCursor cursor, String storageKey,
+                                                 String storedSessionId, String agentId, String tenantId) {
+        TenantContext ctx = TenantContext.builder().tenantId(tenantId).build();
+        String tenantPrefix = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx, "");
+        if (!storedSessionId.startsWith(tenantPrefix)) {
+            return;
+        }
+        String sessionId = storedSessionId.substring(tenantPrefix.length());
+        addTenantCandidate(candidates, cursor, storageKey, sessionId, agentId, tenantId);
+    }
+
+    /**
+     * Run a storage operation under the tenant recorded on a recovered cursor.
+     *
+     * @param cursor recovered cursor carrying tenant ownership
+     * @param operation operation requiring the owning tenant context
+     */
+    public static void runWithOwner(StepCursor cursor, Runnable operation) {
+        runWithOwner(cursor, () -> {
+            operation.run();
+            return null;
+        });
+    }
+
+    /**
+     * Run a storage operation under the tenant recorded on a recovered cursor.
+     *
+     * @param cursor recovered cursor carrying tenant ownership
+     * @param operation operation requiring the owning tenant context
+     * @param <T> operation result type
+     * @return operation result
+     */
+    public static <T> T runWithOwner(StepCursor cursor, Supplier<T> operation) {
+        TenantContext previous = TenantContextHolder.getCurrentTenant();
+        try {
+            TenantContext owner = cursor == null || cursor.getTenantId().isEmpty()
+                    ? null : TenantContext.builder().tenantId(cursor.getTenantId()).build();
+            TenantContextHolder.setCurrentTenant(owner);
+            return operation.get();
+        } finally {
+            TenantContextHolder.setCurrentTenant(previous);
+        }
+    }
+
+    /** Whether two cursors belong to the same tenant and session. */
+    public static boolean sameSession(StepCursor first, StepCursor second) {
+        return first != null && second != null
+                && Objects.equals(first.getTenantId(), second.getTenantId())
+                && Objects.equals(first.getSessionId(), second.getSessionId());
+    }
+
+    /** Current tenant id, or an empty string when no tenant is bound. */
+    public static String currentTenantId() {
+        TenantContext ctx = TenantContextHolder.getCurrentTenant();
+        return ctx == null || ctx.getTenantId() == null ? "" : ctx.getTenantId();
+    }
+
+    private static String tenantId(BaseSession session) {
+        if (session instanceof AgentSessionApi agentSession && agentSession.getTenantContext() != null) {
+            return agentSession.getTenantContext().getTenantId();
+        }
+        return currentTenantId();
+    }
+
+    private static StepCursor restoreLiveOwner(BaseSession session, StepCursor cursor) {
+        if (cursor == null) {
+            return null;
+        }
+        StepCursor owned = withOwner(session, cursor);
+        if ((!cursor.getTenantId().isEmpty() && !cursor.getTenantId().equals(owned.getTenantId()))
+                || (!cursor.getSessionId().isEmpty() && !cursor.getSessionId().equals(owned.getSessionId()))
+                || (!cursor.getAgentId().isEmpty() && !cursor.getAgentId().equals(owned.getAgentId()))) {
+            return null;
+        }
+        return owned;
+    }
+
     public static String teamId(BaseSession session) {
         return stringIdentity(session, "teamId");
     }
@@ -75,11 +270,18 @@ public abstract class Checkpointer implements AutoCloseable {
         if (session == null) {
             return null;
         }
-        try {
-            return session.getClass().getMethod(methodName).invoke(session);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
+        for (Class<?> type = session.getClass(); type != null; type = type.getSuperclass()) {
+            try {
+                Method method = type.getDeclaredMethod(methodName);
+                method.setAccessible(true);
+                return method.invoke(session);
+            } catch (NoSuchMethodException ignored) {
+                // Try the next superclass.
+            } catch (ReflectiveOperationException | SecurityException ignored) {
+                return null;
+            }
         }
+        return null;
     }
 
     public static String buildKey(String... parts) {
@@ -166,8 +368,9 @@ public abstract class Checkpointer implements AutoCloseable {
         if (!cursor.isAfter(previous)) {
             return;
         }
+        StepCursor ownedCursor = withOwner(session, cursor);
         Map<String, Object> update = new LinkedHashMap<>();
-        update.put(StepCursor.STATE_KEY, cursor.toMap());
+        update.put(StepCursor.STATE_KEY, ownedCursor.toMap());
         session.state().update(update);
         boolean isSaved = false;
         try {
@@ -198,7 +401,7 @@ public abstract class Checkpointer implements AutoCloseable {
         }
         Object state = session.state().get(StepCursor.STATE_KEY);
         StepCursor cursor = StepCursor.fromMap(state);
-        return cursor == null ? null : cursor;
+        return restoreLiveOwner(session, cursor);
     }
 
     /**
@@ -217,8 +420,9 @@ public abstract class Checkpointer implements AutoCloseable {
         if (session == null || cursor == null || session.state() == null) {
             return;
         }
+        StepCursor ownedCursor = withOwner(session, cursor);
         Map<String, Object> update = new LinkedHashMap<>();
-        update.put(StepCursor.FAILED_STATE_KEY, cursor.toMap());
+        update.put(StepCursor.FAILED_STATE_KEY, ownedCursor.toMap());
         CheckpointSnapshotSession snapshot = new CheckpointSnapshotSession(session);
         preAgentExecute(snapshot, null);
         snapshot.state().update(update);
@@ -238,7 +442,7 @@ public abstract class Checkpointer implements AutoCloseable {
         }
         Object state = session.state().get(StepCursor.FAILED_STATE_KEY);
         StepCursor cursor = StepCursor.fromMap(state);
-        return cursor == null ? null : cursor;
+        return restoreLiveOwner(session, cursor);
     }
 
     /**
@@ -272,7 +476,7 @@ public abstract class Checkpointer implements AutoCloseable {
             return false;
         }
         StepCursor pausedCursor = new StepCursor(cursor.getSeq(), cursor.getStepType(), cursor.getStepName(),
-                StepStatus.PAUSED, cursor.getTimestamp(), session.sessionId());
+                StepStatus.PAUSED, cursor.getTimestamp(), tenantId(session), session.sessionId(), agentId(session));
         if (!shouldPersistPausedCursor(session, pausedCursor)) {
             return false;
         }
@@ -352,7 +556,7 @@ public abstract class Checkpointer implements AutoCloseable {
         }
         Object state = session.state().get(StepCursor.PAUSED_STATE_KEY);
         StepCursor cursor = StepCursor.fromMap(state);
-        return cursor == null ? null : cursor;
+        return restoreLiveOwner(session, cursor);
     }
 
     /**
@@ -458,7 +662,8 @@ public abstract class Checkpointer implements AutoCloseable {
     public static void applyResumeToState(Map<String, Object> state, StepCursor paused) {
         Map<String, Object> partition = pausedKeysPartition(state);
         partition.put(StepCursor.STATE_KEY, new StepCursor(paused.getSeq(), paused.getStepType(),
-                paused.getStepName(), StepStatus.RUNNING, System.currentTimeMillis(), paused.getSessionId()).toMap());
+                paused.getStepName(), StepStatus.RUNNING, System.currentTimeMillis(), paused.getTenantId(),
+                paused.getSessionId(), paused.getAgentId()).toMap());
         partition.remove(StepCursor.PAUSED_STATE_KEY);
         partition.remove(SESSION_PAUSE_STATE_KEY);
     }

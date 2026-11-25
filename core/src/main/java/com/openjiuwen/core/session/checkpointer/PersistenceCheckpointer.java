@@ -254,7 +254,7 @@ public class PersistenceCheckpointer extends Checkpointer {
             throw new IllegalStateException(
                     "Cannot resume by cursor without a session id; use resumePaused(sessionId) instead");
         }
-        resumePaused(cursor.getSessionId());
+        runWithOwner(cursor, () -> resumePaused(cursor.getSessionId()));
     }
 
     /**
@@ -266,12 +266,7 @@ public class PersistenceCheckpointer extends Checkpointer {
      */
     @Override
     public StepCursor lastPausedStep(String sessionId) {
-        Map<String, Object> snapshot = agentStateSnapshot(sessionId);
-        if (snapshot == null) {
-            return null;
-        }
-        StepCursor cursor = StepCursor.pausedFromState(snapshot);
-        return cursor != null && cursor.getStatus() == StepStatus.PAUSED ? cursor : null;
+        return pausedCursorFromAgentStates(sessionId);
     }
 
     /**
@@ -299,6 +294,7 @@ public class PersistenceCheckpointer extends Checkpointer {
         // resume every blob holding paused evidence so the whole session
         // continues instead of only the first agent in key order.
         boolean hasResumedOne = false;
+        String scanPrefix = TenantKVStoreKeyResolver.resolvePrefix("");
         for (Map.Entry<String, String> entry : keys.entrySet()) {
             Object dumpType = kvStore.get(entry.getValue()).join();
             Object blob = kvStore.get(entry.getKey()).join();
@@ -312,7 +308,11 @@ public class PersistenceCheckpointer extends Checkpointer {
             if (paused == null) {
                 continue;
             }
-            Checkpointer.applyResumeToState(normalized, paused);
+            StepCursor ownedPaused = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
+            if (ownedPaused == null) {
+                continue;
+            }
+            Checkpointer.applyResumeToState(normalized, ownedPaused);
             persistResumedState(normalized, entry.getKey(), entry.getValue());
             hasResumedOne = true;
         }
@@ -330,8 +330,8 @@ public class PersistenceCheckpointer extends Checkpointer {
     }
 
     private List<StepCursor> cursorsFromStates(StepStatus expected) {
-        Map<String, Object> blobs = kvStore.getByPrefix(
-                TenantKVStoreKeyResolver.resolvePrefix("")).join();
+        String scanPrefix = TenantKVStoreKeyResolver.resolvePrefix("");
+        Map<String, Object> blobs = kvStore.getByPrefix(scanPrefix).join();
         if (blobs == null || blobs.isEmpty()) {
             return List.of();
         }
@@ -347,16 +347,14 @@ public class PersistenceCheckpointer extends Checkpointer {
                 snapshots.put(entry.getKey(), normalized);
             }
         }
-        return cursorsFromStates(snapshots, expected);
+        return cursorsFromStates(snapshots, expected, scanPrefix);
     }
 
-    private Map<String, Object> agentStateSnapshot(String sessionId) {
+    private StepCursor pausedCursorFromAgentStates(String sessionId) {
         if (sessionId == null || sessionId.isBlank()) {
             return null;
         }
-        // One session id may own several agent blobs (multi-agent sessions);
-        // scan all of them so lookups find the snapshot that actually holds
-        // the paused evidence instead of only the first one in key order.
+        String scanPrefix = TenantKVStoreKeyResolver.resolvePrefix("");
         for (Map.Entry<String, String> entry : agentStateKeys(sessionId).entrySet()) {
             Object dumpType = kvStore.get(entry.getValue()).join();
             Object blob = kvStore.get(entry.getKey()).join();
@@ -366,8 +364,10 @@ public class PersistenceCheckpointer extends Checkpointer {
             }
             Map<String, Object> normalized = new LinkedHashMap<>();
             stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-            if (StepCursor.pausedFromState(normalized) != null) {
-                return normalized;
+            StepCursor paused = StepCursor.pausedFromState(normalized);
+            StepCursor owned = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
+            if (owned != null && owned.getStatus() == StepStatus.PAUSED) {
+                return owned;
             }
         }
         return null;
@@ -391,7 +391,8 @@ public class PersistenceCheckpointer extends Checkpointer {
         return keys;
     }
 
-    private static List<StepCursor> cursorsFromStates(Map<String, Object> states, StepStatus expected) {
+    private static List<StepCursor> cursorsFromStates(Map<String, Object> states, StepStatus expected,
+                                                       String scanPrefix) {
         List<StepCursor> matched = new ArrayList<>();
         if (states == null) {
             return matched;
@@ -406,7 +407,8 @@ public class PersistenceCheckpointer extends Checkpointer {
             StepCursor cursor = expected == StepStatus.PAUSED
                     ? StepCursor.pausedFromState(normalized)
                     : StepCursor.fromState(normalized);
-            if (cursor == null || cursor.getStatus() != expected) {
+            StepCursor owned = Checkpointer.restoreOwner(cursor, entry.getKey(), scanPrefix);
+            if (owned == null || owned.getStatus() != expected) {
                 continue;
             }
             if (expected == StepStatus.RUNNING && StepCursor.pausedFromState(normalized) != null) {
@@ -415,7 +417,7 @@ public class PersistenceCheckpointer extends Checkpointer {
                 // would mark them lost against the documented pause contract.
                 continue;
             }
-            matched.add(cursor);
+            matched.add(owned);
         }
         return matched;
     }

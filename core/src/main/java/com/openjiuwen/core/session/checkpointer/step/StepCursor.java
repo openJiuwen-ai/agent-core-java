@@ -41,7 +41,9 @@ public class StepCursor {
     private String stepName;
     private StepStatus status;
     private long timestamp;
+    private String tenantId = "";
     private String sessionId = "";
+    private String agentId = "";
 
     public StepCursor() {
         this(0L, "", "", StepStatus.RUNNING, 0L);
@@ -75,12 +77,31 @@ public class StepCursor {
      */
     public StepCursor(long seq, String stepType, String stepName, StepStatus status, long timestamp,
                       String sessionId) {
+        this(seq, stepType, stepName, status, timestamp, "", sessionId, "");
+    }
+
+    /**
+     * Create a cursor carrying its complete storage ownership identity.
+     *
+     * @param seq monotonically increasing step sequence number within a task
+     * @param stepType step category, e.g. TOOL_CALL / LLM_RESPONSE / PHASE
+     * @param stepName tool name or phase name
+     * @param status lifecycle status of the step
+     * @param timestamp wall-clock time in milliseconds
+     * @param tenantId owning tenant id, empty when the cursor is unscoped
+     * @param sessionId id of the session owning the cursor
+     * @param agentId id of the agent owning the cursor
+     */
+    public StepCursor(long seq, String stepType, String stepName, StepStatus status, long timestamp,
+                      String tenantId, String sessionId, String agentId) {
         this.seq = seq;
         this.stepType = stepType == null ? "" : stepType;
         this.stepName = stepName == null ? "" : stepName;
         this.status = status == null ? StepStatus.RUNNING : status;
         this.timestamp = timestamp;
+        this.tenantId = tenantId == null ? "" : tenantId;
         this.sessionId = sessionId == null ? "" : sessionId;
+        this.agentId = agentId == null ? "" : agentId;
     }
 
     public long getSeq() {
@@ -124,6 +145,19 @@ public class StepCursor {
     }
 
     /**
+     * Id of the tenant owning this cursor, empty when the cursor is unscoped.
+     *
+     * @return owning tenant id, empty when unknown or unscoped
+     */
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId == null ? "" : tenantId;
+    }
+
+    /**
      * Id of the session owning this cursor, carried by paused cursors so the
      * explicit resume can locate the session behind the cursor.
      *
@@ -135,6 +169,31 @@ public class StepCursor {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId == null ? "" : sessionId;
+    }
+
+    /**
+     * Id of the agent owning this cursor within its session.
+     *
+     * @return owning agent id, empty when unknown
+     */
+    public String getAgentId() {
+        return agentId;
+    }
+
+    public void setAgentId(String agentId) {
+        this.agentId = agentId == null ? "" : agentId;
+    }
+
+    /**
+     * Return a copy carrying the supplied storage ownership identity.
+     *
+     * @param tenantId owning tenant id, null when unscoped
+     * @param sessionId owning session id, null when unknown
+     * @param agentId owning agent id, null when unknown
+     * @return stamped cursor, never null
+     */
+    public StepCursor withOwner(String tenantId, String sessionId, String agentId) {
+        return new StepCursor(seq, stepType, stepName, status, timestamp, tenantId, sessionId, agentId);
     }
 
     /**
@@ -150,7 +209,9 @@ public class StepCursor {
         map.put("step_name", stepName);
         map.put("status", status.name());
         map.put("timestamp", timestamp);
+        map.put("tenant_id", tenantId);
         map.put("session_id", sessionId);
+        map.put("agent_id", agentId);
         return map;
     }
 
@@ -171,7 +232,9 @@ public class StepCursor {
                 stringValue(raw.get("step_name")),
                 StepStatus.fromString(raw.get("status")),
                 longValue(raw.get("timestamp")),
-                stringValue(raw.get("session_id")));
+                stringValue(raw.get("tenant_id")),
+                stringValue(raw.get("session_id")),
+                stringValue(raw.get("agent_id")));
     }
 
     private static boolean hasSeqMarker(Map<?, ?> raw) {
@@ -313,19 +376,21 @@ public class StepCursor {
                 && stepType.equals(cursor.stepType)
                 && stepName.equals(cursor.stepName)
                 && status == cursor.status
-                && sessionId.equals(cursor.sessionId);
+                && tenantId.equals(cursor.tenantId)
+                && sessionId.equals(cursor.sessionId)
+                && agentId.equals(cursor.agentId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(seq, stepType, stepName, status, timestamp, sessionId);
+        return Objects.hash(seq, stepType, stepName, status, timestamp, tenantId, sessionId, agentId);
     }
 
     @Override
     public String toString() {
         return "StepCursor{seq=" + seq + ", stepType=" + stepType
                 + ", stepName=" + stepName + ", status=" + status + ", timestamp=" + timestamp
-                + ", sessionId=" + sessionId + "}";
+                + ", tenantId=" + tenantId + ", sessionId=" + sessionId + ", agentId=" + agentId + "}";
     }
 
     private static long longValue(Object value) {

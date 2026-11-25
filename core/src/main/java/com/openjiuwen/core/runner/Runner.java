@@ -976,8 +976,16 @@ public final class Runner {
         }
 
         private CompletionStage<Void> release(String sessionId, boolean force) {
-            return CompletableFuture.runAsync(
-                    () -> CheckpointerFactory.getCheckpointer().release(sessionId));
+            TenantContext tenantContext = TenantContextHolder.getCurrentTenant();
+            return CompletableFuture.runAsync(() -> {
+                TenantContext previous = TenantContextHolder.getCurrentTenant();
+                TenantContextHolder.setCurrentTenant(tenantContext);
+                try {
+                    CheckpointerFactory.getCheckpointer().release(sessionId);
+                } finally {
+                    TenantContextHolder.setCurrentTenant(previous);
+                }
+            });
         }
 
         private CompletionStage<Object> spawnDependencyPending(String methodName) {

@@ -39,12 +39,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class StepCheckpointRecoveryService {
     private static final Logger log = LoggerFactory.getLogger(StepCheckpointRecoveryService.class);
 
-    /** Prefix for markers of cursors that carry no session id. */
-    private static final String LEGACY_CURSOR_PREFIX = "legacy:";
-
     private final Checkpointer checkpointer;
     private final StepRecoveryHook hook;
-    private final Set<String> processedSessions = ConcurrentHashMap.newKeySet();
+    private final Set<ProcessedMarker> processedSessions = ConcurrentHashMap.newKeySet();
 
     /**
      * Create a recovery service.
@@ -80,7 +77,7 @@ public class StepCheckpointRecoveryService {
             return actions;
         }
         for (StepCursor cursor : running) {
-            String marker = sessionMarker(cursor);
+            ProcessedMarker marker = sessionMarker(cursor);
             if (!processedSessions.add(marker)) {
                 actions.add(new RecoveryAction(cursor, RecoveryActionType.SKIPPED_ALREADY_PROCESSED, ""));
                 continue;
@@ -132,17 +129,19 @@ public class StepCheckpointRecoveryService {
         if (checkpointer == null) {
             return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, "no checkpointer");
         }
-        if (!processedSessions.add(sessionMarker(cursor))) {
+        ProcessedMarker marker = sessionMarker(cursor);
+        if (!processedSessions.add(marker)) {
             return new RecoveryAction(cursor, RecoveryActionType.SKIPPED_ALREADY_PROCESSED, "already resumed");
         }
-        List<String> sessionPauseMarkers = collectSessionPauseMarkers(cursor);
+        List<ProcessedMarker> sessionPauseMarkers = Checkpointer.runWithOwner(
+                cursor, () -> collectSessionPauseMarkers(cursor));
         try {
             checkpointer.resumePaused(cursor);
             processedSessions.addAll(sessionPauseMarkers);
             log.info("Paused session resumed by explicit request: {}", cursor);
             return new RecoveryAction(cursor, RecoveryActionType.RESUMED_EXPLICITLY, "resumed");
         } catch (RuntimeException exception) {
-            processedSessions.remove(sessionMarker(cursor));
+            processedSessions.remove(marker);
             log.warn("Explicit resume failed for cursor {}: {}", cursor, exception.getMessage());
             return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, exception.getMessage());
         }
@@ -157,15 +156,15 @@ public class StepCheckpointRecoveryService {
      * @param resumedCursor paused cursor that drives the resume
      * @return markers of the session's paused cursors, empty on scan failure
      */
-    private List<String> collectSessionPauseMarkers(StepCursor resumedCursor) {
+    private List<ProcessedMarker> collectSessionPauseMarkers(StepCursor resumedCursor) {
         String sessionId = resumedCursor.getSessionId();
         if (sessionId == null || sessionId.isEmpty()) {
             return List.of();
         }
-        List<String> markers = new ArrayList<>();
+        List<ProcessedMarker> markers = new ArrayList<>();
         try {
             for (StepCursor paused : checkpointer.scanPausedSteps()) {
-                if (sessionId.equals(paused.getSessionId())) {
+                if (Checkpointer.sameSession(resumedCursor, paused)) {
                     markers.add(sessionMarker(paused));
                 }
             }
@@ -233,25 +232,27 @@ public class StepCheckpointRecoveryService {
      */
     public RecoveryAction recoverOne(StepCursor cursor) {
         Objects.requireNonNull(cursor, "cursor");
-        StepRecoveryHook.RecoveryRequest request = new StepRecoveryHook.RecoveryRequest(
-                "", "", cursor);
-        if (hook != null) {
-            try {
-                StepRecoveryHook.RecoveryResult result = hook.recover(request);
-                if (result != null && result.outcome() == StepRecoveryHook.Outcome.RECOVERED) {
-                    log.info("Leftover session recovered by hook: {}", cursor);
-                    return new RecoveryAction(cursor, RecoveryActionType.RECOVERED_BY_HOOK, result.detail());
+        return Checkpointer.runWithOwner(cursor, () -> {
+            StepRecoveryHook.RecoveryRequest request = new StepRecoveryHook.RecoveryRequest(
+                    cursor.getSessionId(), cursor.getAgentId(), cursor);
+            if (hook != null) {
+                try {
+                    StepRecoveryHook.RecoveryResult result = hook.recover(request);
+                    if (result != null && result.outcome() == StepRecoveryHook.Outcome.RECOVERED) {
+                        log.info("Leftover session recovered by hook: {}", cursor);
+                        return new RecoveryAction(cursor, RecoveryActionType.RECOVERED_BY_HOOK, result.detail());
+                    }
+                    if (result != null && result.outcome() == StepRecoveryHook.Outcome.MARKED_FAILED) {
+                        log.info("Leftover session marked failed by hook: {}", cursor);
+                        return new RecoveryAction(cursor, RecoveryActionType.MARKED_FAILED_BY_HOOK, result.detail());
+                    }
+                } catch (RuntimeException exception) {
+                    log.warn("Recovery hook failed for cursor {}: {}", cursor, exception.getMessage());
                 }
-                if (result != null && result.outcome() == StepRecoveryHook.Outcome.MARKED_FAILED) {
-                    log.info("Leftover session marked failed by hook: {}", cursor);
-                    return new RecoveryAction(cursor, RecoveryActionType.MARKED_FAILED_BY_HOOK, result.detail());
-                }
-            } catch (RuntimeException exception) {
-                log.warn("Recovery hook failed for cursor {}: {}", cursor, exception.getMessage());
             }
-        }
-        log.info("Leftover session marked lost (hook absent or declined): {}", cursor);
-        return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, "");
+            log.info("Leftover session marked lost (hook absent or declined): {}", cursor);
+            return new RecoveryAction(cursor, RecoveryActionType.MARKED_LOST, "");
+        });
     }
 
     /**
@@ -264,28 +265,28 @@ public class StepCheckpointRecoveryService {
         if (sessionId == null || sessionId.isBlank()) {
             return;
         }
-        processedSessions.removeIf(marker -> marker.startsWith(sessionId + "@")
-                || marker.startsWith(LEGACY_CURSOR_PREFIX + sessionId + "@"));
+        String tenantId = Checkpointer.currentTenantId();
+        processedSessions.removeIf(marker -> marker.sessionId().equals(sessionId)
+                && marker.tenantId().equals(tenantId));
     }
 
     /**
-     * Build the processed-registry marker of one cursor. The marker keys on
-     * the session id and the cursor seq, so the automatic scan and the
-     * explicit resume share one key space: a session resumed explicitly is
-     * skipped by the next automatic scan (its continuation carries the same
-     * seq), and a cursor without a session id keeps a prefixed field-based
-     * marker so legacy in-process markers stay consistent.
+     * Build the processed-registry marker of one cursor. Owner identity and
+     * sequence survive a PAUSED to RUNNING transition, while different agents
+     * and tenants with the same session id and sequence remain independent.
      *
      * @param cursor cursor to key, never null
      * @return the registry marker of the cursor
      */
-    private static String sessionMarker(StepCursor cursor) {
-        String sessionId = cursor.getSessionId();
-        if (sessionId == null || sessionId.isEmpty()) {
-            return LEGACY_CURSOR_PREFIX + cursor.getStepName() + "@" + cursor.getSeq() + "@"
-                    + cursor.getTimestamp();
-        }
-        return sessionId + "@" + cursor.getSeq();
+    private static ProcessedMarker sessionMarker(StepCursor cursor) {
+        String legacyKey = cursor.getSessionId().isEmpty()
+                ? cursor.getStepName() + "@" + cursor.getTimestamp() : "";
+        return new ProcessedMarker(cursor.getTenantId(), cursor.getSessionId(), cursor.getAgentId(),
+                cursor.getSeq(), legacyKey);
+    }
+
+    private record ProcessedMarker(String tenantId, String sessionId, String agentId, long seq,
+                                   String legacyKey) {
     }
 
     /** Action taken for one leftover session. */
