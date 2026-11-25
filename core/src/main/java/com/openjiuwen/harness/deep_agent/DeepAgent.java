@@ -238,6 +238,7 @@ public class DeepAgent implements AutoCloseable {
     private LoopCoordinator loopCoordinator;
     private final Map<String, LoopCoordinator> sessionLoopCoordinators = new ConcurrentHashMap<>();
     private final Map<String, AgentSessionApi> activeInnerStreamingSessions = new ConcurrentHashMap<>();
+    private final Set<String> pendingInnerStreamCancellations = ConcurrentHashMap.newKeySet();
     private TaskLoopController loopController;
     private TaskManager taskManager;
     private TaskScheduler taskScheduler;
@@ -2543,6 +2544,7 @@ public class DeepAgent implements AutoCloseable {
         String sessionId = session.getSessionId();
         activeTaskLoopSessions.remove(sessionId);
         activeInnerStreamingSessions.remove(sessionId);
+        pendingInnerStreamCancellations.remove(sessionId);
         eventQueue.unsubscribe(card.getId(), sessionId);
         taskScheduler.getSessions().remove(sessionId);
         if (sessionId != null && !TaskLoopController.DEFAULT_SESSION_ID.equals(sessionId)) {
@@ -2701,6 +2703,14 @@ public class DeepAgent implements AutoCloseable {
                 return Map.of("status", "aborted", "task_id", taskId);
             }
         }
+        AgentSessionApi innerSession = activeInnerStreamingSessions.get(session.getSessionId());
+        if (innerSession != null) {
+            pendingInnerStreamCancellations.add(session.getSessionId());
+            ReActAgent.requestCancel(innerSession);
+            // Cancellation is cooperative. Wait for this round's terminal event so
+            // completed tools publish their results before the outer stream closes.
+            eventHandler.waitCompletion(null, session.getSessionId());
+        }
         return Map.of("error", "completion_timeout", "task_id", taskId);
     }
 
@@ -2829,7 +2839,8 @@ public class DeepAgent implements AutoCloseable {
 
     private void cancelInnerStreamIfAborted(AgentSessionApi innerSession) {
         LoopCoordinator coordinator = sessionLoopCoordinators.get(innerSession.getSessionId());
-        if (coordinator != null && coordinator.isAborted()) {
+        if (coordinator != null && coordinator.isAborted()
+                || pendingInnerStreamCancellations.remove(innerSession.getSessionId())) {
             ReActAgent.requestCancel(innerSession);
         }
     }

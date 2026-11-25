@@ -32,6 +32,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Phaser;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -218,6 +219,109 @@ class ReActAgentStreamCancelTest {
         assertThat(lastResultType)
                 .as("result_type after cancel (expected 'cancelled', got '%s')", lastResultType)
                 .isEqualTo("cancelled");
+    }
+
+    @Test
+    void requestCancelInterruptsRunningToolAndPublishesItsOutcome() throws Exception {
+        String toolName = "interruptible_tool_" + UUID.randomUUID();
+        CountDownLatch toolStarted = new CountDownLatch(1);
+        CountDownLatch toolRelease = new CountDownLatch(1);
+        AtomicBoolean toolInterrupted = new AtomicBoolean();
+        ToolCard card = ToolCard.builder()
+                .id(toolName)
+                .name(toolName)
+                .description(toolName)
+                .inputParams(Map.of("type", "object", "properties", Map.of(), "required", List.of()))
+                .build();
+        LocalFunction tool = new LocalFunction(card, (inputs, kwargs) -> {
+            toolStarted.countDown();
+            try {
+                toolRelease.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException exception) {
+                toolInterrupted.set(true);
+                Thread.currentThread().interrupt();
+            }
+            return "interrupted tool finished";
+        });
+        ReActAgent agent = newAgent("interrupt_cancel_" + UUID.randomUUID(), new CountingClient(toolName));
+        registerTool(agent, tool);
+        AgentSession session = AgentSession.createAgentSession(
+                "interrupt-cancel-" + UUID.randomUUID(), null, agent.getCard());
+        Map<String, Object> inputs = Map.of("query", "go", "conversation_id", session.getSessionId());
+        session.preRun(Map.of("inputs", inputs));
+        Iterator<Object> stream = agent.stream(inputs, session, List.of());
+        List<Object> chunks = new ArrayList<>();
+        try {
+            assertThat(readUntil(stream, "tool_call", chunks)).isTrue();
+            assertThat(toolStarted.await(10, TimeUnit.SECONDS)).isTrue();
+            ReActAgent.requestCancel(session);
+            stream.forEachRemaining(chunks::add);
+            List<OutputSchema> schemas = chunks.stream()
+                    .filter(OutputSchema.class::isInstance)
+                    .map(OutputSchema.class::cast)
+                    .toList();
+            assertThat(toolInterrupted).as("the running tool must receive cooperative interruption").isTrue();
+            assertThat(toolEventIds(schemas, "tool_output"))
+                    .containsExactlyInAnyOrderElementsOf(toolEventIds(schemas, "tool_call"));
+            assertThat(schemas).anySatisfy(schema -> {
+                if ("tool_output".equals(schema.getType()) && schema.getPayload() instanceof Map<?, ?> payload) {
+                    assertThat(payload.get("result")).isEqualTo("interrupted tool finished");
+                }
+            });
+        } finally {
+            toolRelease.countDown();
+            if (stream instanceof AutoCloseable closeable) {
+                closeable.close();
+            }
+        }
+    }
+
+    @Test
+    void normalStreamExhaustionDoesNotPublishCancelledResult() throws Exception {
+        ReActAgent agent = newAgent("normal_finish_" + UUID.randomUUID(), new Model.ModelClient() {
+            @Override
+            public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+                return CompletableFuture.completedFuture(textMessage("complete"));
+            }
+
+            @Override
+            public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+                return List.of(chunk("complete", List.of(), "stop")).iterator();
+            }
+        });
+        AgentSession session = newSession(agent, "normal-finish-" + UUID.randomUUID());
+        Iterator<Object> stream = agent.stream(Map.of("query", "go"), session, List.of());
+        try {
+            List<Object> chunks = drain(stream);
+            assertThat(resultType(chunks)).isEqualTo("answer");
+        } finally {
+            closeStream(stream);
+        }
+    }
+
+    private static boolean readUntil(Iterator<Object> stream, String type, List<Object> chunks) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            if (!stream.hasNext()) {
+                return false;
+            }
+            Object chunk = stream.next();
+            chunks.add(chunk);
+            if (chunk instanceof OutputSchema schema && type.equals(schema.getType())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<String> toolEventIds(List<OutputSchema> schemas, String type) {
+        return schemas.stream()
+                .filter(schema -> type.equals(schema.getType()))
+                .map(OutputSchema::getPayload)
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(payload -> String.valueOf(payload.get("tool_call_id")))
+                .toList();
     }
 
     /**
