@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -424,12 +423,9 @@ public final class CodingMemoryToolOps {
         if (ctx == null || memoryDir == null || memoryDir.isBlank() || ctx.getSysOperation() == null) {
             return Set.of();
         }
-        Optional<List<FileItemView>> files = listFiles(ctx.getSysOperation(), memoryDir);
-        if (files.isEmpty()) {
-            return Set.of();
-        }
+        List<FileItemView> files = listFiles(ctx.getSysOperation(), memoryDir);
         Set<String> names = new LinkedHashSet<>();
-        for (FileItemView file : files.get()) {
+        for (FileItemView file : files) {
             if (!file.directory()
                     && file.name().toLowerCase(Locale.ROOT).endsWith(".md")
                     && !MEMORY_INDEX_FILE.equalsIgnoreCase(file.name())) {
@@ -518,7 +514,7 @@ public final class CodingMemoryToolOps {
         };
     }
 
-    private static Optional<List<FileItemView>> listFiles(Object sysOperation, String directory) {
+    private static List<FileItemView> listFiles(Object sysOperation, String directory) {
         Object fs = invokeNoArg(sysOperation, "fs");
         String[] names = new String[]{"listFiles", "list_files"};
         Class<?>[] operationSignature = {
@@ -542,7 +538,7 @@ public final class CodingMemoryToolOps {
         }
         resolved = await(resolved);
         if (isMissingDirectory(resolved)) {
-            return Optional.empty();
+            return List.of();
         }
         ensureSuccess(resolved, "listFiles");
         Object data = property(resolved, "data");
@@ -551,13 +547,13 @@ public final class CodingMemoryToolOps {
             listItems = property(data, "list_items");
         }
         if (!(listItems instanceof Iterable<?> iterable)) {
-            return Optional.of(List.of());
+            return List.of();
         }
         List<FileItemView> files = new ArrayList<>();
         for (Object item : iterable) {
             files.add(new FileItemView(asString(property(item, "name")), asBoolean(property(item, "directory"))));
         }
-        return Optional.of(files);
+        return files;
     }
 
     private static boolean isMissingDirectory(Object result) {
