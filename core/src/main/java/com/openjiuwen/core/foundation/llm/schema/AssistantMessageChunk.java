@@ -21,7 +21,8 @@ import java.util.Map;
  * {@code openjiuwen/core/foundation/llm/schema/message_chunk.py}.
  *
  * <p>Tool-call fragment merging uses stable keys ({@code index > id > name > anon})
- * plus pure-arguments fallback, matching 730 / tolerant provider streaming.</p>
+ * plus pure-arguments fallback, matching 730 / tolerant provider streaming.
+ * Distinct explicit indexes identify separate calls, including when their IDs match.</p>
  */
 @Data
 @SuperBuilder
@@ -171,7 +172,7 @@ public class AssistantMessageChunk extends AssistantMessage {
                 // Late-arriving name on a single anonymous bucket entry.
                 if (hasOwnName(incoming) && bucket.size() == 1) {
                     ToolCall only = lastValue(bucket);
-                    if (!hasOwnName(only)) {
+                    if (!hasOwnName(only) && !hasConflictingIndexes(only, incoming)) {
                         appendFragment(only, incoming);
                         continue;
                     }
@@ -257,11 +258,17 @@ public class AssistantMessageChunk extends AssistantMessage {
             return null;
         }
         for (ToolCall existing : bucket.values()) {
-            if (incoming.getId().equals(existing.getId())) {
+            if (incoming.getId().equals(existing.getId()) && !hasConflictingIndexes(existing, incoming)) {
                 return existing;
             }
         }
         return null;
+    }
+
+    private static boolean hasConflictingIndexes(ToolCall existing, ToolCall incoming) {
+        Integer existingIndex = existing.getIndex();
+        Integer incomingIndex = incoming.getIndex();
+        return existingIndex != null && incomingIndex != null && !existingIndex.equals(incomingIndex);
     }
 
     private static ToolCall lastValue(Map<Object, ToolCall> bucket) {
