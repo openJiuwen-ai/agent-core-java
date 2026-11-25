@@ -38,12 +38,12 @@ class Issue196PerformanceTest {
             registerGlobalTool(agent, "tool_" + i);
         }
         agent.registerToolGroup(
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         "group_a",
                         "Group A",
                         List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
         agent.registerToolGroup(
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         "group_b",
                         "Group B",
                         List.of("tool_5", "tool_6", "tool_7", "tool_8", "tool_9")));
@@ -83,7 +83,7 @@ class Issue196PerformanceTest {
             registerGlobalTool(filteredAgent, "tool_" + i);
         }
         filteredAgent.registerToolGroup(
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         "focused",
                         "Focused tools",
                         List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));
@@ -113,7 +113,7 @@ class Issue196PerformanceTest {
             registerGlobalTool(filteredAgent, "tool_" + i);
         }
         filteredAgent.registerToolGroup(
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         "focused",
                         "Focused tools",
                         List.of("tool_0", "tool_1", "tool_2", "tool_3", "tool_4")));

@@ -68,7 +68,7 @@ class McpDelayedToolGroupTest {
                 McpServerConfig.builder().serverName("weather").serverId("mcp-weather").build());
         registerGlobalTool(agent, normalToolName);
         agent.registerToolGroup(
-                new ToolGroup(
+                ToolGroup.ofToolNames(
                         "delayed_tools",
                         "Delayed tools",
                         List.of(normalToolName, mcpToolName)));
@@ -102,7 +102,7 @@ class McpDelayedToolGroupTest {
         abilityManager.add(
                 McpServerConfig.builder().serverName("weather").serverId("mcp-weather").build());
         agent.registerToolGroup(
-                new ToolGroup("mcp_tools", "MCP tools", List.of(mcpToolName)));
+                ToolGroup.ofToolNames("mcp_tools", "MCP tools", List.of(mcpToolName)));
 
         MemorySession session = new MemorySession("delayed-mcp-execution-session");
         agent.activateToolGroup("mcp_tools", session);
@@ -137,7 +137,7 @@ class McpDelayedToolGroupTest {
         abilityManager.add(
                 McpServerConfig.builder().serverName("weather").serverId("mcp-weather").build());
         agent.registerToolGroup(
-                new ToolGroup("mcp_tools", "MCP tools", List.of(mcpToolName)));
+                ToolGroup.ofToolNames("mcp_tools", "MCP tools", List.of(mcpToolName)));
 
         MemorySession session = new MemorySession("deactivate-during-resolution-session");
         agent.activateToolGroup("mcp_tools", session);

@@ -13,6 +13,8 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberRef;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberType;
 import com.openjiuwen.core.operator.toolgroup.ToolAvailabilityChecker;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
 import com.openjiuwen.core.operator.toolgroup.ToolGroupManager;
@@ -231,12 +233,21 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private ToolAvailabilityChecker createDefaultToolAvailabilityChecker() {
         return (toolName, session) -> {
             List<String> activeGroupNames = new ArrayList<>(getActiveToolGroupNames(session));
-            for (String skillName : registeredActiveSkillNames(getActiveSkillNames(session))) {
+            List<String> effectiveSkillNames;
+            if (!toolGroupManager.hasExplicitToolGroups()) {
+                effectiveSkillNames = registeredActiveSkillNames(getActiveSkillNames(session));
+            } else {
+                effectiveSkillNames = resolveToolSkillNames(
+                        getActiveSkillNames(session), getActiveToolGroupNames(session));
+            }
+            for (String skillName : effectiveSkillNames) {
                 activeGroupNames.add("skill:" + skillName);
             }
             boolean isToolInRegisteredGroup =
                     toolGroupManager.getGroups().stream()
-                            .anyMatch(group -> group.toolNames().contains(toolName));
+                            .anyMatch(group -> group.members().stream()
+                                    .anyMatch(member -> member.type() == GroupMemberType.TOOL
+                                            && member.id().equals(toolName)));
             if (isToolInRegisteredGroup) {
                 return toolGroupManager.isToolEligibleForExecution(toolName, activeGroupNames);
             }
@@ -488,7 +499,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                 || binding.getSkillName().isBlank()) {
             return;
         }
-        List<String> toolNames = new ArrayList<>();
+        List<GroupMemberRef> members = new ArrayList<>();
         List<Tool> skillTools =
                 skillToolRegistry
                         .listToolsByActiveSkill(List.of(binding.getSkillName()))
@@ -498,10 +509,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                     && tool.getCard() != null
                     && tool.getCard().getName() != null
                     && !tool.getCard().getName().isBlank()) {
-                toolNames.add(tool.getCard().getName());
+                members.add(new GroupMemberRef(
+                        GroupMemberType.TOOL, tool.getCard().getName()));
             }
         }
-        if (toolNames.isEmpty()) {
+        if (members.isEmpty()) {
             return;
         }
         String implicitGroupName = "skill:" + binding.getSkillName();
@@ -510,7 +522,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                 new ToolGroup(
                         implicitGroupName,
                         "Implicit group for skill " + binding.getSkillName(),
-                        toolNames);
+                        members);
         toolGroupManager.registerSkillToolGroup(implicitGroup);
     }
 
@@ -857,6 +869,25 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     }
 
     /**
+     * Returns skill names that are effective for prompt rendering in this session.
+     *
+     * <p>When no explicit tool group is registered, all registered Skills are returned so the
+     * legacy prompt behavior remains unchanged. Otherwise, the result contains direct
+     * {@code active_skill_names}, SKILL members of active groups, and ungrouped Skills.
+     *
+     * @param session session whose state should be inspected
+     * @return immutable prompt-effective skill names
+     * @since 0.1.19
+     */
+    public List<String> getEffectiveSkillNames(AgentSessionApi session) {
+        if (!toolGroupManager.hasExplicitToolGroups()) {
+            return registeredSkillNames();
+        }
+        return resolveEffectiveSkillNames(
+                getActiveSkillNames(session), getActiveToolGroupNames(session));
+    }
+
+    /**
      * Registers an explicit tool group on this agent.
      *
      * @param group tool group to register
@@ -884,7 +915,7 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     public List<ToolInfo> listEffectiveToolInfo(AgentSessionApi session) {
         List<String> activeSkillNames = getActiveSkillNames(session);
-        if (toolGroupManager.getGroups().isEmpty()) {
+        if (!toolGroupManager.hasExplicitToolGroups()) {
             return listEffectiveToolInfo(activeSkillNames);
         }
         return listEffectiveToolInfoWithGroups(activeSkillNames, getActiveToolGroupNames(session));
@@ -998,10 +1029,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     private List<ToolInfo> listEffectiveToolInfoWithGroups(
             List<String> activeSkillNames, List<String> activeToolGroupNames) {
-        List<String> registeredSkillNames = registeredActiveSkillNames(activeSkillNames);
-        List<ToolInfo> merged = listEffectiveToolInfo(registeredSkillNames);
+        List<String> effectiveSkillNames =
+                resolveToolSkillNames(activeSkillNames, activeToolGroupNames);
+        List<ToolInfo> merged = listEffectiveToolInfo(effectiveSkillNames);
         List<String> allActiveGroupNames = new ArrayList<>(activeToolGroupNames);
-        for (String skillName : registeredSkillNames) {
+        for (String skillName : effectiveSkillNames) {
             allActiveGroupNames.add("skill:" + skillName);
         }
         List<String> visibleToolNames =
@@ -1017,6 +1049,34 @@ public abstract class BaseAgent implements AgentCallbackFirer {
                 visibleTools.size(),
                 activeToolGroupNames);
         return visibleTools;
+    }
+
+    private List<String> resolveEffectiveSkillNames(
+            List<String> activeSkillNames, List<String> activeToolGroupNames) {
+        Set<String> effectiveSkillNames = new LinkedHashSet<>(
+                resolveToolSkillNames(activeSkillNames, activeToolGroupNames));
+        effectiveSkillNames.addAll(
+                toolGroupManager.getUngroupedSkillNames(registeredSkillNames()));
+        return List.copyOf(effectiveSkillNames);
+    }
+
+    private List<String> resolveToolSkillNames(
+            List<String> activeSkillNames, List<String> activeToolGroupNames) {
+        Set<String> effectiveSkillNames = new LinkedHashSet<>();
+        effectiveSkillNames.addAll(registeredActiveSkillNames(activeSkillNames));
+        effectiveSkillNames.addAll(registeredActiveSkillNames(
+                List.copyOf(toolGroupManager.getActiveSkillNames(activeToolGroupNames))));
+        return List.copyOf(effectiveSkillNames);
+    }
+
+    private List<String> registeredSkillNames() {
+        if (skillUtil == null) {
+            return List.of();
+        }
+        return skillUtil.getSkillManager().getAll().stream()
+                .map(Skill::getName)
+                .filter(skillName -> skillName != null && !skillName.isBlank())
+                .toList();
     }
 
     private void validateEffectiveToolNames(List<String> activeSkillNames) {

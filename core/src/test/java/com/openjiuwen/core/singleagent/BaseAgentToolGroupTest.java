@@ -13,6 +13,8 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberRef;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberType;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -71,7 +73,7 @@ class BaseAgentToolGroupTest {
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
 
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
@@ -97,7 +99,7 @@ class BaseAgentToolGroupTest {
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
 
         session.updateState(
                 Map.of(BaseAgent.ACTIVE_TOOL_GROUP_NAMES_STATE_KEY, List.of("ghost", "research")));
@@ -127,7 +129,7 @@ class BaseAgentToolGroupTest {
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
-        agent.registerToolGroup(new ToolGroup("temporary", "Temporary tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("temporary", "Temporary tools", List.of("search")));
 
         agent.activateToolGroup("temporary", session);
         assertThat(agent.listEffectiveToolInfo(session))
@@ -155,8 +157,8 @@ class BaseAgentToolGroupTest {
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
-        agent.registerToolGroup(new ToolGroup("admin", "Admin tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("admin", "Admin tools", List.of("search")));
 
         agent.activateToolGroup("research", session);
         agent.unregisterToolGroup("research");
@@ -180,7 +182,7 @@ class BaseAgentToolGroupTest {
         TestAgent agent = new TestAgent();
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
 
         MemorySession activatedSession = new MemorySession("session-activated");
         agent.activateToolGroup("research", activatedSession);
@@ -228,7 +230,7 @@ class BaseAgentToolGroupTest {
                                 .build())
                 .toCompletableFuture()
                 .join();
-        agent.registerToolGroup(new ToolGroup("search_tools", "Search tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("search_tools", "Search tools", List.of("search")));
 
         MemorySession blockedSession = new MemorySession("session-blocked");
         MemorySession allowedSession = new MemorySession("session-allowed");
@@ -294,7 +296,7 @@ class BaseAgentToolGroupTest {
                 .toCompletableFuture()
                 .join();
         agent.registerToolGroup(
-                new ToolGroup("danger_tools", "Dangerous tools", List.of("delete_file")));
+                ToolGroup.ofToolNames("danger_tools", "Dangerous tools", List.of("delete_file")));
 
         MemorySession session = new MemorySession("session-a");
         agent.activateSkill("CleanupSkill", session);
@@ -315,6 +317,7 @@ class BaseAgentToolGroupTest {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("session-a");
         Tool envLookup = skillTool("envLookup");
+        registerGlobalTool(agent, "clock");
         registerSkill(agent, "EnvSkill");
         agent.registerSkillTools(
                         SkillToolBinding.builder()
@@ -329,6 +332,114 @@ class BaseAgentToolGroupTest {
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
                 .contains("envLookup", "skill_tool");
+    }
+
+    @Test
+    @Tag("TC-TG-04")
+    void activeGroupSkillMember_exposesAndExecutesBoundTools() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("session-a");
+        registerGlobalTool(agent, "clock");
+        Tool envLookup = skillTool("envLookup");
+        registerSkill(agent, "EnvSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("EnvSkill")
+                                .tools(List.of(envLookup))
+                                .build())
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "environment",
+                        "Environment tools",
+                        List.of(
+                                new GroupMemberRef(GroupMemberType.TOOL, "clock"),
+                                new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .doesNotContain("envLookup");
+
+        agent.activateToolGroup("environment", session);
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .contains("envLookup", "clock", "skill_tool");
+        ToolCall activeCall =
+                ToolCall.builder().id("call-1").name("envLookup").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> activeResults =
+                agent.getAbilityManager().execute(null, activeCall, session, false);
+        assertThat(activeResults.get(0).toolMessage().getContentAsString())
+                .doesNotContain("not active");
+    }
+
+    @Test
+    @Tag("TC-TG-04")
+    @Tag("TC-SEC-01")
+    void inactiveGroupSkillMember_staysHiddenWhileUngroupedSkillRemainsVisible() {
+        TestAgent agent = new TestAgent();
+        Tool envLookup = skillTool("envLookup");
+        Tool cleanup = skillTool("cleanup");
+        registerSkill(agent, "EnvSkill");
+        registerSkill(agent, "CleanupSkill");
+        agent.registerSkillTools(List.of(
+                        SkillToolBinding.builder()
+                                .skillName("EnvSkill")
+                                .tools(List.of(envLookup))
+                                .build(),
+                        SkillToolBinding.builder()
+                                .skillName("CleanupSkill")
+                                .tools(List.of(cleanup))
+                                .build()))
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "environment",
+                        "Environment tools",
+                        List.of(new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+        MemorySession session = new MemorySession("session-a");
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .contains("skill_tool")
+                .doesNotContain("cleanup", "envLookup");
+        ToolCall hiddenCall =
+                ToolCall.builder().id("call-hidden").name("envLookup").arguments("{}").build();
+        List<AbilityManager.ExecutionResult> hiddenResults =
+                agent.getAbilityManager().execute(null, hiddenCall, session, false);
+        assertThat(hiddenResults.get(0).result()).isNull();
+        assertThat(hiddenResults.get(0).toolMessage().getContentAsString())
+                .contains("envLookup")
+                .contains("not active");
+    }
+
+    @Test
+    @Tag("TC-LNK-01")
+    void activeSkillAndActiveGroupSkillMember_deduplicateEffectiveSkills() {
+        TestAgent agent = new TestAgent();
+        Tool envLookup = skillTool("envLookup");
+        registerSkill(agent, "EnvSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("EnvSkill")
+                                .tools(List.of(envLookup))
+                                .build())
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "environment",
+                        "Environment tools",
+                        List.of(new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+        MemorySession session = new MemorySession("session-a");
+        agent.activateSkill("EnvSkill", session);
+        agent.activateToolGroup("environment", session);
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .containsOnlyOnce("envLookup");
     }
 
     @Test
@@ -367,6 +478,46 @@ class BaseAgentToolGroupTest {
     }
 
     @Test
+    @Tag("TC-LNK-01")
+    @Tag("TC-LNK-05")
+    void deactivatedSkillTool_remainsHiddenWithExplicitGroupRegistered() {
+        TestAgent agent = new TestAgent();
+        MemorySession session = new MemorySession("session-a");
+        Tool envLookup = skillTool("envLookup");
+        registerSkill(agent, "EnvSkill");
+        agent.registerSkillTools(
+                        SkillToolBinding.builder()
+                                .skillName("EnvSkill")
+                                .tools(List.of(envLookup))
+                                .build())
+                .toCompletableFuture()
+                .join();
+        agent.registerToolGroup(
+                new ToolGroup(
+                        "environment",
+                        "Environment tools",
+                        List.of(new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+
+        agent.activateSkill("EnvSkill", session);
+        agent.deactivateSkill("EnvSkill", session);
+
+        assertThat(agent.listEffectiveToolInfo(session))
+                .extracting(ToolInfo::getName)
+                .contains("skill_tool")
+                .doesNotContain("envLookup");
+        ToolCall deactivatedCall =
+                ToolCall.builder().id("call-deactivated").name("envLookup")
+                        .arguments("{}").build();
+        List<AbilityManager.ExecutionResult> deactivatedResults =
+                agent.getAbilityManager().execute(null, deactivatedCall, session, false);
+        assertThat(deactivatedResults.get(0).result()).isNull();
+        assertThat(deactivatedResults.get(0).toolMessage()).isNotNull();
+        assertThat(deactivatedResults.get(0).toolMessage().getContentAsString())
+                .contains("envLookup")
+                .contains("not active");
+    }
+
+    @Test
     @Tag("TC-LNK-02")
     void skillToolRegistryListToolsByActiveSkill_preservesSemantics() {
         TestAgent agent = new TestAgent();
@@ -401,8 +552,8 @@ class BaseAgentToolGroupTest {
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
         registerGlobalTool(agent, "chart");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
-        agent.registerToolGroup(new ToolGroup("analysis", "Analysis tools", List.of("chart")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("analysis", "Analysis tools", List.of("chart")));
         AtomicInteger verificationFailures = new AtomicInteger();
 
         SessionConcurrencyHarness.runInParallel(
@@ -444,8 +595,8 @@ class BaseAgentToolGroupTest {
         registerGlobalTool(agent, "search");
         registerGlobalTool(agent, "chart");
         registerGlobalTool(agent, "browser");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
-        agent.registerToolGroup(new ToolGroup("analysis", "Analysis tools", List.of("chart")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("analysis", "Analysis tools", List.of("chart")));
         agent.activateToolGroup("research", session);
         agent.activateToolGroup("analysis", session);
 
@@ -470,7 +621,7 @@ class BaseAgentToolGroupTest {
         abilityManager.add(
                 McpServerConfig.builder().serverName("weather").serverId("mcp-weather").build());
         agent.registerToolGroup(
-                new ToolGroup("mcp_tools", "MCP tools", List.of("mcp_weather_forecast")));
+                ToolGroup.ofToolNames("mcp_tools", "MCP tools", List.of("mcp_weather_forecast")));
 
         List<String> inactiveNames =
                 agent.listEffectiveToolInfo(session).stream().map(ToolInfo::getName).toList();
@@ -507,8 +658,8 @@ class BaseAgentToolGroupTest {
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "search");
         registerGlobalTool(agent, "chart");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
-        agent.registerToolGroup(new ToolGroup("analysis", "Analysis tools", List.of("chart")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("analysis", "Analysis tools", List.of("chart")));
         agent.activateToolGroup("research", session);
 
         List<String> effectiveNames =
@@ -526,7 +677,7 @@ class BaseAgentToolGroupTest {
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "delete_file");
         agent.registerToolGroup(
-                new ToolGroup("danger_tools", "Dangerous tools", List.of("delete_file")));
+                ToolGroup.ofToolNames("danger_tools", "Dangerous tools", List.of("delete_file")));
 
         ToolCall toolCall =
                 ToolCall.builder()
@@ -549,7 +700,7 @@ class BaseAgentToolGroupTest {
         TestAgent agent = new TestAgent();
         MemorySession session = new MemorySession("session-a");
         registerGlobalTool(agent, "search");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
+        agent.registerToolGroup(ToolGroup.ofToolNames("research", "Research tools", List.of("search")));
         agent.activateToolGroup("research", session);
 
         ToolCall toolCall =
@@ -572,7 +723,7 @@ class BaseAgentToolGroupTest {
         registerGlobalTool(agent, "clock");
         registerGlobalTool(agent, "delete_file");
         agent.registerToolGroup(
-                new ToolGroup("danger_tools", "Dangerous tools", List.of("delete_file")));
+                ToolGroup.ofToolNames("danger_tools", "Dangerous tools", List.of("delete_file")));
 
         ToolCall clockCall =
                 ToolCall.builder().id("call-clock").name("clock").arguments("{}").build();
@@ -603,7 +754,7 @@ class BaseAgentToolGroupTest {
         TestAgent agent = new TestAgent();
         registerExternalTool(agent, "external_input");
         agent.registerToolGroup(
-                new ToolGroup("external_tools", "External tools", List.of("external_input")));
+                ToolGroup.ofToolNames("external_tools", "External tools", List.of("external_input")));
 
         ToolCall toolCall =
                 ToolCall.builder()

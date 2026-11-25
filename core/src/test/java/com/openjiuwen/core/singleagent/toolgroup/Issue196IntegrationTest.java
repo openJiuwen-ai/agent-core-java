@@ -12,6 +12,8 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberRef;
+import com.openjiuwen.core.operator.toolgroup.GroupMemberType;
 import com.openjiuwen.core.operator.toolgroup.ToolGroup;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -63,10 +65,23 @@ class Issue196IntegrationTest {
         registerGlobalTool(agent, "search");
         registerGlobalTool(agent, "chart");
         registerGlobalTool(agent, "delete_file");
-        agent.registerToolGroup(new ToolGroup("research", "Research tools", List.of("search")));
-        agent.registerToolGroup(new ToolGroup("analysis", "Analysis tools", List.of("chart")));
+        agent.registerToolGroup(new ToolGroup(
+                "env_tools",
+                "Environment skill",
+                List.of(new GroupMemberRef(GroupMemberType.SKILL, "EnvSkill"))));
+        agent.registerToolGroup(new ToolGroup(
+                "research",
+                "Research tools",
+                List.of(new GroupMemberRef(GroupMemberType.TOOL, "search"))));
+        agent.registerToolGroup(new ToolGroup(
+                "analysis",
+                "Analysis tools",
+                List.of(new GroupMemberRef(GroupMemberType.TOOL, "chart"))));
         agent.registerToolGroup(
-                new ToolGroup("danger_tools", "Dangerous tools", List.of("delete_file")));
+                new ToolGroup(
+                        "danger_tools",
+                        "Dangerous tools",
+                        List.of(new GroupMemberRef(GroupMemberType.TOOL, "delete_file"))));
 
         Tool skillTool = skillTool("envLookup");
         agent.registerSkillTools(
@@ -81,6 +96,7 @@ class Issue196IntegrationTest {
         assertInitialToolInfo(agent, session);
 
         agent.activateToolGroup("research", session);
+        agent.activateToolGroup("env_tools", session);
         session.updateState(Map.of(BaseAgent.ACTIVE_SKILL_NAMES_STATE_KEY, List.of("EnvSkill")));
 
         assertActiveToolInfo(agent, session);
@@ -94,6 +110,7 @@ class Issue196IntegrationTest {
         assertInactiveToolRejected(agent, session, "c2", "delete_file");
 
         session.updateState(Map.of(BaseAgent.ACTIVE_SKILL_NAMES_STATE_KEY, List.of()));
+        agent.deactivateToolGroup("env_tools", session);
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
                 .doesNotContain("envLookup");
@@ -170,7 +187,11 @@ class Issue196IntegrationTest {
         abilityManager.add(
                 McpServerConfig.builder().serverName("weather").serverId("mcp-weather").build());
         agent.registerToolGroup(
-                new ToolGroup("mcp_tools", "MCP tools", List.of("mcp_weather_forecast")));
+                new ToolGroup(
+                        "mcp_tools",
+                        "MCP tools",
+                        List.of(new GroupMemberRef(
+                                GroupMemberType.TOOL, "mcp_weather_forecast"))));
 
         assertThat(agent.listEffectiveToolInfo(session))
                 .extracting(ToolInfo::getName)
