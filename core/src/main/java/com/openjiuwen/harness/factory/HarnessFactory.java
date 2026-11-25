@@ -79,6 +79,7 @@ public final class HarnessFactory {
         ensureCardIdentity(effectiveCard);
         String ownerToken = newOwnerToken(effectiveCard);
         AtomicReference<DeepAgentConfig> enrichedConfig = new AtomicReference<>();
+        AtomicReference<DeepAgent> candidate = new AtomicReference<>();
         IsolatedActions.IsolatedOutcome<DeepAgent> outcome = IsolatedActions.callIsolated(() -> {
             DeepAgentConfig effectiveConfig = enrichConfig(effectiveCard, config, workspace, ownerToken);
             enrichedConfig.set(effectiveConfig);
@@ -89,20 +90,25 @@ public final class HarnessFactory {
             Workspace effectiveWorkspace = resolveWorkspace(effectiveConfig, workspace);
             registerToolInstances(effectiveConfig.getTools(), ownerToken);
             DeepAgent agent = new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace, ownerToken);
+            candidate.set(agent);
             injectKvStore(agent, effectiveConfig);
             // Register tools/rails eagerly so getTools()/getRails() work before first invoke.
             agent.ensureInitialized();
             return agent;
         });
         if (outcome.hasFailure()) {
-            // The creation claimed global entries under ownerToken (the
-            // default sys_operation, the configured tool instances); a
-            // creation that ends without delivering the agent must release
-            // those claims or they stay pinned in the ownership registry
-            // forever. Releasing a never-made claim is a no-op, so this
-            // covers a failure at any step.
-            releaseOwnershipClaims(effectiveCard, enrichedConfig.get(), ownerToken);
             Throwable failure = outcome.failure();
+            DeepAgent failedAgent = candidate.get();
+            if (failedAgent != null) {
+                // The candidate tracks tools dynamically registered during Rail initialization.
+                IsolatedActions.runIsolated(failedAgent::close).ifPresent(cleanup -> {
+                    if (cleanup != failure) {
+                        failure.addSuppressed(cleanup);
+                    }
+                });
+            }
+            // Configured tools and sys_operation can be claimed before a candidate exists.
+            releaseOwnershipClaims(effectiveCard, enrichedConfig.get(), ownerToken);
             if (failure instanceof Error error) {
                 throw error;
             }
