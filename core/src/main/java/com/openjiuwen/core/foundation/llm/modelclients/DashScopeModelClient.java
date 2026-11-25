@@ -605,7 +605,13 @@ public class DashScopeModelClient extends BaseModelClient {
     }
 
     static HttpClient createDashScopeHttpClient(ModelClientConfig clientConfig) {
+        // Media calls follow the same transport policy as the chat path
+        // (OpenAIModelClient.createHttpClient): TLS material and proxy resolution are
+        // applied instead of silently ignored. withExplicitPortProxy keeps parity with
+        // chat: a proxy URL without an explicit port is not applied on either path.
         return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
+                .withSsl()
+                .withExplicitPortProxy()
                 .build();
     }
 
