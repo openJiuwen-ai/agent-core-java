@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.llm.modelclients;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ModelError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -17,18 +18,24 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.sun.net.httpserver.HttpServer;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.ProxySelector;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -39,6 +46,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -55,6 +63,11 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
  */
 @Isolated
 class DashScopeModelClientTest {
+    // SslUtils resolves configuration from the system property first and the environment
+    // second, so publishing the allowed certificate directory through a property needs no
+    // reflection into the security helper.
+    private static final String SAFE_CERT_DIR_PROPERTY = "SAFE_CERT_DIR";
+
     @Test
     void generateImageBuildsDashScopeMessageAndExtractsImages() throws Exception {
         CapturingTransport transport = new CapturingTransport(Map.of(
@@ -269,6 +282,158 @@ class DashScopeModelClientTest {
 
         assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_1_1);
         assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(5));
+    }
+
+    @AfterEach
+    void restoreEnvReaders() throws Exception {
+        // The media HTTP client now reads proxy and TLS configuration, so every case that
+        // installs a test env reader or overrides a configuration property must hand the
+        // defaults back to avoid leaking state into the remaining cases of this class.
+        resetEnvReader(UrlUtils.class);
+        System.clearProperty(SAFE_CERT_DIR_PROPERTY);
+        ModelHttpClients.clearSharedClientsForTesting();
+    }
+
+    @Test
+    void mediaHttpClientAppliesStrictSslContextByDefault() throws Exception {
+        // Given proxy resolution disabled so ambient proxy env cannot vary the shared key
+        setEnvReader(UrlUtils.class, name -> null);
+        ModelHttpClients.clearSharedClientsForTesting();
+
+        // When the media HTTP client is built with the default verifySsl=true
+        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(mediaClientConfig(true, null));
+
+        // Then TLS material is applied instead of the JDK default context, and both TLS 1.3
+        // and TLS 1.2 stay negotiable (TLS 1.2 is the floor for TLSv1.2-only gateways)
+        assertThat(client.sslContext()).isNotSameAs(SSLContext.getDefault());
+        assertThat(List.of(client.sslParameters().getProtocols()))
+                .contains("TLSv1.3", "TLSv1.2");
+    }
+
+    @Test
+    void mediaHttpClientDisablesEndpointIdentificationWhenVerifySslIsOff() throws Exception {
+        // Given proxy resolution disabled so ambient proxy env cannot vary the shared key
+        setEnvReader(UrlUtils.class, name -> null);
+        ModelHttpClients.clearSharedClientsForTesting();
+
+        // When verifySsl is off
+        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(mediaClientConfig(false, null));
+
+        // Then endpoint identification is disabled exactly like the chat path
+        assertThat(client.sslParameters().getEndpointIdentificationAlgorithm()).isEmpty();
+    }
+
+    @Test
+    void mediaHttpClientInsecureSslContextKeepsTls13AndTls12() throws Exception {
+        // Given proxy resolution disabled so ambient proxy env cannot vary the shared key
+        setEnvReader(UrlUtils.class, name -> null);
+        ModelHttpClients.clearSharedClientsForTesting();
+
+        // When verifySsl is off
+        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(mediaClientConfig(false, null));
+
+        // Then the trust-all context is applied instead of the JDK default one
+        assertThat(client.sslContext()).isNotSameAs(SSLContext.getDefault());
+        // And it stays protocol-version agnostic: the handshake must keep TLS 1.3 negotiable
+        // while TLS 1.2 remains the compatibility floor. Pinning "TLSv1.2" (the pre-fix
+        // behaviour) made every TLS-1.3-only gateway unreachable. The insecure branch sets
+        // SSLParameters only for endpoint identification, so the effective protocol set comes
+        // from the context defaults unless the client pins its own array.
+        String[] clientPinnedProtocols = client.sslParameters().getProtocols();
+        List<String> protocols = List.of(clientPinnedProtocols != null
+                ? clientPinnedProtocols
+                : client.sslContext().getDefaultSSLParameters().getProtocols());
+
+        // Exact element comparison: "TLSv1" must not be satisfied by "TLSv1.2"/"TLSv1.3"
+        assertThat(protocols).contains("TLSv1.3", "TLSv1.2");
+        assertThat(protocols).doesNotContain("TLSv1", "TLSv1.1");
+    }
+
+    @Test
+    void mediaHttpClientUsesGlobalProxyWithExplicitPort() {
+        // Given a global HTTPS proxy carrying an explicit port, when the media HTTP client is
+        // built, then it routes through that proxy exactly like the chat path
+        HttpClient client = mediaClientWithProxy("http://proxy.example.test:3128");
+
+        assertThat(client.proxy()).isPresent();
+        List<Proxy> proxies = client.proxy()
+                .orElseThrow()
+                .select(URI.create("https://dashscope.example.test"));
+        assertThat(proxies).isNotEmpty();
+        InetSocketAddress address = (InetSocketAddress) proxies.get(0).address();
+        assertThat(address.getHostString()).isEqualTo("proxy.example.test");
+        assertThat(address.getPort()).isEqualTo(3128);
+    }
+
+    @Test
+    void mediaHttpClientIgnoresProxyUrlWithoutExplicitPort() {
+        // Given a global HTTPS proxy without an explicit port, when the media HTTP client is
+        // built, then the portless proxy is ignored: withExplicitPortProxy keeps parity with the
+        // chat path instead of guessing a default port on one path only
+        HttpClient client = mediaClientWithProxy("http://proxy.example.test");
+
+        assertThat(client.proxy()).isEmpty();
+    }
+
+    @Test
+    void mediaHttpClientSurfacesAnUnusableConfiguredCertificate() throws Exception {
+        // Given a certificate file inside the allowed directory whose content is not a
+        // certificate, and the allowed directory published through the configuration property
+        Path certDir = Files.createTempDirectory("dashscope-cert-dir");
+        Path unusableCert = certDir.resolve("unusable-cert");
+        Files.writeString(unusableCert, "not a certificate");
+        System.setProperty(SAFE_CERT_DIR_PROPERTY, certDir.toString());
+        setEnvReader(UrlUtils.class, name -> null);
+        ModelHttpClients.clearSharedClientsForTesting();
+        try {
+            // When the media HTTP client is built with that certificate configured, then the
+            // configured path is really honoured - it reaches the trust material loading instead
+            // of being silently dropped - and the failure keeps its documented status
+            assertThatThrownBy(() -> DashScopeModelClient.createDashScopeHttpClient(
+                    mediaClientConfig(true, unusableCert.toString())))
+                    .isInstanceOf(BaseError.class)
+                    .satisfies(error -> assertThat(((BaseError) error).getStatus())
+                            .isEqualTo(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED));
+        } finally {
+            Files.deleteIfExists(unusableCert);
+            Files.deleteIfExists(certDir);
+        }
+    }
+
+    private static HttpClient mediaClientWithProxy(String proxyUrl) {
+        // Shared shape of the proxy cases: publish the proxy through the env reader, keep the
+        // shared-client cache empty so the assertion sees a freshly built client.
+        try {
+            setEnvReader(UrlUtils.class,
+                    name -> "https_proxy".equals(name) ? proxyUrl : null);
+        } catch (Exception error) {
+            throw new IllegalStateException("cannot install the proxy env reader", error);
+        }
+        ModelHttpClients.clearSharedClientsForTesting();
+        return DashScopeModelClient.createDashScopeHttpClient(mediaClientConfig(true, null));
+    }
+
+    private static ModelClientConfig mediaClientConfig(boolean verifySsl, String sslCert) {
+        return ModelClientConfig.builder()
+                .clientProvider(ProviderType.DASH_SCOPE)
+                .apiKey("sk-test")
+                .apiBase("https://dashscope.example.test")
+                .verifySsl(verifySsl)
+                .sslCert(sslCert)
+                .connectTimeoutSeconds(5.0D)
+                .build();
+    }
+
+    private static void setEnvReader(Class<?> type, Function<String, String> reader) throws Exception {
+        Method method = type.getDeclaredMethod("setEnvReaderForTests", Function.class);
+        method.setAccessible(true);
+        method.invoke(null, reader);
+    }
+
+    private static void resetEnvReader(Class<?> type) throws Exception {
+        Method method = type.getDeclaredMethod("resetEnvReaderForTests");
+        method.setAccessible(true);
+        method.invoke(null);
     }
 
     @Test

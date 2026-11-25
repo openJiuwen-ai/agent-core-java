@@ -35,6 +35,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -543,6 +546,40 @@ class ModelHttpClientsTest {
             assertThat(verifyOn).isNotSameAs(noTlsConfig);
             assertThat(verifyOff).isNotSameAs(verifyOn);
             assertThat(verifyOff).isNotSameAs(noTlsConfig);
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
+    void httpsClientMirrorsJdkDefaultClientTlsParameters() throws Exception {
+        ModelHttpClients.clearSharedClientsForTesting();
+        try {
+            SSLParameters jdkDefaults = SSLContext.getDefault().getDefaultSSLParameters();
+            Set<String> jdkDefaultProtocols = Set.of(jdkDefaults.getProtocols());
+
+            for (boolean verifySsl : new boolean[] {true, false}) {
+                // When an https client is built for either verification mode
+                HttpClient client = ModelHttpClients
+                        .builder(sslClientConfig(verifySsl), "https://api.example.test/v1")
+                        .withSsl()
+                        .build();
+
+                // Then its negotiated parameters mirror the JDK default client context instead of
+                // the narrower defaults of the configured SSLContext
+                List<String> protocols = parametersOrEmpty(client.sslParameters().getProtocols());
+                List<String> cipherSuites = parametersOrEmpty(client.sslParameters().getCipherSuites());
+                assertThat(protocols).containsExactlyInAnyOrder(jdkDefaults.getProtocols());
+                assertThat(cipherSuites).containsExactlyInAnyOrder(jdkDefaults.getCipherSuites());
+                // Nothing outside that set may stay enabled, so legacy protocol versions do not
+                // creep back in
+                assertThat(protocols).allMatch(jdkDefaultProtocols::contains);
+
+                // And the verification switch keeps its meaning in both branches: the parameters
+                // are replaced wholesale, so hostname verification must be spelled out explicitly
+                assertThat(client.sslParameters().getEndpointIdentificationAlgorithm())
+                        .isEqualTo(verifySsl ? "HTTPS" : "");
+            }
         } finally {
             ModelHttpClients.clearSharedClientsForTesting();
         }
@@ -1091,6 +1128,12 @@ class ModelHttpClientsTest {
                     thread.setUncaughtExceptionHandler((poolThread, error) -> TEST_THREAD_FAILURES.add(error));
                     return thread;
                 });
+    }
+
+    // Unset SSLParameters report null arrays rather than empty ones, so the assertions below can
+    // fail with a readable "expected to contain" message instead of a NullPointerException.
+    private static List<String> parametersOrEmpty(String[] values) {
+        return values == null ? List.of() : List.of(values);
     }
 
     private static ModelClientConfig clientConfig(ModelHttpVersion httpVersion, Double connectTimeoutSeconds) {
