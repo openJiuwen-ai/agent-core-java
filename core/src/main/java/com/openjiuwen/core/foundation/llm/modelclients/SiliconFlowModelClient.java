@@ -412,10 +412,11 @@ public class SiliconFlowModelClient extends BaseModelClient {
      */
     private static String sseDataPayload(String line) {
         String stripped = line.strip();
-        if (stripped.startsWith("data:")) {
-            return stripped.substring("data:".length()).strip();
+        if (!stripped.startsWith("data:")) {
+            return stripped;
         }
-        return stripped;
+        // The space after the colon is optional in SSE framing.
+        return stripped.substring("data:".length()).strip();
     }
 
     /**
