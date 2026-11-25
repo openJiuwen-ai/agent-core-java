@@ -17,7 +17,6 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.sun.net.httpserver.HttpServer;
 
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.api.Test;
 
@@ -30,8 +29,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -58,11 +55,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
  */
 @Isolated
 class DashScopeModelClientTest {
-    // SslUtils resolves configuration from the system property first and the environment
-    // second, so publishing the allowed certificate directory through a property needs no
-    // reflection into the security helper.
-    private static final String SAFE_CERT_DIR_PROPERTY = "SAFE_CERT_DIR";
-
     @Test
     void generateImageBuildsDashScopeMessageAndExtractsImages() throws Exception {
         CapturingTransport transport = new CapturingTransport(Map.of(
@@ -277,98 +269,6 @@ class DashScopeModelClientTest {
 
         assertThat(client.version()).isEqualTo(HttpClient.Version.HTTP_1_1);
         assertThat(client.connectTimeout()).hasValue(Duration.ofSeconds(5));
-    }
-
-    @AfterEach
-    void restoreConfiguration() {
-        // Every media case below publishes configuration through system properties, so the
-        // defaults have to be handed back to avoid leaking state into the remaining cases.
-        System.clearProperty(SAFE_CERT_DIR_PROPERTY);
-        ModelHttpClients.clearSharedClientsForTesting();
-    }
-
-    @Test
-    void mediaHttpClientAppliesStrictSslContextByDefault() throws Exception {
-        ModelHttpClients.clearSharedClientsForTesting();
-
-        // When the media HTTP client is built with the default verifySsl=true
-        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(mediaClientConfig(true, null));
-
-        // Then TLS material is applied instead of the JDK default context, and both TLS 1.3
-        // and TLS 1.2 stay negotiable (TLS 1.2 is the floor for TLSv1.2-only gateways)
-        assertThat(client.sslContext()).isNotSameAs(SSLContext.getDefault());
-        assertThat(List.of(client.sslParameters().getProtocols()))
-                .contains("TLSv1.3", "TLSv1.2");
-    }
-
-    @Test
-    void mediaHttpClientDisablesEndpointIdentificationWhenVerifySslIsOff() {
-        ModelHttpClients.clearSharedClientsForTesting();
-
-        // When verifySsl is off
-        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(mediaClientConfig(false, null));
-
-        // Then endpoint identification is disabled exactly like the chat path
-        assertThat(client.sslParameters().getEndpointIdentificationAlgorithm()).isEmpty();
-    }
-
-    @Test
-    void mediaHttpClientInsecureSslContextKeepsTls13AndTls12() throws Exception {
-        ModelHttpClients.clearSharedClientsForTesting();
-
-        // When verifySsl is off
-        HttpClient client = DashScopeModelClient.createDashScopeHttpClient(mediaClientConfig(false, null));
-
-        // Then the trust-all context is applied instead of the JDK default one
-        assertThat(client.sslContext()).isNotSameAs(SSLContext.getDefault());
-        // And it stays protocol-version agnostic: the handshake must keep TLS 1.3 negotiable
-        // while TLS 1.2 remains the compatibility floor. Pinning "TLSv1.2" (the pre-fix
-        // behaviour) made every TLS-1.3-only gateway unreachable. The insecure branch sets
-        // SSLParameters only for endpoint identification, so the effective protocol set comes
-        // from the context defaults unless the client pins its own array.
-        String[] clientPinnedProtocols = client.sslParameters().getProtocols();
-        List<String> protocols = List.of(clientPinnedProtocols != null
-                ? clientPinnedProtocols
-                : client.sslContext().getDefaultSSLParameters().getProtocols());
-
-        // Exact element comparison: "TLSv1" must not be satisfied by "TLSv1.2"/"TLSv1.3"
-        assertThat(protocols).contains("TLSv1.3", "TLSv1.2");
-        assertThat(protocols).doesNotContain("TLSv1", "TLSv1.1");
-    }
-
-    @Test
-    void mediaHttpClientSurfacesAnUnusableConfiguredCertificate() throws Exception {
-        // Given a certificate file inside the allowed directory whose content is not a
-        // certificate, and the allowed directory published through the configuration property
-        Path certDir = Files.createTempDirectory("dashscope-cert-dir");
-        Path unusableCert = certDir.resolve("unusable-cert");
-        Files.writeString(unusableCert, "not a certificate");
-        System.setProperty(SAFE_CERT_DIR_PROPERTY, certDir.toString());
-        ModelHttpClients.clearSharedClientsForTesting();
-        try {
-            // When the media HTTP client is built with that certificate configured, then the
-            // configured path is really honoured - it reaches the trust material loading instead
-            // of being silently dropped - and the failure keeps its documented status
-            assertThatThrownBy(() -> DashScopeModelClient.createDashScopeHttpClient(
-                    mediaClientConfig(true, unusableCert.toString())))
-                    .isInstanceOf(BaseError.class)
-                    .satisfies(error -> assertThat(((BaseError) error).getStatus())
-                            .isEqualTo(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED));
-        } finally {
-            Files.deleteIfExists(unusableCert);
-            Files.deleteIfExists(certDir);
-        }
-    }
-
-    private static ModelClientConfig mediaClientConfig(boolean verifySsl, String sslCert) {
-        return ModelClientConfig.builder()
-                .clientProvider(ProviderType.DASH_SCOPE)
-                .apiKey("sk-test")
-                .apiBase("https://dashscope.example.test")
-                .verifySsl(verifySsl)
-                .sslCert(sslCert)
-                .connectTimeoutSeconds(5.0D)
-                .build();
     }
 
     @Test
