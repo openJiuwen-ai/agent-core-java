@@ -94,20 +94,17 @@ public final class CodingMemoryToolOps {
                             "error", "Read failed, no available sys_operation."
                     );
                 }
-                int[] lineRange = lineRange(offset, limit);
-                String data = readFile(sysOperation, validation.value(), lineRange);
+                String data = MemoryToolOps.readFile(sysOperation, validation.value());
                 String[] rows = data.split("\\n", -1);
-                int total = rows.length;
-                int fromIdx = offset == null ? 0 : Math.max(0, offset - 1);
-                int toIdx = limit == null ? total : Math.min(fromIdx + limit, total);
+                MemoryToolOps.ViewResult view = MemoryToolOps.viewLines(rows, offset, limit);
                 return mapOf(
                         "success", true,
                         "path", validation.value(),
-                        "content", String.join("\n", List.of(rows).subList(fromIdx, toIdx)),
-                        "totalLines", total,
-                        "start_line", fromIdx + 1,
-                        "end_line", toIdx,
-                        "truncated", limit != null && toIdx < total
+                        "content", view.text(),
+                        "totalLines", view.total(),
+                        "start_line", view.startLine(),
+                        "end_line", view.endLine(),
+                        "truncated", view.isTruncated()
                 );
             } catch (Exception ex) {
                 Loggers.MEMORY.error("Read failed: {}", rootMessage(ex), ex);
@@ -156,7 +153,7 @@ public final class CodingMemoryToolOps {
                 String newContent;
                 lock.lock();
                 try {
-                    String current = readFile(sysOperation, validation.value(), null);
+                    String current = MemoryToolOps.readFile(sysOperation, validation.value());
                     int occurrences = countOccurrences(current, oldText);
                     if (occurrences == 0) {
                         return mapOf("success", false, "error", "old_text not found in file");
@@ -394,7 +391,7 @@ public final class CodingMemoryToolOps {
                     + frontmatter.get("description");
             List<String> lines = new ArrayList<>();
             try {
-                String content = readFile(sysOperation, indexPath, null);
+                String content = MemoryToolOps.readFile(sysOperation, indexPath);
                 if (!content.isEmpty()) {
                     lines.addAll(List.of(content.split("\\n", -1)));
                 }
@@ -453,24 +450,12 @@ public final class CodingMemoryToolOps {
 
     private static String readFileSafe(CodingMemoryToolContext ctx, String filePath) {
         try {
-            return ctx == null || ctx.getSysOperation() == null ? "" : readFile(ctx.getSysOperation(), filePath, null);
+            return ctx == null || ctx.getSysOperation() == null
+                    ? ""
+                    : MemoryToolOps.readFile(ctx.getSysOperation(), filePath);
         } catch (Exception ex) {
             return "";
         }
-    }
-
-    private static String readFile(Object sysOperation, String path, int[] lineRange) {
-        Object fs = invokeNoArg(sysOperation, "fs");
-        Object result;
-        if (lineRange == null) {
-            result = invokeFirst(fs, new String[]{"readFile", "read_file"}, new Class<?>[]{String.class}, path);
-        } else {
-            result = invokeFirst(fs, new String[]{"readFile", "read_file"},
-                    new Class<?>[]{String.class, int[].class}, path, lineRange);
-        }
-        Object data = property(result, "data");
-        Object content = property(data, "content");
-        return content == null ? "" : String.valueOf(content);
     }
 
     private static void writeFile(
@@ -587,16 +572,6 @@ public final class CodingMemoryToolOps {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
-    }
-
-    private static int[] lineRange(Integer offset, Integer limit) {
-        if (offset != null && limit != null) {
-            return new int[]{offset, offset + limit - 1};
-        }
-        if (offset != null) {
-            return new int[]{offset, -1};
-        }
-        return null;
     }
 
     private static String extractBody(String content) {
