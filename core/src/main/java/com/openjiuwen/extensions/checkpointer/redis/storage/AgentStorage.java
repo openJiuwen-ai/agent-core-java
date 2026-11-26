@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -176,6 +177,10 @@ public class AgentStorage extends BaseRedisStorage {
      * Read the paused-step cursor of one session identified by id,
      * deserialized from the session's agent-state blob.
      *
+     * <p>Only blobs owned by exactly this session id are considered: the
+     * prefix lookup also finds child sessions such as {@code chat:sub}, and
+     * their pause evidence must not surface as the parent's.</p>
+     *
      * @param sessionId id of the session to inspect, never null or blank
      * @return future holding the paused cursor, or null when the session has none
      */
@@ -189,6 +194,7 @@ public class AgentStorage extends BaseRedisStorage {
             if (blobs == null || blobs.isEmpty()) {
                 return CompletableFuture.completedFuture(null);
             }
+            String scanPrefix = TenantKVStoreKeyResolver.resolvePrefix("");
             for (Map.Entry<String, Object> entry : blobs.entrySet()) {
                 if (!entry.getKey().endsWith(":" + STATE_BLOBS)
                         || !entry.getKey().contains(":" + Checkpointer.SESSION_NAMESPACE_AGENT + ":")) {
@@ -203,8 +209,9 @@ public class AgentStorage extends BaseRedisStorage {
                 Map<String, Object> normalized = new LinkedHashMap<>();
                 stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
                 StepCursor cursor = StepCursor.pausedFromState(normalized);
-                if (cursor != null && cursor.getStatus() == StepStatus.PAUSED) {
-                    return CompletableFuture.completedFuture(cursor);
+                Optional<StepCursor> restored = restoreOwnedStep(cursor, entry.getKey(), scanPrefix, sessionId);
+                if (restored.isPresent() && restored.get().getStatus() == StepStatus.PAUSED) {
+                    return CompletableFuture.completedFuture(restored.get());
                 }
             }
             return CompletableFuture.completedFuture(null);
@@ -221,6 +228,10 @@ public class AgentStorage extends BaseRedisStorage {
      * several blobs, so one agent's continuation must not leave its siblings
      * paused behind a session the caller considers resumed.
      *
+     * <p>Only blobs owned by exactly this session id are rewritten: the
+     * prefix lookup also finds child sessions such as {@code chat:sub}, and
+     * resuming a parent must never clear them.</p>
+     *
      * @param sessionId id of the session to resume, never null or blank
      * @return future completing when the resumed states are persisted
      */
@@ -230,6 +241,7 @@ public class AgentStorage extends BaseRedisStorage {
             Map<String, Object> blobs = redisStore
                     .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join();
             boolean hasResumedOne = false;
+            String scanPrefix = TenantKVStoreKeyResolver.resolvePrefix("");
             if (blobs != null) {
                 for (Map.Entry<String, Object> entry : blobs.entrySet()) {
                     if (!entry.getKey().endsWith(":" + STATE_BLOBS)
@@ -248,7 +260,12 @@ public class AgentStorage extends BaseRedisStorage {
                     if (paused == null) {
                         continue;
                     }
-                    Checkpointer.applyResumeToState(normalized, paused);
+                    Optional<StepCursor> restored =
+                            restoreOwnedStep(paused, entry.getKey(), scanPrefix, sessionId);
+                    if (restored.isEmpty()) {
+                        continue;
+                    }
+                    Checkpointer.applyResumeToState(normalized, restored.get());
                     // Write back through the exact keys the blob was read from:
                     // re-deriving them from the session id would miss the agent
                     // segment (agentId may differ) and the tenant prefix.
@@ -268,10 +285,46 @@ public class AgentStorage extends BaseRedisStorage {
         }
     }
 
+    /**
+     * Restore the owner recorded by a persisted blob key and require it to be
+     * the session the caller asked for.
+     *
+     * <p>Blobs are located with a {@code sessionId + ":"} prefix because one
+     * session may own several agent blobs, and that prefix also matches child
+     * sessions such as {@code chat:sub}. Deriving the owner from the key alone
+     * would let a lookup for {@code chat} read or rewrite the paused evidence
+     * of {@code chat:sub}; the exact session comparison keeps this backend
+     * aligned with the per-session lookup used by the in-memory checkpointer,
+     * while still accepting the child session when it is the requested id.</p>
+     *
+     * @param cursor cursor read from the blob, may be null
+     * @param storageKey exact persisted blob key
+     * @param scanPrefix prefix used for the scan, empty for an unbound scan
+     * @param sessionId session id requested by the caller, never null
+     * @return the owned cursor when the key belongs to {@code sessionId}
+     */
+    private static Optional<StepCursor> restoreOwnedStep(StepCursor cursor, String storageKey,
+                                                        String scanPrefix, String sessionId) {
+        Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor, storageKey, scanPrefix);
+        return restored.filter(owned -> sessionId.equals(owned.getSessionId()));
+    }
+
+    /**
+     * Collect the cursors of every persisted agent-state blob whose stored
+     * cursor is in the expected status.
+     *
+     * <p>This is a whole-store scan, not a by-id lookup, so there is no
+     * requested session id to compare against: the owner is derived from each
+     * blob key, which is what lets a child session such as {@code chat:sub}
+     * report its own cursor.</p>
+     *
+     * @param expected status the stored cursor must have
+     * @return one cursor per matching blob, empty when none match
+     */
     private CompletableFuture<List<StepCursor>> scanCursors(StepStatus expected) {
         try {
-            Map<String, Object> blobs = redisStore
-                    .getByPrefix(TenantKVStoreKeyResolver.resolvePrefix("")).join();
+            String scanPrefix = TenantKVStoreKeyResolver.resolvePrefix("");
+            Map<String, Object> blobs = redisStore.getByPrefix(scanPrefix).join();
             List<StepCursor> matched = new ArrayList<>();
             if (blobs == null || blobs.isEmpty()) {
                 return CompletableFuture.completedFuture(matched);
@@ -292,7 +345,8 @@ public class AgentStorage extends BaseRedisStorage {
                 StepCursor cursor = expected == StepStatus.PAUSED
                         ? StepCursor.pausedFromState(normalized)
                         : StepCursor.fromState(normalized);
-                if (cursor == null || cursor.getStatus() != expected) {
+                Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor, entry.getKey(), scanPrefix);
+                if (restored.isEmpty() || restored.get().getStatus() != expected) {
                     continue;
                 }
                 if (expected == StepStatus.RUNNING && StepCursor.pausedFromState(normalized) != null) {
@@ -302,7 +356,7 @@ public class AgentStorage extends BaseRedisStorage {
                     // pause contract.
                     continue;
                 }
-                matched.add(cursor);
+                matched.add(restored.get());
             }
             return CompletableFuture.completedFuture(matched);
         } catch (Throwable throwable) {
@@ -326,7 +380,7 @@ public class AgentStorage extends BaseRedisStorage {
             return CompletableFuture.failedFuture(new IllegalStateException(
                     "Cannot resume by cursor without a session id; use resumePausedBySessionId instead"));
         }
-        return resumePausedBySessionId(cursor.getSessionId());
+        return Checkpointer.runWithOwner(cursor, () -> resumePausedBySessionId(cursor.getSessionId()));
     }
 
     private CompletableFuture<Void> persistResumedState(Map<String, Object> state, String blobKey,
@@ -340,14 +394,7 @@ public class AgentStorage extends BaseRedisStorage {
     }
 
     private String resolveAgentId(BaseSession session) {
-        try {
-            Object agentId = session.getClass().getMethod("agentId").invoke(session);
-            if (agentId instanceof String text && !text.isBlank()) {
-                return text;
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // Fall back to session id when the session does not expose agentId().
-        }
-        return session.sessionId();
+        String agentId = Checkpointer.agentId(session);
+        return agentId == null || agentId.isBlank() ? session.sessionId() : agentId;
     }
 }

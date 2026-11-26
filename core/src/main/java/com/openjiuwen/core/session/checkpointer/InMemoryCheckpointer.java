@@ -35,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -120,6 +121,11 @@ public class InMemoryCheckpointer extends Checkpointer {
             return ctx.safeTenantId() + ":" + sessionId;
         }
         return sessionId;
+    }
+
+    private String tenantScanPrefix() {
+        TenantContext ctx = TenantContextHolder.getCurrentTenant();
+        return ctx != null && ctx.isTenantAware() ? ctx.safeTenantId() + ":" : "";
     }
 
     @Override
@@ -272,13 +278,17 @@ public class InMemoryCheckpointer extends Checkpointer {
     @Override
     public List<StepCursor> scanRunningSteps() {
         List<StepCursor> running = new ArrayList<>();
+        String scanPrefix = tenantScanPrefix();
         for (Map.Entry<String, AgentStorage> entry : agentStores.entrySet()) {
-            StepCursor cursor = entry.getValue().lastCursor();
-            // Paused evidence marks user intent: such sessions must not
-            // surface as RUNNING leftovers or the automatic pipeline would
-            // mark them lost against the documented pause contract.
-            if (isRunningCursor(cursor) && entry.getValue().lastPausedCursor() == null) {
-                running.add(cursor);
+            if (!scanPrefix.isEmpty() && !entry.getKey().startsWith(scanPrefix)) {
+                continue;
+            }
+            List<StepCursor> paused = entry.getValue().pausedCursors(entry.getKey(), scanPrefix);
+            for (StepCursor cursor : entry.getValue().runningCursors(entry.getKey(), scanPrefix)) {
+                boolean hasPauseEvidence = paused.stream().anyMatch(p -> sameSession(p, cursor));
+                if (!hasPauseEvidence) {
+                    running.add(cursor);
+                }
             }
         }
         return running;
@@ -293,11 +303,12 @@ public class InMemoryCheckpointer extends Checkpointer {
     @Override
     public List<StepCursor> scanPausedSteps() {
         List<StepCursor> paused = new ArrayList<>();
+        String scanPrefix = tenantScanPrefix();
         for (Map.Entry<String, AgentStorage> entry : agentStores.entrySet()) {
-            StepCursor cursor = entry.getValue().lastPausedCursor();
-            if (cursor != null && cursor.getStatus() == StepStatus.PAUSED) {
-                paused.add(cursor);
+            if (!scanPrefix.isEmpty() && !entry.getKey().startsWith(scanPrefix)) {
+                continue;
             }
+            paused.addAll(entry.getValue().pausedCursors(entry.getKey(), scanPrefix));
         }
         return paused;
     }
@@ -317,8 +328,14 @@ public class InMemoryCheckpointer extends Checkpointer {
         if (agentStorage == null) {
             return null;
         }
-        StepCursor cursor = agentStorage.lastPausedCursor();
-        return cursor != null && cursor.getStatus() == StepStatus.PAUSED ? cursor : null;
+        String scanPrefix = tenantScanPrefix();
+        String sessionKey = tenantAwareSessionId(sessionId);
+        for (StepCursor cursor : agentStorage.pausedCursors(sessionKey, scanPrefix)) {
+            if (cursor.getStatus() == StepStatus.PAUSED) {
+                return cursor;
+            }
+        }
+        return null;
     }
 
     /**
@@ -340,7 +357,7 @@ public class InMemoryCheckpointer extends Checkpointer {
             throw new IllegalStateException(
                     "Cannot resume by cursor without a session id; use resumePaused(sessionId) instead");
         }
-        resumePaused(cursor.getSessionId());
+        runWithOwner(cursor, () -> resumePaused(cursor.getSessionId()));
     }
 
     /**
@@ -356,11 +373,14 @@ public class InMemoryCheckpointer extends Checkpointer {
         if (sessionId == null || sessionId.isEmpty()) {
             throw new IllegalStateException("Cannot resume a blank session id");
         }
-        AgentStorage agentStorage = agentStores.get(tenantAwareSessionId(sessionId));
+        String sessionKey = tenantAwareSessionId(sessionId);
+        AgentStorage agentStorage = agentStores.get(sessionKey);
         if (agentStorage == null || agentStorage.lastPausedCursor() == null) {
             throw new IllegalStateException("No paused session found for session_id " + sessionId);
         }
-        agentStorage.applyResume();
+        if (!agentStorage.applyResume(sessionKey, tenantScanPrefix())) {
+            throw new IllegalStateException("No unambiguous paused session found for session_id " + sessionId);
+        }
     }
 
     @Override
@@ -617,14 +637,8 @@ public class InMemoryCheckpointer extends Checkpointer {
             stateBlobs.remove(entityId);
         }
 
-        StepCursor lastCursor() {
-            for (Map<String, Object> state : stateBlobs.values()) {
-                StepCursor cursor = StepCursor.fromState(state);
-                if (cursor != null) {
-                    return cursor;
-                }
-            }
-            return null;
+        List<Map.Entry<String, Map<String, Object>>> snapshots() {
+            return new ArrayList<>(stateBlobs.entrySet());
         }
 
         StepCursor lastPausedCursor() {
@@ -643,18 +657,30 @@ public class InMemoryCheckpointer extends Checkpointer {
          * The mutated snapshot replaces the stored one instead of being
          * edited in place, so a concurrent recover deep-copying the blob
          * never iterates a map that changes under it.
+         *
+         * @param sessionKey tenant-aware key of the session being resumed
+         * @param scanPrefix tenant prefix used to interpret persisted blob keys
+         * @return true when at least one paused state blob was resumed
          */
-        void applyResume() {
+        boolean applyResume(String sessionKey, String scanPrefix) {
+            boolean isResumed = false;
             for (Map.Entry<String, Map<String, Object>> entry : stateBlobs.entrySet()) {
                 Map<String, Object> state = entry.getValue();
                 StepCursor paused = StepCursor.pausedFromState(state);
                 if (paused == null) {
                     continue;
                 }
-                Map<String, Object> resumed = deepCopyMap(state);
-                Checkpointer.applyResumeToState(resumed, paused);
-                stateBlobs.replace(entry.getKey(), state, resumed);
+                Optional<StepCursor> restored = Checkpointer.restoreOwner(paused,
+                        sessionKey + ":agent:" + entry.getKey() + AGENT_STATE_BLOBS_SUFFIX, scanPrefix);
+                if (restored.isEmpty()) {
+                    continue;
+                }
+                Map<String, Object> resumedState = deepCopyMap(state);
+                Checkpointer.applyResumeToState(resumedState, restored.get());
+                stateBlobs.replace(entry.getKey(), state, resumedState);
+                isResumed = true;
             }
+            return isResumed;
         }
     }
 
@@ -665,6 +691,36 @@ public class InMemoryCheckpointer extends Checkpointer {
      * {@code openjiuwen/core/session/checkpointer/inmemory.py}.</p>
      */
     private static final class AgentStorage extends BaseSingleStateStorage {
+        List<StepCursor> runningCursors(String sessionKey, String scanPrefix) {
+            List<StepCursor> cursors = new ArrayList<>();
+            for (Map.Entry<String, Map<String, Object>> entry : snapshots()) {
+                StepCursor cursor = StepCursor.fromState(entry.getValue());
+                if (isRunningCursor(cursor) && StepCursor.pausedFromState(entry.getValue()) == null) {
+                    Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor,
+                            sessionKey + ":agent:" + entry.getKey() + AGENT_STATE_BLOBS_SUFFIX, scanPrefix);
+                    if (restored.isPresent()) {
+                        cursors.add(restored.get());
+                    }
+                }
+            }
+            return cursors;
+        }
+
+        List<StepCursor> pausedCursors(String sessionKey, String scanPrefix) {
+            List<StepCursor> cursors = new ArrayList<>();
+            for (Map.Entry<String, Map<String, Object>> entry : snapshots()) {
+                StepCursor cursor = StepCursor.pausedFromState(entry.getValue());
+                if (cursor != null && cursor.getStatus() == StepStatus.PAUSED) {
+                    Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor,
+                            sessionKey + ":agent:" + entry.getKey() + AGENT_STATE_BLOBS_SUFFIX, scanPrefix);
+                    if (restored.isPresent()) {
+                        cursors.add(restored.get());
+                    }
+                }
+            }
+            return cursors;
+        }
+
         @Override
         String entityId(BaseSession session) {
             return agentId(session);

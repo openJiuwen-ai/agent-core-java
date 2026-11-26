@@ -6,20 +6,25 @@ package com.openjiuwen.core.session.checkpointer;
 
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.step.StepCursor;
 import com.openjiuwen.core.session.checkpointer.step.StepStatus;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.state.State;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Base checkpointer for agent, team, workflow, and graph state.
@@ -35,6 +40,9 @@ public abstract class Checkpointer implements AutoCloseable {
     public static final String SESSION_NAMESPACE_AGENT_TEAM = "agent-team";
     public static final String SESSION_NAMESPACE_WORKFLOW = "workflow";
     public static final String WORKFLOW_NAMESPACE_GRAPH = "workflow-graph";
+
+    /** Suffix shared by persisted agent-state blob keys. */
+    public static final String AGENT_STATE_BLOBS_SUFFIX = ":agent_state_blobs";
 
     /**
      * Session state key under which pause metadata (operator, reason, timestamps)
@@ -57,6 +65,207 @@ public abstract class Checkpointer implements AutoCloseable {
         return stringIdentity(session, "agentId");
     }
 
+    /**
+     * Stamp a cursor with the ownership of the session that is persisting it.
+     * Caller-provided ownership is replaced so a cursor cannot redirect a save
+     * or a later recovery to another session.
+     *
+     * @param session session performing the checkpoint
+     * @param cursor cursor to stamp
+     * @return cursor carrying the session ownership
+     * @throws NullPointerException when the session or cursor is null
+     */
+    public static StepCursor withOwner(BaseSession session, StepCursor cursor) {
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(cursor, "cursor");
+        return cursor.withOwner(tenantId(session), session.sessionId(), agentId(session));
+    }
+
+    /**
+     * Restore cursor ownership from a persisted blob key. Legacy cursors are
+     * accepted only when the key has one unambiguous owner interpretation;
+     * tenant-prefixed keys without stored identity are skipped rather than
+     * exposing a synthetic {@code tenant:session} id to recovery hooks.
+     *
+     * @param cursor cursor read from the blob
+     * @param storageKey exact persisted blob key
+     * @param scanPrefix prefix used for the scan, empty for an unbound scan
+     * @return the owned cursor, or empty when the key is malformed or ambiguous
+     */
+    public static Optional<StepCursor> restoreOwner(StepCursor cursor, String storageKey, String scanPrefix) {
+        if (cursor == null || storageKey == null || !storageKey.endsWith(AGENT_STATE_BLOBS_SUFFIX)) {
+            return Optional.empty();
+        }
+        String rawKey = storageKey;
+        if (scanPrefix != null && !scanPrefix.isEmpty()) {
+            if (!rawKey.startsWith(scanPrefix)) {
+                return Optional.empty();
+            }
+            rawKey = rawKey.substring(scanPrefix.length());
+        }
+        if (!rawKey.endsWith(AGENT_STATE_BLOBS_SUFFIX)) {
+            return Optional.empty();
+        }
+        rawKey = rawKey.substring(0, rawKey.length() - AGENT_STATE_BLOBS_SUFFIX.length());
+        if ((scanPrefix == null || scanPrefix.isEmpty()) && !cursor.getTenantId().isEmpty()) {
+            TenantContext owner = TenantContext.builder().tenantId(cursor.getTenantId()).build();
+            String ownerPrefix = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(owner, "");
+            if (!rawKey.startsWith(ownerPrefix)) {
+                return Optional.empty();
+            }
+            rawKey = rawKey.substring(ownerPrefix.length());
+        }
+        List<StepCursor> candidates = new ArrayList<>();
+        int marker = rawKey.indexOf(":agent:");
+        while (marker >= 0) {
+            String sessionId = rawKey.substring(0, marker);
+            String agentId = rawKey.substring(marker + ":agent:".length());
+            addOwnerCandidates(candidates, cursor,
+                    new OwnerLocation(storageKey, sessionId, agentId, scanPrefix));
+            marker = rawKey.indexOf(":agent:", marker + 1);
+        }
+        return candidates.size() == 1 ? Optional.of(candidates.get(0)) : Optional.empty();
+    }
+
+    private static void addOwnerCandidates(List<StepCursor> candidates, StepCursor cursor,
+            OwnerLocation location) {
+        if (location.scanPrefix() != null && !location.scanPrefix().isEmpty()) {
+            TenantContext ctx = TenantContextHolder.getCurrentTenant();
+            String tenantId = ctx == null ? "" : ctx.getTenantId();
+            if (matchesOwner(cursor, tenantId, location.sessionId(), location.agentId())) {
+                String restoredKey = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx,
+                        location.rawKey()) + AGENT_STATE_BLOBS_SUFFIX;
+                if (location.storageKey().equals(restoredKey)) {
+                    candidates.add(cursor.withOwner(tenantId, location.sessionId(), location.agentId()));
+                }
+            }
+            return;
+        }
+        if (matchesOwner(cursor, "", location.sessionId(), location.agentId())
+                && location.storageKey().equals(location.rawKey() + AGENT_STATE_BLOBS_SUFFIX)) {
+            candidates.add(cursor.withOwner("", location.sessionId(), location.agentId()));
+        }
+        if (!cursor.getTenantId().isEmpty()) {
+            addTenantCandidate(candidates, cursor, location, cursor.getTenantId());
+            return;
+        }
+        int colon = location.sessionId().indexOf(':');
+        while (colon >= 0) {
+            addLegacyTenantCandidate(candidates, cursor, location, location.sessionId(),
+                    location.sessionId().substring(0, colon));
+            colon = location.sessionId().indexOf(':', colon + 1);
+        }
+    }
+
+    private static boolean matchesOwner(StepCursor cursor, String tenantId, String sessionId, String agentId) {
+        return (cursor.getTenantId().isEmpty() || cursor.getTenantId().equals(tenantId))
+                && (cursor.getSessionId().isEmpty() || cursor.getSessionId().equals(sessionId))
+                && (cursor.getAgentId().isEmpty() || cursor.getAgentId().equals(agentId));
+    }
+
+    private static void addTenantCandidate(List<StepCursor> candidates, StepCursor cursor,
+            OwnerLocation location, String tenantId) {
+        if (!matchesOwner(cursor, tenantId, location.sessionId(), location.agentId())) {
+            return;
+        }
+        TenantContext ctx = TenantContext.builder().tenantId(tenantId).build();
+        String restoredKey = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx,
+                location.rawKey()) + AGENT_STATE_BLOBS_SUFFIX;
+        if (location.storageKey().equals(restoredKey)) {
+            candidates.add(cursor.withOwner(tenantId, location.sessionId(), location.agentId()));
+        }
+    }
+
+    private static void addLegacyTenantCandidate(List<StepCursor> candidates, StepCursor cursor,
+            OwnerLocation location, String storedSessionId,
+            String tenantId) {
+        TenantContext ctx = TenantContext.builder().tenantId(tenantId).build();
+        String tenantPrefix = TenantKVStoreKeyResolver.getGlobalNamespaceFactory().namespace(ctx, "");
+        if (!storedSessionId.startsWith(tenantPrefix)) {
+            return;
+        }
+        String sessionId = storedSessionId.substring(tenantPrefix.length());
+        addTenantCandidate(candidates, cursor,
+                new OwnerLocation(location.storageKey(), sessionId, location.agentId(), location.scanPrefix()),
+                tenantId);
+    }
+
+    /**
+     * Run a storage operation under the tenant recorded on a recovered cursor.
+     *
+     * @param cursor recovered cursor carrying tenant ownership
+     * @param operation operation requiring the owning tenant context
+     */
+    public static void runWithOwner(StepCursor cursor, Runnable operation) {
+        runWithOwner(cursor, () -> {
+            operation.run();
+            return null;
+        });
+    }
+
+    /**
+     * Run a storage operation under the tenant recorded on a recovered cursor.
+     *
+     * @param cursor recovered cursor carrying tenant ownership
+     * @param operation operation requiring the owning tenant context
+     * @param <T> operation result type
+     * @return operation result
+     */
+    public static <T> T runWithOwner(StepCursor cursor, Supplier<T> operation) {
+        TenantContext previous = TenantContextHolder.getCurrentTenant();
+        try {
+            TenantContext owner = cursor == null || cursor.getTenantId().isEmpty()
+                    ? null : TenantContext.builder().tenantId(cursor.getTenantId()).build();
+            TenantContextHolder.setCurrentTenant(owner);
+            return operation.get();
+        } finally {
+            TenantContextHolder.setCurrentTenant(previous);
+        }
+    }
+
+    /**
+     * Check whether two cursors belong to the same tenant and session.
+     *
+     * @param first first cursor, may be null
+     * @param second second cursor, may be null
+     * @return true when both cursors have the same tenant and session identity
+     */
+    public static boolean sameSession(StepCursor first, StepCursor second) {
+        return first != null && second != null
+                && Objects.equals(first.getTenantId(), second.getTenantId())
+                && Objects.equals(first.getSessionId(), second.getSessionId());
+    }
+
+    /**
+     * Read the tenant bound to the current thread.
+     *
+     * @return current tenant id, or an empty string when no tenant is bound
+     */
+    public static String currentTenantId() {
+        TenantContext ctx = TenantContextHolder.getCurrentTenant();
+        return ctx == null || ctx.getTenantId() == null ? "" : ctx.getTenantId();
+    }
+
+    private static String tenantId(BaseSession session) {
+        if (session instanceof AgentSessionApi agentSession && agentSession.getTenantContext() != null) {
+            return agentSession.getTenantContext().getTenantId();
+        }
+        return currentTenantId();
+    }
+
+    private static StepCursor restoreLiveOwner(BaseSession session, StepCursor cursor) {
+        if (cursor == null) {
+            return null;
+        }
+        StepCursor owned = withOwner(session, cursor);
+        if ((!cursor.getTenantId().isEmpty() && !cursor.getTenantId().equals(owned.getTenantId()))
+                || (!cursor.getSessionId().isEmpty() && !cursor.getSessionId().equals(owned.getSessionId()))
+                || (!cursor.getAgentId().isEmpty() && !cursor.getAgentId().equals(owned.getAgentId()))) {
+            return null;
+        }
+        return owned;
+    }
+
     public static String teamId(BaseSession session) {
         return stringIdentity(session, "teamId");
     }
@@ -75,11 +284,18 @@ public abstract class Checkpointer implements AutoCloseable {
         if (session == null) {
             return null;
         }
-        try {
-            return session.getClass().getMethod(methodName).invoke(session);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
+        for (Class<?> type = session.getClass(); type != null; type = type.getSuperclass()) {
+            try {
+                Method method = type.getDeclaredMethod(methodName);
+                method.setAccessible(true);
+                return method.invoke(session);
+            } catch (NoSuchMethodException ignored) {
+                // Try the next superclass.
+            } catch (ReflectiveOperationException | SecurityException ignored) {
+                return null;
+            }
         }
+        return null;
     }
 
     public static String buildKey(String... parts) {
@@ -166,8 +382,9 @@ public abstract class Checkpointer implements AutoCloseable {
         if (!cursor.isAfter(previous)) {
             return;
         }
+        StepCursor ownedCursor = withOwner(session, cursor);
         Map<String, Object> update = new LinkedHashMap<>();
-        update.put(StepCursor.STATE_KEY, cursor.toMap());
+        update.put(StepCursor.STATE_KEY, ownedCursor.toMap());
         session.state().update(update);
         boolean isSaved = false;
         try {
@@ -198,7 +415,7 @@ public abstract class Checkpointer implements AutoCloseable {
         }
         Object state = session.state().get(StepCursor.STATE_KEY);
         StepCursor cursor = StepCursor.fromMap(state);
-        return cursor == null ? null : cursor;
+        return restoreLiveOwner(session, cursor);
     }
 
     /**
@@ -217,8 +434,9 @@ public abstract class Checkpointer implements AutoCloseable {
         if (session == null || cursor == null || session.state() == null) {
             return;
         }
+        StepCursor ownedCursor = withOwner(session, cursor);
         Map<String, Object> update = new LinkedHashMap<>();
-        update.put(StepCursor.FAILED_STATE_KEY, cursor.toMap());
+        update.put(StepCursor.FAILED_STATE_KEY, ownedCursor.toMap());
         CheckpointSnapshotSession snapshot = new CheckpointSnapshotSession(session);
         preAgentExecute(snapshot, null);
         snapshot.state().update(update);
@@ -238,7 +456,7 @@ public abstract class Checkpointer implements AutoCloseable {
         }
         Object state = session.state().get(StepCursor.FAILED_STATE_KEY);
         StepCursor cursor = StepCursor.fromMap(state);
-        return cursor == null ? null : cursor;
+        return restoreLiveOwner(session, cursor);
     }
 
     /**
@@ -272,7 +490,7 @@ public abstract class Checkpointer implements AutoCloseable {
             return false;
         }
         StepCursor pausedCursor = new StepCursor(cursor.getSeq(), cursor.getStepType(), cursor.getStepName(),
-                StepStatus.PAUSED, cursor.getTimestamp(), session.sessionId());
+                StepStatus.PAUSED, cursor.getTimestamp(), tenantId(session), session.sessionId(), agentId(session));
         if (!shouldPersistPausedCursor(session, pausedCursor)) {
             return false;
         }
@@ -352,7 +570,7 @@ public abstract class Checkpointer implements AutoCloseable {
         }
         Object state = session.state().get(StepCursor.PAUSED_STATE_KEY);
         StepCursor cursor = StepCursor.fromMap(state);
-        return cursor == null ? null : cursor;
+        return restoreLiveOwner(session, cursor);
     }
 
     /**
@@ -458,7 +676,8 @@ public abstract class Checkpointer implements AutoCloseable {
     public static void applyResumeToState(Map<String, Object> state, StepCursor paused) {
         Map<String, Object> partition = pausedKeysPartition(state);
         partition.put(StepCursor.STATE_KEY, new StepCursor(paused.getSeq(), paused.getStepType(),
-                paused.getStepName(), StepStatus.RUNNING, System.currentTimeMillis(), paused.getSessionId()).toMap());
+                paused.getStepName(), StepStatus.RUNNING, System.currentTimeMillis(), paused.getTenantId(),
+                paused.getSessionId(), paused.getAgentId()).toMap());
         partition.remove(StepCursor.PAUSED_STATE_KEY);
         partition.remove(SESSION_PAUSE_STATE_KEY);
     }
@@ -578,5 +797,11 @@ public abstract class Checkpointer implements AutoCloseable {
     @Override
     public void close() {
         // Default no-op for checkpointers without external resources.
+    }
+
+    private record OwnerLocation(String storageKey, String sessionId, String agentId, String scanPrefix) {
+        private String rawKey() {
+            return sessionId + ":agent:" + agentId;
+        }
     }
 }
