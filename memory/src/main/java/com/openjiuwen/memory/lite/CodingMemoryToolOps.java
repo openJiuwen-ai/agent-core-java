@@ -5,9 +5,12 @@
 package com.openjiuwen.memory.lite;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.sysop.BaseFsOperation;
+import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -20,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -94,20 +98,16 @@ public final class CodingMemoryToolOps {
                             "error", "Read failed, no available sys_operation."
                     );
                 }
-                int[] lineRange = lineRange(offset, limit);
-                String data = readFile(sysOperation, validation.value(), lineRange);
-                String[] rows = data.split("\\n", -1);
-                int total = rows.length;
-                int fromIdx = offset == null ? 0 : Math.max(0, offset - 1);
-                int toIdx = limit == null ? total : Math.min(fromIdx + limit, total);
+                String data = MemoryToolOps.readFile(sysOperation, validation.value());
+                MemoryToolOps.ViewResult view = MemoryToolOps.viewLines(MemoryToolOps.lines(data), offset, limit);
                 return mapOf(
                         "success", true,
                         "path", validation.value(),
-                        "content", String.join("\n", List.of(rows).subList(fromIdx, toIdx)),
-                        "totalLines", total,
-                        "start_line", fromIdx + 1,
-                        "end_line", toIdx,
-                        "truncated", limit != null && toIdx < total
+                        "content", view.text(),
+                        "totalLines", view.total(),
+                        "start_line", view.startLine(),
+                        "end_line", view.endLine(),
+                        "truncated", view.isTruncated()
                 );
             } catch (Exception ex) {
                 Loggers.MEMORY.error("Read failed: {}", rootMessage(ex), ex);
@@ -156,7 +156,7 @@ public final class CodingMemoryToolOps {
                 String newContent;
                 lock.lock();
                 try {
-                    String current = readFile(sysOperation, validation.value(), null);
+                    String current = MemoryToolOps.readFile(sysOperation, validation.value());
                     int occurrences = countOccurrences(current, oldText);
                     if (occurrences == 0) {
                         return mapOf("success", false, "error", "old_text not found in file");
@@ -394,7 +394,7 @@ public final class CodingMemoryToolOps {
                     + frontmatter.get("description");
             List<String> lines = new ArrayList<>();
             try {
-                String content = readFile(sysOperation, indexPath, null);
+                String content = MemoryToolOps.readFile(sysOperation, indexPath);
                 if (!content.isEmpty()) {
                     lines.addAll(List.of(content.split("\\n", -1)));
                 }
@@ -423,20 +423,16 @@ public final class CodingMemoryToolOps {
         if (ctx == null || memoryDir == null || memoryDir.isBlank() || ctx.getSysOperation() == null) {
             return Set.of();
         }
-        try {
-            List<FileItemView> files = listFiles(ctx.getSysOperation(), memoryDir);
-            Set<String> names = new LinkedHashSet<>();
-            for (FileItemView file : files) {
-                if (!file.directory()
-                        && file.name().toLowerCase(Locale.ROOT).endsWith(".md")
-                        && !MEMORY_INDEX_FILE.equalsIgnoreCase(file.name())) {
-                    names.add(file.name());
-                }
+        List<FileItemView> files = listFiles(ctx.getSysOperation(), memoryDir);
+        Set<String> names = new LinkedHashSet<>();
+        for (FileItemView file : files) {
+            if (!file.directory()
+                    && file.name().toLowerCase(Locale.ROOT).endsWith(".md")
+                    && !MEMORY_INDEX_FILE.equalsIgnoreCase(file.name())) {
+                names.add(file.name());
             }
-            return names;
-        } catch (Exception ex) {
-            return Set.of();
         }
+        return names;
     }
 
     private static ReentrantLock getFileLock(String path) {
@@ -453,24 +449,12 @@ public final class CodingMemoryToolOps {
 
     private static String readFileSafe(CodingMemoryToolContext ctx, String filePath) {
         try {
-            return ctx == null || ctx.getSysOperation() == null ? "" : readFile(ctx.getSysOperation(), filePath, null);
+            return ctx == null || ctx.getSysOperation() == null
+                    ? ""
+                    : MemoryToolOps.readFile(ctx.getSysOperation(), filePath);
         } catch (Exception ex) {
             return "";
         }
-    }
-
-    private static String readFile(Object sysOperation, String path, int[] lineRange) {
-        Object fs = invokeNoArg(sysOperation, "fs");
-        Object result;
-        if (lineRange == null) {
-            result = invokeFirst(fs, new String[]{"readFile", "read_file"}, new Class<?>[]{String.class}, path);
-        } else {
-            result = invokeFirst(fs, new String[]{"readFile", "read_file"},
-                    new Class<?>[]{String.class, int[].class}, path, lineRange);
-        }
-        Object data = property(result, "data");
-        Object content = property(data, "content");
-        return content == null ? "" : String.valueOf(content);
     }
 
     private static void writeFile(
@@ -482,26 +466,82 @@ public final class CodingMemoryToolOps {
             boolean preferAppendSignature
     ) {
         Object fs = invokeNoArg(sysOperation, "fs");
-        try {
-            invokeFirst(fs, new String[]{"writeFile", "write_file"},
+        String[] names = new String[]{"writeFile", "write_file"};
+        Class<?>[] operationSignature = writeSignature(BaseFsOperation.FileMode.class);
+        Class<?>[] protocalSignature = writeSignature(String.class);
+        Object resolved;
+        if (declaresMethod(fs, names, operationSignature)) {
+            resolved = invokeFirst(fs, names, operationSignature,
+                    path, content, BaseFsOperation.FileMode.TEXT,
+                    false, false, append, createIfNotExist,
+                    BaseFsProtocal.DEFAULT_PERMISSIONS, BaseFsProtocal.DEFAULT_ENCODING,
+                    Map.of());
+        } else if (declaresMethod(fs, names, protocalSignature)) {
+            resolved = invokeFirst(fs, names, protocalSignature,
+                    path, content, BaseFsProtocal.MODE_TEXT,
+                    false, false, append, createIfNotExist,
+                    BaseFsProtocal.DEFAULT_PERMISSIONS, BaseFsProtocal.DEFAULT_ENCODING,
+                    Map.of());
+        } else if (declaresMethod(fs, names,
+                String.class, String.class, boolean.class, boolean.class)) {
+            resolved = invokeFirst(fs, names,
                     new Class<?>[]{String.class, String.class, boolean.class, boolean.class},
                     path, content, createIfNotExist, append);
-        } catch (RuntimeException ex) {
-            if (preferAppendSignature) {
-                invokeFirst(fs, new String[]{"writeFile", "write_file"},
-                        new Class<?>[]{String.class, String.class, boolean.class},
-                        path, content, append);
-            } else {
-                throw ex;
-            }
+        } else if (preferAppendSignature && declaresMethod(fs, names,
+                String.class, String.class, boolean.class)) {
+            resolved = invokeFirst(fs, names,
+                    new Class<?>[]{String.class, String.class, boolean.class}, path, content, append);
+        } else if (append) {
+            throw new IllegalArgumentException("writeFile signature does not support append");
+        } else {
+            resolved = invokeFirst(fs, names, new Class<?>[]{String.class, String.class}, path, content);
         }
+        ensureSuccess(await(resolved), "writeFile");
+    }
+
+    private static Class<?>[] writeSignature(Class<?> modeType) {
+        return new Class<?>[]{
+                String.class,
+                String.class,
+                modeType,
+                boolean.class,
+                boolean.class,
+                boolean.class,
+                boolean.class,
+                String.class,
+                String.class,
+                Map.class
+        };
     }
 
     private static List<FileItemView> listFiles(Object sysOperation, String directory) {
         Object fs = invokeNoArg(sysOperation, "fs");
-        Object result = invokeFirst(fs, new String[]{"listFiles", "list_files"},
-                new Class<?>[]{String.class, boolean.class}, directory, false);
-        Object data = property(result, "data");
+        String[] names = new String[]{"listFiles", "list_files"};
+        Class<?>[] operationSignature = {
+                String.class, boolean.class, Integer.class, BaseFsOperation.SortBy.class,
+                boolean.class, List.class, Map.class
+        };
+        Class<?>[] protocalSignature = {
+                String.class, boolean.class, Integer.class, String.class,
+                boolean.class, List.class, Map.class
+        };
+        Object resolved;
+        if (declaresMethod(fs, names, operationSignature)) {
+            resolved = invokeFirst(fs, names, operationSignature,
+                    directory, false, null, BaseFsOperation.SortBy.NAME, false, List.of(), Map.of());
+        } else if (declaresMethod(fs, names, protocalSignature)) {
+            resolved = invokeFirst(fs, names, protocalSignature,
+                    directory, false, null, BaseFsProtocal.SORT_BY_NAME, false, List.of(), Map.of());
+        } else {
+            resolved = invokeFirst(fs, names,
+                    new Class<?>[]{String.class, boolean.class}, directory, false);
+        }
+        resolved = await(resolved);
+        if (isMissingDirectory(resolved)) {
+            return List.of();
+        }
+        ensureSuccess(resolved, "listFiles");
+        Object data = property(resolved, "data");
         Object listItems = property(data, "listItems");
         if (listItems == null) {
             listItems = property(data, "list_items");
@@ -514,6 +554,22 @@ public final class CodingMemoryToolOps {
             files.add(new FileItemView(asString(property(item, "name")), asBoolean(property(item, "directory"))));
         }
         return files;
+    }
+
+    private static boolean isMissingDirectory(Object result) {
+        if (result == null) {
+            return false;
+        }
+        Object code = property(result, "code");
+        boolean isFailed = code instanceof Number number && number.intValue() != 0
+                || code instanceof String text && !text.isBlank() && !"0".equals(text);
+        if (!isFailed) {
+            return false;
+        }
+        String message = String.valueOf(property(result, "message")).toLowerCase(Locale.ROOT);
+        return message.contains("no such file or directory")
+                || message.contains("not a directory")
+                || message.contains("does not exist");
     }
 
     @SuppressWarnings("unchecked")
@@ -559,16 +615,59 @@ public final class CodingMemoryToolOps {
                 Method method = target.getClass().getMethod(methodName, parameterTypes);
                 method.setAccessible(true);
                 return method.invoke(target, args);
-            } catch (ReflectiveOperationException ignored) {
+            } catch (NoSuchMethodException ignored) {
                 // Try the next Java/Python-style method spelling.
+            } catch (IllegalAccessException | InvocationTargetException exception) {
+                throw new IllegalArgumentException(rootMessage(exception), exception);
             }
         }
         throw new IllegalArgumentException("method not found: " + String.join("/", methodNames));
     }
 
+    private static boolean declaresMethod(Object target, String[] methodNames, Class<?>... parameterTypes) {
+        for (String methodName : methodNames) {
+            try {
+                target.getClass().getMethod(methodName, parameterTypes);
+                return true;
+            } catch (NoSuchMethodException ignored) {
+                // Try the next method spelling.
+            }
+        }
+        return false;
+    }
+
+    private static Object await(Object value) {
+        if (value instanceof CompletionStage<?> stage) {
+            return stage.toCompletableFuture().join();
+        }
+        return value;
+    }
+
+    private static void ensureSuccess(Object result, String operation) {
+        if (result == null) {
+            throw new IllegalStateException(operation + " returned no result");
+        }
+        Object code = property(result, "code");
+        boolean isFailed = code instanceof Number number && number.intValue() != 0
+                || code instanceof String text && !text.isBlank() && !"0".equals(text);
+        if (isFailed) {
+            Object message = property(result, "message");
+            throw new IllegalStateException(message == null
+                    ? operation + " failed with code " + code
+                    : String.valueOf(message));
+        }
+    }
+
     private static Object property(Object target, String name) {
         if (target == null) {
             return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            Object value = map.get(name);
+            if (value == null && name.contains("_")) {
+                value = map.get(toCamelCase(name));
+            }
+            return value;
         }
         String suffix = Character.toUpperCase(name.charAt(0)) + name.substring(1);
         for (String methodName : new String[]{"get" + suffix, "is" + suffix, name}) {
@@ -587,16 +686,6 @@ public final class CodingMemoryToolOps {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
-    }
-
-    private static int[] lineRange(Integer offset, Integer limit) {
-        if (offset != null && limit != null) {
-            return new int[]{offset, offset + limit - 1};
-        }
-        if (offset != null) {
-            return new int[]{offset, -1};
-        }
-        return null;
     }
 
     private static String extractBody(String content) {
@@ -642,6 +731,22 @@ public final class CodingMemoryToolOps {
     private static String basename(String path) {
         Path fileName = Paths.get(path).getFileName();
         return fileName == null ? path : fileName.toString();
+    }
+
+    private static String toCamelCase(String name) {
+        StringBuilder builder = new StringBuilder();
+        boolean shouldUppercase = false;
+        for (char ch : name.toCharArray()) {
+            if (ch == '_') {
+                shouldUppercase = true;
+            } else if (shouldUppercase) {
+                builder.append(Character.toUpperCase(ch));
+                shouldUppercase = false;
+            } else {
+                builder.append(ch);
+            }
+        }
+        return builder.toString();
     }
 
     private static String asString(Object value) {
