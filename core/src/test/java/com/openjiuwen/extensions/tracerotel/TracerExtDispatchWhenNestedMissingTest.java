@@ -81,6 +81,8 @@ class TracerExtDispatchWhenNestedMissingTest {
                 .isEqualTo("advanced_loop_1");
         assertThat(span.getAttributes().get(AttributeKey.stringKey(SemConv.OJ_SESSION_ID)))
                 .isEqualTo("session-nested-missing");
+        assertThat(span.getAttributes().get(AttributeKey.stringKey(SemConv.SESSION_ID)))
+                .isEqualTo("session-nested-missing");
     }
 
     @Test
@@ -110,6 +112,8 @@ class TracerExtDispatchWhenNestedMissingTest {
         List<SpanData> spans = ConftestOtel.EXPORTER.getFinishedSpanItems();
         assertThat(spans).isNotEmpty();
         assertThat(spans.get(0).getAttributes().get(AttributeKey.stringKey(SemConv.OJ_SESSION_ID)))
+                .isEqualTo("agent-session-1");
+        assertThat(spans.get(0).getAttributes().get(AttributeKey.stringKey(SemConv.SESSION_ID)))
                 .isEqualTo("agent-session-1");
         assertThat(SemConv.OJ_SESSION_ID).isEqualTo("openjiuwen.session_id");
     }
