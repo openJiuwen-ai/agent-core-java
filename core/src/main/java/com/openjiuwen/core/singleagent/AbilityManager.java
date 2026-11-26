@@ -30,12 +30,13 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.Rails;
-import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.runbudget.RunBudgetContext;
 import com.openjiuwen.core.singleagent.runbudget.RunBudgetState;
@@ -1219,6 +1220,11 @@ public class AbilityManager {
             isTenantRebound = true;
         }
         try {
+            if (session instanceof AgentSessionApi agentSession) {
+                try (AutoCloseable ignored = ReActAgent.bindToolCancellation(agentSession)) {
+                    return tool.invoke(inputs, invokeKwargs(session));
+                }
+            }
             return tool.invoke(inputs, invokeKwargs(session));
         } catch (ToolInterruptException interrupt) {
             throw interrupt;

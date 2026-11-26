@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.common.concurrent.InterruptSignals;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -2445,6 +2446,12 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                                 ctx, toolCalls, session, context);
                         activateSkillsLoadedByToolCalls(toolCalls, results, session);
                         if (isCancelRequested(ctx)) {
+                            // Future cancellation interrupts the worker, not the queue.
+                            // Clear it before publishing genuine outcomes and the terminal.
+                            Thread.interrupted();
+                            // The calls already ran. Publish their genuine outcomes rather
+                            // than leaving a tool_call unanswered on the cancelled stream.
+                            writeToolResultOutputs(ctx, session, toolCalls, results);
                             applyCancelledResult(ctx, session, invokeInputs);
                             break;
                         }
@@ -2960,7 +2967,11 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         CANCEL_STREAMS.put(cancelKey, cancellation);
         CancellationFuture streamFuture = new CancellationFuture(
                 () -> runNamedStreamingInvoke(inputs, session, streamThreadName, cancellation),
-                () -> CANCEL_STREAMS.remove(cancelKey, cancellation));
+                () -> {
+                    if (CANCEL_STREAMS.remove(cancelKey, cancellation)) {
+                        finishCancelledStream(session);
+                    }
+                });
         try {
             STREAM_EXECUTOR.execute(streamFuture);
         } catch (RejectedExecutionException exception) {
@@ -2971,6 +2982,26 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         }
         cancellation.attachWorker(streamFuture);
         return OperatorStream.wrap(session.streamIterator(), cancellation::cancel);
+    }
+
+    /**
+     * Binds the current tool thread to the stream cancellation of its session.
+     *
+     * @param session stream session owning the tool invocation
+     * @return a scope that detaches the completed execution, or null when this
+     *         session has no cancellable background stream
+     */
+    public static AutoCloseable bindToolCancellation(AgentSessionApi session) {
+        if (session == null) {
+            return null;
+        }
+        StreamCancellation cancellation = CANCEL_STREAMS.get(cancelFlagKey(session));
+        if (cancellation == null) {
+            return null;
+        }
+        Runnable interruption = InterruptSignals.captureCurrentThread();
+        cancellation.attachToolExecution(interruption);
+        return () -> cancellation.detachToolExecution(interruption);
     }
 
     /**
@@ -3101,7 +3132,16 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             runStreamingInvoke(inputs, session, false);
         } finally {
             worker.setName(previousName);
+            cancellation.complete();
             CANCEL_STREAMS.remove(cancelFlagKey(session), cancellation);
+        }
+    }
+
+    private void finishCancelledStream(AgentSessionApi session) {
+        try {
+            writeInvokeResultToStreamInternal(cancelledInvokeResult(), session);
+        } finally {
+            closeStreamAndCommit(session);
         }
     }
 
@@ -4339,6 +4379,8 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     private static final class StreamCancellation {
         private final AtomicBoolean cancelled = new AtomicBoolean();
+        private final AtomicBoolean completed = new AtomicBoolean();
+        private final Set<Runnable> toolExecutions = ConcurrentHashMap.newKeySet();
         private Future<?> worker;
         private Iterator<?> modelIterator;
 
@@ -4372,8 +4414,16 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
             }
         }
 
+        private void complete() {
+            completed.set(true);
+            synchronized (this) {
+                worker = null;
+                modelIterator = null;
+            }
+        }
+
         private void cancel() {
-            if (!cancelled.compareAndSet(false, true)) {
+            if (completed.get() || !cancelled.compareAndSet(false, true)) {
                 return;
             }
             Future<?> currentWorker;
@@ -4382,10 +4432,28 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 currentWorker = worker;
                 currentIterator = modelIterator;
             }
+            for (Runnable interruption : toolExecutions) {
+                interruption.run();
+            }
             if (currentWorker != null) {
                 currentWorker.cancel(true);
             }
             closeIterator(currentIterator);
+        }
+
+        private void attachToolExecution(Runnable interruption) {
+            if (isCancelled()) {
+                interruption.run();
+                return;
+            }
+            toolExecutions.add(interruption);
+            if (isCancelled()) {
+                interruption.run();
+            }
+        }
+
+        private void detachToolExecution(Runnable interruption) {
+            toolExecutions.remove(interruption);
         }
     }
 }
