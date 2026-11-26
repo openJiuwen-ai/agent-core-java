@@ -20,6 +20,7 @@ deep_agent/
     │   │   ├── DeepAgentTemplateExample.java     # 通用模板示例
     │   │   ├── DeepAgentRedisExample.java        # Redis 共享示例
     │   │   ├── DeepAgentToolGuardrailExample.java# 工具护栏示例
+    │   │   ├── DeepAgentSteeringExample.java     # 引导模式（steering）示例
     │   │   └── ContextOffloadExample.java        # Context Offload 卸载/装载示例
     │   └── resources/
     │       └── logback.xml                       # 日志配置（CONSOLE + FILE）
@@ -34,6 +35,7 @@ deep_agent/
 | `template` | 通用模板：`Runner.runAgent`（阻塞）+ `Runner.runAgentStreaming`（流式）两种调用方式 | 是 | 否 | `DeepAgentTemplateExample` |
 | `redis` | Todo 与 Checkpointer 共享同一 Redis 连接，验证两者均写入同一 Redis 实例 | 是 | 是 | `DeepAgentRedisExample` |
 | `guardrail` | 工具护栏（ALLOW/ASK/DENY/file_guard）端到端演示，使用确定性 fake LLM | 否 | 否 | `DeepAgentToolGuardrailExample` |
+| `steering` | 引导模式（steering）：invoke 运行期间外部注入引导消息，不打断当前轮次；下一轮模型请求携带 `[STEERING] ` 前缀消息，最终返回收敛后的答案（确定性 fake LLM） | 否 | 否 | `DeepAgentSteeringExample` |
 | `offload` | Context Offload 卸载/装载端到端：DeepAgent + `Runner.runAgent`/`runAgentStreaming` 真实触发，大输出工具结果自动卸载为 `[[OFFLOAD: ...]]` 标记，第一轮内 LLM 调用内置 reload 工具装载回注原文；第二轮展示跨调用 catalog 生命周期（`OFFLOAD_MISSING` 为预期行为）（需要 LLM；Redis 可选） | 是 | 可选 | `ContextOffloadExample` |
 | `list` | 列出所有可选示例 | — | — | — |
 
@@ -54,7 +56,7 @@ deep_agent/
 | `REDIS_PORT` | Redis 端口，默认 `6379` | redis；offload 中为可选 |
 | `REDIS_PASSWORD` | Redis 密码（offload 示例仅从环境变量读取） | offload 中为可选 |
 
-> `guardrail` 示例使用内置 fake LLM，无需任何外部配置即可运行。`offload` 示例必须配置 LLM（缺配置时会打印提示并优雅退出）；Redis 可选。
+> `guardrail` 与 `steering` 示例使用内置确定性 fake LLM，无需任何外部配置即可运行。`offload` 示例必须配置 LLM（缺配置时会打印提示并优雅退出）；Redis 可选。
 
 PowerShell 设置示例（请把 `<your-api-key>` 换成你自己的 Key）：
 
@@ -82,6 +84,7 @@ cd examples\deep_agent
 mvn -q -DskipTests exec:java "-Dexec.args=template"
 mvn -q -DskipTests exec:java "-Dexec.args=redis"
 mvn -q -DskipTests exec:java "-Dexec.args=guardrail"
+mvn -q -DskipTests exec:java "-Dexec.args=steering"
 mvn -q -DskipTests exec:java "-Dexec.args=offload"
 mvn -q -DskipTests exec:java "-Dexec.args=list"
 ```
@@ -138,6 +141,16 @@ java -jar target\deep-agent-examples-0.1.0.jar guardrail
 4. **第二轮（流式）展示跨调用 catalog 生命周期**：v2 管道的 catalog 是 per-context 绑定的内存对象（`OffloadCatalogImpl`），每次 Runner 调用新建 context 时重新绑定——上一轮的 handle 在新 catalog 中查不到，reload 返回 `OFFLOAD_MISSING`（落盘文件本身仍在，由 Janitor 按孤儿策略回收）；LLM 随即基于上下文中第一轮已装载的原文作答，验证装载结果的知识留存。
 5. **关键旋钮（演示用调小）**：`large_message_threshold=200`（默认 1000）；`tokens_threshold=100`（默认 20000，总量触发门控——每次加消息时先按「上下文总 tokens 是否达标」决定是否执行卸载扫描）；单轮场景 `recent_message_protection_count=0`（默认 5，保护窗口会把整个单轮上下文挡在卸载范围之外）。
 6. **可选 Redis**：配置 `REDIS_HOST` 后端链为 FILESYSTEM → REDIS → MEMORY；未配置自动退化为 FILESYSTEM → MEMORY。Redis 不可达时按链降级，save 永不抛错。
+
+## 引导模式示例说明（`steering`）
+
+`DeepAgentSteeringExample` 用确定性 fake 模型演示 DeepAgent 引导模式（ChatGPT 式运行中追加指令）的完整闭环：
+
+1. **确定性 fake 模型**：脚本化 `Model.ModelInvoker`（无需 API Key / 网络）。第 1 次调用 sleep 约 1.5s 模拟长思考后返回中间答案 `draft answer (before steering)`；第 2 次起返回收敛答案 `final answer incorporating steering guidance`。示例同时捕获每次模型请求的消息列表用于证据输出。
+2. **不打断当前轮次**：工作线程发起阻塞式 `agent.invoke(inputs, session)`；主线程等第 1 次模型调用进入后约 500ms 调用 `agent.steer(message, session)`。steer 落在第 1 次调用进行中，该调用仍正常返回中间答案（时间线可见）。
+3. **下一轮可见**：引导消息不在当前轮生效，而是在下一轮模型请求的上下文中以 `[STEERING] ` 前缀的用户消息注入。
+4. **收敛后返回**：invoke 不在中间答案处退出，任务循环携带引导消息再跑一轮，最终 `output` 为收敛答案；示例末尾按两条判据打印 PASS/FAIL（output 等于收敛答案 + 第 2 次请求含 `[STEERING] `），FAIL 时进程以退出码 1 结束。
+5. **真实 LLM 用法**：steer API 完全一致——用 `agent.invokeAsync(...)`（或工作线程阻塞 invoke）启动任务，在 UI/调度线程随时 `agent.steer(message, session)` 注入中途指令即可。
 
 ## 扩展点
 
