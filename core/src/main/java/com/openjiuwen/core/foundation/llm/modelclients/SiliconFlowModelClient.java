@@ -393,10 +393,40 @@ public class SiliconFlowModelClient extends BaseModelClient {
         if (line == null) {
             return null;
         }
-        String dataString = line;
-        if (dataString.startsWith("data: ")) {
-            dataString = dataString.substring("data: ".length());
+        return parseStreamPayload(sseDataPayload(line));
+    }
+
+    /**
+     * Extracts the payload of a single server-sent-events line.
+     *
+     * <p>The SSE specification makes the single space after the field separator optional,
+     * so {@code data:{"a":1}} and {@code data: {"a":1}} denote the same frame and must
+     * yield the identical payload. Leading and trailing whitespace of the line and of the
+     * payload is stripped as well, so callers that already hand over a bare payload — the
+     * stream iterator passes the de-prefixed data of the frame it just classified — observe
+     * the same result. A line that does not start with the {@code data:} field is returned
+     * as-is except for its surrounding whitespace, which keeps bare JSON payloads working.</p>
+     *
+     * @param line raw SSE line, must not be null
+     * @return frame payload without the {@code data:} prefix and without surrounding whitespace
+     */
+    private static String sseDataPayload(String line) {
+        String stripped = line.strip();
+        if (!stripped.startsWith("data:")) {
+            return stripped;
         }
+        // The space after the colon is optional in SSE framing.
+        return stripped.substring("data:".length()).strip();
+    }
+
+    /**
+     * Parses one already de-prefixed SSE payload into a chunk.
+     *
+     * @param dataString frame payload without the {@code data:} prefix, must not be null
+     * @return parsed chunk, or null when the payload is the stream terminator or carries no
+     *         usable content
+     */
+    private AssistantMessageChunk parseStreamPayload(String dataString) {
         if ("[DONE]".equals(dataString.strip())) {
             return null;
         }
@@ -909,7 +939,9 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         continue;
                     }
                     isFirstSegmentReceived = true;
-                    String data = line.substring("data:".length()).strip();
+                    // One prefix-stripping rule for both the frame classification below and
+                    // the chunk parser: the payload is derived once and handed over as-is.
+                    String data = sseDataPayload(line);
                     if (!data.contains("choices") && ErrorBodyParser.hasErrorObject(data)) {
                         throw errorFrameException(data);
                     }
@@ -917,7 +949,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                         isTerminated = true;
                         break;
                     }
-                    AssistantMessageChunk chunk = parseStreamChunk(line);
+                    AssistantMessageChunk chunk = parseStreamChunk(data);
                     if (chunk != null) {
                         markTerminatedIfFinished(chunk);
                         shouldKeepOpen = true;

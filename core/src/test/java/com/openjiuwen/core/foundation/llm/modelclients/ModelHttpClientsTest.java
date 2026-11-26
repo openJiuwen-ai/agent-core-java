@@ -8,7 +8,10 @@ import static com.openjiuwen.core.foundation.llm.modelclients.ModelHttpClients.D
 import static com.openjiuwen.core.foundation.llm.modelclients.ModelHttpClients.DeadClientVerdict.DEAD_BY_FAILURE_THRESHOLD;
 import static com.openjiuwen.core.foundation.llm.modelclients.ModelHttpClients.DeadClientVerdict.DEAD_BY_OFFICIAL_SIGNAL;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
@@ -20,6 +23,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +39,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -544,6 +552,91 @@ class ModelHttpClientsTest {
             assertThat(verifyOff).isNotSameAs(verifyOn);
             assertThat(verifyOff).isNotSameAs(noTlsConfig);
         } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
+    void httpsClientMirrorsJdkDefaultClientTlsParameters() throws Exception {
+        ModelHttpClients.clearSharedClientsForTesting();
+        try {
+            SSLParameters jdkDefaults = SSLContext.getDefault().getDefaultSSLParameters();
+            Set<String> jdkDefaultProtocols = Set.of(jdkDefaults.getProtocols());
+
+            for (boolean verifySsl : new boolean[] {true, false}) {
+                // When an https client is built for either verification mode
+                HttpClient client = ModelHttpClients
+                        .builder(sslClientConfig(verifySsl), "https://api.example.test/v1")
+                        .withSsl()
+                        .build();
+
+                // Then its negotiated parameters mirror the JDK default client context instead of
+                // the narrower defaults of the configured SSLContext
+                List<String> protocols = parametersOrEmpty(client.sslParameters().getProtocols());
+                List<String> cipherSuites = parametersOrEmpty(client.sslParameters().getCipherSuites());
+                assertThat(protocols).containsExactlyInAnyOrder(jdkDefaults.getProtocols());
+                assertThat(cipherSuites).containsExactlyInAnyOrder(jdkDefaults.getCipherSuites());
+                // Nothing outside that set may stay enabled, so legacy protocol versions do not
+                // creep back in
+                assertThat(protocols).allMatch(jdkDefaultProtocols::contains);
+
+                // And the verification switch keeps its meaning in both branches: the parameters
+                // are replaced wholesale, so hostname verification must be spelled out explicitly
+                assertThat(client.sslParameters().getEndpointIdentificationAlgorithm())
+                        .isEqualTo(verifySsl ? "HTTPS" : "");
+            }
+        } finally {
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
+    void mediaHttpClientFollowsChatPathSslPolicy() throws Exception {
+        ModelHttpClients.clearSharedClientsForTesting();
+        setEnvReader(name -> null);
+        try {
+            SSLParameters jdkDefaults = SSLContext.getDefault().getDefaultSSLParameters();
+
+            // The media factory must apply the chat path policy, not the JDK default context
+            HttpClient strict = DashScopeModelClient
+                    .createDashScopeHttpClient(mediaClientConfig(true, null));
+            assertThat(strict.sslContext()).isNotSameAs(SSLContext.getDefault());
+            assertThat(parametersOrEmpty(strict.sslParameters().getProtocols()))
+                    .containsExactlyInAnyOrder(jdkDefaults.getProtocols());
+            assertThat(strict.sslParameters().getEndpointIdentificationAlgorithm()).isEqualTo("HTTPS");
+
+            // With verification off it takes the insecure branch instead of ignoring the flag
+            HttpClient insecure = DashScopeModelClient
+                    .createDashScopeHttpClient(mediaClientConfig(false, null));
+            assertThat(insecure.sslContext()).isNotSameAs(SSLContext.getDefault());
+            assertThat(insecure.sslParameters().getEndpointIdentificationAlgorithm()).isEqualTo("");
+        } finally {
+            resetEnvReader();
+            ModelHttpClients.clearSharedClientsForTesting();
+        }
+    }
+
+    @Test
+    void mediaHttpClientSurfacesAnUnusableConfiguredCertificate() throws Exception {
+        ModelHttpClients.clearSharedClientsForTesting();
+        setEnvReader(name -> null);
+        Path certDir = Files.createTempDirectory("media-cert-dir");
+        Path unusableCert = certDir.resolve("unusable-cert");
+        Files.writeString(unusableCert, "not a certificate");
+        System.setProperty("SAFE_CERT_DIR", certDir.toString());
+        try {
+            // Then the configured certificate really reaches the trust material loading instead of
+            // being dropped, so an unusable one surfaces with its documented status
+            assertThatThrownBy(() -> DashScopeModelClient.createDashScopeHttpClient(
+                    mediaClientConfig(true, unusableCert.toString())))
+                    .isInstanceOf(BaseError.class)
+                    .satisfies(error -> assertThat(((BaseError) error).getStatus())
+                            .isEqualTo(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED));
+        } finally {
+            System.clearProperty("SAFE_CERT_DIR");
+            resetEnvReader();
+            Files.deleteIfExists(unusableCert);
+            Files.deleteIfExists(certDir);
             ModelHttpClients.clearSharedClientsForTesting();
         }
     }
@@ -1093,6 +1186,12 @@ class ModelHttpClientsTest {
                 });
     }
 
+    // Unset SSLParameters report null arrays rather than empty ones, so the assertions below can
+    // fail with a readable "expected to contain" message instead of a NullPointerException.
+    private static List<String> parametersOrEmpty(String[] values) {
+        return values == null ? List.of() : List.of(values);
+    }
+
     private static ModelClientConfig clientConfig(ModelHttpVersion httpVersion, Double connectTimeoutSeconds) {
         ModelClientConfig.ModelClientConfigBuilder builder = ModelClientConfig.builder()
                 .clientProvider(ProviderType.OPEN_AI)
@@ -1116,6 +1215,17 @@ class ModelHttpClientsTest {
                 .httpVersion(ModelHttpVersion.HTTP_1_1)
                 .timeout(9.0D)
                 .verifySsl(verifySsl)
+                .build();
+    }
+
+    private static ModelClientConfig mediaClientConfig(boolean verifySsl, String sslCert) {
+        return ModelClientConfig.builder()
+                .clientProvider(ProviderType.DASH_SCOPE)
+                .apiKey("sk-test")
+                .apiBase("https://dashscope.example.test")
+                .verifySsl(verifySsl)
+                .sslCert(sslCert)
+                .connectTimeoutSeconds(5.0D)
                 .build();
     }
 
