@@ -106,7 +106,7 @@ class ReActAgentTest {
         }
     }
 
-    // 同步和流式重试都应先采用恢复后的历史，再让 Rail 注入本次正文；正文不能进入持久上下文。
+    // Both model paths should send the recovered history and this attempt's Rail directive.
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void retryPreservesRailDirectiveAndUsesRecoveredContext(boolean streaming) {
@@ -141,7 +141,7 @@ class ReActAgentTest {
                 ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
                 beforeRequests.add(inputs.getMessages().stream().map(BaseMessage.class::cast)
                         .map(BaseMessage::getContentAsString).toList());
-                inputs.getMessages().add(0, new SystemMessage("selected skill body"));
+                inputs.getMessages().add(0, new SystemMessage("selected skill body " + context.getRetryAttempt()));
             }
 
             @Override
@@ -162,15 +162,16 @@ class ReActAgentTest {
             agent.callModel(context, modelContext, List.of());
 
             assertEquals(List.of(
-                    List.of("selected skill body", "System", "initial history"),
-                    List.of("selected skill body", "System", "recovered history")), modelRequests);
+                    List.of("selected skill body 0", "System", "initial history"),
+                    List.of("selected skill body 1", "System", "recovered history")), modelRequests);
             assertEquals(List.of(List.of("System", "initial history"),
-                    List.of("System", "recovered history")), beforeRequests);
+                    List.of("System", "initial history")), beforeRequests);
             assertEquals(List.of("recovered history"), modelContext.getMessages().stream()
                     .map(BaseMessage::getContentAsString).toList());
             assertEquals("System", agent.getPromptBuilder().build());
         } finally {
             agent.unregisterRail(rail).toCompletableFuture().join();
+            agent.close();
         }
     }
 

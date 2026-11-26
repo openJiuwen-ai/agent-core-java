@@ -475,8 +475,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
     }
 
     public Object railedModelCall(AgentCallbackContext ctx) {
-        // 首次仍在进入 Rail 生命周期前准备消息，保留准备失败时的原有异常处理。
-        // 重试则在 beforeAttempt 中先采用恢复后的上下文，再让 Rail 注入本次技能正文等内容。
+        // Give the first BEFORE_MODEL_CALL callbacks a prepared request to inspect and edit.
         prepareModelRequest(ctx);
         boolean isModelCallSuccessful = false;
         try {
@@ -486,15 +485,17 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     AgentCallbackEvent.AFTER_MODEL_CALL,
                     AgentCallbackEvent.ON_MODEL_EXCEPTION,
                     new Rails.RailedOperation() {
-                        /**
-                         * {@inheritDoc}
-                         */
+                        private Object firstMessageBeforeRail;
+                        private List<Object> injectedSystemMessages = List.of();
+
                         @Override
                         public void beforeAttempt() {
-                            // 必须在 BEFORE_MODEL_CALL 之前重建，否则会覆盖 Rail 本轮注入的正文和记忆。
-                            if (ctx.getRetryAttempt() > 0) {
-                                prepareModelRequest(ctx);
+                            List<Object> messages = ModelCallInputs.class.cast(ctx.getInputs()).getMessages();
+                            if (!injectedSystemMessages.isEmpty()) {
+                                messages.removeIf(message -> injectedSystemMessages.stream()
+                                        .anyMatch(injected -> injected == message));
                             }
+                            firstMessageBeforeRail = messages.isEmpty() ? null : messages.get(0);
                         }
 
                         /**
@@ -502,6 +503,15 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                          */
                         @Override
                         public Object execute() {
+                            ModelCallInputs inputs = ModelCallInputs.class.cast(ctx.getInputs());
+                            injectedSystemMessages = prependedSystemMessages(inputs.getMessages(),
+                                    firstMessageBeforeRail);
+                            if (ctx.getRetryAttempt() > 0) {
+                                // Keep recovery preparation after the before hooks. Only carry this attempt's injection
+                                // over to the rebuilt request so the model also sees the latest context.
+                                prepareModelRequest(ctx);
+                                inputs.getMessages().addAll(0, injectedSystemMessages);
+                            }
                             return doRailedModelCall(ctx);
                         }
 
@@ -522,6 +532,18 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 endModelCallTimeout(ctx);
             }
         }
+    }
+
+    private static List<Object> prependedSystemMessages(List<Object> messages, Object firstMessageBeforeRail) {
+        int end = 0;
+        while (end < messages.size() && messages.get(end) != firstMessageBeforeRail
+                && messages.get(end) instanceof SystemMessage) {
+            end++;
+        }
+        if (firstMessageBeforeRail != null && (end == messages.size() || messages.get(end) != firstMessageBeforeRail)) {
+            return List.of();
+        }
+        return new ArrayList<>(messages.subList(0, end));
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
