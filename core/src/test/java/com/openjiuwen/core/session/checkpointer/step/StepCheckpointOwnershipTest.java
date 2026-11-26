@@ -301,6 +301,82 @@ class StepCheckpointOwnershipTest {
     }
 
     @Test
+    void lastCompletedStepToleratesUnboundTenantAndRejectsForeignTenant() {
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(new InMemoryKVStore());
+        AgentStateCollection state = new AgentStateCollection();
+        TestSession session = new TestSession("live-session", "live-agent", state);
+        checkpointer.preAgentExecute(session, null);
+        checkpointer.stepCompleted(session,
+                new StepCursor(1L, "PHASE", "round", StepStatus.RUNNING, 1L));
+
+        // The session is not tenant-aware and no tenant is bound on this thread,
+        // so the stamped cursor carries an empty tenant and must stay readable
+        // instead of being mistaken for a foreign owner.
+        StepCursor unbound = checkpointer.lastCompletedStep(session);
+        assertNotNull(unbound);
+        assertEquals("", unbound.getTenantId());
+        assertEquals("live-session", unbound.getSessionId());
+        assertEquals("live-agent", unbound.getAgentId());
+
+        // A cursor owned by one tenant must not be exposed to another tenant.
+        state.update(Map.of(StepCursor.STATE_KEY, new StepCursor(2L, "PHASE", "round",
+                StepStatus.RUNNING, 2L, "tenant-a", "live-session", "live-agent").toMap()));
+        TenantContextHolder.setCurrentTenant(TenantContext.builder().tenantId("tenant-b").build());
+        assertNull(checkpointer.lastCompletedStep(session));
+    }
+
+    @Test
+    void lastPausedStepByIdIgnoresChildSessionBlobs() {
+        InMemoryKVStore store = new InMemoryKVStore();
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(store);
+        writePausedBlob(store, "chat:sub:agent:child-agent",
+                new StepCursor(3L, "PHASE", "pause", StepStatus.PAUSED, 3L,
+                        "", "chat:sub", "child-agent"));
+
+        // A prefix lookup for "chat" also finds "chat:sub"; its pause evidence
+        // belongs to the child session and must not surface as the parent's.
+        assertNull(checkpointer.lastPausedStep("chat"));
+
+        StepCursor childPaused = checkpointer.lastPausedStep("chat:sub");
+        assertNotNull(childPaused);
+        assertEquals("chat:sub", childPaused.getSessionId());
+        assertEquals("child-agent", childPaused.getAgentId());
+    }
+
+    @Test
+    void resumePausedByIdDoesNotRewriteChildSessionBlobs() {
+        InMemoryKVStore store = new InMemoryKVStore();
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(store);
+        writePausedBlob(store, "chat:agent:parent-agent",
+                new StepCursor(2L, "PHASE", "pause", StepStatus.PAUSED, 2L,
+                        "", "chat", "parent-agent"));
+        writePausedBlob(store, "chat:sub:agent:child-agent",
+                new StepCursor(3L, "PHASE", "pause", StepStatus.PAUSED, 3L,
+                        "", "chat:sub", "child-agent"));
+
+        checkpointer.resumePaused("chat");
+
+        assertNull(checkpointer.lastPausedStep("chat"));
+        StepCursor childPaused = checkpointer.lastPausedStep("chat:sub");
+        assertNotNull(childPaused);
+        assertEquals("chat:sub", childPaused.getSessionId());
+        assertEquals(3L, childPaused.getSeq());
+    }
+
+    @Test
+    void resumePausedByIdRejectsSessionThatOnlyHasChildEvidence() {
+        InMemoryKVStore store = new InMemoryKVStore();
+        PersistenceCheckpointer checkpointer = new PersistenceCheckpointer(store);
+        writePausedBlob(store, "chat:sub:agent:child-agent",
+                new StepCursor(3L, "PHASE", "pause", StepStatus.PAUSED, 3L,
+                        "", "chat:sub", "child-agent"));
+
+        assertThrows(IllegalStateException.class, () -> checkpointer.resumePaused("chat"));
+
+        assertNotNull(checkpointer.lastPausedStep("chat:sub"));
+    }
+
+    @Test
     void inMemoryScanAndResumeCoverEveryAgentInASession() {
         InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
         AgentStateCollection stateA = new AgentStateCollection();
@@ -344,6 +420,10 @@ class StepCheckpointOwnershipTest {
         assertEquals(1, requests.size());
         assertEquals("owned-session", requests.get(0).sessionId());
         assertEquals("owned-agent", requests.get(0).agentId());
+    }
+
+    private void writePausedBlob(InMemoryKVStore store, String ownerKey, StepCursor cursor) {
+        writeLegacyBlob(store, ownerKey + ":agent_state_blobs", cursor);
     }
 
     private void saveRunning(Checkpointer checkpointer, String sessionId, String agentId) {

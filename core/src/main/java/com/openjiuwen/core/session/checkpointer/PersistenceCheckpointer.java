@@ -277,6 +277,10 @@ public class PersistenceCheckpointer extends Checkpointer {
      * is resumed - one agent's continuation must not leave its siblings
      * paused behind a session the caller considers resumed.
      *
+     * <p>Only blobs owned by exactly this session id are rewritten: the
+     * prefix lookup also finds child sessions such as {@code chat:sub}, and
+     * resuming a parent must never touch them.</p>
+     *
      * @param sessionId id of the session to resume, never null or blank
      * @throws IllegalStateException when the session has no persisted state
      *         or no paused cursor
@@ -308,7 +312,7 @@ public class PersistenceCheckpointer extends Checkpointer {
             if (paused == null) {
                 continue;
             }
-            Optional<StepCursor> restored = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
+            Optional<StepCursor> restored = restoreOwnedStep(paused, entry.getKey(), scanPrefix, sessionId);
             if (restored.isEmpty()) {
                 continue;
             }
@@ -365,7 +369,7 @@ public class PersistenceCheckpointer extends Checkpointer {
             Map<String, Object> normalized = new LinkedHashMap<>();
             stateMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
             StepCursor paused = StepCursor.pausedFromState(normalized);
-            Optional<StepCursor> restored = Checkpointer.restoreOwner(paused, entry.getKey(), scanPrefix);
+            Optional<StepCursor> restored = restoreOwnedStep(paused, entry.getKey(), scanPrefix, sessionId);
             if (restored.isPresent() && restored.get().getStatus() == StepStatus.PAUSED) {
                 return restored.get();
             }
@@ -373,6 +377,43 @@ public class PersistenceCheckpointer extends Checkpointer {
         return null;
     }
 
+    /**
+     * Restore the owner recorded by a persisted blob key and require it to be
+     * the session the caller asked for.
+     *
+     * <p>Blobs are located with a {@code sessionId + ":"} prefix because one
+     * session may own several agent blobs, and that prefix also matches child
+     * sessions such as {@code chat:sub}. Deriving the owner from the key alone
+     * would therefore let {@code resumePaused("chat")} rewrite the paused
+     * evidence of {@code chat:sub}; the exact session comparison keeps the
+     * by-id entry point aligned with the per-session lookup used by
+     * {@code InMemoryCheckpointer}, while still accepting the child session
+     * when it is the requested id.</p>
+     *
+     * @param cursor cursor read from the blob, may be null
+     * @param storageKey exact persisted blob key
+     * @param scanPrefix prefix used for the scan, empty for an unbound scan
+     * @param sessionId session id requested by the caller, never null
+     * @return the owned cursor when the key belongs to {@code sessionId}
+     */
+    private static Optional<StepCursor> restoreOwnedStep(StepCursor cursor, String storageKey,
+                                                         String scanPrefix, String sessionId) {
+        Optional<StepCursor> restored = Checkpointer.restoreOwner(cursor, storageKey, scanPrefix);
+        return restored.filter(owned -> sessionId.equals(owned.getSessionId()));
+    }
+
+    /**
+     * List the persisted agent-state blobs whose key starts with a session id.
+     *
+     * <p>The prefix intentionally includes colon-delimited child sessions, so
+     * the same lookup serves a session and every sub-session that hangs off
+     * it. The blob key alone cannot distinguish {@code chat} from
+     * {@code chat:sub}, so callers must filter with
+     * {@link #restoreOwnedStep} before reading or rewriting that evidence.</p>
+     *
+     * @param sessionId session id used as the lookup prefix, never null
+     * @return blob key to dump-type key pairs, empty when nothing was persisted
+     */
     private Map<String, String> agentStateKeys(String sessionId) {
         Map<String, Object> blobs = kvStore.getByPrefix(
                 TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join();
