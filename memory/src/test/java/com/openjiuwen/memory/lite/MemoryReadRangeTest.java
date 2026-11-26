@@ -352,6 +352,35 @@ class MemoryReadRangeTest {
     }
 
     @Test
+    void crlfWindowReadContentIsAcceptedVerbatimAsEditOldText() throws IOException {
+        String content = "alpha\r\nbeta\r\ngamma\r\n";
+        String expectedWindow = "beta\r\ngamma\r";
+        MemoryToolContext memoryContext = memoryContext("MEMORY.md", content, localFs());
+        CodingMemoryToolContext codingContext = codingContext("readme.md", content, localFs());
+
+        Map<String, Object> memoryRead = MemoryToolOps.readMemoryWithContext(memoryContext, "MEMORY.md", 2, 2)
+                .toCompletableFuture()
+                .join();
+        String memoryWindow = String.valueOf(memoryRead.get("content"));
+        Map<String, Object> memoryEdit = MemoryToolOps.editMemoryWithContext(
+                memoryContext, "MEMORY.md", memoryWindow, "replaced").toCompletableFuture().join();
+        Map<String, Object> codingRead = CodingMemoryToolOps
+                .codingMemoryReadWithContext(codingContext, "readme.md", 2, 2).join();
+        String codingWindow = String.valueOf(codingRead.get("content"));
+        Map<String, Object> codingEdit = CodingMemoryToolOps
+                .codingMemoryEditWithContext(codingContext, "readme.md", codingWindow, "replaced").join();
+
+        assertThat(memoryWindow).isEqualTo(expectedWindow);
+        assertThat(memoryEdit).containsEntry("success", true);
+        assertThat(codingWindow).isEqualTo(expectedWindow);
+        assertThat(codingEdit).containsEntry("success", true);
+        assertThat(Files.readString(root.resolve("memory").resolve("MEMORY.md")))
+                .isEqualTo("alpha\r\nreplaced\n");
+        assertThat(Files.readString(root.resolve("coding_memory").resolve("readme.md")))
+                .isEqualTo("alpha\r\nreplaced\n");
+    }
+
+    @Test
     void appendDoesNotFallBackToOverwriteWhenSignatureLacksAppend() throws IOException {
         TwoArgWriteFs fs = new TwoArgWriteFs("alpha\nbeta");
         MemoryToolContext context = memoryContext("MEMORY.md", fs.content, fs);
