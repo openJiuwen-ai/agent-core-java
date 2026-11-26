@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.classification.ModelCallClassification;
@@ -118,18 +119,19 @@ class ModelClientStreamTerminationTest {
     void openAiStreamCutOffBeforeFirstSegmentIsRetryableTruncation() {
         // Given a peer that answers headers and then cuts the chunked body off
         // before any data frame
-        try (AbruptCloseSseServer stub = AbruptCloseSseServer.startWithoutEvents()) {
+        try (AbruptCloseSseServer stub = AbruptCloseSseServer.startWithoutEvents();
+             LogCapture logs = LogCapture.attach()) {
             OpenAIModelClient client = openAiClient(stub.baseUrl());
 
             // When the first read hits the abrupt cut
             Throwable error = catchThrowable(() -> toList(client.stream(
                     List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())));
 
-            // Then the transport cut is a retryable temporary failure instead of an
-            // unclassified non-retryable error
+            // Then the empty body cannot be mistaken for a received first byte
             BaseError typed = unwrap(error);
-            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
             assertRetryableTruncation(typed);
+            assertThat(logs.messages()).anyMatch(message -> message.contains("event=model_stream_response_headers"));
+            assertThat(logs.messages()).noneMatch(message -> message.contains("event=model_stream_first_byte"));
         }
     }
 
@@ -244,6 +246,38 @@ class ModelClientStreamTerminationTest {
         assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
         assertThat(String.valueOf(typed.getParams().get("error_msg"))).contains("premature eof");
         assertRetryableTruncation(typed);
+    }
+
+    @Test
+    void openAiStreamTransportPhasesObservedBeforeFirstChunk() {
+        // Given a server that delays both its headers and its terminal body frame
+        TieredTimeoutStubServer.StubScript script = new TieredTimeoutStubServer.StubScript()
+                .headerDelayMillis(50L)
+                .events(List.of(terminalContentEvent("ok")))
+                .gapMillis(50L)
+                .silentAfterEvents();
+        try (TieredTimeoutStubServer stub = TieredTimeoutStubServer.start(script);
+             LogCapture logs = LogCapture.attach()) {
+            OpenAIModelClient client = openAiClient(stub.baseUrl());
+
+            // When the stream has been consumed to its terminal frame
+            List<AssistantMessageChunk> chunks = toList(client.stream(
+                    List.of(new UserMessage("hello")), ModelInvokeOptions.builder().timeout(1.0F).build()));
+
+            // Then transport arrival is observable separately from parsed model content
+            assertThat(chunks).hasSize(1);
+            assertThat(logs.messages()).anyMatch(message -> message.contains("event=model_stream_dispatch"));
+            assertThat(logs.messages()).anyMatch(message -> message.contains("event=model_stream_response_headers"));
+            assertThat(logs.messages()).anyMatch(message -> message.contains("event=model_stream_first_byte"));
+            List<String> phases = logs.messages().stream()
+                    .filter(message -> message.contains("event=model_stream_")).toList();
+            assertThat(phases).hasSize(3);
+            assertThat(phases.get(0)).contains("event=model_stream_dispatch");
+            assertThat(phases.get(1)).contains("event=model_stream_response_headers");
+            assertThat(phases.get(2)).contains("event=model_stream_first_byte");
+            String callId = phases.get(0).replaceAll(".*callId=([0-9]+).*", "$1");
+            assertThat(phases).allSatisfy(message -> assertThat(message).contains("callId=" + callId));
+        }
     }
 
     private static String terminalContentEvent(String content) {
@@ -402,6 +436,44 @@ class ModelClientStreamTerminationTest {
             } catch (IOException exception) {
                 // The acceptor already served its single connection or was never accepted.
             }
+        }
+    }
+
+    private static final class LogCapture implements AutoCloseable {
+        private final java.util.logging.Handler handler;
+        private final List<java.util.logging.LogRecord> records = new ArrayList<>();
+
+        private LogCapture() {
+            this.handler = new java.util.logging.Handler() {
+                @Override
+                public void publish(java.util.logging.LogRecord record) {
+                    records.add(record);
+                }
+
+                @Override
+                public void flush() {
+                    // Memory capture needs no flushing.
+                }
+
+                @Override
+                public void close() {
+                    // The enclosing capture removes this handler.
+                }
+            };
+            Loggers.LLM.addHandler(handler);
+        }
+
+        private static LogCapture attach() {
+            return new LogCapture();
+        }
+
+        private List<String> messages() {
+            return records.stream().map(java.util.logging.LogRecord::getMessage).toList();
+        }
+
+        @Override
+        public void close() {
+            Loggers.LLM.removeHandler(handler);
         }
     }
 

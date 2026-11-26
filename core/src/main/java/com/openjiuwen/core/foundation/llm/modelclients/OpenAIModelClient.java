@@ -74,6 +74,7 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -94,6 +95,7 @@ public class OpenAIModelClient extends BaseModelClient
 
     public static final List<String> CLIENT_NAMES = __client_name__;
 
+    private static final AtomicLong NEXT_TRANSPORT_CALL_ID = new AtomicLong();
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String IMAGES_GENERATIONS_PATH = "/images/generations";
@@ -1824,10 +1826,17 @@ public class OpenAIModelClient extends BaseModelClient
             int retryCount,
             double idleSeconds) throws IOException, InterruptedException {
         HttpClient sender = httpClient.get();
+        long callId = NEXT_TRANSPORT_CALL_ID.incrementAndGet();
+        long startedNanos = System.nanoTime();
+        Loggers.LLM.info("event=model_stream_dispatch callId={} retry={}", callId, retryCount);
         try {
             HttpResponse<InputStream> response = sender.send(
                     buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
-                    IdleBoundInputStream.bodyHandler(idleSeconds));
+                    IdleBoundInputStream.bodyHandler(idleSeconds, callId, retryCount, startedNanos));
+            Loggers.LLM.info(
+                    "event=model_stream_response_headers callId={} retry={} status={} elapsedMs={}",
+                    callId, retryCount, response.statusCode(),
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
             ModelHttpClients.noteSendSuccess(sender);
             return response;
         } catch (IOException exception) {

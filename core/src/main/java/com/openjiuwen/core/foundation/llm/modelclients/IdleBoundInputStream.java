@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.foundation.llm.modelclients;
 
+import com.openjiuwen.core.common.logging.Loggers;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -37,14 +39,21 @@ final class IdleBoundInputStream extends InputStream {
     private final BlockingQueue<Object> chunks = new LinkedBlockingQueue<>();
     private final long idleNanos;
     private final double idleSeconds;
+    private final long callId;
+    private final int retryCount;
+    private final long startedNanos;
 
     private volatile Flow.Subscription subscription;
     private volatile boolean isClosed;
+    private boolean isFirstByteLogged;
     private byte[] current;
     private int offset;
 
-    private IdleBoundInputStream(double idleSeconds) {
+    private IdleBoundInputStream(double idleSeconds, long callId, int retryCount, long startedNanos) {
         this.idleSeconds = idleSeconds;
+        this.callId = callId;
+        this.retryCount = retryCount;
+        this.startedNanos = startedNanos;
         this.idleNanos = BigDecimal.valueOf(idleSeconds)
                 .multiply(BigDecimal.valueOf(1_000_000_000L)).longValue();
     }
@@ -56,7 +65,22 @@ final class IdleBoundInputStream extends InputStream {
      * @return the body handler producing idle-bounded streams
      */
     static HttpResponse.BodyHandler<InputStream> bodyHandler(double idleSeconds) {
-        return responseInfo -> new QueueingBodySubscriber(new IdleBoundInputStream(idleSeconds));
+        return responseInfo -> new QueueingBodySubscriber(new IdleBoundInputStream(idleSeconds, -1L, 0, 0L));
+    }
+
+    /**
+     * Adds transport phase correlation to an idle-bounded response body.
+     *
+     * @param idleSeconds peer silence window in seconds
+     * @param callId process-local call identifier
+     * @param retryCount retries consumed before this attempt
+     * @param startedNanos monotonic start of this attempt
+     * @return body handler producing an idle-bounded, correlated stream
+     */
+    static HttpResponse.BodyHandler<InputStream> bodyHandler(
+            double idleSeconds, long callId, int retryCount, long startedNanos) {
+        return responseInfo -> new QueueingBodySubscriber(
+                new IdleBoundInputStream(idleSeconds, callId, retryCount, startedNanos));
     }
 
     @Override
@@ -116,6 +140,9 @@ final class IdleBoundInputStream extends InputStream {
             }
             current = (byte[]) next;
             offset = 0;
+            if (callId >= 0 && current.length > 0) {
+                logFirstByte();
+            }
         }
         return true;
     }
@@ -157,6 +184,16 @@ final class IdleBoundInputStream extends InputStream {
             failure = new IOException("model response body stream failed", throwable);
         }
         chunks.offer(failure);
+    }
+
+    private void logFirstByte() {
+        if (isFirstByteLogged) {
+            return;
+        }
+        isFirstByteLogged = true;
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
+        Loggers.LLM.info("event=model_stream_first_byte callId={} retry={} elapsedMs={}",
+                callId, retryCount, elapsedMs);
     }
 
     private static final class QueueingBodySubscriber implements HttpResponse.BodySubscriber<InputStream> {
