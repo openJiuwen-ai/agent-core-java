@@ -34,7 +34,7 @@ public class ContextEngineeringMiddleware {
      */
     public Map<String, Object> process(Object context) {
         if (context instanceof DeepAgent agent) {
-            return fromConfig(agent.getConfig(), agent.getWorkspace().root().toString());
+            return fromConfig(agent.getConfig(), agent.resolveWorkspaceRootForCurrentTenant().toString());
         }
         if (context instanceof DeepAgentConfig config) {
             return fromConfig(config, config.getWorkspacePath());

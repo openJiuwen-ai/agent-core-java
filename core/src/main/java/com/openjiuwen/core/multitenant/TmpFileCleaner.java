@@ -72,6 +72,32 @@ public class TmpFileCleaner {
         Loggers.AGENT.info("TmpFileCleaner stopped");
     }
 
+    /**
+     * Clean the tmp directory of a single tenant using the configured TTL.
+     * <p>
+     * This entry point avoids enumerating every tenant directory and keeps no per-tenant state.
+     * It is the authoritative cleanup path: the caller resolves the tenant root through
+     * {@link TenantWorkspaceResolver}, so custom or sharded layouts are covered as well.
+     *
+     * @param ctx the tenant context
+     * @since 0.1.17
+     */
+    public void cleanTenantTmp(TenantContext ctx) {
+        if (workspaceResolver == null || ctx == null || !ctx.isTenantAware()) {
+            return;
+        }
+        Instant cutoff = Instant.now().minus(ttl);
+        cleanDirectory(workspaceResolver.resolveTempDir(ctx), cutoff);
+    }
+
+    /**
+     * Scan the base tmp directory and the default tenant layout.
+     * <p>
+     * The base workspace cannot enumerate caller-defined layouts, so this scan only covers the
+     * default {@code tenants/{tenantId}/tmp} layout. Tenants placed elsewhere (explicit root,
+     * locator, custom namespace factory, extra allowed roots) are cleaned through
+     * {@link #cleanTenantTmp(TenantContext)} when they are bound.
+     */
     private void scanAndClean() {
         Instant cutoff = Instant.now().minus(ttl);
         Path defaultTmp = Path.of(baseWorkspacePath, "tmp").toAbsolutePath().normalize();

@@ -10,7 +10,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Objects;
 
 /**
  * Resolves tenant-scoped workspace paths under a shared base directory.
@@ -19,24 +19,61 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class TenantWorkspaceResolver {
     private final String baseWorkspacePath;
-    private final ConcurrentHashMap<String, Path> initializedTenants = new ConcurrentHashMap<>();
-    private final TenantNamespaceFactory namespaceFactory;
+    private final TenantWorkspacePolicy policy;
 
+    /**
+     * Create a resolver using the default tenant namespace layout.
+     *
+     * @param baseWorkspacePath the base workspace path
+     * @since 0.1.7
+     */
     public TenantWorkspaceResolver(String baseWorkspacePath) {
         this(baseWorkspacePath, null);
     }
 
+    /**
+     * Create a resolver using a custom tenant namespace factory.
+     *
+     * @param baseWorkspacePath the base workspace path
+     * @param namespaceFactory the namespace factory, or null for the default path factory
+     * @since 0.1.7
+     */
     public TenantWorkspaceResolver(String baseWorkspacePath, TenantNamespaceFactory namespaceFactory) {
-        this.baseWorkspacePath = baseWorkspacePath;
-        this.namespaceFactory = namespaceFactory != null ? namespaceFactory : TenantNamespaceFactories.PATH_DEFAULT;
+        this(TenantWorkspacePolicy.builder()
+            .baseWorkspacePath(baseWorkspacePath)
+            .namespaceFactory(namespaceFactory)
+            .build());
     }
 
+    /**
+     * Create a resolver backed by an explicit workspace policy.
+     *
+     * @param policy the workspace policy
+     * @since 0.1.17
+     */
+    public TenantWorkspaceResolver(TenantWorkspacePolicy policy) {
+        this.policy = Objects.requireNonNull(policy, "policy must not be null");
+        this.baseWorkspacePath = policy.getBaseWorkspacePath();
+    }
+
+    /**
+     * Return the namespace factory used by the underlying policy.
+     *
+     * @return the namespace factory
+     * @since 0.1.7
+     */
     public TenantNamespaceFactory getNamespaceFactory() {
-        return namespaceFactory;
+        return policy.getNamespaceFactory();
     }
 
-    private String tenantNamespace(TenantContext ctx) {
-        return namespaceFactory.namespace(ctx, "tenants");
+    /**
+     * Return the workspace policy backing this resolver.
+     *
+     * @return the workspace policy
+     * @since 0.1.17
+     */
+    public TenantWorkspacePolicy getPolicy() {
+        return policy;
     }
 
     /**
@@ -47,11 +84,7 @@ public class TenantWorkspaceResolver {
      * @since 0.1.7
      */
     public Path resolveTenantRoot(TenantContext ctx) {
-        if (!ctx.isTenantAware()) {
-            return Path.of(baseWorkspacePath).toAbsolutePath().normalize();
-        }
-        String ns = tenantNamespace(ctx);
-        return Path.of(baseWorkspacePath, ns).toAbsolutePath().normalize();
+        return policy.resolveTenantRoot(ctx);
     }
 
     /**
@@ -149,11 +182,7 @@ public class TenantWorkspaceResolver {
         if (!ctx.isTenantAware()) {
             return Path.of(baseWorkspacePath).toAbsolutePath().normalize();
         }
-        String tenantId = ctx.safeTenantId();
-        Path cached = initializedTenants.get(tenantId);
-        if (cached != null) {
-            return cached;
-        }
+        String tid = ctx.safeTenantId();
         Path tenantRoot = resolveTenantRoot(ctx);
         try {
             Files.createDirectories(tenantRoot);
@@ -165,10 +194,9 @@ public class TenantWorkspaceResolver {
             Files.createDirectories(tenantRoot.resolve(".overlay"));
         } catch (IOException e) {
             throw new FrameworkError(StatusCode.ERROR,
-                "Failed to initialize tenant space: " + tenantId, null, e, null);
+                "Failed to initialize tenant space: " + tid, null, e, null);
         }
-        Path existing = initializedTenants.putIfAbsent(tenantId, tenantRoot);
-        return existing != null ? existing : tenantRoot;
+        return tenantRoot;
     }
 
     /**

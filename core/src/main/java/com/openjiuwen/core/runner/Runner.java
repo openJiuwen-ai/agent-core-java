@@ -17,6 +17,7 @@ import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.core.multiagent.BaseTeam;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspacePolicy;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
@@ -495,7 +496,13 @@ public final class Runner {
                         if (dataRoot == null || dataRoot.isEmpty()) {
                             dataRoot = System.getProperty("user.dir");
                         }
-                        workspaceResolver = new TenantWorkspaceResolver(dataRoot);
+                        TenantWorkspacePolicy policy = TenantWorkspacePolicy.builder()
+                                .baseWorkspacePath(dataRoot)
+                                .namespaceFactory(config.getTenantNamespaceFactory())
+                                .locator(config.getTenantWorkspaceLocator())
+                                .allowedTenantRoots(config.getAllowedTenantRoots())
+                                .build();
+                        workspaceResolver = new TenantWorkspaceResolver(policy);
                     } else {
                         workspaceResolver = null;
                     }
