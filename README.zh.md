@@ -41,32 +41,20 @@ mvn clean install -DskipTests
 <dependency>
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-java</artifactId>
-    <version>0.1.7</version>
+    <version>0.1.18</version>
 </dependency>
 ```
 
 ### 样例
 
-让我们创建一个简单的WorkflowAgent，调用工作流处理金融场景业务：
-将examples文件夹拷贝至你的maven工程的src/main目录，将examples内的apiconfig.json,apiconfig_example.json复制到工程的src/resources,即可运行样例代码
+可运行示例都在 `examples/` 目录下：[examples/agent_builder](examples/agent_builder/) 是最小的 Agent 示例，
+[examples/agent_teams](examples/agent_teams/) 是团队协作示例，各目录自带编译与运行说明。
 
-```java
-// 示例代码位于 examples/workflow_agent/WorkflowAgentExample.java
-public class WorkflowAgentExample {
-    public static void main(String[] args) throws Exception {
-        WorkflowAgentExampleSupport.run(args);
-    }
-}
-```
+需要 `WorkflowAgent` 的完整讲解（工作流卡片、组件注册、`QuestionerComponent` 中断与
+`InteractiveInput` 恢复）时，见
+[执行器Runner.md](documents/zh/2.开发指南/高阶用法/执行器Runner.md)。
 
-**预期输出**
-```
-assistant> 请补充转账金额，必须是数字或带货币单位的金额描述。
-// 用户回复: 2000元
-assistant> 转账服务完成，记录的转账金额为 2000元。
-```
-
-更多完整示例请查看[examples/workflow_agent](examples/workflow_agent/)目录。
+原先 `examples/workflow_agent/` 下的金融场景示例已不在当前代码树中，此处曾展示的示例代码一并移除。
 
 ## 架构设计
 
