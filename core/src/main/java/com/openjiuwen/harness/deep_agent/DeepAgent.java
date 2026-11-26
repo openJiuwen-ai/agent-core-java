@@ -2509,6 +2509,7 @@ public class DeepAgent implements AutoCloseable {
             result.put("final_result", finalRound);
             copyIfPresent(finalRound, result, "output");
             copyIfPresent(finalRound, result, "result_type");
+            copyIfPresent(finalRound, result, "failure");
             copyIfPresent(finalRound, result, "state");
             copyIfPresent(finalRound, result, "interrupt_ids");
             copyIfPresent(finalRound, result, "usage_metadata");
@@ -2979,6 +2980,7 @@ public class DeepAgent implements AutoCloseable {
         result.put("is_follow_up", Boolean.TRUE.equals(inputs.get("is_follow_up")));
         result.put("output", resolveOutput(source));
         copyIfPresent(source, result, "result_type");
+        copyIfPresent(source, result, "failure");
         copyIfPresent(source, result, "interrupt_ids");
         copyIfPresent(source, result, "usage_metadata");
         copyIfPresent(source, result, "usage");
