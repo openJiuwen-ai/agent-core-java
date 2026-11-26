@@ -316,6 +316,6 @@ Use `${...}` in node configuration to reference other nodes' output:
 - **Real Cases**: `references/workflow_cases.md` (4 end-to-end cases: multi-workflow financial assistant / streaming Q&A / multi-field follow-up / conditional branching)
 - **Minimal Runnable Example**: `references/MinimalWorkflowExample.java` (self-contained, includes model configuration, copy and run)
 - Full documentation: `documents/zh/2.开发指南/工作流/` (overview/key concepts/building workflows/using components)
-- Example code: `examples/workflow_agent/WorkflowAgentExampleSupport.java` + `examples/interact/WeatherAssistantInteractExampleSupport.java`
+- Example code: the snippets in `references/workflow_cases.md` are self-contained; runnable examples live in `examples/agent_builder/` and `examples/agent_teams/`
 - API documentation: `documents/zh/API文档/com.openjiuwen.core/workflow/`
 - Agent team guide: `resources/skills/agent-team-guide/SKILL.md`

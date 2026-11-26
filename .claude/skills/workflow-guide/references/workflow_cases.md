@@ -4,7 +4,7 @@ This file provides 4 end-to-end cases, each containing "scenario -> workflow gra
 
 ## Case 1: Financial Assistant Multi-Workflow (WorkflowAgent + Intent Routing)
 
-**Corresponds to**: `examples/workflow_agent/WorkflowAgentExampleSupport.java`
+**Corresponds to**: the original `examples/workflow_agent` demo has been removed; the snippet below is self-contained and can be pasted into a new class.
 
 ### Scenario
 
@@ -112,7 +112,7 @@ If the user only says "I want to transfer" (no amount):
 
 ## Case 2: Streaming Q&A Assistant (LLMComponent + End streaming)
 
-**Corresponds to**: Simplified version of `examples/interact/WeatherAssistantInteractExampleSupport.java`
+**Corresponds to**: the original `examples/interact` demo has been removed; the snippet below is self-contained and can be pasted into a new class.
 
 ### Scenario
 

@@ -277,7 +277,7 @@ while (stream.hasNext()) {
 }
 ```
 
-在 `examples/workflow_agent/WorkflowAgentExampleSupport.java` 里，命令行示例就是通过 `Runner.runAgentStreaming(...)` 消费 `WorkflowAgent` 的输出和交互事件。
+命令行示例通过 `Runner.runAgentStreaming(...)` 消费 `WorkflowAgent` 的输出和交互事件。
 
 ## Runner 会怎样准备 session
 
