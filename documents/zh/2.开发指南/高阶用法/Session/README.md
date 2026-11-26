@@ -40,4 +40,4 @@
 - [API 文档：session](../../API文档/com.openjiuwen.core/session.README.md)
 - [API 文档：session.interaction](../../API文档/com.openjiuwen.core/session/interaction.README.md)
 - [API 文档：session.checkpointer](../../API文档/com.openjiuwen.core/session/checkpointer.README.md)
-- [测试：WorkflowAgent 流式中断恢复](../../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)
+- [测试：WorkflowAgent 流式中断恢复](../../../../../core/src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)

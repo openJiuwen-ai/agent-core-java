@@ -201,4 +201,4 @@ Java 这套 checkpoint 的内容重点是：
 - [源码：SingleDimUpdater.java](../../../../src/main/java/com/openjiuwen/agent_evolving/updater/SingleDimUpdater.java)
 - [源码：DefaultCheckpointManager.java](../../../../src/main/java/com/openjiuwen/agent_evolving/checkpointing/DefaultCheckpointManager.java)
 - [源码：FileCheckpointStore.java](../../../../src/main/java/com/openjiuwen/agent_evolving/checkpointing/FileCheckpointStore.java)
-- [源码：旧 Trainer.java](../../../../src/main/java/com/openjiuwen/dev_tools/tune/trainer/Trainer.java)
+- [源码：旧 Trainer.java](../../../../core/src/main/java/com/openjiuwen/dev_tools/tune/trainer/Trainer.java)

@@ -451,5 +451,5 @@ RecoveryAction action = recoveryService.resumePaused(cursor);   // RESUMED_EXPLI
 - [API 文档：CheckpointerFactory](../API文档/com.openjiuwen.core/session/checkpointer/CheckpointerFactory.md)
 - [API 文档：InMemoryCheckpointer](../API文档/com.openjiuwen.core/session/checkpointer/InMemoryCheckpointer.md)
 - [API 文档：PersistenceCheckpointer](../API文档/com.openjiuwen.core/session/checkpointer/PersistenceCheckpointer.md)
-- [测试：WorkflowAgent 流式中断恢复](../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)
-- [源码：Runner.release](../../../../src/main/java/com/openjiuwen/core/runner/Runner.java)
+- [测试：WorkflowAgent 流式中断恢复](../../../../core/src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)
+- [源码：Runner.release](../../../../core/src/main/java/com/openjiuwen/core/runner/Runner.java)

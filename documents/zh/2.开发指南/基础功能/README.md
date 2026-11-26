@@ -27,7 +27,7 @@
 ## 参考入口
 
 - [API 文档：foundation](../API文档/com.openjiuwen.core/foundation.README.md)
-- [示例：ReAct Agent Java Example](../../../../examples/reac_agent/README.md)
+- [示例：ReAct Agent Java Example](../../../../examples/react_agent/README.md)
 
 ## 使用边界
 
