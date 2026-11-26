@@ -16,6 +16,7 @@ import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Iterator;
@@ -32,6 +33,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 
 /**
  * Shared {@code HttpClient} cache for model clients. Model clients are short-lived — some
@@ -184,9 +188,87 @@ final class ModelHttpClients {
                     targetUrl,
                     clientConfig.isVerifySsl(),
                     clientConfig.getSslCert());
+            // The configured SSLContext is built from SSLContext.getInstance("TLSv1.2"), whose
+            // default protocol set is TLSv1.2 only and whose default cipher suites carry no
+            // TLS-1.3 suite at all, so the client has to be given the JDK default client
+            // parameters explicitly or TLS-1.3-only gateways stay unreachable.
+            applyJdkDefaultClientTlsParameters();
             sslKey = "ssl:" + clientConfig.isVerifySsl() + ':' + clientConfig.getSslCert();
         }
         return this;
+    }
+
+    /**
+     * Aligns the client with the JDK's default client TLS parameters — the default protocol set
+     * (TLS 1.3 and TLS 1.2 on JDK 17) and the default cipher suites — while keeping the existing
+     * endpoint-identification semantics intact.
+     *
+     * <p>Why both the protocols and the cipher suites must be set explicitly: {@link SslUtils}
+     * builds its contexts from {@code SSLContext.getInstance("TLSv1.2")}. Such a context
+     * <em>supports</em> TLS 1.3, but its default enabled protocol set is {@code [TLSv1.2]} and its
+     * default enabled cipher suites contain no {@code TLS_AES_*} / {@code TLS_CHACHA20_*} suite,
+     * so an {@code HttpClient} inheriting those defaults offers TLS 1.2 only. Measured on JDK
+     * 17.0.21: supplying the protocol set alone still makes the client omit TLS 1.3 from the
+     * ClientHello and a TLS-1.3-only server answers {@code protocol_version}; supplying the
+     * default cipher suites too negotiates TLS 1.3. The suite delta is exactly the three TLS-1.3
+     * suites (nothing is removed), so the TLS-1.2 policy is unchanged.</p>
+     *
+     * <p>Both lists come from {@code SSLContext.getDefault()} instead of a hard-coded array, so
+     * the policy is identical to the JDK's default client context (matching issue #291's wording)
+     * and adjusts itself as the JDK's defaults evolve.</p>
+     *
+     * <p>Why this is not fixed inside {@link SslUtils}: that file is gated by the open-source
+     * snippet compliance scan, and any change to it blocks the MR, so the TLS parameter policy
+     * lives in the shared builder instead until that file can be handled separately. The
+     * remaining limitation is that direct {@link SslUtils} users still negotiate TLS 1.2 only.</p>
+     *
+     * <p>Why endpoint identification is re-applied: supplying {@link SSLParameters} replaces the
+     * client's parameters wholesale, so a client that inherited the JDK's implicit hostname
+     * verification would silently lose it. The verification switch therefore keeps its exact
+     * meaning: {@code "HTTPS"} when {@code verifySsl} is on (the JDK's own default for https)
+     * and {@code ""} when it is off (matching {@link SslUtils#configureHttpClientSsl}'s insecure
+     * branch). Note that the JDK re-asserts {@code "HTTPS"} per connection regardless
+     * ({@code AbstractAsyncSSLConnection}), so this switch can never weaken hostname verification;
+     * the insecure mode is carried by the trust-all context alone — unchanged pre-existing
+     * behaviour on every HttpClient path.</p>
+     */
+    private void applyJdkDefaultClientTlsParameters() {
+        // Same early-return conditions as SslUtils.configureHttpClientSsl: the policy only
+        // applies to an https target, and everything else keeps its current (unset) parameters.
+        if (targetUrl == null || targetUrl.isBlank()) {
+            return;
+        }
+        URI targetUri;
+        try {
+            targetUri = URI.create(targetUrl);
+        } catch (IllegalArgumentException error) {
+            // An unparseable target keeps the pre-existing shape instead of failing the build.
+            return;
+        }
+        if (!"https".equalsIgnoreCase(targetUri.getScheme())) {
+            return;
+        }
+        SSLParameters jdkDefaults;
+        try {
+            jdkDefaults = SSLContext.getDefault().getDefaultSSLParameters();
+        } catch (NoSuchAlgorithmException error) {
+            // The default context always exists on a functional JDK; skipping silently keeps a
+            // hypothetical failure from breaking client construction or changing behaviour.
+            return;
+        }
+        String[] defaultProtocols = jdkDefaults.getProtocols();
+        String[] defaultCipherSuites = jdkDefaults.getCipherSuites();
+        if (defaultProtocols == null || defaultProtocols.length == 0
+                || defaultCipherSuites == null || defaultCipherSuites.length == 0) {
+            return;
+        }
+        SSLParameters sslParameters = new SSLParameters();
+        // Both arrays come out of a fresh SSLParameters per call, but clone anyway so the client
+        // can never alias the JDK-owned arrays.
+        sslParameters.setProtocols(defaultProtocols.clone());
+        sslParameters.setCipherSuites(defaultCipherSuites.clone());
+        sslParameters.setEndpointIdentificationAlgorithm(clientConfig.isVerifySsl() ? "HTTPS" : "");
+        builder.sslParameters(sslParameters);
     }
 
     ModelHttpClients withProxy() {
