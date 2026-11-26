@@ -5,8 +5,10 @@
 package com.openjiuwen.core.foundation.llm.modelclients;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -313,6 +315,86 @@ class SiliconFlowModelClientTest {
         AssistantMessageChunk finalMessage = (AssistantMessageChunk) tracer.records.get(1).get("llm_response");
         assertThat(finalMessage.getContent()).isEqualTo("Hello world");
         assertThat(finalMessage.modelDump()).containsEntry("response_model", "routed-actual-model");
+    }
+
+    @Test
+    void streamParsesSseFramesWithoutSpaceAfterDataPrefix() throws Exception {
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        client.nextStreamLines = List.of(
+                "data:{\"model\":\"routed-actual-model\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}",
+                "data:{\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}],"
+                        + "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}",
+                "data:[DONE]"
+        );
+        RecordingTracer tracer = new RecordingTracer();
+
+        Iterator<AssistantMessageChunk> iterator = client.stream(
+                "hello",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Map.of("tracer_record_data", tracer)
+        );
+        List<AssistantMessageChunk> chunks = iteratorToList(iterator);
+
+        assertThat(chunks).hasSize(2);
+        assertThat(chunks.get(0).getContent()).isEqualTo("Hello");
+        assertThat(chunks.get(1).getContent()).isEqualTo(" world");
+        assertThat(chunks.get(1).getFinishReason()).isEqualTo("stop");
+        assertThat(chunks.get(1).getUsageMetadata().getTotalTokens()).isEqualTo(3);
+        assertThat(tracer.records).hasSize(2);
+        AssistantMessageChunk finalMessage = (AssistantMessageChunk) tracer.records.get(1).get("llm_response");
+        assertThat(finalMessage.getContent()).isEqualTo("Hello world");
+    }
+
+    @Test
+    void streamClassifiesErrorFrameWithoutSpaceAfterDataPrefix() {
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        client.nextStreamLines = List.of(
+                "data:{\"error\":{\"message\":\"boom\",\"type\":\"invalid_request_error\",\"code\":\"bad\"}}"
+        );
+
+        Iterator<AssistantMessageChunk> iterator = client.stream(
+                "hello",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new LinkedHashMap<>()
+        );
+
+        assertThatThrownBy(iterator::hasNext)
+                .isInstanceOf(BaseError.class)
+                .hasMessageContaining("boom");
+    }
+
+    @Test
+    void parseStreamChunkAcceptsAllSseFrameSpellings() {
+        RecordingSiliconFlowClient client = new RecordingSiliconFlowClient();
+        String payload = "{\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"finish_reason\":\"stop\"}]}";
+
+        AssistantMessageChunk compact = client.parseStreamChunk("data:" + payload);
+        AssistantMessageChunk spaced = client.parseStreamChunk("data: " + payload);
+        AssistantMessageChunk padded = client.parseStreamChunk("  data:  " + payload + "  ");
+        AssistantMessageChunk bare = client.parseStreamChunk(payload);
+
+        assertThat(compact).isNotNull();
+        for (AssistantMessageChunk candidate : List.of(spaced, padded, bare)) {
+            assertThat(candidate).isNotNull();
+            assertThat(candidate.getContent()).isEqualTo(compact.getContent()).isEqualTo("Hello");
+            assertThat(candidate.getFinishReason()).isEqualTo(compact.getFinishReason()).isEqualTo("stop");
+        }
+        assertThat(client.parseStreamChunk("data:[DONE]")).isNull();
+        assertThat(client.parseStreamChunk("[DONE]")).isNull();
     }
 
     @Test
