@@ -42,6 +42,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
@@ -106,10 +107,11 @@ class ReActAgentTest {
         }
     }
 
-    // Both model paths should send the recovered history and this attempt's Rail directive.
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void retryPreservesRailDirectiveAndUsesRecoveredContext(boolean streaming) {
+    @CsvSource({"false,prepend", "true,prepend", "false,insert", "true,insert",
+            "false,replace", "true,replace", "false,in-place", "true,in-place",
+            "false,remove", "true,remove", "false,unchanged", "true,unchanged"})
+    void retryAppendsRailSystemMessagesToRebuiltRequest(boolean streaming, String edit) {
         List<List<String>> modelRequests = new ArrayList<>();
         List<List<String>> beforeRequests = new ArrayList<>();
         AtomicInteger modelCalls = new AtomicInteger();
@@ -132,23 +134,48 @@ class ReActAgentTest {
                 return List.of(AssistantMessageChunk.builder().content(response.getContentAsString()).build()).iterator();
             }
         });
-        ReActAgent agent = configuredAgent("rail-retry-" + streaming, model);
-        RecordingModelContext modelContext = new RecordingModelContext("rail-retry-" + streaming);
-        modelContext.setMessages(List.of(new UserMessage("initial history")), true);
+        String id = "rail-retry-" + streaming + "-" + edit;
+        ReActAgent agent = configuredAgent(id, model);
+        RecordingModelContext modelContext = new RecordingModelContext(id);
+        modelContext.setMessages(List.of(new SystemMessage("old compact boundary"),
+                new UserMessage("initial history")), true);
         AgentRail rail = new AgentRail() {
             @Override
             public void beforeModelCall(AgentCallbackContext context) {
                 ModelCallInputs inputs = assertInstanceOf(ModelCallInputs.class, context.getInputs());
                 beforeRequests.add(inputs.getMessages().stream().map(BaseMessage.class::cast)
                         .map(BaseMessage::getContentAsString).toList());
-                inputs.getMessages().add(0, new SystemMessage("selected skill body " + context.getRetryAttempt()));
+                if (context.getRetryAttempt() > 0) {
+                    agent.addPromptBuilderSection("recovery", "recovery instructions", 90);
+                }
+                String directive = "selected skill body " + context.getRetryAttempt();
+                switch (edit) {
+                    case "prepend" -> inputs.getMessages().add(0, new SystemMessage("selected skill body"));
+                    case "insert" -> {
+                        boolean alreadyInserted = inputs.getMessages().stream().map(BaseMessage.class::cast)
+                                .anyMatch(message -> "system".equals(message.getRole())
+                                        && message.getContentAsString().startsWith("selected skill body "));
+                        if (!alreadyInserted) {
+                            inputs.getMessages().add(1, new BaseMessage("system", directive));
+                        }
+                    }
+                    case "replace" -> inputs.getMessages().set(0, new SystemMessage(directive));
+                    case "in-place" -> ((BaseMessage) inputs.getMessages().get(0)).setContent(directive);
+                    case "remove" -> {
+                        if (context.getRetryAttempt() == 0) {
+                            inputs.getMessages().remove(0);
+                        }
+                    }
+                    case "unchanged" -> { }
+                    default -> throw new IllegalArgumentException("Unknown edit: " + edit);
+                }
             }
 
             @Override
             public void onModelException(AgentCallbackContext context) {
                 if (context.getRetryAttempt() == 0) {
-                    // 模拟超窗恢复更新了会话历史，重试既要采用新历史，也必须重新保留 Rail 正文。
-                    modelContext.setMessages(List.of(new UserMessage("recovered history")), true);
+                    modelContext.setMessages(List.of(new SystemMessage("new compact boundary"),
+                            new UserMessage("recovered history")), true);
                     context.requestRetry(0);
                 }
             }
@@ -156,19 +183,35 @@ class ReActAgentTest {
         agent.registerRail(rail).toCompletableFuture().join();
         try {
             AgentCallbackContext context = new AgentCallbackContext(agent);
-            context.setSession(new MemorySession("rail-retry-" + streaming));
+            context.setSession(new MemorySession(id));
             context.setContext(modelContext);
             context.getExtra().put("_streaming", streaming);
             agent.callModel(context, modelContext, List.of());
 
-            assertEquals(List.of(
-                    List.of("selected skill body 0", "System", "initial history"),
-                    List.of("selected skill body 1", "System", "recovered history")), modelRequests);
-            assertEquals(List.of(List.of("System", "initial history"),
-                    List.of("System", "initial history")), beforeRequests);
-            assertEquals(List.of("recovered history"), modelContext.getMessages().stream()
+            String rebuiltPrompt = agent.getPromptBuilder().build();
+            assertTrue(rebuiltPrompt.contains("recovery instructions"));
+            assertFalse(rebuiltPrompt.contains("selected skill body"));
+            List<String> firstRequest = new ArrayList<>(switch (edit) {
+                case "prepend" -> List.of("selected skill body", "System");
+                case "insert" -> List.of("System", "selected skill body 0");
+                case "replace", "in-place" -> List.of("selected skill body 0");
+                case "remove" -> List.<String>of();
+                default -> List.of("System");
+            });
+            firstRequest.addAll(List.of("old compact boundary", "initial history"));
+            List<String> retryRequest = new ArrayList<>(List.of(rebuiltPrompt));
+            if ("prepend".equals(edit)) {
+                retryRequest.addAll(List.of("selected skill body", "selected skill body"));
+            } else if ("insert".equals(edit)) {
+                retryRequest.add("selected skill body 0");
+            }
+            List<String> recoveredHistory = List.of("new compact boundary", "recovered history");
+            retryRequest.addAll(recoveredHistory);
+            assertEquals(List.of(firstRequest, retryRequest), modelRequests);
+            assertEquals(List.of(List.of("System", "old compact boundary", "initial history"), firstRequest),
+                    beforeRequests);
+            assertEquals(recoveredHistory, modelContext.getMessages().stream()
                     .map(BaseMessage::getContentAsString).toList());
-            assertEquals("System", agent.getPromptBuilder().build());
         } finally {
             agent.unregisterRail(rail).toCompletableFuture().join();
             agent.close();
