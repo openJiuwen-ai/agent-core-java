@@ -1472,12 +1472,12 @@ public class DeepAgent implements AutoCloseable {
                 return CompletableFuture.failedFuture(rejected);
             }
         }
+        // The synchronous branch must surface failures through the future, exactly as the
+        // supplyAsync branch above does. A fixed exception whitelist cannot cover a full inner
+        // round (model, tools, rails), so catch the whole RuntimeException/Error range instead.
         try {
             return CompletableFuture.completedFuture(work.get());
-        } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException | IllegalStateException
-                | UnsupportedOperationException | ClassCastException | NullPointerException
-                | IndexOutOfBoundsException | NoSuchElementException | RejectedExecutionException
-                | UncheckedIOException | SecurityException ex) {
+        } catch (RuntimeException | Error ex) {
             invokeActive = false;
             return CompletableFuture.failedFuture(ex);
         }

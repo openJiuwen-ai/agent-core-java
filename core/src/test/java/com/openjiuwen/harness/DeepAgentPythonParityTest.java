@@ -203,7 +203,10 @@ class DeepAgentPythonParityTest {
         assertThat(inner.invokedQueries).containsExactly("stream_input");
         assertThat(rail.afterInvokeCount).isEqualTo(1);
         assertThat(rail.lastAfterValues).containsEntry("query", "stream_input");
-        assertThat(chunkTypes(chunks)).contains("answer");
+        // Every stream emits an answer frame, so asserting the frame type alone is vacuous.
+        // Assert the payload actually carries the inner round's output back to the caller.
+        assertThat(answerPayloads(chunks)).anySatisfy(payload -> assertThat(payload)
+                .contains("echo:stream_input"));
     }
 
     @Test
@@ -642,14 +645,21 @@ class DeepAgentPythonParityTest {
         }
     }
 
-    private static List<String> chunkTypes(List<Object> chunks) {
-        List<String> types = new ArrayList<>();
+    /**
+     * Renders the payload of every {@code answer} frame, so tests can assert on the content
+     * carried back to the caller rather than only on the frame type.
+     *
+     * @param chunks streamed chunks
+     * @return stringified payloads of the answer frames
+     */
+    private static List<String> answerPayloads(List<Object> chunks) {
+        List<String> payloads = new ArrayList<>();
         for (Object chunk : chunks) {
-            if (chunk instanceof OutputSchema schema) {
-                types.add(schema.getType());
+            if (chunk instanceof OutputSchema schema && "answer".equals(schema.getType())) {
+                payloads.add(String.valueOf(schema.getPayload()));
             }
         }
-        return types;
+        return payloads;
     }
 
     private static final class CountingRail extends DeepAgentRail {

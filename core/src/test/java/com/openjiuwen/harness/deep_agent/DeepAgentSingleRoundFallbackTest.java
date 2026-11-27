@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
@@ -85,7 +86,7 @@ class DeepAgentSingleRoundFallbackTest {
                 .forEachRemaining(chunks::add);
 
         assertThat(inner.invokeCount.get()).isEqualTo(1);
-        assertThat(chunks).isNotEmpty();
+        assertThat(answerPayloads(chunks)).anySatisfy(payload -> assertThat(payload).contains("echo:"));
     }
 
     @Test
@@ -97,7 +98,26 @@ class DeepAgentSingleRoundFallbackTest {
         agent.stream(Map.of("query", "hello")).forEachRemaining(chunks::add);
 
         assertThat(inner.invokeCount.get()).isEqualTo(1);
-        assertThat(chunks).isNotEmpty();
+        // A non-empty chunk list alone would also pass when the inner output is dropped, so
+        // assert the answer frame actually carries the inner round's echo back to the caller.
+        assertThat(answerPayloads(chunks)).anySatisfy(payload -> assertThat(payload).contains("echo:hello"));
+    }
+
+    /**
+     * Renders the payload of every {@code answer} frame, so assertions can check the content
+     * forwarded to the caller rather than only the presence of a chunk.
+     *
+     * @param chunks streamed chunks
+     * @return stringified payloads of the answer frames
+     */
+    private static List<String> answerPayloads(List<Object> chunks) {
+        List<String> payloads = new ArrayList<>();
+        for (Object chunk : chunks) {
+            if (chunk instanceof OutputSchema schema && "answer".equals(schema.getType())) {
+                payloads.add(String.valueOf(schema.getPayload()));
+            }
+        }
+        return payloads;
     }
 
     private static InteractiveInput resumeQuery() {
