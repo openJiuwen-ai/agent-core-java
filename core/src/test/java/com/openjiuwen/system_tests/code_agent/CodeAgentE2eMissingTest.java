@@ -5,7 +5,11 @@
 package com.openjiuwen.system_tests.code_agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.Result;
 import com.openjiuwen.core.sysop.OperationMode;
@@ -23,6 +27,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 /**
  * Missing system-test coverage for the CodeAgent normal E2E path.
@@ -80,6 +85,8 @@ class CodeAgentE2eMissingTest {
         );
         String query = "Plan a small module development task.";
 
+        agent.getAgent().setLlm(echoModel());
+
         Object resultObject = agent.invoke(Map.of("query", query));
 
         assertThat(resultObject).isInstanceOf(Map.class);
@@ -95,5 +102,20 @@ class CodeAgentE2eMissingTest {
         return agent.getTools().values().stream()
                 .map(tool -> tool.getCard().getName())
                 .toList();
+    }
+
+    /**
+     * Builds a model stub answering immediately, so the single inner round can complete.
+     *
+     * @return model stub
+     */
+    private static Model echoModel() {
+        Model model = Mockito.mock(Model.class);
+        Mockito.when(model.invoke(any(List.class), any(ModelInvokeOptions.class)))
+                .thenAnswer(invocation -> java.util.concurrent.CompletableFuture.completedFuture(
+                        AssistantMessage.builder().content("done").build()));
+        Mockito.when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> AssistantMessage.builder().content("done").build());
+        return model;
     }
 }
