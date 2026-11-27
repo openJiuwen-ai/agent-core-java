@@ -61,9 +61,16 @@ public class SkillUseRail extends DeepAgentRail {
     private final Set<String> enabledSkills;
     private final Set<String> disabledSkills;
     private final List<RemoteSkillSource> remoteSkillSources;
-    private final List<SkillDescriptor> skills = new ArrayList<>();
+    /**
+     * Immutable snapshot of the visible skills, swapped atomically by {@link #reloadSkills()}.
+     * Readers (skill_tool lookups via {@link #getSkillsMeta()}) copy this list without locking, so
+     * it must never be mutated in place — a shared rail serves concurrent sessions on one agent.
+     */
+    private volatile List<SkillDescriptor> skills = List.of();
     private final Map<Path, SkillDescriptor> skillCache = new LinkedHashMap<>();
     private final Map<Path, Long> skillUpdatedAt = new LinkedHashMap<>();
+    /** Serializes reload / clear mutations of {@code skills}, {@code skillCache} and {@code skillDirs}. */
+    private final Object skillStateLock = new Object();
     private final Set<String> ownedToolNames = new LinkedHashSet<>();
     private final Set<String> ownedToolIds = new LinkedHashSet<>();
     private final Map<String, String> evolutionTexts = new LinkedHashMap<>();
@@ -260,31 +267,38 @@ public class SkillUseRail extends DeepAgentRail {
 
     public void prependSkillDirs(List<String> dirs) {
         List<Path> normalized = normalizeSkillDirs(dirs == null ? "" : String.join(",", dirs));
-        skillDirs.removeAll(normalized);
-        skillDirs.addAll(0, normalized);
+        synchronized (skillStateLock) {
+            skillDirs.removeAll(normalized);
+            skillDirs.addAll(0, normalized);
+        }
         clearSkills();
     }
 
     public void removeSkillDirs(List<String> dirs) {
         List<Path> normalized = normalizeSkillDirs(dirs == null ? "" : String.join(",", dirs));
-        skillDirs.removeAll(normalized);
+        synchronized (skillStateLock) {
+            skillDirs.removeAll(normalized);
+        }
         clearSkills();
     }
 
     public void reloadSkills() {
-        if (!enableCache) {
-            skillCache.clear();
-            skillUpdatedAt.clear();
+        synchronized (skillStateLock) {
+            if (!enableCache) {
+                skillCache.clear();
+                skillUpdatedAt.clear();
+            }
+            refreshSkillsIncrementally();
+            skills = List.copyOf(filterSkills(collectSkillsInOrder()));
         }
-        refreshSkillsIncrementally();
-        skills.clear();
-        skills.addAll(filterSkills(collectSkillsInOrder()));
     }
 
     public void clearSkills() {
-        skillCache.clear();
-        skillUpdatedAt.clear();
-        skills.clear();
+        synchronized (skillStateLock) {
+            skillCache.clear();
+            skillUpdatedAt.clear();
+            skills = List.of();
+        }
     }
 
     public Set<String> getOwnedToolNames() {
