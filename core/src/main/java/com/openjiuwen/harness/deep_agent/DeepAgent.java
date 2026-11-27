@@ -1573,7 +1573,9 @@ public class DeepAgent implements AutoCloseable {
         if (config.isEnableTaskLoop()) {
             return invokeWithTaskLoop(normalized, session);
         }
-        return buildDisabledTaskLoopResult(normalized);
+        // Disabling the task loop degrades to a single inner round rather than doing nothing,
+        // matching Python's _run_single_round_invoke fallback.
+        return runSingleRoundInvoke(normalized, session);
     }
 
     private Map<String, Object> invokeWithTaskLoop(Map<String, Object> normalized, AgentSessionApi session) {
@@ -1595,18 +1597,6 @@ public class DeepAgent implements AutoCloseable {
         return result;
     }
 
-    private Map<String, Object> buildDisabledTaskLoopResult(Map<String, Object> normalized) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("type", "deep_agent_result");
-        result.put("agent_name", card.getName());
-        result.put("mode", currentMode == null ? AgentMode.NORMAL.name().toLowerCase(Locale.ROOT)
-                : currentMode.name().toLowerCase(Locale.ROOT));
-        result.put("workspace", workspaceRootString());
-        result.put("inputs", normalized);
-        result.put("input", normalized);
-        return result;
-    }
-
     private static boolean isResumeInput(Map<String, Object> inputs) {
         return inputs != null && inputs.get("query") instanceof InteractiveInput;
     }
@@ -1620,9 +1610,9 @@ public class DeepAgent implements AutoCloseable {
         effective.putIfAbsent("conversation_id", session != null && session.getSessionId() != null
                 ? session.getSessionId()
                 : card.getName() + "_session");
-        // Resume rounds bypass the task loop, so bind the loop steering queue explicitly:
-        // steer() enqueues there, and without this binding the resumed round would drain a
-        // fresh empty queue and silently drop steered messages.
+        // Single-round calls bypass the task loop, so bind the loop steering queue explicitly:
+        // steer() enqueues there, and without this binding the round would drain a fresh empty
+        // queue and silently drop steered messages.
         effective.putIfAbsent("_steering_queue", loopController().getInteractionQueues().steering());
         Map<String, Object> raw = unwrapInvokeResult(invokeResumeRound(effective, session));
         Map<String, Object> result = new LinkedHashMap<>();

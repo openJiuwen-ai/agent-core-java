@@ -1,5 +1,8 @@
 package com.openjiuwen.harness.deep_agent;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
@@ -13,12 +16,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 
 class DeepAgentTenantTest {
 
@@ -170,6 +176,7 @@ class DeepAgentTenantTest {
         AgentCard card = AgentCard.builder().name("tenant_test_agent").description("test").build();
         Workspace workspace = new Workspace(baseDir.toString(), "cn");
         DeepAgent agent = new DeepAgent(card, config, workspace);
+        installEchoModel(agent);
 
         CwdContext.setTenantRoot("pre-invoke-marker");
 
@@ -191,6 +198,7 @@ class DeepAgentTenantTest {
         AgentCard card = AgentCard.builder().name("no_tenant_agent").description("test").build();
         Workspace workspace = new Workspace(baseDir.toString(), "cn");
         DeepAgent agent = new DeepAgent(card, config, workspace);
+        installEchoModel(agent);
 
         CwdContext.setTenantRoot("pre-invoke-marker");
 
@@ -215,6 +223,7 @@ class DeepAgentTenantTest {
         AgentCard card = AgentCard.builder().name("plain_session_tenant_agent").description("test").build();
         Workspace workspace = new Workspace(baseDir.toString(), "cn");
         DeepAgent agent = new DeepAgent(card, config, workspace);
+        installEchoModel(agent);
 
         CwdContext.setTenantRoot("pre-invoke-marker");
 
@@ -224,5 +233,20 @@ class DeepAgentTenantTest {
         assertThat(session.getTenantContext()).isEqualTo(ctx);
         assertThat(TenantContextHolder.getCurrentTenant()).isNull();
         assertThat(CwdContext.getTenantRoot()).isNull();
+    }
+
+    /**
+     * Installs a model answering immediately so the single inner round can complete.
+     *
+     * @param agent target agent
+     */
+    private static void installEchoModel(DeepAgent agent) {
+        Model model = Mockito.mock(Model.class);
+        Mockito.when(model.invoke(any(List.class), any(ModelInvokeOptions.class)))
+                .thenAnswer(invocation -> java.util.concurrent.CompletableFuture.completedFuture(
+                        AssistantMessage.builder().content("ok").build()));
+        Mockito.when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> AssistantMessage.builder().content("ok").build());
+        agent.getAgent().setLlm(model);
     }
 }

@@ -2,7 +2,11 @@
 package com.openjiuwen.harness.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.harness.cli.CLIOptions;
 import com.openjiuwen.harness.cli.HarnessCli;
 import com.openjiuwen.harness.cli.ui.CliRunner;
@@ -13,6 +17,7 @@ import com.openjiuwen.harness.subagents.ResearchAgentFactory;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -61,7 +66,7 @@ class HarnessToolsCompatibilityTest {
     @Test
     void taskToolShouldDelegateToSubagent() {
         var agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath(tempDir.toString())
-                .language("en").subagents(List.of(ResearchAgentFactory.buildResearchAgentConfig("en"))).build());
+                .language("en").subagents(List.of(ResearchAgentFactory.buildResearchAgentConfig(echoModel()))).build());
         TaskTool tool = new TaskTool(agent);
 
         ToolOutput output = tool.delegate("research_agent", "summarize repo", "session-main");
@@ -70,6 +75,21 @@ class HarnessToolsCompatibilityTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = (Map<String, Object>) output.getData();
         assertThat(payload).containsKeys("agent_id", "sub_session_id", "result");
+    }
+
+    /**
+     * Builds a model stub that answers immediately, so the delegated subagent can run a round.
+     *
+     * @return echo model stub
+     */
+    private static Model echoModel() {
+        Model model = Mockito.mock(Model.class);
+        Mockito.when(model.invoke(any(List.class), any(ModelInvokeOptions.class)))
+                .thenAnswer(invocation -> java.util.concurrent.CompletableFuture.completedFuture(
+                        AssistantMessage.builder().content("done").build()));
+        Mockito.when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> AssistantMessage.builder().content("done").build());
+        return model;
     }
 
     @Test

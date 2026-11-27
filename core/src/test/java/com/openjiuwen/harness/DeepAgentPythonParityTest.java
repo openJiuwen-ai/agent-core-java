@@ -9,6 +9,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.deepagents.DeepAgentsFactory;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -23,10 +26,13 @@ import com.openjiuwen.harness.subagents.ResearchAgentFactory;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,12 +76,15 @@ class DeepAgentPythonParityTest {
     @Test
     void addRailLazyRegisterOnFirstInvoke() {
         DeepAgent agent = configuredAgent(false);
+        FakeReactAgent inner = new FakeReactAgent();
+        agent.setReactAgent(inner, false);
         CountingRail rail = new CountingRail();
 
         agent.addRail(rail);
         Map<String, Object> result = agent.invoke(Map.of("query", "hello", "conversation_id", "c1"));
 
-        assertThat(result).containsEntry("type", "deep_agent_result");
+        assertThat(result).containsEntry("output", "echo:hello");
+        assertThat(inner.invokedQueries).containsExactly("hello");
         assertThat(rail.beforeInvokeCount).isEqualTo(1);
         assertThat(rail.afterInvokeCount).isEqualTo(1);
     }
@@ -83,6 +92,8 @@ class DeepAgentPythonParityTest {
     @Test
     void registerAndUnregisterRail() {
         DeepAgent agent = configuredAgent(false);
+        FakeReactAgent inner = new FakeReactAgent();
+        agent.setReactAgent(inner, true);
         CountingRail rail = new CountingRail();
 
         agent.registerRail(rail).join();
@@ -90,6 +101,7 @@ class DeepAgentPythonParityTest {
         agent.unregisterRail(rail).join();
         agent.invoke(Map.of("query", "round2"));
 
+        assertThat(inner.invokedQueries).containsExactly("round1", "round2");
         assertThat(rail.beforeInvokeCount).isEqualTo(1);
         assertThat(rail.afterInvokeCount).isEqualTo(1);
         assertThat(rail.uninitCount).isEqualTo(1);
@@ -106,29 +118,33 @@ class DeepAgentPythonParityTest {
         assertThat(agent.findRailsByType(null)).isEmpty();
     }
 
+    /**
+     * Mirrors Python's {@code test_invoke_runtime_error_when_not_configured}: invoking without a
+     * configured model must raise rather than silently return an empty envelope.
+     */
     @Test
     void invokeRuntimeErrorWhenNotConfigured() {
         DeepAgent agent = new DeepAgent();
 
-        Map<String, Object> result = agent.invoke(Map.of("query", "hello"));
-
-        assertThat(result).containsEntry("type", "deep_agent_result");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> input = (Map<String, Object>) result.get("input");
-        assertThat(input).containsEntry("query", "hello");
-        assertThat(input).containsKey("conversation_id");
+        assertThatThrownBy(() -> agent.invoke(Map.of("query", "hello")))
+                .isInstanceOf(IllegalStateException.class);
     }
 
+    /**
+     * Java's typed {@code invoke(Map)} cannot express a non-map payload, so the Python
+     * {@code "Input must be dict"} check has no direct counterpart. This covers the reachable
+     * boundary instead: a null payload normalizes to an empty query and still runs one round.
+     */
     @Test
     void invokeInvalidInputTypeError() {
         DeepAgent agent = configuredAgent(false);
+        FakeReactAgent inner = new FakeReactAgent();
+        agent.setReactAgent(inner, true);
 
         Map<String, Object> result = agent.invoke(null);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> input = (Map<String, Object>) result.get("input");
-        assertThat(input).containsEntry("query", "");
-        assertThat(input).containsKey("conversation_id");
+        assertThat(result).containsEntry("output", "echo:");
+        assertThat(inner.invokedQueries).containsExactly("");
     }
 
     @Test
@@ -167,16 +183,27 @@ class DeepAgentPythonParityTest {
         }
     }
 
+    /**
+     * Covers the single-round stream branch. The inner call is synchronous on this path, so the
+     * outer stream emits one answer frame carrying the inner result rather than forwarding
+     * token-level inner chunks.
+     */
     @Test
     void streamSetsResultBeforeAfterInvoke() {
         DeepAgent agent = configuredAgent(false);
+        FakeReactAgent inner = new FakeReactAgent();
+        agent.setReactAgent(inner, false);
         CountingRail rail = new CountingRail();
         agent.addRail(rail);
 
-        agent.invoke(Map.of("query", "stream_input"));
+        List<Object> chunks = new ArrayList<>();
+        agent.stream(Map.of("query", "stream_input"), null, List.of(StreamMode.OUTPUT))
+                .forEachRemaining(chunks::add);
 
+        assertThat(inner.invokedQueries).containsExactly("stream_input");
         assertThat(rail.afterInvokeCount).isEqualTo(1);
         assertThat(rail.lastAfterValues).containsEntry("query", "stream_input");
+        assertThat(chunkTypes(chunks)).contains("answer");
     }
 
     @Test
@@ -595,6 +622,34 @@ class DeepAgentPythonParityTest {
         DeepAgentConfig config = new DeepAgentConfig();
         config.setEnableTaskLoop(enableTaskLoop);
         return config;
+    }
+
+    private static final class FakeReactAgent {
+        private final List<String> invokedQueries = new ArrayList<>();
+
+        /**
+         * Echoes the query back, mirroring Python's {@code FakeReactAgent.invoke}.
+         *
+         * @param inputs invocation inputs
+         * @param session owning session
+         * @return echoed answer
+         */
+        public CompletionStage<Map<String, Object>> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+            invokedQueries.add(String.valueOf(inputs.get("query")));
+            return CompletableFuture.completedFuture(Map.of(
+                    "output", "echo:" + inputs.get("query"),
+                    "result_type", "answer"));
+        }
+    }
+
+    private static List<String> chunkTypes(List<Object> chunks) {
+        List<String> types = new ArrayList<>();
+        for (Object chunk : chunks) {
+            if (chunk instanceof OutputSchema schema) {
+                types.add(schema.getType());
+            }
+        }
+        return types;
     }
 
     private static final class CountingRail extends DeepAgentRail {
