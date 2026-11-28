@@ -8,6 +8,7 @@ import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.AutoHarnessConfig;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
 
 import java.io.IOException;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -43,6 +45,27 @@ public class CliRepl {
     private static final Map<String, String> SLASH_COMMANDS = new LinkedHashMap<>();
     private static final Map<String, String> SLASH_DESCRIPTIONS = new LinkedHashMap<>();
     private static final Map<String, Path> SKILL_COMMANDS = new LinkedHashMap<>();
+
+    /**
+     * Shell passthrough timeout in seconds, mirroring interactive REPL expectations:
+     * a stuck command must not block the session indefinitely.
+     */
+    private static final long SHELL_TIMEOUT_SECONDS = 120L;
+
+    /**
+     * Grace period for a killed shell process to terminate before giving up.
+     */
+    private static final long KILL_AWAIT_SECONDS = 30L;
+
+    /**
+     * Maximum wall-clock wait for the shell output reader thread to finish draining.
+     */
+    private static final long JOIN_TIMEOUT_MILLIS = 5000L;
+
+    /**
+     * Poll interval while waiting for the shell output reader thread.
+     */
+    private static final long JOIN_POLL_MILLIS = 50L;
 
     static {
         SLASH_COMMANDS.put("/help", "help");
@@ -238,13 +261,78 @@ public class CliRepl {
     }
 
     public static String handleShell(String command) throws IOException, InterruptedException {
+        return handleShell(command, SHELL_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * Runs a shell passthrough command with a bounded wait, mirroring
+     * {@code ProcessHandler.invoke()}: output is drained on a reader thread so a
+     * command that never closes stdout (waiting for input, endless loop) cannot
+     * block the timeout decision. On timeout the process tree is killed forcibly.
+     *
+     * @param command shell command line to execute
+     * @param timeoutSeconds maximum seconds to wait for completion
+     * @return the command output (stdout and stderr merged)
+     * @throws IOException if the process cannot be started
+     * @throws InterruptedException if the command does not finish within the timeout
+     */
+    static String handleShell(String command, long timeoutSeconds)
+            throws IOException, InterruptedException {
         List<String> args = isWindows() ? List.of("cmd", "/c", command) : List.of("sh", "-c", command);
         Process process = new ProcessBuilder(args)
                 .redirectErrorStream(true)
                 .start();
-        byte[] output = process.getInputStream().readAllBytes();
-        process.waitFor();
-        return new String(output, StandardCharsets.UTF_8);
+
+        StringBuilder outputBuf = new StringBuilder();
+        Thread stdoutThread = OpenJiuwenExecutors.newThread(() -> {
+            try (var stream = process.getInputStream()) {
+                byte[] chunk = new byte[8192];
+                int read;
+                while ((read = stream.read(chunk)) >= 0) {
+                    outputBuf.append(new String(chunk, 0, read, StandardCharsets.UTF_8));
+                }
+            } catch (IOException exception) {
+                // Stream closed on process termination; partial output is kept.
+            }
+        }, "cli-repl-shell-reader", true);
+        stdoutThread.start();
+
+        boolean isFinished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+        if (!isFinished) {
+            destroyProcessTree(process);
+            boolean isKilled = process.waitFor(KILL_AWAIT_SECONDS, TimeUnit.SECONDS);
+            joinQuietly(stdoutThread);
+            if (!isKilled) {
+                throw new InterruptedException("shell command timed out after " + timeoutSeconds
+                        + "s and could not be killed: " + command);
+            }
+            throw new InterruptedException(
+                    "shell command timed out after " + timeoutSeconds + "s: " + command);
+        }
+        joinQuietly(stdoutThread);
+        return outputBuf.toString();
+    }
+
+    private static void destroyProcessTree(Process process) {
+        try {
+            for (ProcessHandle descendant : process.toHandle().descendants().toList()) {
+                descendant.destroyForcibly();
+            }
+        } catch (IllegalStateException | UnsupportedOperationException exception) {
+            // Best effort: descendant enumeration can fail after parent death.
+        }
+        process.destroyForcibly();
+    }
+
+    private static void joinQuietly(Thread thread) {
+        long deadline = System.currentTimeMillis() + JOIN_TIMEOUT_MILLIS;
+        while (thread.isAlive() && System.currentTimeMillis() < deadline) {
+            try {
+                thread.join(JOIN_POLL_MILLIS);
+            } catch (InterruptedException exception) {
+                break;
+            }
+        }
     }
 
     public PreparedRun cmdAutoHarness(String command, String workspace, Path currentDirectory) {
