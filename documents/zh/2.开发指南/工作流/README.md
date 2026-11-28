@@ -32,7 +32,7 @@
 
 - [API 文档：workflow](../API文档/com.openjiuwen.core/workflow.README.md)
 - [API 文档：workflow.component](../API文档/com.openjiuwen.core/workflow/component.README.md)
-- [测试：WorkflowAgent 中断流式恢复](../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)
+- [测试：WorkflowAgent 中断流式恢复](../../../../core/src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)
 
 ## 使用边界
 
