@@ -81,26 +81,16 @@ continues to supply its own vector store and document parser dependencies.
 
 ### Examples
 
-Let's create a simple WorkflowAgent that calls a workflow to handle financial scenario business:
-Copy the examples folder to the src/main directory of your Maven project, and you can run the example code:
+Runnable samples live in the `examples/` directory: [examples/agent_builder](examples/agent_builder/)
+is the smallest agent sample, [examples/agent_teams](examples/agent_teams/) shows a team sample.
+Each sample directory documents how to build and run it.
 
-```java
-// Example code located at examples/workflow_agent/WorkflowAgentExample.java
-public class WorkflowAgentExample {
-    public static void main(String[] args) throws Exception {
-        WorkflowAgentExampleSupport.run(args);
-    }
-}
-```
+For a complete `WorkflowAgent` walk-through — workflow card, component registration,
+`QuestionerComponent` interrupt and `InteractiveInput` resume — see
+[执行器Runner.md](documents/zh/2.开发指南/高阶用法/执行器Runner.md) (Chinese).
 
-**Expected Output**
-```
-assistant> Please provide the transfer amount, which must be a number or an amount description with currency unit.
-// User reply: 2000元
-assistant> Transfer service completed, recorded transfer amount is 2000元.
-```
-
-For more complete examples, please check the [examples/workflow_agent](examples/workflow_agent/) directory.
+The financial `WorkflowAgent` demo that used to live in `examples/workflow_agent/` is not part of
+the current tree, so the snippet previously shown here has been removed.
 
 ## Architecture Design
 
