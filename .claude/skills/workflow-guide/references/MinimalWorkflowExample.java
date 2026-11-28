@@ -38,10 +38,9 @@ import java.util.Map;
  *
  * Or right-click the main method in your IDE to run directly.
  *
- * This example aligns with the single-workflow path in
- * examples/workflow_agent/WorkflowAgentExampleSupport.java,
- * but removes WorkflowAgent hosting, multi-workflow routing,
- * console interaction loop, and other distracting logic,
+ * This example keeps only the single-workflow path: it removes
+ * WorkflowAgent hosting, multi-workflow routing, console interaction
+ * loop, and other distracting logic,
  * keeping only the main line of "define card -> register nodes ->
  * connect edges -> invoke -> handle INPUT_REQUIRED -> finish",
  * making it easy for beginners to understand the minimal runnable
