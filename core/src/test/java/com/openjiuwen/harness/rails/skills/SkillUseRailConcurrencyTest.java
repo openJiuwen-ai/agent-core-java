@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -112,7 +113,9 @@ class SkillUseRailConcurrencyTest {
             Thread.sleep(50L);
         }
         stop.set(true);
-        finished.await();
+        assertThat(finished.await(60L, TimeUnit.SECONDS))
+                .as("worker threads must finish within 60s after stop")
+                .isTrue();
 
         assertThat(errors.get())
                 .as("concurrent reloads must not throw (skillCache / skillUpdatedAt corruption)")
