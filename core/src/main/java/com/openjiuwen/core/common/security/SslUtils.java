@@ -41,7 +41,8 @@ public final class SslUtils {
 
     public static SSLContext createStrictSslContext(String sslCertPath) {
         try {
-            SSLContext context = SSLContext.getInstance("TLSv1.2");
+            // The version-agnostic protocol keeps TLS 1.3 negotiable, matching JDK's default client context.
+            SSLContext context = SSLContext.getInstance("TLS");
             X509TrustManager trustManager = createStrictTrustManager(sslCertPath);
             context.init(null, trustManager != null ? new TrustManager[]{trustManager} : null, null);
             return context;
@@ -112,7 +113,8 @@ public final class SslUtils {
                         }
                     }
             };
-            SSLContext context = SSLContext.getInstance("TLSv1.2");
+            // The version-agnostic protocol keeps TLS 1.3 negotiable, matching JDK's default client context.
+            SSLContext context = SSLContext.getInstance("TLS");
             context.init(null, trustAllManagers, new SecureRandom());
             return context;
         } catch (Exception error) {
