@@ -274,6 +274,7 @@ public class OtelWorkflowHandler extends TraceExtWorkflowHandler {
             // Workflow events carry no TraceWorkflowSpan; fall back to tracer-injected session id.
             if (sessionId != null && !sessionId.isBlank()) {
                 otelSpan.setAttribute(SemConv.OJ_SESSION_ID, sessionId);
+                otelSpan.setAttribute(SemConv.SESSION_ID, sessionId);
             }
             otelSpan.setAttribute(SemConv.OJ_INVOKE_ID, invokeId);
             otelSpan.setAttribute(SemConv.OJ_PARENT_NODE_ID, parent);
