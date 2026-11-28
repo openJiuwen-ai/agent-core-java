@@ -4,9 +4,11 @@
 > **观测后端**：Jaeger all-in-one 1.60（Docker）
 > **采集协议**：OTLP/HTTP（`http://localhost:4318/v1/traces`）
 > **观测目标**：`agent-core-java` 项目 `com.openjiuwen.extensions.tracer_otel` 模块
-> **驱动程序**：[OtelObservabilityDemo.java](file:///c:/Users/tom/Desktop/covert/agent-core-java/src/test/java/com/openjiuwen/extensions/tracer_otel/OtelObservabilityDemo.java)
+> **驱动程序**：`OtelObservabilityDemo.java`（该验证程序为本地临时文件，未随仓库提交）
 
 ---
+
+> **说明**：本文中的示意图未随文档一并提交，图像内容以下方各图的文字描述为准。
 
 ## 1. 观测环境
 
@@ -86,8 +88,6 @@ docker run -d --name jaeger-otel-demo \
 
 **图 1：Span 持续时间对比图**
 
-![Span 持续时间对比](./images/span_duration_chart.svg)
-
 > 图 1 展示 7 个 span 的持续时间对比，紫色为成功 span，红色为错误 span。独立 LLM 调用耗时最长（204ms），子 Tool 调用耗时最短（62ms）。
 
 ---
@@ -104,8 +104,6 @@ chain.ReActAgent [INTERNAL, 187.45ms, OK]  ← 根 Span
 ```
 
 **图 2：Trace 父子层级关系图**
-
-![Trace 父子层级关系](./images/trace_hierarchy_tree.svg)
 
 > 图 2 展示场景 5 的 3-span trace 树结构。根 Span `chain.ReActAgent` 通过 `Context.current().with(parentSpan)` + `Scope` 建立父子关系，两个子 Span 的 `parent_invoke_id` 均指向根 Span 的 `invoke_id`。LLM 子 Span 使用 `SpanKind.CLIENT`，Tool 子 Span 使用 `SpanKind.INTERNAL`。
 
@@ -171,8 +169,6 @@ chain.ReActAgent [INTERNAL, 187.45ms, OK]  ← 根 Span
 | `error_code` | `100102` | 对应 `StatusCode.WORKFLOW_EXECUTION_ERROR` ✅ |
 
 **图 3：错误 Span 属性与异常事件分析**
-
-![错误 Span 分析](./images/error_span_analysis.svg)
 
 > 图 3 左侧展示错误 Span 的完整属性（`otel.status_code=ERROR`、`openjiuwen.error` JSON 含 error_code=100102），右侧展示 OTel exception event（含 exception.type、exception.message、exception.stacktrace），下方标注 error_code 100102 到框架 `StatusCode.WORKFLOW_EXECUTION_ERROR` 的映射关系。
 
@@ -290,8 +286,6 @@ OtelObservabilityDemo (Java main)
 
 **图 4：功能验证通过率**
 
-![功能验证通过率](./images/verification_pass_rate.svg)
-
 > 图 4 以环形图展示 19 项功能验证 100% 通过，右侧按类别列出验证项：协议与导出（3 项）、Span 类型与属性（4 项）、层级与错误（4 项）、脱敏与资源（5 项）、采样与刷新（2 项）、trace_id 桥接（1 项）。
 
 ---
@@ -354,7 +348,7 @@ docker stop jaeger-otel-demo && docker rm jaeger-otel-demo
 ## 8. Workflow 集成观测
 
 > **追加观测时间**：2026-07-13
-> **驱动程序**：[OtelWorkflowIntegrationDemo.java](file:///c:/Users/tom/Desktop/covert/agent-core-java/src/test/java/com/openjiuwen/extensions/tracer_otel/OtelWorkflowIntegrationDemo.java)
+> **驱动程序**：`OtelWorkflowIntegrationDemo.java`（该验证程序为本地临时文件，未随仓库提交）
 > **观测目标**：验证 OTel tracer 与 Workflow 引擎的端到端集成，对应 Python 示例代码的 Java 实现
 
 ### 8.1 Python → Java 集成映射
@@ -381,7 +375,7 @@ if workflow_session.tracer() is None and (stream_modes is None or BaseStreamMode
 - Python `invoke()` 传入 `stream_modes=[OUTPUT]`，**不包含 TRACE** → Tracer **不创建** → 无 trace 导出
 - Python `stream()` 传入用户指定的 `stream_modes`（默认 `None`）→ 条件满足 → Tracer **创建**
 
-**Java 实现保持与 Python 完全一致**（[Workflow.java:941](file:///c:/Users/tom/Desktop/covert/agent-core-java/src/main/java/com/openjiuwen/core/workflow/Workflow.java#L941)）：
+**Java 实现保持与 Python 完全一致**（[Workflow.java](../../../../../../core/src/main/java/com/openjiuwen/core/workflow/Workflow.java)）：
 
 ```java
 if (workflowSession.tracer() == null && (streamModes == null || streamModes.contains(StreamMode.TRACE))) {
@@ -399,15 +393,13 @@ if (workflowSession.tracer() == null && (streamModes == null || streamModes.cont
 
 | 内置 Handler | 修改内容 | 事件数 |
 | --- | --- | --- |
-| [TraceAgentHandler](file:///c:/Users/tom/Desktop/covert/agent-core-java/src/main/java/com/openjiuwen/core/session/tracer/TraceAgentHandler.java) | 21 个事件方法 + `dispatchExt()` + `toThrowable()` | 21 |
-| [TraceWorkflowHandler](file:///c:/Users/tom/Desktop/covert/agent-core-java/src/main/java/com/openjiuwen/core/session/tracer/TraceWorkflowHandler.java) | 8 个事件方法 + `dispatchExt()` | 8 |
-| [Tracer](file:///c:/Users/tom/Desktop/covert/agent-core-java/src/main/java/com/openjiuwen/core/session/tracer/Tracer.java) | `init()` 中注入 traceId 到扩展 handler | — |
+| [TraceAgentHandler](../../../../../../core/src/main/java/com/openjiuwen/core/session/tracer/TraceAgentHandler.java) | 21 个事件方法 + `dispatchExt()` + `toThrowable()` | 21 |
+| [TraceWorkflowHandler](../../../../../../core/src/main/java/com/openjiuwen/core/session/tracer/TraceWorkflowHandler.java) | 8 个事件方法 + `dispatchExt()` | 8 |
+| [Tracer](../../../../../../core/src/main/java/com/openjiuwen/core/session/tracer/Tracer.java) | `init()` 中注入 traceId 到扩展 handler | — |
 
 分发流程：`TraceWorkflowHandler.onCallStart()` → `dispatchExt(h -> h.onCallStart(...))` → `OtelWorkflowHandler` → `span.create()` + `setAttribute()`
 
 ### 8.4 观测结果
-
-![Workflow Span 持续时间](images/workflow_span_duration.svg)
 
 **Span 持续时间统计**：
 
@@ -416,8 +408,6 @@ if (workflowSession.tracer() == null && (streamModes == null || streamModes.cont
 | `0d73a040324c...` (workflow root) | 103.6 ms | INTERNAL | OK |
 | `component.start` | 19.7 ms | INTERNAL | OK |
 | `component.end` | 1.6 ms | INTERNAL | OK |
-
-![Workflow Trace 层级树](images/workflow_trace_hierarchy.svg)
 
 **Trace 层级**：
 
@@ -428,8 +418,6 @@ workflow (root)  [103.6ms]  spanID: e6dba208dc6cc929
 ```
 
 ### 8.5 数据流与事件分发
-
-![Workflow 数据流](images/workflow_data_flow.svg)
 
 **关键数据流节点**：
 
@@ -450,8 +438,6 @@ workflow (root)  [103.6ms]  spanID: e6dba208dc6cc929
 | 导出延迟 | < 1.5s |
 
 ### 8.6 功能验证清单
-
-![Workflow 功能验证](images/workflow_verification.svg)
 
 | # | 验证项 | 状态 | 说明 |
 | --- | --- | --- | --- |
