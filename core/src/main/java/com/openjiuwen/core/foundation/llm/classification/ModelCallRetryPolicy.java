@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.classification;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 
 /**
@@ -41,8 +42,77 @@ public final class ModelCallRetryPolicy {
      * @return resolved policy
      */
     public static ModelCallRetryPolicy from(ModelClientConfig config) {
-        return new ModelCallRetryPolicy(config.getMaxRetries(), config.isRetryOnRateLimit(),
-            config.isRetryOnTemporary());
+        int maxRetries = explicitInt(config, "max_retries", config.getMaxRetries(), systemRetries());
+        boolean retryOnRateLimit = explicitBoolean(config, "retry_on_rate_limit",
+                config.isRetryOnRateLimit(), systemSwitch("openjiuwen.llm.retry.on-rate-limit", true));
+        boolean retryOnTemporary = explicitBoolean(config, "retry_on_temporary",
+                config.isRetryOnTemporary(), systemSwitch("openjiuwen.llm.retry.on-temporary", true));
+        return new ModelCallRetryPolicy(maxRetries, retryOnRateLimit, retryOnTemporary);
+    }
+
+    private static int explicitInt(ModelClientConfig config, String key, int configured, int fallback) {
+        if (config.isMaxRetriesExplicit()) {
+            return configured;
+        }
+        Object value = config.getExtraFields().get(key);
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            int parsed = value instanceof Number number ? number.intValue() : Integer.parseInt(value.toString());
+            return ModelClientConfig.validateMaxRetries(parsed);
+        } catch (NumberFormatException exception) {
+            return configured;
+        }
+    }
+
+    private static boolean explicitBoolean(ModelClientConfig config, String key, boolean configured,
+            boolean fallback) {
+        if ((key.equals("retry_on_rate_limit") && config.isRetryOnRateLimitExplicit())
+                || (key.equals("retry_on_temporary") && config.isRetryOnTemporaryExplicit())) {
+            return configured;
+        }
+        Object value = config.getExtraFields().get(key);
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Boolean flag) {
+            return flag;
+        }
+        return "true".equalsIgnoreCase(value.toString());
+    }
+
+    private static int systemRetries() {
+        String name = "openjiuwen.llm.retry.max-retries";
+        String property = System.getProperty(name);
+        if (property == null || property.isBlank()) {
+            return 2;
+        }
+        try {
+            int parsed = Integer.parseInt(property.trim());
+            if (parsed >= 0) {
+                return parsed;
+            }
+        } catch (NumberFormatException exception) {
+            Loggers.LLM.debug("System property {} could not be parsed", name);
+        }
+        Loggers.LLM.warning("Invalid {} value, falling back to default 2 retries", name);
+        return 2;
+    }
+
+    private static boolean systemSwitch(String name, boolean defaultValue) {
+        String property = System.getProperty(name);
+        if (property == null || property.isBlank()) {
+            return defaultValue;
+        }
+        if ("true".equalsIgnoreCase(property.trim())) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(property.trim())) {
+            return false;
+        }
+        Loggers.LLM.warning("Invalid {} value, falling back to default {}", name, defaultValue);
+        return defaultValue;
     }
 
     /**

@@ -449,11 +449,52 @@ DeepAgentConfig.builder()
 |------|------|------|------|------|
 | 连接 | 建立 TCP/TLS 连接 | `connectTimeoutSeconds` / `connect_timeout_seconds` | 10s（可被系统属性 `openjiuwen.llm.http.connect-timeout-seconds` 覆盖） | [5, 15]s |
 | 响应头等待 | 请求发出后等待响应头到达 | 沿用旧 `timeout` 字段（显式设置时作为本层取值） | 未显式设置时回落为流式空闲层的解析值 | 旧语义不变 |
-| 流式空闲 | 对端沉默（无任何数据段）超过窗口即掐断 | `streamIdleSeconds` / `stream_idle_seconds` | 600s | [300, 900]s |
+| 流式空闲 | 对端沉默（无任何数据段）超过窗口即掐断 | `streamIdleSeconds` / `stream_idle_seconds` | 600s（可被系统属性 `openjiuwen.llm.http.stream-idle-seconds` 覆盖） | [300, 900]s |
 
 没有「全程总时长」上限：长生成只要持续有数据返回就不会被掐断，只有对端沉默才会触发流式空闲层。
 
-配置示例：
+配置示例（`DeepAgentsFactory.createDeepAgent(path)` 加载 YAML）：
+
+```yaml
+model:
+  model: your-model
+backend:
+  client_provider: openai
+  api_key: your-key
+  api_base: https://your-model-endpoint/v1
+  connect_timeout_seconds: 10
+  stream_idle_seconds: 600
+  max_retries: 2
+  retry_on_rate_limit: true
+  retry_on_temporary: true
+```
+
+这些字段也可写入 `DeepAgentConfig.backend` 的 Map。未声明的超时与重试字段沿用
+`ModelClientConfig` 默认值。旧 `timeout` 仅在显式声明时覆盖响应头等待，不改变流式空闲层。
+`openjiuwen.timeout.blocking-queue-ms` 属于会话输出队列等待，不属于这里的模型调用分层。
+
+只使用 jar 的应用也可以在 `java -jar` 前传入 JVM 系统属性。显式 Java 对象或 YAML 字段优先；属性只在对应字段未声明时提供默认值。非法数值、越界值或非法布尔值会告警并沿用 core 默认值。
+
+| JVM 系统属性 | 对应配置 | 缺省 |
+|------|------|------|
+| `openjiuwen.llm.http.connect-timeout-seconds` | `connect_timeout_seconds` | 10 |
+| `openjiuwen.llm.http.stream-idle-seconds` | `stream_idle_seconds` | 600 |
+| `openjiuwen.llm.http.timeout-seconds` | 旧 `timeout`，仅响应头等待 | 未设置时继承流式空闲值 |
+| `openjiuwen.llm.retry.max-retries` | `max_retries` | 2 |
+| `openjiuwen.llm.retry.on-rate-limit` | `retry_on_rate_limit` | true |
+| `openjiuwen.llm.retry.on-temporary` | `retry_on_temporary` | true |
+
+例如把 chunk 空闲窗口设为 600 秒，并保留最多两次重试：
+
+```bash
+java -Dopenjiuwen.llm.http.stream-idle-seconds=600 \
+     -Dopenjiuwen.llm.retry.max-retries=2 \
+     -jar your-app.jar
+```
+
+JVM 属性不影响 Java 单次调用的 `ModelInvokeOptions.timeout` 覆盖语义。
+
+Java 对象配置示例：
 
 ```java
 ModelClientConfig clientConfig = ModelClientConfig.builder()

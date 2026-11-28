@@ -86,6 +86,7 @@ import com.openjiuwen.harness.schema.DeepAgentState;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.schema.config.DeepAgentConfigConverter;
 import com.openjiuwen.harness.schema.config.ModelConfigEntry;
+import com.openjiuwen.harness.schema.config.ModelConfigMapper;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.security.PermissionFactory;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
@@ -665,30 +666,7 @@ public class DeepAgent implements AutoCloseable {
     }
 
     private Optional<ModelClientConfig> extractModelClientConfig(Object backendObj) {
-        if (backendObj == null) {
-            return Optional.empty();
-        }
-        if (backendObj instanceof ModelClientConfig clientConfig) {
-            return Optional.of(clientConfig);
-        }
-        if (backendObj instanceof Map<?, ?> backendMap) {
-            String provider = string(firstPresent(backendMap, new String[] {"client_provider", "clientProvider",
-                    "model_provider", "modelProvider", "provider", "backend"}));
-            String apiKey = string(firstPresent(backendMap, new String[] {"api_key", "apiKey"}));
-            String apiBase = string(firstPresent(backendMap,
-                    new String[] {"api_base", "apiBase", "base_url", "baseUrl"}));
-            if (provider == null || apiKey == null || apiBase == null) {
-                return Optional.empty();
-            }
-            return Optional.of(ModelClientConfig.builder()
-                    .clientId(string(firstPresent(backendMap, new String[] {"client_id", "clientId"})))
-                    .clientProvider(provider)
-                    .apiKey(apiKey)
-                    .apiBase(apiBase)
-                    .timeout(doubleOrDefault(firstPresent(backendMap, new String[] {"timeout"}), 60.0))
-                    .build());
-        }
-        return Optional.empty();
+        return ModelConfigMapper.toClientConfig(backendObj);
     }
 
     private static Object firstPresent(Map<?, ?> source, String[] keys) {

@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.function.DoublePredicate;
 
 /**
  * Resolves the three independent timeout layers of a model HTTP call.
@@ -43,6 +44,10 @@ public final class ModelTimeoutResolver {
 
     private static final String CONNECT_TIMEOUT_SECONDS_PROPERTY =
             "openjiuwen.llm.http.connect-timeout-seconds";
+    private static final String STREAM_IDLE_SECONDS_PROPERTY =
+            "openjiuwen.llm.http.stream-idle-seconds";
+    private static final String LEGACY_TIMEOUT_SECONDS_PROPERTY =
+            "openjiuwen.llm.http.timeout-seconds";
 
     private ModelTimeoutResolver() {
     }
@@ -79,21 +84,25 @@ public final class ModelTimeoutResolver {
         if (config != null && config.getConnectTimeoutSeconds() != null) {
             return config.getConnectTimeoutSeconds();
         }
-        String raw = System.getProperty(CONNECT_TIMEOUT_SECONDS_PROPERTY);
-        if (raw != null && !raw.isBlank()) {
-            try {
-                double parsed = Double.parseDouble(raw.trim());
-                if (!Double.isNaN(parsed) && parsed > 0.0D) {
-                    return parsed;
-                }
-                Loggers.LLM.warning("Invalid {} value {}, falling back to default 10s",
-                        CONNECT_TIMEOUT_SECONDS_PROPERTY, raw);
-            } catch (NumberFormatException exception) {
-                Loggers.LLM.warning("Unparseable {} value {}, falling back to default 10s",
-                        CONNECT_TIMEOUT_SECONDS_PROPERTY, raw);
-            }
+        return propertySeconds(CONNECT_TIMEOUT_SECONDS_PROPERTY, DEFAULT_CONNECT_TIMEOUT_SECONDS,
+                seconds -> !Double.isNaN(seconds) && seconds > 0.0D);
+    }
+
+    private static double propertySeconds(String name, double defaultValue, DoublePredicate validator) {
+        String raw = System.getProperty(name);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
         }
-        return DEFAULT_CONNECT_TIMEOUT_SECONDS;
+        try {
+            double parsed = Double.parseDouble(raw.trim());
+            if (validator.test(parsed)) {
+                return parsed;
+            }
+        } catch (NumberFormatException exception) {
+            Loggers.LLM.debug("System property {} could not be parsed", name);
+        }
+        Loggers.LLM.warning("Invalid {} value, falling back to default {}s", name, defaultValue);
+        return defaultValue;
     }
 
     /**
@@ -106,7 +115,14 @@ public final class ModelTimeoutResolver {
         if (config != null && config.getStreamIdleSeconds() != null) {
             return config.getStreamIdleSeconds();
         }
-        return DEFAULT_STREAM_IDLE_SECONDS;
+        return propertySeconds(STREAM_IDLE_SECONDS_PROPERTY, DEFAULT_STREAM_IDLE_SECONDS, seconds -> {
+            try {
+                validateStreamIdleSeconds(seconds);
+                return true;
+            } catch (IllegalArgumentException exception) {
+                return false;
+            }
+        });
     }
 
     /**
@@ -139,6 +155,11 @@ public final class ModelTimeoutResolver {
     public static double resolveHeaderWaitSeconds(ModelClientConfig config) {
         if (config != null && config.isTimeoutExplicit()) {
             return config.getTimeout();
+        }
+        String legacyTimeout = System.getProperty(LEGACY_TIMEOUT_SECONDS_PROPERTY);
+        if (legacyTimeout != null && !legacyTimeout.isBlank()) {
+            return propertySeconds(LEGACY_TIMEOUT_SECONDS_PROPERTY,
+                    resolveStreamIdleSeconds(config), seconds -> !Double.isNaN(seconds) && seconds > 0.0D);
         }
         return resolveStreamIdleSeconds(config);
     }

@@ -10,6 +10,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -21,6 +23,8 @@ import org.junit.jupiter.params.provider.ValueSource;
  */
 class ModelTimeoutConfigTest {
     private static final double TOLERANCE = 0.0001D;
+    private static final String IDLE_PROPERTY = "openjiuwen.llm.http.stream-idle-seconds";
+    private static final String LEGACY_TIMEOUT_PROPERTY = "openjiuwen.llm.http.timeout-seconds";
 
     @Test
     void defaultsApplyWhenUnconfigured() {
@@ -171,6 +175,58 @@ class ModelTimeoutConfigTest {
     }
 
     @Test
+    @ResourceLock(Resources.SYSTEM_PROPERTIES)
+    void streamIdleSystemPropertyFallsBackWhenFieldIsOmitted() {
+        String previous = System.getProperty(IDLE_PROPERTY);
+        try {
+            System.setProperty(IDLE_PROPERTY, "450");
+            assertThat(ModelTimeoutResolver.resolveStreamIdleSeconds(new ModelClientConfig()))
+                    .isEqualTo(450.0D);
+            assertThat(ModelTimeoutResolver.resolveHeaderWaitSeconds(new ModelClientConfig()))
+                    .isEqualTo(450.0D);
+            assertThat(ModelTimeoutResolver.resolveStreamIdleSeconds(
+                    ModelClientConfig.builder().streamIdleSeconds(600.0D).build()))
+                    .isEqualTo(600.0D);
+        } finally {
+            restoreProperty(IDLE_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    @ResourceLock(Resources.SYSTEM_PROPERTIES)
+    void invalidStreamIdleSystemPropertyFallsBackToDefault() {
+        String previous = System.getProperty(IDLE_PROPERTY);
+        try {
+            System.setProperty(IDLE_PROPERTY, "30");
+            assertThat(ModelTimeoutResolver.resolveStreamIdleSeconds(new ModelClientConfig()))
+                    .isEqualTo(600.0D);
+            System.setProperty(IDLE_PROPERTY, "not-a-number");
+            assertThat(ModelTimeoutResolver.resolveStreamIdleSeconds(new ModelClientConfig()))
+                    .isEqualTo(600.0D);
+        } finally {
+            restoreProperty(IDLE_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    @ResourceLock(Resources.SYSTEM_PROPERTIES)
+    void legacySystemPropertyOnlyOverridesHeaderWait() {
+        String previous = System.getProperty(LEGACY_TIMEOUT_PROPERTY);
+        try {
+            System.setProperty(LEGACY_TIMEOUT_PROPERTY, "120");
+            ModelClientConfig config = new ModelClientConfig();
+            config.setStreamIdleSeconds(300.0D);
+            assertThat(ModelTimeoutResolver.resolveHeaderWaitSeconds(config)).isEqualTo(120.0D);
+            assertThat(ModelTimeoutResolver.resolveStreamIdleSeconds(config)).isEqualTo(300.0D);
+            config.setTimeout(90.0D);
+            assertThat(ModelTimeoutResolver.resolveHeaderWaitSeconds(config)).isEqualTo(90.0D);
+        } finally {
+            restoreProperty(LEGACY_TIMEOUT_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    @ResourceLock(Resources.SYSTEM_PROPERTIES)
     void invalidConnectSystemPropertyFallsBackToDefault() {
         String property = "openjiuwen.llm.http.connect-timeout-seconds";
         String previous = System.getProperty(property);
@@ -185,11 +241,15 @@ class ModelTimeoutConfigTest {
             assertThat(ModelTimeoutResolver.resolveConnectTimeoutSeconds(null))
                     .isCloseTo(7.5D, org.assertj.core.data.Offset.offset(TOLERANCE));
         } finally {
-            if (previous == null) {
-                System.clearProperty(property);
-            } else {
-                System.setProperty(property, previous);
-            }
+            restoreProperty(property, previous);
+        }
+    }
+
+    private static void restoreProperty(String name, String value) {
+        if (value == null) {
+            System.clearProperty(name);
+        } else {
+            System.setProperty(name, value);
         }
     }
 }
