@@ -163,7 +163,10 @@ public class MemoryIndexManager implements LiteMemoryToolContextBase.MemoryIndex
                 String[] allLines = content.split("\\n", -1);
                 int totalLines = allLines.length;
                 int start = fromLine == null ? 0 : Math.max(0, fromLine - 1);
-                int end = lines == null ? totalLines : Math.min(totalLines, start + lines);
+                start = Math.min(start, totalLines);
+                int end = lines == null
+                        ? totalLines
+                        : Math.min(totalLines, (int) Math.max((long) start, (long) start + lines));
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("path", relPath);
                 result.put("text", String.join("\n", List.of(allLines).subList(start, end)));

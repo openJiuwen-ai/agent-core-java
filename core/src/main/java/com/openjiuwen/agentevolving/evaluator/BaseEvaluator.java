@@ -58,7 +58,7 @@ public abstract class BaseEvaluator {
                 TuneConstant.minParallelNum,
                 TuneConstant.maxParallelNum
         );
-        int numWorkers = Math.min(numParallel, cases.size());
+        int numWorkers = Math.max(1, Math.min(numParallel, cases.size()));
         ExecutorService executor = Executors.newFixedThreadPool(numWorkers);
         try {
             List<Future<EvaluatedCase>> futures = new ArrayList<>(cases.size());

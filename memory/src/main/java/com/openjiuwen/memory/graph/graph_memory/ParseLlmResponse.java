@@ -37,6 +37,28 @@ public final class ParseLlmResponse {
     }
 
     /**
+     * Parses a 1-based numeric id from an LLM response field.
+     *
+     * <p>Accepts both {@code Number} values (Jackson may map JSON integers to
+     * {@code Double}, e.g. {@code 3.0}) and digit-only strings, mirroring
+     * {@code GraphMemoryLlmResponseParser.isNumericId/toInteger}.</p>
+     *
+     * @param value the raw id value
+     * @return the parsed integer id
+     * @throws NumberFormatException if the value is not a numeric id
+     * @since 0.1.7
+     */
+    private static int parseNumericId(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String string) {
+            return Integer.parseInt(string.trim());
+        }
+        throw new NumberFormatException("not a numeric id: " + value);
+    }
+
+    /**
      * parseIso.
      * 
      * @param timeStr timeStr
@@ -90,9 +112,9 @@ public final class ParseLlmResponse {
         }
         try {
             int sourceId =
-                Integer.parseInt(String.valueOf(firstPresent(relationResponse, List.of("source_id", "sourceId")))) - 1;
+                parseNumericId(firstPresent(relationResponse, List.of("source_id", "sourceId"))) - 1;
             int targetId =
-                Integer.parseInt(String.valueOf(firstPresent(relationResponse, List.of("target_id", "targetId")))) - 1;
+                parseNumericId(firstPresent(relationResponse, List.of("target_id", "targetId"))) - 1;
             if (sourceId < 0 || targetId < 0) {
                 throw new IllegalArgumentException(
                         "relation source_id and target_id must be valid 1-based entity indices");
@@ -229,7 +251,7 @@ public final class ParseLlmResponse {
             Object dupId = dup.get("id");
             Entity targetEntity = null;
             if (dupId instanceof Number || (dupId instanceof String s && s.matches("\\d+"))) {
-                int isResolvedIndex = Integer.parseInt(String.valueOf(dupId)) - 1;
+                int isResolvedIndex = parseNumericId(dupId) - 1;
                 if (isResolvedIndex < numExisting && isResolvedIndex >= 0) {
                     targetEntity = existing.get(isResolvedIndex);
                 }
@@ -303,7 +325,7 @@ public final class ParseLlmResponse {
             }
             if (duplicateIdList != null) {
                 for (Object idObj : duplicateIdList) {
-                    int index = Integer.parseInt(String.valueOf(idObj).trim());
+                    int index = parseNumericId(idObj);
                     if (index > 0 && index <= numExisting) {
                         toRemove.add(String.valueOf(existingRelations.get(index - 1).getOrDefault("uuid", "ERROR")));
                     }
@@ -429,7 +451,7 @@ public final class ParseLlmResponse {
             return;
         }
         for (Object duplicateId : duplicateIds) {
-            int isResolved = Integer.parseInt(String.valueOf(duplicateId)) - 1;
+            int isResolved = parseNumericId(duplicateId) - 1;
             if (numExisting <= isResolved && isResolved < numEntities) {
                 result.set(isResolved - numExisting, targetEntity);
             } else if (0 <= isResolved && isResolved < numExisting) {
