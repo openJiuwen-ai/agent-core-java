@@ -14,6 +14,7 @@ import com.openjiuwen.harness.harness_config.HarnessConfigLoader;
 import com.openjiuwen.harness.harness_config.ResolvedHarnessConfig;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.schema.config.DeepAgentConfigConverter;
+import com.openjiuwen.harness.schema.config.ModelConfigMapper;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
 import com.openjiuwen.harness.task_loop.TaskLoopEventExecutor;
 import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
@@ -90,6 +91,10 @@ public class DeepAgentsFactory {
         com.openjiuwen.harness.schema.DeepAgentConfig built = HarnessConfigBuilder.build(
                 resolved, null, Path.of(".").toAbsolutePath().normalize());
         DeepAgentConfig runtime = DeepAgentConfigConverter.toRuntime(built);
+        if (resolved != null && resolved.getConfig() != null) {
+            Object backend = resolved.getConfig().getExtraFields().get("backend");
+            ModelConfigMapper.toClientConfig(backend).ifPresent(runtime::setBackend);
+        }
         if (resolved != null && resolved.getSystemPrompt() != null && !resolved.getSystemPrompt().isBlank()) {
             runtime.setSystemPrompt(resolved.getSystemPrompt());
         }

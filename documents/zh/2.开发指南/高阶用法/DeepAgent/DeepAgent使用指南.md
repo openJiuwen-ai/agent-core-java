@@ -453,7 +453,27 @@ DeepAgentConfig.builder()
 
 没有「全程总时长」上限：长生成只要持续有数据返回就不会被掐断，只有对端沉默才会触发流式空闲层。
 
-配置示例：
+配置示例（`DeepAgentsFactory.createDeepAgent(path)` 加载 YAML）：
+
+```yaml
+model:
+  model: your-model
+backend:
+  client_provider: openai
+  api_key: your-key
+  api_base: https://your-model-endpoint/v1
+  connect_timeout_seconds: 10
+  stream_idle_seconds: 600
+  max_retries: 2
+  retry_on_rate_limit: true
+  retry_on_temporary: true
+```
+
+这些字段也可写入 `DeepAgentConfig.backend` 的 Map。未声明的超时与重试字段沿用
+`ModelClientConfig` 默认值。旧 `timeout` 仅在显式声明时覆盖响应头等待，不改变流式空闲层。
+`openjiuwen.timeout.blocking-queue-ms` 属于会话输出队列等待，不属于这里的模型调用分层。
+
+Java 对象配置示例：
 
 ```java
 ModelClientConfig clientConfig = ModelClientConfig.builder()
