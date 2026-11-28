@@ -84,17 +84,21 @@ public class BrowserService {
      */
     public void ensureStarted() {
         isStarted = true;
-        isConnectionHealthy = true;
     }
 
     /**
      * restart.
-     * 
+     *
+     * <p>Base implementation only marks the service started; connection health
+     * is not touched here and is restored only by a successful
+     * {@link #checkConnection()} probe in the heartbeat loop, so a failed
+     * runtime is not reported healthy by restart itself. Subclasses with a real
+     * runtime override this to reconnect.</p>
+     *
      * @since 0.1.7
      */
     public void restart() {
         isStarted = true;
-        isConnectionHealthy = true;
     }
 
     /**
@@ -114,15 +118,17 @@ public class BrowserService {
 
     /**
      * checkConnection.
-     * 
+     *
+     * <p>Probes the real runtime state only (managed driver endpoint readiness) and
+     * does not gate on {@code isConnectionHealthy}: the health flag is an output of
+     * the heartbeat loop, not an input to the probe, so a previously failed check
+     * can recover on the next iteration.</p>
+     *
      * @since 0.1.7
      */
     public void checkConnection() {
         if (managedDriver != null && !managedDriver.isEndpointReady()) {
             throw new IllegalStateException("CDP endpoint is not ready");
-        }
-        if (!isConnectionHealthy) {
-            throw new IllegalStateException("browser runtime client not responding");
         }
     }
 
@@ -140,6 +146,8 @@ public class BrowserService {
             } catch (IllegalStateException ex) {
                 isConnectionHealthy = false;
                 if (!inflightTasks.isEmpty()) {
+                    // Attempt recovery; the health flag itself is restored only
+                    // by a successful checkConnection on a later iteration.
                     restart();
                 }
             }

@@ -80,8 +80,11 @@ class HarnessBrowserRuntimeAdvancedCompatibilityTest {
                         .clientType("stdio").build(),
                 BrowserRunGuardrails.builder().build());
 
-        service.setConnectionHealthy(true);
+        service.setConnectionHealthy(false);
         service.checkConnection();
+        assertThat(service.isConnectionHealthy()).isFalse();
+
+        service.setConnectionHealthy(true);
         assertThat(service.isConnectionHealthy()).isTrue();
 
         service.setManagedDriver(
@@ -96,6 +99,51 @@ class HarnessBrowserRuntimeAdvancedCompatibilityTest {
             service.checkConnection();
         } catch (RuntimeException ex) {
             assertThat(ex.getMessage().toLowerCase()).contains("cdp");
+        }
+    }
+
+    @Test
+    void healthFlagShouldRecoverAfterFailedProbe() {
+        BrowserService service = new BrowserService("openai", "test-key", "https://example.invalid/v1", "test-model",
+                McpServerConfig.builder().serverId("test").serverName("test").serverPath("stdio://playwright")
+                        .clientType("stdio").build(),
+                BrowserRunGuardrails.builder().build());
+
+        // Failed probe marks the flag false; the next successful probe restores it.
+        service.setManagedDriver(
+                new ManagedBrowserDriver(BrowserProfile.builder().cdpUrl("http://127.0.0.1:9333").build()) {
+                    @Override
+                    public boolean isEndpointReady() {
+                        return false;
+                    }
+                });
+        service.setConnectionHealthy(true);
+        heartbeatIteration(service);
+        assertThat(service.isConnectionHealthy()).isFalse();
+        assertThat(service.getLastHeartbeatOk()).isNull();
+
+        service.setManagedDriver(
+                new ManagedBrowserDriver(BrowserProfile.builder().cdpUrl("http://127.0.0.1:9333").build()) {
+                    @Override
+                    public boolean isEndpointReady() {
+                        return true;
+                    }
+                });
+        heartbeatIteration(service);
+        assertThat(service.isConnectionHealthy()).isTrue();
+        assertThat(service.getLastHeartbeatOk()).isNotNull();
+    }
+
+    /**
+     * One heartbeat-loop iteration (probe then set the flag by outcome).
+     */
+    private static void heartbeatIteration(BrowserService service) {
+        try {
+            service.checkConnection();
+            service.setConnectionHealthy(true);
+            service.setLastHeartbeatOk((double) System.currentTimeMillis());
+        } catch (IllegalStateException ex) {
+            service.setConnectionHealthy(false);
         }
     }
 }
