@@ -84,6 +84,18 @@ public class ModelClientConfig {
     @JsonIgnore
     private int maxRetries = 2;
 
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    private boolean maxRetriesExplicit;
+
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    private boolean retryOnRateLimitExplicit;
+
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    private boolean retryOnTemporaryExplicit;
+
     @JsonProperty("retry_on_rate_limit")
     private boolean isRetryOnRateLimit = true;
 
@@ -114,6 +126,7 @@ public class ModelClientConfig {
         this.timeout = validatePositiveTimeout(timeout);
         this.isTimeoutExplicit = isNonDefaultLegacyTimeout(timeout);
         this.maxRetries = validateMaxRetries(maxRetries);
+        this.maxRetriesExplicit = true;
         this.verifySsl = verifySsl;
         this.sslCert = sslCert;
         this.customHeaders = customHeaders;
@@ -244,6 +257,47 @@ public class ModelClientConfig {
     @JsonProperty("max_retries")
     public void setMaxRetries(int maxRetries) {
         this.maxRetries = validateMaxRetries(maxRetries);
+        this.maxRetriesExplicit = true;
+    }
+
+    /**
+     * Indicates whether the retry count was explicitly configured.
+     *
+     * @return true when the setting was explicitly declared
+     */
+    @JsonIgnore
+    public boolean isMaxRetriesExplicit() {
+        return maxRetriesExplicit;
+    }
+
+    public void setRetryOnRateLimit(boolean isRetryOnRateLimit) {
+        this.isRetryOnRateLimit = isRetryOnRateLimit;
+        this.retryOnRateLimitExplicit = true;
+    }
+
+    /**
+     * Indicates whether rate-limit retry was explicitly configured.
+     *
+     * @return true when the switch was explicitly declared
+     */
+    @JsonIgnore
+    public boolean isRetryOnRateLimitExplicit() {
+        return retryOnRateLimitExplicit;
+    }
+
+    public void setRetryOnTemporary(boolean isRetryOnTemporary) {
+        this.isRetryOnTemporary = isRetryOnTemporary;
+        this.retryOnTemporaryExplicit = true;
+    }
+
+    /**
+     * Indicates whether temporary-failure retry was explicitly configured.
+     *
+     * @return true when the switch was explicitly declared
+     */
+    @JsonIgnore
+    public boolean isRetryOnTemporaryExplicit() {
+        return retryOnTemporaryExplicit;
     }
 
     /**
@@ -364,6 +418,9 @@ public class ModelClientConfig {
         private Double connectTimeoutSeconds;
         private Double streamIdleSeconds;
         private boolean isTimeoutExplicit;
+        private boolean maxRetriesExplicit;
+        private boolean retryOnRateLimitExplicit;
+        private boolean retryOnTemporaryExplicit;
         private int maxRetries = 2;
         private boolean isRetryOnRateLimit = true;
         private boolean isRetryOnTemporary = true;
@@ -440,6 +497,7 @@ public class ModelClientConfig {
          */
         public ModelClientConfigBuilder maxRetries(int maxRetries) {
             this.maxRetries = validateMaxRetries(maxRetries);
+            this.maxRetriesExplicit = true;
             return this;
         }
 
@@ -452,6 +510,7 @@ public class ModelClientConfig {
          */
         public ModelClientConfigBuilder retryOnRateLimit(boolean isRetryOnRateLimit) {
             this.isRetryOnRateLimit = isRetryOnRateLimit;
+            this.retryOnRateLimitExplicit = true;
             return this;
         }
 
@@ -464,6 +523,7 @@ public class ModelClientConfig {
          */
         public ModelClientConfigBuilder retryOnTemporary(boolean isRetryOnTemporary) {
             this.isRetryOnTemporary = isRetryOnTemporary;
+            this.retryOnTemporaryExplicit = true;
             return this;
         }
 
@@ -519,8 +579,11 @@ public class ModelClientConfig {
                     : validateStreamIdleSeconds(streamIdleSeconds);
             config.isTimeoutExplicit = isTimeoutExplicit;
             config.maxRetries = validateMaxRetries(maxRetries);
+            config.maxRetriesExplicit = maxRetriesExplicit;
             config.isRetryOnRateLimit = isRetryOnRateLimit;
             config.isRetryOnTemporary = isRetryOnTemporary;
+            config.retryOnRateLimitExplicit = retryOnRateLimitExplicit;
+            config.retryOnTemporaryExplicit = retryOnTemporaryExplicit;
             config.verifySsl = verifySsl;
             config.sslCert = sslCert;
             config.customHeaders = customHeaders == null ? null : new LinkedHashMap<>(customHeaders);
