@@ -546,13 +546,17 @@ class HarnessCompatibilityTest {
 
     @Test
     void deepAgentShouldExposeNormalizedInvokePayload() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").build()); createdAgents.add(agent);
+        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").build());
+        createdAgents.add(agent);
+        // The task loop is off by default, so invoke degrades to one inner round and needs a model.
+        installEchoModel(agent, "echo:", 3, 2);
 
         Map<String, Object> result = agent.invoke(Map.of("query", "Summarize the codebase."));
 
         assertThat(result).containsEntry("agent_name", "deep_agent");
         assertThat(result).containsEntry("mode", "normal");
         assertThat(String.valueOf(result.get("workspace"))).contains("repo");
+        assertThat(String.valueOf(result.get("output"))).startsWith("echo:");
     }
 
     @Disabled("Round numbering is covered by DeepAgentTaskLoopRoundTest; loop_state.token_usage is still 0")

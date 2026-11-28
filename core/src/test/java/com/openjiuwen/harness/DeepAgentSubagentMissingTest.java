@@ -5,7 +5,11 @@
 package com.openjiuwen.harness;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.singleagent.rail.HeartbeatReason;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
@@ -32,6 +36,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -392,7 +397,23 @@ class DeepAgentSubagentMissingTest {
         config.setEnablePlanMode(true);
         DeepAgent agent = new DeepAgent();
         agent.configure(config);
+        installEchoModel(agent);
         return agent;
+    }
+
+    /**
+     * Installs a model answering immediately so a single inner round can complete.
+     *
+     * @param agent target agent
+     */
+    private static void installEchoModel(DeepAgent agent) {
+        Model model = Mockito.mock(Model.class);
+        Mockito.when(model.invoke(any(List.class), any(ModelInvokeOptions.class)))
+                .thenAnswer(invocation -> java.util.concurrent.CompletableFuture.completedFuture(
+                        AssistantMessage.builder().content("ok").build()));
+        Mockito.when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> AssistantMessage.builder().content("ok").build());
+        agent.getAgent().setLlm(model);
     }
 
     private static ToolOutput invoke(List<String> toolCalls, Tool tool, Map<String, Object> inputs) throws Exception {

@@ -1,5 +1,8 @@
 package com.openjiuwen.harness;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
@@ -8,12 +11,15 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.harness.workspace.Workspace;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 
 class HarnessPermissionIntegrationTest {
 
@@ -63,12 +69,29 @@ class HarnessPermissionIntegrationTest {
                 new Workspace("./workspace", "cn")
         );
 
+        installEchoModel(agent);
+
         agent.invoke(Map.of("query", "read file"));
 
         assertThat(agent.isInitialized()).isTrue();
         assertThat(agent.getRails().stream().map(item -> item.getClass().getSimpleName()).toList())
                 .contains("SecurityRail", "PermissionInterruptRail");
         assertThat(innerAgentHasPermissionRail(agent)).isTrue();
+    }
+
+    /**
+     * Installs a model that echoes the last message so the single inner round can complete.
+     *
+     * @param agent target agent
+     */
+    private static void installEchoModel(DeepAgent agent) {
+        Model model = Mockito.mock(Model.class);
+        Mockito.when(model.invoke(any(List.class), any(ModelInvokeOptions.class)))
+                .thenAnswer(invocation -> java.util.concurrent.CompletableFuture.completedFuture(
+                        AssistantMessage.builder().content("ok").build()));
+        Mockito.when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> AssistantMessage.builder().content("ok").build());
+        agent.getAgent().setLlm(model);
     }
 
     private static boolean innerAgentHasPermissionRail(DeepAgent agent) {
