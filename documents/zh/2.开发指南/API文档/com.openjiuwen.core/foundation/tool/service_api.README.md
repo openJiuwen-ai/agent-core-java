@@ -6,7 +6,7 @@
 
 | 子包 | 说明 |
 | --- | --- |
-| [`parser`](tool/service_api/parser.README.md) | 提供响应解压缩器、响应解析器与注册中心。 |
+| [`parser`](service_api/parser.README.md) | 提供响应解压缩器、响应解析器与注册中心。 |
 
 ## 类型
 
