@@ -7,6 +7,7 @@ package com.openjiuwen.agentevolving.agent_rl.offline.runtime;
 import com.openjiuwen.agentevolving.agent_rl.offline.coordinator.TaskQueue;
 import com.openjiuwen.agentevolving.agent_rl.schemas.RLTask;
 import com.openjiuwen.agentevolving.agent_rl.schemas.RolloutMessage;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,7 +18,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -54,7 +54,7 @@ public class ParallelRuntimeExecutor {
                                    Function<Map<String, Object>, Map<String, Object>> taskDataFn,
                                    Function<RolloutMessage, Map<String, Object>> rewardFn) {
         this.dataStore = Objects.requireNonNull(dataStore, "dataStore");
-        this.numWorkers = numWorkers != 0 ? numWorkers : Runtime.getRuntime().availableProcessors();
+        this.numWorkers = numWorkers > 0 ? numWorkers : Runtime.getRuntime().availableProcessors();
         this.agentFactory = agentFactory;
         this.taskDataFn = taskDataFn;
         this.rewardFn = rewardFn;
@@ -71,8 +71,8 @@ public class ParallelRuntimeExecutor {
         running = true;
         LOGGER.info(() -> "Starting ParallelRuntimeExecutor with " + numWorkers + " workers");
 
-        int workerCount = Math.max(0, numWorkers);
-        workerPool = Executors.newFixedThreadPool(Math.max(1, workerCount));
+        int workerCount = Math.max(1, numWorkers);
+        workerPool = OpenJiuwenExecutors.newFixedThreadPool("parallel-runtime-worker", workerCount, true);
         for (int i = 0; i < workerCount; i++) {
             final int workerId = i;
             runtimeTasks.add(CompletableFuture.runAsync(() -> workerLoop(workerId), workerPool));
