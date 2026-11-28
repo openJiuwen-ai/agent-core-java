@@ -123,6 +123,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -482,7 +483,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         // BEFORE_MODEL_CALL edits (Python builds the final window inside the
         // railed body from the post-rail prompt, while Java keeps rail-edited
         // inputs as the request snapshot).
-        prepareModelRequest(ctx);
+        ContextWindow initialWindow = prepareModelRequest(ctx, List.of());
         boolean isModelCallSuccessful = false;
         try {
             Object result = Rails.run(
@@ -491,16 +492,17 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                     AgentCallbackEvent.AFTER_MODEL_CALL,
                     AgentCallbackEvent.ON_MODEL_EXCEPTION,
                     new Rails.RailedOperation() {
+                        private ContextWindow preparedWindow = initialWindow;
+
                         /**
                          * {@inheritDoc}
                          */
                         @Override
                         public Object execute() {
-                            // On Rails.run retries (e.g. overflow compress+requestRetry),
-                            // rebuild from ModelContext so the provider sees the
-                            // post-recovery snapshot rather than the pre-failure one.
                             if (ctx.getRetryAttempt() > 0) {
-                                prepareModelRequest(ctx);
+                                ModelCallInputs inputs = ModelCallInputs.class.cast(ctx.getInputs());
+                                List<BaseMessage> additions = addedSystemMessages(inputs, preparedWindow);
+                                preparedWindow = prepareModelRequest(ctx, additions);
                             }
                             return doRailedModelCall(ctx);
                         }
@@ -522,6 +524,34 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
                 endModelCallTimeout(ctx);
             }
         }
+    }
+
+    private static List<BaseMessage> addedSystemMessages(ModelCallInputs inputs, ContextWindow preparedWindow) {
+        List<BaseMessage> frameworkPrompts = preparedWindow.getSystemMessages();
+        Set<BaseMessage> preparedMessages = Collections.newSetFromMap(new IdentityHashMap<>());
+        preparedMessages.addAll(preparedWindow.getMessages());
+
+        List<BaseMessage> additions = new ArrayList<>();
+        int promptIndex = 0;
+        for (Object item : systemMessagePrefix(inputs.getMessages())) {
+            BaseMessage message = (BaseMessage) item;
+            if (promptIndex < frameworkPrompts.size() && message == frameworkPrompts.get(promptIndex)) {
+                promptIndex++;
+            } else if (!preparedMessages.contains(message)) {
+                additions.add(message);
+            }
+        }
+        // 原提示词仍按顺序存在时，才能确认额外的消息是追加的。
+        return promptIndex == frameworkPrompts.size() ? additions : List.of();
+    }
+
+    private static <T> List<T> systemMessagePrefix(List<T> messages) {
+        int end = 0;
+        while (end < messages.size() && messages.get(end) instanceof BaseMessage message
+                && "system".equals(message.getRole())) {
+            end++;
+        }
+        return messages.subList(0, end);
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
@@ -551,7 +581,7 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         return streamModelResponseWithRetry(modelCall, kvLease);
     }
 
-    private void prepareModelRequest(AgentCallbackContext ctx) {
+    private ContextWindow prepareModelRequest(AgentCallbackContext ctx, List<BaseMessage> addedSystemMessages) {
         ModelCallInputs previous = ModelCallInputs.class.cast(ctx.getInputs());
         ModelContext context = previous.getModelContext();
         if (context == null) {
@@ -565,10 +595,14 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
         ContextWindow window = context.getContextWindow(systemMessages, toolInfoList(previous.getTools()),
                 null, null, Map.of())
                 .toCompletableFuture().join();
-        List<BaseMessage> messages = window.getMessages();
-        previous.setMessages(new ArrayList<>(messages));
+        List<Object> messages = new ArrayList<>(window.getMessages());
+        if (!addedSystemMessages.isEmpty()) {
+            messages.addAll(window.getSystemMessages().size(), addedSystemMessages);
+        }
+        previous.setMessages(messages);
         previous.setTools(new ArrayList<>(window.getTools()));
         previous.setModelContext(context);
+        return window;
     }
 
     private ContextWindow prepareModelContextWindow(ModelCallInputs inputs) {
@@ -580,12 +614,9 @@ public class ReActAgent extends BaseAgent implements AutoCloseable {
 
     private static void applyModelRequestMessages(ContextWindow window, ModelCallInputs inputs) {
         List<BaseMessage> messages = inputs.getMessages().stream().map(BaseMessage.class::cast).toList();
-        int systemPrefixSize = 0;
-        while (systemPrefixSize < messages.size() && "system".equals(messages.get(systemPrefixSize).getRole())) {
-            systemPrefixSize++;
-        }
-        window.setSystemMessages(messages.subList(0, systemPrefixSize));
-        window.setContextMessages(messages.subList(systemPrefixSize, messages.size()));
+        List<BaseMessage> systemMessages = systemMessagePrefix(messages);
+        window.setSystemMessages(systemMessages);
+        window.setContextMessages(messages.subList(systemMessages.size(), messages.size()));
     }
 
     private ModelCallRuntime prepareModelCallRuntime(AgentCallbackContext ctx, Model model,
