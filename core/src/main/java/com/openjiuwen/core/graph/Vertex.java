@@ -996,7 +996,6 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
     private void emitChunk(Object message, boolean isEndNode, int endStreamIndex,
                            boolean isSubGraph, ComponentAbility ability) throws Exception {
-        VertexActorManager actorManager = session.actorManager();
         if (isEndNode && !isSubGraph) {
             Object streamData = message instanceof OutputSchema
                     ? message
@@ -1010,15 +1009,16 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             }
             return;
         }
+        VertexActorManager actorManager = session.actorManager();
         if (isEndNode) {
             Object streamData = message instanceof OutputSchemaPayload payload ? payload.payload() : message;
             traceComponentStreamOutput(streamData);
             actorManager.subWorkflowStream().emit(streamData);
             return;
         }
-        boolean firstFrame = endStreamIndex == 0;
+        boolean isFirstFrame = endStreamIndex == 0;
         traceComponentStreamOutput(message);
-        actorManager.produce(nodeId, message, ability, firstFrame);
+        actorManager.produce(nodeId, message, ability, isFirstFrame);
     }
 
     private void clearInteractive() {

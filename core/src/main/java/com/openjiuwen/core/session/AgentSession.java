@@ -132,6 +132,7 @@ public class AgentSession implements AgentSessionApi {
         return inner.config().getEnv(key, defaultValue);
     }
 
+    @Override
     public Map<String, Object> getEnvs() {
         return inner.config().getEnvs();
     }

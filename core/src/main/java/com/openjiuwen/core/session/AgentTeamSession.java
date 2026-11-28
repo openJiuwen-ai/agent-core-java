@@ -94,6 +94,7 @@ public class AgentTeamSession implements AgentSessionApi {
         return teamId;
     }
 
+    @Override
     public Map<String, Object> getEnvs() {
         return inner.config().getEnvs();
     }
