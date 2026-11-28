@@ -70,4 +70,43 @@ class ModelConfigMapperTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("streamIdleSeconds");
     }
+
+    @Test
+    void toClientConfig_nullLegacyTimeoutKeepsDefault() {
+        Map<String, Object> yaml = new LinkedHashMap<>();
+        yaml.put("client_provider", "openai");
+        yaml.put("api_key", "test-key");
+        yaml.put("api_base", "https://model.example.com/v1");
+        yaml.put("timeout", null);
+
+        ModelClientConfig client = ModelConfigMapper.toClientConfig(yaml).orElseThrow();
+
+        assertThat(client.getTimeout()).isEqualTo(60.0D);
+        assertThat(client.isTimeoutExplicit()).isFalse();
+    }
+
+    @Test
+    void toClientConfig_mapsJavaStyleBackendKeys() {
+        ModelClientConfig client = ModelConfigMapper.toClientConfig(Map.ofEntries(
+                Map.entry("clientProvider", "openai"),
+                Map.entry("apiKey", "test-key"),
+                Map.entry("apiBase", "https://model.example.com/v1"),
+                Map.entry("connectTimeoutSeconds", 12),
+                Map.entry("streamIdleSeconds", 300),
+                Map.entry("maxRetries", 4),
+                Map.entry("retryOnRateLimit", false),
+                Map.entry("retryOnTemporary", false),
+                Map.entry("verifySsl", false),
+                Map.entry("sslCert", "test-cert"),
+                Map.entry("headers", Map.of("X-Test", "value")))).orElseThrow();
+
+        assertThat(client.getConnectTimeoutSeconds()).isEqualTo(12.0D);
+        assertThat(client.getStreamIdleSeconds()).isEqualTo(300.0D);
+        assertThat(client.getMaxRetries()).isEqualTo(4);
+        assertThat(client.isRetryOnRateLimit()).isFalse();
+        assertThat(client.isRetryOnTemporary()).isFalse();
+        assertThat(client.isVerifySsl()).isFalse();
+        assertThat(client.getSslCert()).isEqualTo("test-cert");
+        assertThat(client.getHeaders()).containsEntry("X-Test", "value");
+    }
 }

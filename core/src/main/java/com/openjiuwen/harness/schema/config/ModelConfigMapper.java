@@ -44,7 +44,9 @@ public final class ModelConfigMapper {
         }
         Object legacyTimeout = fields.remove("timeout");
         ModelClientConfig client = MAPPER.convertValue(fields, ModelClientConfig.class);
-        client.setTimeout(MAPPER.convertValue(legacyTimeout, Double.class));
+        if (legacyTimeout != null) {
+            client.setTimeout(MAPPER.convertValue(legacyTimeout, Double.class));
+        }
         return Optional.of(client);
     }
 
@@ -57,9 +59,18 @@ public final class ModelConfigMapper {
         renameIfMissing(fields, "backend", "client_provider");
         renameIfMissing(fields, "base_url", "api_base");
         renameIfMissing(fields, "baseUrl", "api_base");
+        renameIfMissing(fields, "clientProvider", "client_provider");
         renameIfMissing(fields, "clientId", "client_id");
         renameIfMissing(fields, "apiKey", "api_key");
         renameIfMissing(fields, "apiBase", "api_base");
+        renameIfMissing(fields, "maxRetries", "max_retries");
+        renameIfMissing(fields, "connectTimeoutSeconds", "connect_timeout_seconds");
+        renameIfMissing(fields, "streamIdleSeconds", "stream_idle_seconds");
+        renameIfMissing(fields, "retryOnRateLimit", "retry_on_rate_limit");
+        renameIfMissing(fields, "retryOnTemporary", "retry_on_temporary");
+        renameIfMissing(fields, "verifySsl", "verify_ssl");
+        renameIfMissing(fields, "sslCert", "ssl_cert");
+        renameIfMissing(fields, "headers", "custom_headers");
         return fields;
     }
 
