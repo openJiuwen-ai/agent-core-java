@@ -870,7 +870,9 @@ final class JiuwenBoxProviderSupport {
                             resolveUri("/api/v1/sandboxes/" + urlPath(sandboxId) + "/exec", Map.of()))
                     .timeout(Duration.ofSeconds(requestTimeout))
                     .header("content-type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(AioProviderSupport.JSON.writeValueAsString(body), StandardCharsets.UTF_8)))
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            AioProviderSupport.JSON.writeValueAsString(body),
+                            StandardCharsets.UTF_8)))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             ensureSuccess(response.statusCode(), response.body(), "POST", request.uri());

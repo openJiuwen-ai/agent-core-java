@@ -70,7 +70,7 @@ public abstract class BasePipeline {
         List<Object> events = new ArrayList<>();
         String stageName = stage.slot().isEmpty() ? stage.name() : stage.slot();
         if (!stage.displayName().isEmpty()) {
-            events.add(ctx.message(stage.displayName(), stageName));
+            events.add(BaseExecutionContext.message(stage.displayName(), stageName));
         }
         Iterator<Object> stream = stage.stream(ctx);
         while (stream.hasNext()) {
@@ -81,7 +81,7 @@ public abstract class BasePipeline {
                     ctx.putArtifacts(result.getArtifacts());
                 }
                 for (String message : result.getMessages() == null ? List.<String>of() : result.getMessages()) {
-                    events.add(ctx.message(message));
+                    events.add(BaseExecutionContext.message(message));
                 }
                 events.add(result);
                 continue;

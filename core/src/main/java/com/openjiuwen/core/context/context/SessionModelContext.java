@@ -368,6 +368,7 @@ public class SessionModelContext implements ModelContext {
         return messageBuffer.getBack(size, withHistory);
     }
 
+    @Override
     public List<BaseMessage> getMessages() {
         return getMessages(null, true);
     }

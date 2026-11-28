@@ -4242,7 +4242,7 @@ public class DeepAgent implements AutoCloseable {
     /**
      * Persists the user-pause boundary at the finished round: the PAUSED step
      * cursor and the pause metadata flush through the checkpoint save path on
-     * top of the just-completed round state. A round without its own outcome
+     * top of the just-completed round state. A round without its own outcomStepCheckpointRecoveryServicee
      * (answer) is marked {@code paused} so the task loop result carries the
      * pause outcome; a round that already ended as {@code interrupt} or
      * {@code error} keeps that shape and records the pause through

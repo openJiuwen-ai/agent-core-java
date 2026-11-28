@@ -127,6 +127,7 @@ public class AssistantMessage extends BaseMessage {
         return modelDump();
     }
 
+    @Override
     public Map<String, Object> model_dump() {
         return modelDump();
     }
