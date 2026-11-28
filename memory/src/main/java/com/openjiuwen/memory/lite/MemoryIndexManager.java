@@ -130,11 +130,16 @@ public class MemoryIndexManager implements LiteMemoryToolContextBase.MemoryIndex
                 try {
                     String text = Files.readString(Path.of(file), StandardCharsets.UTF_8);
                     int hit = text.toLowerCase().indexOf(cleaned.toLowerCase());
-                    double score = hit >= 0 ? 1.0d : 0.0d;
+                    if (hit < 0) {
+                        // Misses are never returned, regardless of min_score
+                        // (Python search only scores actual vector/keyword hits).
+                        continue;
+                    }
+                    double score = 1.0d;
                     if (score < minScore) {
                         continue;
                     }
-                    int startLine = lineNumber(text, Math.max(hit, 0));
+                    int startLine = lineNumber(text, hit);
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", file + ":" + startLine + ":" + startLine);
                     row.put("path", Path.of(memoryDir).relativize(Path.of(file)).toString());
